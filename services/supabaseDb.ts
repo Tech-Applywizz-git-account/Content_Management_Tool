@@ -1,0 +1,1865 @@
+import { supabase, supabaseAdmin } from '../src/integrations/supabase/client';
+import {
+    User,
+    Project,
+    WorkflowStage,
+    Role,
+    TaskStatus,
+    Channel,
+    ContentType,
+    Priority,
+    UserStatus
+} from '../types';
+
+console.log('🔍 Initializing supabaseDb service');
+
+// ============================================================================
+// AUTHENTICATION
+// ============================================================================
+
+export const auth = {
+    // Sign in with email/password
+    async signIn(email: string, password: string) {
+        console.log('🔐 Attempting login for:', email);
+        
+        try {
+            // Pre-login signOut to ensure clean state (safe to ignore errors)
+            try {
+                await supabase.auth.signOut();
+            } catch (signOutErr) {
+                console.warn('Pre-login signOut failed (safe to ignore if no session):', signOutErr);
+            }
+
+            // Real authentication using Supabase
+            console.log('Login: calling signInWithPassword...');
+            const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (signInError) {
+                throw new Error(signInError.message);
+            }
+
+            if (!user) {
+                throw new Error('Login failed - no user returned');
+            }
+
+            // Get full user details
+            console.log('Login: fetching user profile...');
+            const userData = await supabase
+                .from('users')
+                .select('*')
+                .eq('email', email)
+                .single();
+
+            if (userData.error) {
+                throw new Error(`User profile fetch failed: ${userData.error.message}`);
+            }
+
+            if (!userData.data) {
+                throw new Error('User profile not found in database');
+            }
+
+            currentUserCache = userData.data as User;
+            console.log('User logged in and cached:', currentUserCache.full_name);
+
+            // Update last login
+            try {
+                await supabase
+                    .from('users')
+                    .update({ last_login: new Date().toISOString() })
+                    .eq('email', email);
+            } catch (updateError) {
+                console.warn('Failed to update last login timestamp:', updateError);
+            }
+
+            return userData.data as User;
+        } catch (error) {
+            console.error('Login error:', error);
+            throw error;
+        }
+    },
+
+    // Sign out
+    async signOut() {
+        try {
+            // Sign out with local scope first
+            console.log('Signing out with local scope...');
+            const { error: localError } = await supabase.auth.signOut({ scope: 'local' });
+            
+            if (localError) {
+                console.warn('Local sign out failed:', localError);
+            } else {
+                console.log('Local sign out successful');
+            }
+            
+            // Then sign out with global scope
+            console.log('Signing out with global scope...');
+            const { error: globalError } = await supabase.auth.signOut({ scope: 'global' });
+            
+            if (globalError) {
+                console.warn('Global sign out failed:', globalError);
+            } else {
+                console.log('Global sign out successful');
+            }
+            
+            // Return any error that occurred
+            const finalError = localError || globalError;
+            if (finalError) {
+                throw finalError;
+            }
+            
+            return { error: null };
+        } catch (error) {
+            console.error('Sign out error:', error);
+            return { error };
+        }
+    },
+
+    // Get current session user
+    async getCurrentUser() {
+        const { data: { user } } = await supabase.auth.getUser();
+        return user;
+    },
+
+    // Send password reset email
+    async resetPassword(email: string) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/set-password`,
+        });
+
+        if (error) throw error;
+    },
+
+    // Update password
+    async updatePassword(newPassword: string) {
+        const { error } = await supabase.auth.updateUser({
+            password: newPassword
+        });
+
+        if (error) throw error;
+    },
+
+    // Invite user by email (Admin only)
+    async inviteUser(email: string, userData: { full_name: string; role: Role; phone?: string }) {
+        console.log('inviteUser called with:', email, userData);
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
+
+        // --- STRATEGY 1: Local Admin Client (Dev Mode / w Service Key) ---
+        if (supabaseAdmin) {
+            console.log('⚡ Using Local Service Role Key for Invitation');
+
+            try {
+                // 1. Invite User via Email
+                // This sends the magic link pointing to /set-password
+                const inviteData: any = {
+                    redirectTo: `${window.location.origin}/set-password`,
+                    data: {
+                        full_name: userData.full_name,
+                        role: userData.role,
+                        phone: userData.phone
+                    }
+                };
+
+                const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+                    email,
+                    inviteData
+                );
+
+                if (authError) {
+                    console.error('Auth invite failed:', authError);
+                    throw new Error(`Failed to send invitation: ${authError.message}`);
+                }
+
+                // Safe ID Extraction
+                const invitedUserId =
+                    authData?.user?.id ||
+                    (authData as any)?.id ||
+                    (authData as any)?.user_id ||
+                    null;
+
+                if (!invitedUserId) {
+                    console.error('❌ Invite succeeded but no User ID returned:', authData);
+                    throw new Error('Invitation sent but User ID missing from response.');
+                }
+
+                console.log('✅ Invitation sent, User ID:', invitedUserId);
+
+                // 2. Create Public User Record
+                // Use admin client for DB upsert to bypass RLS issues and handle potential triggers or existing records
+                console.log('🔄 Upserting to public.users...');
+                
+                // Prepare user record data
+                const userRecordData: any = {
+                    id: invitedUserId,
+                    email,
+                    full_name: userData.full_name,
+                    role: userData.role,
+                    phone: userData.phone,
+                    status: UserStatus.ACTIVE,
+                    last_login: null
+                };
+
+                const { data: publicUser, error: dbError } = await supabaseAdmin
+                    .from('users')
+                    .upsert([userRecordData], { onConflict: 'id' })
+                    .select()
+                    .single();
+
+                if (dbError) {
+                    console.error('❌ Public DB upsert failed:', dbError);
+                    // Critical: If DB upsert fails AND it wasn't swallowed by upstream, throw.
+                    throw new Error(`Failed to create database record: ${dbError.message}`);
+                }
+
+                console.log('✅ User successfully created/updated in public.users:', publicUser);
+
+                return publicUser;
+
+            } catch (error: any) {
+                console.error('Local admin invitation failed:', error);
+                throw error; // Propagate error, DO NOT create ghost user
+            }
+        }
+
+        // --- STRATEGY 2: Edge Function (Production) ---
+        console.log('⚠️ No Service Key found, trying Edge Function...');
+
+        try {
+            // Check session
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error('No active session found to authorize Edge Function');
+
+            // Prepare the payload
+            const payload: any = { 
+                email, 
+                userData: {
+                    full_name: userData.full_name,
+                    role: userData.role,
+                    phone: userData.phone
+                },
+                redirectTo: `${window.location.origin}/set-password` 
+            };
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/invite-user`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Edge Function Failed: ${text}`);
+            }
+            return await response.json();
+
+        } catch (err: any) {
+            console.error('Edge function strategy failed:', err);
+            // DO NOT create ghost user fallback
+            throw new Error(`Invitation failed: ${err.message}`);
+        }
+    },
+
+    // Delete user (Admin only) - Calls secure Edge Function
+    async deleteUser(userId: string) {
+        console.log('deleteUser called for:', userId);
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
+
+        // 1. Attempt to delete from Supabase Auth via Edge Function
+        // We do this first because optimal flow is Auth Delete -> Cascade to Public
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session) {
+                console.log('Calling delete-user Edge Function...');
+                const response = await fetch(`${supabaseUrl}/functions/v1/delete-user`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ userId })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.warn('Edge Function returned error (continuing to DB delete):', errorText);
+                } else {
+                    console.log('Edge Function success');
+                }
+            } else {
+                console.warn('No active session, skipping Edge Function (Auth deletion)');
+            }
+        } catch (authError) {
+            console.warn('Error calling Edge Function (continuing to DB delete):', authError);
+        }
+
+        // 2. FORCE delete from public.users
+        // This is critical for the UI to update. 
+        // If Auth Delete cascaded, this will throw "0 rows affected", which we catch and ignore.
+        // If Auth Delete failed or didn't cascade, this will delete the record and return success.
+        console.log('Executing direct database deletion...');
+        try {
+            await users.delete(userId);
+            console.log('Database deletion successful');
+        } catch (dbError: any) {
+            // If the error is "0 rows affected", it means the user is already gone (likely cascaded)
+            if (dbError.message && dbError.message.includes('0 rows affected')) {
+                console.log('User already removed from database (likely cascaded from Auth delete)');
+                return { message: 'User deleted (cascaded)' };
+            }
+            // Real DB error? Throw it.
+            console.error('Database deletion failed:', dbError);
+            throw dbError;
+        }
+
+        return { message: 'User deleted' };
+    }
+};
+
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
+export const users = {
+    // Get all users
+    async getAll() {
+        console.log("📡 DB: Fetching all users...");
+        const { data, error } = await supabase
+            .from('users')
+            .select(`
+                id,
+                email,
+                full_name,
+                role,
+                avatar_url,
+                status,
+                phone,
+                last_login,
+                created_at,
+                updated_at
+            `)
+            .order('created_at', { ascending: false });
+
+        console.log('Raw response from Supabase:', { data, error });
+
+        if (error) {
+            console.error("❌ DB: Fetch users failed:", error);
+            throw error;
+        }
+
+        console.log(`✅ DB: Found ${data?.length || 0} users`);
+        console.log('Users data:', data);
+        return data as User[];
+    },
+
+    // Get user by ID
+    async getById(id: string) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return data as User;
+    },
+
+    // Get user by email
+    async getByEmail(email: string) {
+        console.log('🔍 getByEmail: Fetching user for:', email);
+
+        const { data, error } = await supabase
+            .from('users')
+            .select(`
+                id,
+                email,
+                full_name,
+                role,
+                avatar_url,
+                status,
+                phone,
+                last_login,
+                created_at,
+                updated_at
+            `)
+            .eq('email', email);
+
+        if (error) {
+            console.error('❌ getByEmail: Database error:', error);
+            throw error;
+        }
+
+        if (!data || data.length === 0) {
+            console.warn('⚠️  getByEmail: No user found for email:', email);
+            throw new Error(`No user found with email: ${email}`);
+        }
+
+        if (data.length > 1) {
+            console.error(`🔴 getByEmail: DUPLICATE USERS DETECTED for ${email}! Found ${data.length} users.`);
+            console.error('🔴 User IDs:', data.map(u => u.id));
+            console.warn('⚠️  getByEmail: Returning first match, but you should clean up duplicates!');
+        }
+
+        console.log('✅ getByEmail: User found:', data[0].full_name);
+        return data[0] as User;
+    },
+
+    // Create new user
+    async create(userData: {
+        email: string;
+        full_name: string;
+        role: Role;
+        phone?: string;
+        status?: UserStatus;
+    }) {
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .insert([{
+                    email: userData.email,
+                    full_name: userData.full_name,
+                    role: userData.role,
+                    phone: userData.phone,
+                    status: userData.status || UserStatus.ACTIVE
+                }])
+                .select()
+                .single();
+
+            if (error) {
+                console.error('Error creating user in database:', error);
+                throw error;
+            }
+
+            // Log user creation
+            try {
+                await systemLogs.add({
+                    actor_id: data.id,
+                    actor_name: userData.full_name,
+                    actor_role: userData.role,
+                    action: 'USER_CREATED',
+                    details: `User ${userData.full_name} created with role ${userData.role}`
+                });
+            } catch (logError) {
+                console.warn('Failed to log user creation:', logError);
+            }
+
+            return data as User;
+        } catch (error) {
+            console.error('Failed to create user:', error);
+            throw error;
+        }
+    },
+
+    // Update user
+    async update(id: string, updates: Partial<User>) {
+        const { data, error } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Log user update
+        await systemLogs.add({
+            actor_id: id,
+            actor_name: data.full_name,
+            actor_role: data.role,
+            action: 'USER_UPDATED',
+            details: `User ${data.full_name} updated`
+        });
+
+        return data as User;
+    },
+
+    // Update last login
+    async updateLastLogin(id: string) {
+        const { error } = await supabase
+            .from('users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    // Delete user (from both Auth and Database)
+    async delete(id: string) {
+        // Get user details for logging
+        const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        // Delete from database first
+        const { error: dbError, count } = await supabase
+            .from('users')
+            .delete({ count: 'exact' })
+            .eq('id', id);
+
+        if (dbError) throw new Error(`Database deletion failed: ${dbError.message}`);
+
+        if (count === 0) {
+            console.warn(`⚠️ Delete operation returned 0 rows affected for ID: ${id}`);
+            throw new Error('User could not be deleted from database. Verify RLS policies allow deletion.');
+        }
+
+        // Delete from Supabase Auth (requires admin access via Edge Function)
+        //Note cannot delete from auth directly from client - would need an Edge Function
+        // For now, just delete from database - auth user will remain but won't be able to login
+
+        // Log user deletion
+        if (user && currentUserCache) {
+            await systemLogs.add({
+                actor_id: currentUserCache.id,
+                actor_name: currentUserCache.full_name,
+                actor_role: currentUserCache.role,
+                action: 'USER_DELETED',
+                details: `User ${user.full_name} (${user.email}) was deleted by ${currentUserCache.full_name}`
+            });
+        }
+
+        return true;
+    }
+};
+
+// ============================================================================
+// PROJECT MANAGEMENT
+// ============================================================================
+export const projects = {
+  // Get all projects
+  async getAll() {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data as Project[];
+  },
+
+  // 🔴 DASHBOARD PROJECTS (role-based inbox)
+  async getForRole(role: Role) {
+    console.log(`📥 Fetching projects for role: ${role}`);
+
+    let query = supabase.from('projects').select('*');
+
+    // ✅ FIX: Filter by stage only, not assigned_to_role
+    switch (role) {
+      case Role.WRITER:
+        // Writer inbox: SCRIPT, REJECTED
+        query = query.or(
+          `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED}`
+        );
+        break;
+      
+      case Role.CMO:
+        // CMO inbox: SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO
+        query = query.or(
+          `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L1},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CMO}`
+        );
+        break;
+        
+      case Role.CEO:
+        // CEO inbox: SCRIPT_REVIEW_L2 and FINAL_REVIEW_CEO
+        query = query.or(
+          `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L2},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CEO}`
+        );
+        break;
+        
+      case Role.CINE:
+        // Cinematographer inbox: CINEMATOGRAPHY only
+        query = query.eq('current_stage', WorkflowStage.CINEMATOGRAPHY);
+        break;
+        
+      case Role.EDITOR:
+        // Editor inbox: VIDEO_EDITING only
+        query = query.eq('current_stage', WorkflowStage.VIDEO_EDITING);
+        break;
+        
+      case Role.DESIGNER:
+        // Designer inbox: THUMBNAIL, CREATIVE only
+        query = query.or(
+          `current_stage.eq.${WorkflowStage.THUMBNAIL_DESIGN},current_stage.eq.${WorkflowStage.CREATIVE_DESIGN}`
+        );
+        break;
+        
+      case Role.OPS:
+        // Ops inbox: OPS_SCHEDULING only
+        query = query.eq('current_stage', WorkflowStage.OPS_SCHEDULING);
+        break;
+        
+      default:
+        // For roles without specific inbox stages, return empty array
+        return [];
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) throw error;
+
+    return data as Project[];
+  },
+
+  // 🟢 MY WORK (UNION-based)
+  async getMyWork(user: User) {
+    console.log(`📘 Fetching MY WORK for ${user.role} (${user.id})`);
+
+    try {
+      // ✅ FIX: Include all projects where user participated based on the My Work Visibility Persistence Rule
+      // 1. Projects where user is actor in workflow_history
+      const { data: historyData, error: historyError } = await supabase
+        .from('workflow_history')
+        .select(`
+          project_id,
+          timestamp,
+          projects (*)
+        `)
+        .eq('actor_id', user.id);
+
+      if (historyError) throw historyError;
+
+      // 2. Projects assigned to the user by ID
+      const { data: assignedByIdData, error: assignedByIdError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('assigned_to_user_id', user.id);
+
+      if (assignedByIdError) throw assignedByIdError;
+
+      // 3. Projects assigned to the user's role
+      const { data: assignedByRoleData, error: assignedByRoleError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('assigned_to_role', user.role);
+
+      if (assignedByRoleError) throw assignedByRoleError;
+
+      // ✅ Merge all results and remove duplicates
+      const projectMap = new Map<string, Project & { latest_activity?: Date }>();
+      
+      // Add history projects
+      historyData.forEach((row: any) => {
+        if (row.projects) {
+          const project = row.projects;
+          // Only set latest_activity if not already set or if this timestamp is newer
+          if (!projectMap.has(project.id) || 
+              !projectMap.get(project.id)?.latest_activity || 
+              new Date(row.timestamp) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+            projectMap.set(project.id, {
+              ...project,
+              latest_activity: new Date(row.timestamp)
+            });
+          }
+        }
+      });
+
+      // Add projects assigned to user by ID (may overwrite history entries if more recent)
+      assignedByIdData.forEach((project: any) => {
+        if (!projectMap.has(project.id) || 
+            !projectMap.get(project.id)?.latest_activity ||
+            new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+          projectMap.set(project.id, {
+            ...project,
+            latest_activity: new Date(project.updated_at)
+          });
+        }
+      });
+
+      // Add projects assigned to user's role (may overwrite previous entries if more recent)
+      assignedByRoleData.forEach((project: any) => {
+        if (!projectMap.has(project.id) || 
+            !projectMap.get(project.id)?.latest_activity ||
+            new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+          projectMap.set(project.id, {
+            ...project,
+            latest_activity: new Date(project.updated_at)
+          });
+        }
+      });
+
+      // Convert to array and sort by latest activity
+      const result = Array.from(projectMap.values())
+        .sort((a, b) => {
+          const dateA = a.latest_activity ? new Date(a.latest_activity).getTime() : 0;
+          const dateB = b.latest_activity ? new Date(b.latest_activity).getTime() : 0;
+          return dateB - dateA; // Descending order (newest first)
+        })
+        // Remove the temporary latest_activity property
+        .map(({ latest_activity, ...project }) => project);
+
+      console.log(`✅ MY WORK fetched ${result.length} projects for ${user.role}`);
+      return result as Project[];
+    } catch (error) {
+      console.error('❌ Failed to fetch MY WORK:', error);
+      throw error;
+    }
+  },
+
+    // Get project by ID
+    async getById(id: string) {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) throw error;
+        return data as Project;
+    },
+
+    // Create new project
+   async create(projectData: {
+  title: string;
+  channel: Channel;
+  content_type: ContentType;
+
+  // ✅ ADD THESE
+  current_stage?: WorkflowStage;
+  status?: TaskStatus;
+  
+  assigned_to_role: Role;
+  assigned_to_user_id?: string;
+  priority?: Priority;
+  due_date: string;
+  data: any;
+})
+ {
+        console.log('Creating project with data:', projectData);
+        const { data, error } = await supabase
+  .from('projects')
+  .insert([{
+    title: projectData.title,
+    channel: projectData.channel,
+    content_type: projectData.content_type,
+    assigned_to_role: projectData.assigned_to_role,
+    assigned_to_user_id: projectData.assigned_to_user_id ?? null,
+    due_date: projectData.due_date,
+    data: projectData.data,
+
+    // defaults - ensure proper initial state
+    current_stage: WorkflowStage.SCRIPT,
+    status: TaskStatus.TODO,
+    priority: projectData.priority || 'NORMAL'
+  }])
+  .select()
+  .single();
+
+if (error) {
+  console.error('Failed to create project:', error);
+  throw error;
+}
+
+console.log('Successfully created project with ID:', data.id);
+return data as Project;
+ },
+
+    // Update project
+    async update(id: string, updates: Partial<Project>) {
+        console.log('Updating project', id, 'with data:', updates);
+        const { data, error } = await supabase
+            .from('projects')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to update project:', error);
+            throw error;
+        }
+        console.log('Project updated successfully:', data);
+        return data as Project;
+    },
+
+    // Update project data (JSONB field)
+    async updateData(id: string, dataUpdates: any) {
+        console.log('Updating project data for', id, 'with updates:', dataUpdates);
+        const project = await this.getById(id);
+        const newData = { ...project.data, ...dataUpdates };
+
+        const result = await this.update(id, { data: newData });
+        console.log('Project data updated successfully:', result);
+        return result;
+    },
+
+    // Delete project
+    async delete(id: string) {
+        const { error } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    }
+};
+
+// ============================================================================
+// WORKFLOW MANAGEMENT
+// ============================================================================
+
+export const workflow = {
+    // Record workflow history
+    async recordAction(
+        projectId: string,
+        stage: WorkflowStage,
+        userId: string,
+        userName: string,
+        action: string,
+        comment?: string
+    ) {
+        // Map frontend action values to database enum values
+        const actionMap: Record<string, string> = {
+            'CREATED': 'CREATED',
+            'SUBMITTED': 'SUBMITTED',
+            'APPROVED': 'APPROVED',
+            'REJECTED': 'REJECTED',
+            'PUBLISHED': 'PUBLISHED'
+        };
+        
+        // Default to 'SUBMIT' if action not found in map
+        const dbAction = actionMap[action] || 'SUBMIT';
+        
+        // Log the data we're about to insert for debugging
+        console.log('Recording workflow history with data:', {
+            project_id: projectId,
+            stage: stage,
+            actor_id: userId,
+            actor_name: userName,
+            action: dbAction,
+            comment: comment || ''
+        });
+        
+        const { error } = await supabase
+            .from('workflow_history')
+            .insert({
+                project_id: projectId,
+                stage: stage,
+                actor_id: userId,
+                actor_name: userName,
+                action: dbAction,
+                comment: comment || ''
+            });
+
+        if (error) {
+            console.error('Failed to record workflow history:', error);
+            console.error('Data that failed to insert:', {
+                project_id: projectId,
+                stage: stage,
+                actor_id: userId,
+                actor_name: userName,
+                action: dbAction,
+                comment: comment || ''
+            });
+            // Log more detailed error information
+            console.error('Full error details:', JSON.stringify(error, null, 2));
+            
+            // Try to get more specific error information
+            if (error.message) {
+                console.error('Error message:', error.message);
+            }
+            if (error.details) {
+                console.error('Error details:', error.details);
+            }
+            if (error.hint) {
+                console.error('Error hint:', error.hint);
+            }
+            
+            throw error;
+        }
+    },
+
+    // Submit project for review
+    async submitForReview(
+        projectId: string,
+        userId: string,
+        userName: string,
+        nextStage: WorkflowStage,
+        nextRole: Role,
+        comment?: string
+    ) {
+        // First get the current project to know its current stage
+        const { data: currentProject, error: fetchError } = await supabase
+            .from('projects')
+            .select('current_stage')
+            .eq('id', projectId)
+            .single();
+
+        if (fetchError) {
+            console.error('Failed to fetch current project:', fetchError);
+            throw fetchError;
+        }
+
+        // Update project and get the updated data
+        const { data: updateData, error: updateError } = await supabase
+            .from('projects')
+            .update({
+                current_stage: nextStage,
+                assigned_to_role: nextRole,
+                status: TaskStatus.WAITING_APPROVAL
+            })
+            .eq('id', projectId)
+            .select();
+
+        if (updateError) {
+            console.error('Failed to update project:', updateError);
+            throw updateError;
+        }
+
+        // Check if any rows were affected
+        if (!updateData || updateData.length === 0) {
+            throw new Error('Project not found or no rows updated');
+        }
+
+        // Use the updated data directly since we used .select()
+        const data = updateData[0];
+
+        // Add workflow history
+        const { error: historyError } = await supabase
+            .from('workflow_history')
+            .insert({
+                project_id: projectId,
+                stage: nextStage,
+                actor_id: userId,
+                actor_name: userName,
+                action: 'SUBMITTED',
+                comment: comment || 'Submitted for review'
+            });
+
+        if (historyError) {
+            console.error('Failed to add workflow history:', historyError);
+            throw historyError;
+        }
+
+        return data;
+    },
+
+    // Approve project
+    async approve(
+        projectId: string,
+        userId: string,
+        userName: string,
+        userRole: Role,
+        nextStage: WorkflowStage,
+        nextRole: Role,
+        comment?: string
+    ) {
+        // First get the current project to know its current stage
+        const { data: currentProject, error: fetchError } = await supabase
+            .from('projects')
+            .select('current_stage')
+            .eq('id', projectId)
+            .single();
+
+        if (fetchError) {
+            console.error('Failed to fetch current project:', fetchError);
+            throw fetchError;
+        }
+
+        // Update project and get the updated data
+        const { data: updateData, error: updateError } = await supabase
+            .from('projects')
+            .update({
+                current_stage: nextStage,
+                assigned_to_role: nextRole,
+                status: TaskStatus.WAITING_APPROVAL
+            })
+            .eq('id', projectId)
+            .select();
+
+        if (updateError) {
+            console.error('Failed to update project:', updateError);
+            throw updateError;
+        }
+
+        // Check if any rows were affected
+        if (!updateData || updateData.length === 0) {
+            throw new Error('Project not found or no rows updated');
+        }
+
+        // Use the updated data directly since we used .select()
+        const data = updateData[0];
+
+        // Add workflow history
+        console.log('Inserting workflow history:', {
+            project_id: projectId,
+            stage: nextStage,
+            actor_id: userId,
+            actor_name: userName,
+            action: 'APPROVED',
+            comment: comment || `Approved by ${userRole}`
+        });
+        
+        const { error: historyError } = await supabase
+            .from('workflow_history')
+            .insert({
+                project_id: projectId,
+                stage: nextStage,
+                actor_id: userId,
+                actor_name: userName,
+                action: 'APPROVED',
+                comment: comment || `Approved by ${userRole}`
+            });
+
+        if (historyError) {
+            console.error('Failed to add workflow history:', historyError);
+            throw historyError;
+        }
+
+        return data;
+    },
+
+    // Reject project
+    async reject(
+        projectId: string,
+        userId: string,
+        userName: string,
+        userRole: Role,
+        returnToStage: WorkflowStage,
+        returnToRole: Role,
+        comment: string
+    ) {
+        // First get the current project to know its current stage
+        const { data: currentProject, error: fetchError } = await supabase
+            .from('projects')
+            .select('current_stage')
+            .eq('id', projectId)
+            .single();
+
+        if (fetchError) {
+            console.error('Failed to fetch current project:', fetchError);
+            throw fetchError;
+        }
+
+        // Update project and get the updated data
+        const { data: updateData, error: updateError } = await supabase
+            .from('projects')
+            .update({
+                current_stage: returnToStage,
+                assigned_to_role: returnToRole,
+                status: TaskStatus.REJECTED
+            })
+            .eq('id', projectId)
+            .select();
+
+        if (updateError) {
+            console.error('Failed to update project:', updateError);
+            throw updateError;
+        }
+
+        // Check if any rows were affected
+        if (!updateData || updateData.length === 0) {
+            throw new Error('Project not found or no rows updated');
+        }
+
+        // Use the updated data directly since we used .select()
+        const data = updateData[0];
+
+        // Add workflow history
+        const { error: historyError } = await supabase
+            .from('workflow_history')
+            .insert({
+                project_id: projectId,
+                stage: returnToStage,
+                actor_id: userId,
+                actor_name: userName,
+                action: 'REJECTED',
+                comment: comment || `Rejected by ${userRole}`
+            });
+
+        if (historyError) {
+            console.error('Failed to add workflow history:', historyError);
+            throw historyError;
+        }
+
+        return data;
+    },
+
+    // Mark project as done
+    async markAsDone(
+        projectId: string,
+        userId: string,
+        userName: string
+    ) {
+        // Update project and get the updated data
+        const { data: updateData, error: updateError } = await supabase
+            .from('projects')
+            .update({
+                status: TaskStatus.DONE
+            })
+            .eq('id', projectId)
+            .select();
+
+        if (updateError) {
+            console.error('Failed to update project:', updateError);
+            throw updateError;
+        }
+
+        // Check if any rows were affected
+        if (!updateData || updateData.length === 0) {
+            throw new Error('Project not found or no rows updated');
+        }
+
+        // Use the updated data directly since we used .select()
+        const data = updateData[0];
+
+        // Add workflow history
+        const { error: historyError } = await supabase
+            .from('workflow_history')
+            .insert({
+                project_id: projectId,
+                stage: WorkflowStage.POSTED,
+                actor_id: userId,
+                actor_name: userName,
+                action: 'APPROVED',
+                comment: 'Project completed and published'
+            });
+
+        if (historyError) {
+            console.error('Failed to add workflow history:', historyError);
+            throw historyError;
+        }
+
+        return data;
+    }
+};
+
+// ============================================================================
+// WORKFLOW HISTORY
+// ============================================================================
+
+export const workflowHistory = {
+    // Get history for a project
+    async getByProject(projectId: string) {
+        const { data, error } = await supabase
+            .from('workflow_history')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('timestamp', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    // ✅ NEW: Get history by actor ID for counting purposes
+    async getByActorId(actorId: string) {
+        const { data, error } = await supabase
+            .from('workflow_history')
+            .select('*')
+            .eq('actor_id', actorId)
+            .order('timestamp', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    // ✅ NEW: Get history by actor role for counting purposes
+    async getByActorRole(actorRole: Role) {
+        // We can't directly filter by actor_role since it's not in the table
+        // Instead, we'll get all history entries and filter by the actor's role in the application
+        const { data, error } = await supabase
+            .from('workflow_history')
+            .select('*')
+            .order('timestamp', { ascending: false });
+
+        if (error) throw error;
+        return data;
+    },
+
+    // Add history entry
+    async add(entry: {
+        project_id: string;
+        stage: WorkflowStage;
+        actor_id: string;
+        actor_name: string;
+        actor_role: Role;
+        action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED';
+        comment?: string;
+    }) {
+        // Map frontend action values to database enum values
+        const actionMap: Record<string, string> = {
+            'CREATED': 'CREATED',
+            'SUBMITTED': 'SUBMITTED',
+            'APPROVED': 'APPROVED',
+            'REJECTED': 'REJECTED',
+            'PUBLISHED': 'PUBLISHED'
+        };
+        
+        // Default to 'submit' if action not found in maps
+        const dbAction = actionMap[entry.action] || 'SUBMITTED';
+        
+        // Map the entry to match the actual database schema
+        const dbEntry = {
+            project_id: entry.project_id,
+            stage: entry.stage,
+            actor_id: entry.actor_id,
+            actor_name: entry.actor_name,
+            action: dbAction,
+            comment: entry.comment || ''
+        };
+        
+        const { data, error } = await supabase
+            .from('workflow_history')
+            .insert([dbEntry])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    }
+};
+
+// ============================================================================
+// SYSTEM LOGS
+// ============================================================================
+
+export const systemLogs = {
+    // Get all logs (Admin only)
+    async getAll(limit: number = 100) {
+        const { data, error } = await supabase
+            .from('system_logs')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+        return data;
+    },
+
+    // Get logs by user
+    async getByUser(userId: string, limit: number = 50) {
+        const { data, error } = await supabase
+            .from('system_logs')
+            .select('*')
+            .eq('actor_id', userId)
+            .order('timestamp', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+        return data;
+    },
+
+    // Add log entry
+    async add(logEntry: {
+        actor_id?: string;
+        actor_name: string;
+        actor_role: Role;
+        action: string;
+        details: string;
+        metadata?: any;
+    }) {
+        const { data, error } = await supabase
+            .from('system_logs')
+            .insert([{
+                user_id: logEntry.actor_id,
+                user_name: logEntry.actor_name,
+                user_role: logEntry.actor_role,
+                action: logEntry.action,
+                details: logEntry.details,
+                metadata: logEntry.metadata || {}
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    }
+};
+
+// ============================================================================
+// FILE STORAGE
+// ============================================================================
+
+export const storage = {
+    // Upload video
+    async uploadVideo(file: File, projectId: string) {
+        const fileName = `${projectId}/${Date.now()}_${file.name}`;
+
+        const { data, error } = await supabase.storage
+            .from('videos')
+            .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) throw error;
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+            .from('videos')
+            .getPublicUrl(fileName);
+
+        return publicUrl;
+    },
+
+    // Upload thumbnail
+    async uploadThumbnail(file: File, projectId: string) {
+        const fileName = `${projectId}/${Date.now()}_${file.name}`;
+
+        const { data, error } = await supabase.storage
+            .from('thumbnails')
+            .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('thumbnails')
+            .getPublicUrl(fileName);
+
+        return publicUrl;
+    },
+
+    // Upload creative
+    async uploadCreative(file: File, projectId: string) {
+        const fileName = `${projectId}/${Date.now()}_${file.name}`;
+
+        const { data, error } = await supabase.storage
+            .from('creatives')
+            .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('creatives')
+            .getPublicUrl(fileName);
+
+        return publicUrl;
+    },
+
+    // Delete file
+    async deleteFile(bucket: 'videos' | 'thumbnails' | 'creatives', path: string) {
+        const { error } = await supabase.storage
+            .from(bucket)
+            .remove([path]);
+
+        if (error) throw error;
+    }
+};
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+export const helpers = {
+    // Get workflow next stage based on content type
+    getNextStage(currentStage: WorkflowStage, contentType: ContentType, action: 'APPROVED' | 'REJECTED'): {
+        stage: WorkflowStage;
+        role: Role;
+    } {
+        if (action === 'REJECTED') {
+            // Return to previous stage based on current stage
+            const rejectMap: Record<WorkflowStage, { stage: WorkflowStage; role: Role }> = {
+                [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.FINAL_REVIEW_CMO]: {
+                    stage: contentType === 'VIDEO' ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: contentType === 'VIDEO' ? Role.EDITOR : Role.DESIGNER
+                },
+                [WorkflowStage.FINAL_REVIEW_CEO]: {
+                    stage: contentType === 'VIDEO' ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: contentType === 'VIDEO' ? Role.EDITOR : Role.DESIGNER
+                },
+                // Default returns
+                [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
+                [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+                [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS }
+            };
+            return rejectMap[currentStage];
+        }
+
+        // Approval flow
+        const approvalMap: Record<WorkflowStage, { stage: WorkflowStage; role: Role }> = {
+            [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
+            [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+            [WorkflowStage.SCRIPT_REVIEW_L2]: {
+                stage: contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN,
+                role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
+            },
+            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER },
+            [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+            [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+            [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+            [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+            [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
+            [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS }
+        };
+        return approvalMap[currentStage];
+    },
+
+    // Get current session
+    async getSession() {
+        return await supabase.auth.getSession();
+    }
+};
+
+// ============================================================================
+// COMPATIBILITY WRAPPER - Matches mockDb Interface
+// ============================================================================
+
+/**
+ * This wrapper layer provides a flat interface matching mockDb.ts
+ * so that all components work without modification.
+ */
+
+// Session management (mimics mockDb behavior)
+let currentUserCache: User | null = null;
+
+// ============================================================================
+// EXPORT ALL - Flat Interface Matching mockDb
+// ============================================================================
+
+export const db = {
+    // Keep namespaced access for advanced usage
+    auth,
+    users,
+    projects,
+    workflow,
+    workflowHistory,
+    systemLogs,
+    storage,
+    helpers,
+
+    // ========================================================================
+    // FLAT COMPATIBILITY METHODS (matches mockDb.ts interface)
+    // ========================================================================
+
+    // --- Auth & Session ---
+    getCurrentUser(): User | null {
+        return currentUserCache;
+    },
+
+    setCurrentUser(user: User): void {
+        currentUserCache = user;
+        console.log('User manually set and cached:', currentUserCache.full_name);
+    },
+
+    async refreshSession(): Promise<boolean> {
+        try {
+            console.log('DB: Manually refreshing session...');
+            const { data: { session } } = await supabase.auth.getSession();
+
+            if (session?.user) {
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('email', session.user.email)
+                    .single();
+
+                if (error) {
+                    console.warn('DB: Error fetching user during session refresh:', error);
+                    return false;
+                }
+
+                if (data) {
+                    currentUserCache = data as User;
+                    console.log('DB: Session refreshed successfully for:', currentUserCache.full_name);
+                    return true;
+                }
+            } else {
+                console.log('DB: No active session to refresh');
+                currentUserCache = null;
+            }
+
+            return false;
+        } catch (error) {
+            console.error('DB: Session refresh failed:', error);
+            currentUserCache = null; // Ensure cache is cleared on error
+            return false;
+        }
+    },
+
+    async login(email: string, password: string): Promise<User> {
+        try {
+            // Defensive: clear any stale local session before a fresh login attempt
+            // This prevents "stuck until I delete tokens" issues when refresh tokens are invalid
+            try {
+                await supabase.auth.signOut();
+            } catch (signOutErr) {
+                console.warn('Pre-login signOut failed (safe to ignore if no session):', signOutErr);
+            }
+
+            // Real authentication using Supabase
+            console.log('Login: calling signInWithPassword...');
+            const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (signInError) {
+                throw new Error(signInError.message);
+            }
+
+            if (!user) {
+                throw new Error('Login failed - no user returned');
+            }
+
+            // Get full user details
+            console.log('Login: fetching user profile...');
+            const userData = await supabase
+                .from('users')
+                .select('*')
+                .eq('email', email)
+                .single();
+
+            if (userData.error) {
+                throw new Error(`User profile fetch failed: ${userData.error.message}`);
+            }
+
+            if (!userData.data) {
+                throw new Error('User profile not found in database');
+            }
+
+            currentUserCache = userData.data as User;
+            console.log('User logged in and cached:', currentUserCache.full_name);
+
+            // Update last login
+            try {
+                await supabase
+                    .from('users')
+                    .update({ last_login: new Date().toISOString() })
+                    .eq('email', email);
+            } catch (updateError) {
+                console.warn('Failed to update last login timestamp:', updateError);
+            }
+
+            return userData.data as User;
+        } catch (error) {
+            console.error('Login error:', error);
+            throw error;
+        }
+    },
+
+    async logout() {
+        if (currentUserCache) {
+            try {
+                await systemLogs.add({
+                    actor_id: currentUserCache.id,
+                    actor_name: currentUserCache.full_name,
+                    actor_role: currentUserCache.role,
+                    action: 'LOGOUT',
+                    details: `User ${currentUserCache.full_name} logged out`
+                });
+            } catch (logError) {
+                console.warn('Failed to log logout event:', logError);
+            }
+        }
+        
+        try {
+            const result = await auth.signOut();
+            if (result.error) {
+                console.error('Sign out error:', result.error);
+                // Continue anyway to ensure local state is cleared
+            }
+        } catch (signOutError) {
+            console.error('Sign out failed:', signOutError);
+            // Continue anyway to ensure local state is cleared
+        }
+        
+        currentUserCache = null;
+    },
+
+    // --- User Management ---
+    async getUsers(): Promise<User[]> {
+        return await users.getAll();
+    },
+
+    async addUser(userData: Omit<User, 'id' | 'last_login'>): Promise<User> {
+        return await users.create({
+            email: userData.email,
+            full_name: userData.full_name,
+            role: userData.role,
+            phone: userData.phone,
+            status: userData.status
+        });
+    },
+
+    async inviteUser(email: string, userData: { full_name: string; role: Role; phone?: string }) {
+        return await auth.inviteUser(email, userData);
+    },
+
+    async updateUser(id: string, updates: Partial<User>) {
+        await users.update(id, updates);
+    },
+
+    async deleteUser(id: string) {
+        return await users.delete(id);
+    },
+
+    // --- Project Management ---
+    async getProjects(user: User): Promise<Project[]> {
+        // For Admin and Observer roles, show all projects
+        if ([Role.ADMIN, Role.OBSERVER].includes(user.role)) {
+            return await projects.getAll();
+        }
+        // For all other roles, show projects assigned to their role with appropriate stage filtering
+        return await projects.getForRole(user.role);
+    },
+    async getMyWork(user: User): Promise<Project[]> {
+        return await projects.getMyWork(user);
+    },
+
+    async getProjectById(id: string): Promise<Project | undefined> {
+        try {
+            return await projects.getById(id);
+        } catch (error) {
+            return undefined;
+        }
+    },
+
+    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO'): Promise<Project> {
+        const projectData = {
+            title,
+            channel,
+            content_type: contentType,
+            assigned_to_role: Role.WRITER, // Always starts with writer
+            due_date: dueDate,
+            data: {}
+        };
+
+        // Create the project and return the real project with Supabase UUID
+        const createdProject = await projects.create(projectData);
+        return createdProject;
+    },
+
+    async updateProjectData(projectId: string, newData: Partial<any>) {
+        try {
+            await projects.updateData(projectId, newData);
+        } catch (err) {
+            console.error('Failed to update project data:', err);
+            throw err; // Re-throw so caller can handle it
+        }
+    },
+
+    // --- Workflow Management ---
+    async submitToReview(projectId: string) {
+        if (!currentUserCache) {
+            console.error('No current user for submitToReview');
+            throw new Error('No current user for submitToReview');
+        }
+
+        // Ensure we have a real project with proper ID
+        if (!projectId || projectId.startsWith('temp_')) {
+            throw new Error('Cannot submit project with temporary ID. Project must be saved to Supabase first.');
+        }
+
+        // Get the project to determine next stage with retry mechanism
+        let project;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts) {
+            try {
+                project = await projects.getById(projectId);
+                if (project) break;
+            } catch (error) {
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            }
+            
+            attempts++;
+            if (attempts < maxAttempts) {
+                // Wait 100ms before retrying
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        if (!project) {
+            throw new Error('Project not found after multiple attempts. Please try again.');
+        }
+
+        const nextStageInfo = helpers.getNextStage(
+            project.current_stage,
+            project.content_type,
+            'APPROVED'
+        );
+
+        const result = await workflow.submitForReview(
+            projectId,
+            currentUserCache.id,
+            currentUserCache.full_name,
+            nextStageInfo.stage,
+            nextStageInfo.role,
+            'Submitted for review'
+        );
+
+        // Refresh the project data to ensure UI is up to date
+        const updatedProject = await projects.getById(projectId);
+        console.log('Project updated after submitToReview:', updatedProject);
+
+        return result;
+    },
+
+    async advanceWorkflow(projectId: string, comment?: string) {
+        if (!currentUserCache) {
+            console.error('No current user for advanceWorkflow');
+            throw new Error('No current user for advanceWorkflow');
+        }
+
+        // Ensure we have a real project with proper ID
+        if (!projectId || projectId.startsWith('temp_')) {
+            throw new Error('Cannot advance project with temporary ID. Project must be saved to Supabase first.');
+        }
+
+        // Get the project with retry mechanism
+        let project;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts) {
+            try {
+                project = await projects.getById(projectId);
+                if (project) break;
+            } catch (error) {
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            }
+            
+            attempts++;
+            if (attempts < maxAttempts) {
+                // Wait 100ms before retrying
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        if (!project) {
+            throw new Error('Project not found after multiple attempts. Please try again.');
+        }
+
+        console.log('Advancing workflow for project:', project);
+        console.log('Current stage:', project.current_stage);
+        console.log('Content type:', project.content_type);
+
+        const nextStageInfo = helpers.getNextStage(
+            project.current_stage,
+            project.content_type,
+            'APPROVED'
+        );
+
+        console.log('Next stage info:', nextStageInfo);
+
+        const result = await workflow.approve(
+            projectId,
+            currentUserCache.id,
+            currentUserCache.full_name,
+            currentUserCache.role,
+            nextStageInfo.stage,
+            nextStageInfo.role,
+            comment
+        );
+
+        // Refresh the project data to ensure UI is up to date
+        const updatedProject = await projects.getById(projectId);
+        console.log('Project updated after advanceWorkflow:', updatedProject);
+
+        return result;
+    },
+
+    async rejectTask(projectId: string, targetStage: WorkflowStage, comment: string) {
+        if (!currentUserCache) {
+            console.error('No current user for rejectTask');
+            throw new Error('No current user for rejectTask');
+        }
+
+        // Ensure we have a real project with proper ID
+        if (!projectId || projectId.startsWith('temp_')) {
+            throw new Error('Cannot reject project with temporary ID. Project must be saved to Supabase first.');
+        }
+
+        // Get the project with retry mechanism
+        let project;
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts) {
+            try {
+                project = await projects.getById(projectId);
+                if (project) break;
+            } catch (error) {
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            }
+            
+            attempts++;
+            if (attempts < maxAttempts) {
+                // Wait 100ms before retrying
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        if (!project) {
+            throw new Error('Project not found after multiple attempts. Please try again.');
+        }
+
+        const returnStageInfo = helpers.getNextStage(
+            targetStage,
+            project.content_type,
+            'REJECTED'
+        );
+
+        const result = await workflow.reject(
+            projectId,
+            currentUserCache.id,
+            currentUserCache.full_name,
+            currentUserCache.role,
+            returnStageInfo.stage,
+            returnStageInfo.role,
+            comment
+        );
+
+        // Refresh the project data to ensure UI is up to date
+        const updatedProject = await projects.getById(projectId);
+        console.log('Project updated after rejectTask:', updatedProject);
+
+        return result;
+    },
+
+    // --- System Logs ---
+    async getSystemLogs(): Promise<any[]> {
+        return await systemLogs.getAll();
+    }
+};
+
+// Default export for compatibility
+// ============================================================================
+// TOKEN HEALTH MONITORING
+// ============================================================================
+
+/**
+ * Check if authentication tokens in localStorage are healthy
+ * Returns status indicating if tokens should be cleared
+ */
+export const tokenHealthCheck = (): {
+    healthy: boolean;
+    status: string;
+    action?: 'clear' | 'keep';
+} => {
+    const tokens = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
+    
+    if (tokens.length === 0) {
+        return { healthy: true, status: 'no_tokens', action: 'keep' };
+    }
+    
+    try {
+        // Check if we can parse token data (validate JSON format)
+        tokens.forEach(key => {
+            const value = localStorage.getItem(key);
+            if (value) {
+                JSON.parse(value); // Validate JSON structure
+            }
+        });
+        
+        return { healthy: true, status: 'tokens_valid_format', action: 'keep' };
+    } catch (error) {
+        console.error('🔴 Token Health: Corrupted token detected:', error);
+        return { healthy: false, status: 'tokens_corrupted', action: 'clear' };
+    }
+};
+
+export default db;
