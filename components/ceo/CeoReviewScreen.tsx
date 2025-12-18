@@ -1,9 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, Channel } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { ArrowLeft, Check, X, RotateCcw, Download, Video, Image as ImageIcon } from 'lucide-react';
 import Popup from '../Popup';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface Props {
     project: Project;
@@ -23,6 +25,53 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState<number>(0);
+
+    const scriptContentRef = useRef<HTMLDivElement>(null);
+
+    const downloadPDF = async () => {
+        if (!scriptContentRef.current) return;
+
+        try {
+            // Create a clone of the content to avoid styling issues
+            const clone = scriptContentRef.current.cloneNode(true) as HTMLElement;
+            
+            // Create a temporary container
+            const tempContainer = document.createElement('div');
+            tempContainer.style.position = 'absolute';
+            tempContainer.style.left = '-9999px';
+            tempContainer.style.width = '800px'; // Standard PDF width
+            tempContainer.style.padding = '20px';
+            tempContainer.appendChild(clone);
+            document.body.appendChild(tempContainer);
+
+            // Convert to canvas
+            const canvas = await html2canvas(tempContainer, {
+                scale: 2, // Higher quality
+                useCORS: true,
+                logging: false
+            });
+
+            // Convert to PDF
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+            
+            const imgWidth = pdf.internal.pageSize.getWidth();
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            pdf.save(`${project.title}_script.pdf`);
+
+            // Clean up
+            document.body.removeChild(tempContainer);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Failed to generate PDF. Please try again.');
+        }
+    };
 
     const handleSubmit = async () => {
         if (!decision) return;
@@ -134,9 +183,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     {/* Info Block */}
                     <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
                         <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Writer</label>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.writer_name || '—'}
+                                {project.data?.writer_name || project.writer_name || project.data?.cmo_name || project.cmo_name || 'Unknown Creator'}
                             </div>
                         </div>
                         <div>
@@ -161,51 +210,77 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">Script & Message</h3>
-                            <button className="text-sm font-bold uppercase flex items-center bg-white border-2 border-black px-4 py-2 hover:bg-slate-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all">
+                            <button 
+                                onClick={downloadPDF}
+                                className="text-sm font-bold uppercase flex items-center bg-white border-2 border-black px-4 py-2 hover:bg-slate-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all"
+                            >
                                 <Download className="w-4 h-4 mr-2" /> Download PDF
                             </button>
                         </div>
-                        <div className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <div 
+                            ref={scriptContentRef}
+                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                        >
                             {project.data.script_content || 'No script content available.'}
                         </div>
                     </section>
 
-                    {/* Assets Section (Only if final review or assets exist) */}
-                    <section className="space-y-4 pt-6 border-t-4 border-black">
-                        <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
+                    {/* Assets Section (Only for final review) */}
+                    {project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Video Asset */}
-                            {isVideo && (
-                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
-                                        <Video className="w-16 h-16 opacity-50" />
-                                    </div>
-                                    <div className="p-4 flex justify-between items-center bg-white">
-                                        <div>
-                                            <p className="font-black text-slate-900 text-sm uppercase">Master_Edit_Final.mp4</p>
-                                            <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Raw Video Asset */}
+                                {isVideo && project.video_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
+                                            <Video className="w-16 h-16 opacity-50" />
                                         </div>
-                                        <a href={project.data.master_link || '#'} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
+                                                <p className="text-xs text-slate-500 font-bold">Original footage</p>
+                                            </div>
+                                            <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Image/Thumbnail Asset */}
-                            <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
-                                    <ImageIcon className="w-16 h-16" />
-                                </div>
-                                <div className="p-4 flex justify-between items-center bg-white">
-                                    <div>
-                                        <p className="font-black text-slate-900 text-sm uppercase">Thumbnail_v3.png</p>
-                                        <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
+                                {/* Edited Video Asset */}
+                                {isVideo && project.edited_video_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
+                                            <Video className="w-16 h-16 opacity-50" />
+                                        </div>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
+                                                <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
+                                            </div>
+                                            <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
                                     </div>
-                                    <a href={project.data.thumbnail_link || '#'} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                </div>
+                                )}
+
+                                {/* Thumbnail/Creative Asset */}
+                                {project.thumbnail_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
+                                            <ImageIcon className="w-16 h-16" />
+                                        </div>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
+                                                <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
+                                            </div>
+                                            <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    </section>
+                        </section>
+                    )}
                 </div>
 
                 {/* RIGHT COLUMN: Approval Panel (30%) - Sticky */}

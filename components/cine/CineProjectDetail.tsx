@@ -102,7 +102,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
             
             // Show popup notification (use STAGE_LABELS and include calendar visibility)
             const stageLabel = STAGE_LABELS[WorkflowStage.CINEMATOGRAPHY] || 'Cinematography';
-            setPopupMessage(`Shoot scheduled for ${localProject.title} on ${shootDate}. This date will be visible on calendars for Writer, CEO, CMO, and Operations.`);
+            setPopupMessage(`Shoot scheduled for ${localProject.title} on ${shootDate}.`);
             setStageName(stageLabel);
             setShowPopup(true);
         } catch (error) {
