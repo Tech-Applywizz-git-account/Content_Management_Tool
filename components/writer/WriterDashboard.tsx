@@ -22,6 +22,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [isCreating, setIsCreating] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
+    const [refreshKey, setRefreshKey] = useState(0);
     const dashboardProjects = historyProjects || [];
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
@@ -29,6 +30,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         return localStorage.getItem(viewStorageKey) || 'dashboard';
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
+
+    const handleInternalRefresh = async () => {
+        await onRefresh(); // MUST refetch from Supabase
+        setRefreshKey(prev => prev + 1); // force UI re-render
+    };
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -89,9 +95,11 @@ const inProduction = dashboardProjects.filter(
     
 
     const handleEdit = (project: Project) => {
-        setEditingProject(project);
-        setIsCreating(true);
-    };
+  setEditingProject(project);
+  setIsCreating(true);
+};
+
+
 
     const handleCloseCreate = async (action: 'draft_saved' | 'submitted' = 'submitted') => {
         await onRefresh(); 
@@ -157,12 +165,18 @@ const inProduction = dashboardProjects.filter(
             {activeView === 'mywork' && <WriterMyWork user={user} projects={historyProjects} />}
             {activeView === 'calendar' && <WriterCalendar projects={inboxProjects} />}
             {activeView === 'dashboard' && (
-                <div className="space-y-8 animate-fade-in">
+                <div key={refreshKey} className="space-y-8 animate-fade-in">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">Writer Studio</h1>
                             <p className="font-bold text-base sm:text-lg text-slate-500">Welcome back, {user.full_name}</p>
                         </div>
+                        <button
+                            onClick={handleInternalRefresh}
+                            className="w-full sm:w-auto bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
+                        >
+                            🔄 Refresh
+                        </button>
                         <button
                             onClick={() => setIsCreating(true)}
                             className="w-full sm:w-auto bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"

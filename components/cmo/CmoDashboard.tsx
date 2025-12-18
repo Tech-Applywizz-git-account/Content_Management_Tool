@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
-import { RotateCcw, FileText, CheckCircle } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
 import Layout from '../Layout';
-import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoHistoryDetail from './CmoHistoryDetail';
 import CmoCalendar from './CmoCalendar';
 import Popup from '../Popup';
+import CreateScript from '../writer/CreateScript';
 
 
 interface Props {
@@ -24,19 +24,20 @@ const STORAGE_KEY_PREFIX = 'cmo_dashboard_view_';
 
 const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [tab, setTab] = useState<'PENDING' | 'ALL'>('PENDING');
+    const [refreshKey, setRefreshKey] = useState(0);
     const viewStorageKey = `activeView:${user.role}`;
     const dashboardProjects = inboxProjects || [];
     const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
-const [selectedHistory, setSelectedHistory] = useState<any>(null);
-const historyMapRef = React.useRef<Map<string, any>>(new Map());
-const [passedToCEOCount, setPassedToCEOCount] = useState(0);
+    const [selectedHistory, setSelectedHistory] = useState<any>(null);
+    const historyMapRef = React.useRef<Map<string, any>>(new Map());
+    const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+    const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
+    const [isCreatingScript, setIsCreatingScript] = useState(false);
 
-const cmoPendingProjects = dashboardProjects.filter(
-  p =>
-    p.assigned_to_role === Role.CMO &&
-    p.status !== TaskStatus.DONE
-);
+    const handleInternalRefresh = async () => {
+        await onRefresh(); // MUST refetch from Supabase
+        setRefreshKey(prev => prev + 1); // force UI re-render
+    };
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -47,162 +48,18 @@ const cmoPendingProjects = dashboardProjects.filter(
         if (typeof window === 'undefined') return 'dashboard';
         return localStorage.getItem(viewStorageKey) || 'dashboard';
     };
-    const [activeView, setActiveView] = useState<string>(getStoredView);
-    const [activeFilter, setActiveFilter] = useState<'ALL' | 'PENDING_L1' | 'WITH_CEO' | 'REWORKS' | null>(null);
-    const [approvedCount, setApprovedCount] = useState(0);
-    const [rejectedCount, setRejectedCount] = useState(0);
-    const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
-useEffect(() => {
-  const channel = supabase
-    .channel('public:projects:cmo_refresh')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'projects' },
-      () => {
-        console.log('🔄 CMO dashboard internal refresh triggered');
-        onRefresh(); // 🔥 THIS IS THE KEY
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [onRefresh]);
-
-    // Load counts from the projects table (derive counts from current project state)
+    const [activeView, setActiveView] = useState<string>(getStoredView());
+// Realtime: refresh CMO data when projects table changes
     useEffect(() => {
-        const loadCounts = async () => {
-            try {
-                // Approved: projects marked DONE or APPROVED
-                const { count: approvedCountResult, error: approvedErr } = await supabase
-                    .from('projects')
-                    .select('*', { head: true, count: 'exact' })
-                    .in('status', [TaskStatus.DONE, 'APPROVED']);
-
-                if (approvedErr) throw approvedErr;
-                // Passed to CEO (source of truth)
-
-
-
-                // Rejected: projects with REJECTED status
-                const { count: rejectedCountResult, error: rejectedErr } = await supabase
-                    .from('projects')
-                    .select('*', { head: true, count: 'exact' })
-                    .eq('status', TaskStatus.REJECTED);
-
-                if (rejectedErr) throw rejectedErr;
-
-                setApprovedCount(approvedCountResult || 0);
-                setRejectedCount(rejectedCountResult || 0);
-            } catch (error) {
-                console.error('Failed to load counts from projects:', error);
-            }
-        };
-
-        loadCounts();
-
         const subscription = supabase
-            .channel('public:projects:cmo_counts')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, (payload) => {
-                console.debug('CMO Dashboard realtime event received:', payload);
-                try {
-                    loadCounts();
-                } catch (e) {
-                    console.error('Error in realtime loadCounts handler:', e);
-                }
+            .channel('public:projects:cmo_refresh')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+                try { onRefresh(); } catch (e) { console.error('Failed to refresh CMO data', e); }
             })
             .subscribe();
 
-        console.debug('CMO Dashboard realtime subscription created:', subscription);
-
-        return () => {
-            try {
-                supabase.removeChannel(subscription);
-                console.debug('CMO Dashboard realtime subscription removed');
-            } catch (e) {
-                console.warn('Failed to remove CMO realtime subscription', e);
-            }
-        };
-    }, [user.id]);
-
-    // Load filtered history projects
-    useEffect(() => {
-  const loadFilteredHistoryProjects = async () => {
-    if (tab !== 'ALL') {
-      setFilteredHistoryProjects([]);
-      return;
-    }
-
-    try {
-      // 1️⃣ Get workflow history for this user (approved OR rejected)
-    const { data: historyEntries, error } = await supabase
-  .from('workflow_history')
-  .select(`
-    project_id,
-    action,
-    timestamp,
-    comment,
-    actor_name
-  `)
-  .eq('actor_id', user.id)
-  .in('action', ['APPROVED', 'REJECTED']);
-
-    
-
-      if (error) throw error;
-
-      if (!historyEntries || historyEntries.length === 0) {
-        setFilteredHistoryProjects([]);
-        return;
-      }
-const map = new Map<string, any>();
-
-historyEntries.forEach(entry => {
-  map.set(entry.project_id, entry);
-});
-
-historyMapRef.current = map;
-
-
-      // 2️⃣ Unique project IDs
-      const projectIds = [...new Set(historyEntries.map(h => h.project_id))];
-
-      // 3️⃣ Fetch projects by those IDs
-      const { data: projects, error: projectError } = await supabase
-        .from('projects')
-        .select('*')
-        .in('id', projectIds);
-
-      if (projectError) throw projectError;
-
-      setFilteredHistoryProjects(
-        (projects || []).sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() -
-            new Date(a.created_at).getTime()
-        )
-      );
-    } catch (error) {
-      console.error('Failed to load history projects:', error);
-      setFilteredHistoryProjects([]);
-    }
-  };
-
-  loadFilteredHistoryProjects();
-}, [tab, user.id]);
-const handleProjectClick = (project: Project) => {
-  if (tab === 'ALL') {
-    setViewMode('HISTORY');
-    setSelectedProject(project);
-    setSelectedHistory(historyMapRef.current.get(project.id));
-  } else {
-    setViewMode('REVIEW');
-    setSelectedProject(project);
-  }
-};
-
-
+        return () => { try { supabase.removeChannel(subscription); } catch (e) {} };
+    }, [onRefresh]);
     const handleViewChange = (view: string) => {
         setActiveView(view);
         if (typeof window !== 'undefined') {
@@ -214,101 +71,93 @@ const handleProjectClick = (project: Project) => {
         setActiveView(getStoredView());
     }, [viewStorageKey]);
 
+    // Load filtered history projects
+    useEffect(() => {
+        const loadHistory = async () => {
+            if (activeTab !== 'HISTORY') return;
+    
+            const { data, error } = await supabase
+                .from('workflow_history')
+                .select(`
+                    project_id,
+                    action,
+                    comment,
+                    actor_name,
+                    timestamp
+                `)
+                .eq('actor_id', user.id)
+                .in('action', ['APPROVED', 'REJECTED']);
+    
+            if (error || !data) {
+                setFilteredHistoryProjects([]);
+                return;
+            }
+    
+            // Map history by project_id
+            const map = new Map<string, any>();
+            data.forEach(h => map.set(h.project_id, h));
+            historyMapRef.current = map;
+    
+            const projectIds = [...new Set(data.map(h => h.project_id))];
+    
+            const { data: projects } = await supabase
+                .from('projects')
+                .select('*')
+                .in('id', projectIds);
+    
+            setFilteredHistoryProjects(projects || []);
+        };
+    
+        loadHistory();
+    }, [activeTab, user.id]);
+
     // Use inboxProjects for dashboard view (role-based filtering)
     // Use historyProjects for MyWork view (participation-based filtering)
-    const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
+    // Use filtered history projects for History tab
+    const projects = activeView === 'mywork' ? (historyProjects || []) : 
+                   activeTab === 'HISTORY' ? filteredHistoryProjects : 
+                   (inboxProjects || []);
     
     console.log('CMO Dashboard - activeView:', activeView);
     console.log('CMO Dashboard - inboxProjects:', inboxProjects);
 
-    // Filter Logic:
-    // Pending L1 Reviews - Projects assigned to CMO for L1 review
-    // Pending Script Review (L1)
-const pendingL1 = dashboardProjects.filter(
-  p =>
-    p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 &&
-    p.status !== TaskStatus.DONE
-);
+    // Categorize Projects for CMO Dashboard
+    // Column 1: Pending Approval Projects (Projects assigned to CMO for review)
+    const pendingApprovalProjects = dashboardProjects.filter(
+      p =>
+        p.assigned_to_role === Role.CMO &&
+        p.status === TaskStatus.WAITING_APPROVAL
+    );
 
-// Final Reviews (after design, before CEO)
+    // Column 2: Projects Pending at CEO (Projects that CMO has approved and sent to CEO)
+    const pendingAtCEO = dashboardProjects.filter(
+      p =>
+        p.assigned_to_role === Role.CEO &&
+        p.status === TaskStatus.WAITING_APPROVAL
+    );
 
-
-// Passed to CEO
-const passedToCEO = dashboardProjects.filter(
-  p =>
-    p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 &&
-    p.status !== TaskStatus.DONE
-);
-
-// Reworks requested by CMO
-const cmoReworks = dashboardProjects.filter(
-  p => p.status === TaskStatus.REJECTED
-);
-
-
-    // All CMO-related projects for the "PENDING" tab
-const pendingApprovals = cmoPendingProjects;
-
-
-   const allProjects = React.useMemo(() => {
-  const map = new Map<string, Project>();
-
-  [...(inboxProjects || []), ...(historyProjects || [])].forEach(p => {
-    map.set(p.id, p);
-  });
-
-  return Array.from(map.values());
-}, [inboxProjects, historyProjects]);
-const passedToCEOProjects = allProjects.filter(
-  p =>
-    p.assigned_to_role === Role.CEO &&
-    p.status !== TaskStatus.DONE
-);
-useEffect(() => {
-  setPassedToCEOCount(passedToCEOProjects.length);
-}, [passedToCEOProjects]);
-
-
-
-    // Determine which projects to display based on active filter
-    const getDisplayedProjects = () => {
-        if (tab === 'ALL') {
-            // For the History tab, show only approved projects by this user
-            return filteredHistoryProjects.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        }
-        
-        switch (activeFilter) {
-            case 'PENDING_L1':
-                return pendingL1;
-            case 'WITH_CEO':
-  return allProjects.filter(
-    p => p.assigned_to_role === Role.CEO && p.status !== TaskStatus.DONE
-  );
-            case 'REWORKS':
-  return allProjects.filter(p => p.status === TaskStatus.REJECTED);
-
-            default:
-                return pendingApprovals;
-        }
-    };
-
-    const displayedProjects = getDisplayedProjects();
+    // Column 3: Projects in Production (Projects that have moved past CEO approval)
+    const inProduction = dashboardProjects.filter(
+      p =>
+        (p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
+        p.current_stage === WorkflowStage.VIDEO_EDITING ||
+        p.current_stage === WorkflowStage.THUMBNAIL_DESIGN ||
+        p.current_stage === WorkflowStage.CREATIVE_DESIGN ||
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+        p.current_stage === WorkflowStage.OPS_SCHEDULING) &&
+        p.status !== TaskStatus.DONE
+    );
 
     const handleReview = (project: Project) => {
+        setViewMode('REVIEW');
         setSelectedProject(project);
     };
 
     const handleBack = () => {
         setSelectedProject(null);
+        setViewMode('REVIEW');
         onRefresh();
-    };
-
-    const handleStatCardClick = (filter: 'PENDING_L1' | 'WITH_CEO' | 'REWORKS') => {
-        if (activeFilter === filter) {
-            setActiveFilter(null); // Deselect if already selected
-        } else {
-            setActiveFilter(filter);
-        }
     };
 
     if (selectedProject && viewMode === 'REVIEW') {
@@ -327,170 +176,283 @@ if (selectedProject && viewMode === 'HISTORY') {
       project={selectedProject}
       history={selectedHistory}
       onBack={handleBack}
+      currentUser={user}
+      onEdit={() => {
+        // Set view mode to REVIEW to show the review screen
+        setViewMode('REVIEW');
+      }}
     />
   );
 }
 
 
-    return (
-        <Layout
-            user={user as any}
-            onLogout={onLogout}
-            onOpenCreate={() => { }} // CMO cannot create
-            activeView={activeView}
-            onChangeView={handleViewChange}
-        >
-            {activeView === 'mywork' ? (
-      <CmoMyWork user={user} projects={historyProjects} onReview={handleReview} />
+ return (
+  <>
+    <Layout
+    user={user as any}
+    onLogout={onLogout}
+    onOpenCreate={() => {}}
+    activeView={activeView}
+    onChangeView={handleViewChange}
+  >
+    {activeView === 'mywork' ? (
+      <CmoMyWork
+        user={user}
+        projects={historyProjects}
+        onReview={handleReview}
+      />
     ) : activeView === 'calendar' ? (
       <CmoCalendar projects={inboxProjects} />
     ) : (
-                <div className="space-y-8 animate-fade-in">
-                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                        <div>
-                            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">CMO Console</h1>
-                            <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
-                        </div>
-      
+      <div key={refreshKey} className="space-y-8 animate-fade-in">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2">
+              CMO Console
+            </h1>
+            <p className="font-bold text-base sm:text-lg text-slate-500">
+              Welcome back, {user.full_name}
+            </p>
+          </div>
 
-                        <div className="flex space-x-2">
-                            <button
-                                onClick={() => { setTab('PENDING'); setActiveFilter(null); }}
-                                className={`px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${tab === 'PENDING' ? 'bg-[#0085FF] text-white hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:bg-slate-50'}`}
-                            >
-                                Pending ({cmoPendingProjects.length})
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setIsCreatingScript(true)}
+              className="px-6 py-4 bg-[#D946EF] text-white border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span>New Script</span>
+            </button>
 
-                            </button>
-                            <button
-                                onClick={() => { setTab('ALL'); setActiveFilter(null); }}
-                                className={`px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${tab === 'ALL' ? 'bg-black text-white hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:bg-slate-50'}`}
-                            >
-                                History
-                            </button>
-                        </div>
+            <button
+              onClick={() => setActiveTab('PENDING')}
+              className={`px-6 py-4 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+              ${
+                activeTab === 'PENDING'
+                  ? 'bg-[#D946EF] text-white'
+                  : 'bg-white text-slate-900 hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+              }`}
+            >
+              Pending
+            </button>
+
+            <button
+              onClick={() => setActiveTab('HISTORY')}
+              className={`px-6 py-4 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+              ${
+                activeTab === 'HISTORY'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-900 hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+              }`}
+            >
+              History
+            </button>
+
+            <button
+              onClick={handleInternalRefresh}
+              className="bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            >
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        {activeTab === 'HISTORY' ? (
+          <div className="space-y-6">
+            {/* Column Headers */}
+            <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-100 border-2 border-black font-black text-slate-700 uppercase text-xs">
+              <div className="col-span-4">Title</div>
+              <div className="col-span-2">Channel</div>
+              <div className="col-span-2">Stage</div>
+              <div className="col-span-2">Submitted</div>
+              <div className="col-span-2">Action</div>
+            </div>
+
+            <div className="space-y-4">
+              {projects.map(p => {
+                const history = historyMapRef.current.get(p.id);
+
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      setViewMode('HISTORY');
+                      setSelectedProject(p);
+                      setSelectedHistory(history);
+                    }}
+                    className="grid grid-cols-12 gap-4 items-center bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <div className="col-span-4 font-black uppercase text-lg">
+                      {p.title}
                     </div>
 
-                    {/* Stats Strip */}
-                    {tab === 'PENDING' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Yellow Card - SCRIPT REVIEW L1 */}
-                            <div 
-                                onClick={() => handleStatCardClick('PENDING_L1')}
-                                className={`bg-[#FFB800] p-6 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer group ${activeFilter === 'PENDING_L1' ? 'ring-4 ring-blue-500' : ''}`}
-                            >
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="font-black uppercase text-lg text-slate-900 tracking-tight group-hover:underline decoration-2 underline-offset-4">Script<br/>Review</h3>
-                                    <FileText className="w-6 h-6 text-slate-900" />
-                                </div>
-                                <div className="text-5xl font-black mb-2 text-slate-900">{pendingL1.length}</div>
-                                <div className="font-bold text-xs uppercase tracking-widest text-slate-900 opacity-80">Pending Approval</div>
-                            </div>
-
-                            {/* Purple Card - FINAL REVIEWS */}
-                         
-
-                            {/* Blue Card - WITH CEO */}
-                            <div
-                                onClick={() => handleStatCardClick('WITH_CEO')}
-                                className={`cursor-pointer transition-all hover:scale-105 bg-[#D946EF] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${activeFilter === 'WITH_CEO' ? 'ring-4 ring-black' : ''}`}
-                            >
-                                <div className="text-4xl font-black text-white mb-1">  {passedToCEOCount}</div>
-                                <div className="text-sm font-bold uppercase text-white/80">Passed to CEO</div>
-                            </div>
-
-                            {/* White Card - REWORKS */}
-                            <div
-                                onClick={() => handleStatCardClick('REWORKS')}
-                                className={`cursor-pointer transition-all hover:scale-105 bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${activeFilter === 'REWORKS' ? 'ring-4 ring-black' : ''}`}
-                            >
-                                <div className="text-4xl font-black text-black mb-1">{cmoReworks.length}</div>
-                                <div className="text-sm font-bold uppercase text-slate-500">Reworks Requested</div>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="space-y-4">
-                        {/* Header */}
-                        <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-2 text-xs font-black text-slate-400 uppercase tracking-wider">
-                            <div className="col-span-5">Title</div>
-                            <div className="col-span-2">Channel</div>
-                            <div className="col-span-2">Stage</div>
-                            <div className="col-span-2">Submitted</div>
-                            <div className="col-span-1 text-right">Action</div>
-                        </div>
-
-                        <div className="space-y-4">
-                            {displayedProjects.map(p => (
-                                <div
-                                    key={p.id}
-                                    onClick={() => handleProjectClick(p)}
-                                    className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all group cursor-pointer ${p.status === TaskStatus.REJECTED ? 'bg-red-50' : ''}`}
-                                >
-                                    {/* Desktop Row */}
-                                    <div className="hidden md:grid grid-cols-12 gap-4 items-center px-6 py-6">
-                                        <div className="col-span-5">
-                                            <div className="font-black text-lg text-slate-900 uppercase truncate">{p.title}</div>
-                                        </div>
-                                        <div className="col-span-2">
-                                            <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                                    p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                        'bg-[#D946EF] text-white'
-                                                }`}>
-                                                {p.channel}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-2 text-xs font-bold uppercase text-slate-500">{STAGE_LABELS[p.current_stage]}</div>
-                                        <div className="col-span-2 text-xs font-bold uppercase text-slate-400">{formatDistanceToNow(new Date(p.created_at))} ago</div>
-                                        <div className="col-span-1 text-right">
-                                            {p.assigned_to_role === Role.CMO ? (
-                                                <span className="inline-block bg-[#0085FF] text-white rounded-full p-1 border-2 border-black">
-                                                    <RotateCcw className="w-4 h-4" /> {/* Icon indicating review need */}
-                                                </span>
-                                            ) : (
-                                                <span className="text-xs font-bold text-slate-300 uppercase">View</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Mobile Card */}
-                                    <div className="md:hidden p-6 space-y-4">
-                                        <div className="flex justify-between items-start">
-                                            <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                                    p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                        'bg-[#D946EF] text-white'
-                                                }`}>
-                                                {p.channel}
-                                            </span>
-                                            <span className="text-xs font-bold text-slate-400">{formatDistanceToNow(new Date(p.created_at))} ago</span>
-                                        </div>
-                                        <h3 className="text-xl font-black text-slate-900 uppercase">{p.title}</h3>
-                                        <div className="flex justify-between items-end border-t-2 border-slate-100 pt-4 mt-2">
-                                            <div className="text-xs font-bold uppercase text-slate-500">{STAGE_LABELS[p.current_stage]}</div>
-                                            {p.assigned_to_role === Role.CMO && (
-                                                <button className="bg-[#0085FF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">Review</button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {displayedProjects.length === 0 && (
-                                <div className="border-2 border-dashed border-black p-12 text-center bg-slate-50">
-                                    <h3 className="text-xl font-black uppercase text-slate-400">All caught up</h3>
-                                </div>
-                            )}
-                        </div>
+                    <div className="col-span-2">
+                      <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${
+                        p.channel === 'YOUTUBE'
+                          ? 'bg-[#FF4F4F] text-white'
+                          : p.channel === 'LINKEDIN'
+                          ? 'bg-[#0085FF] text-white'
+                          : 'bg-[#D946EF] text-white'
+                      }`}>
+                        {p.channel}
+                      </span>
                     </div>
-                </div>
-            )}
-      {showPopup && (
-        <Popup
-          message={popupMessage}
-          stageName={stageName}
-          onClose={() => setShowPopup(false)}
-        />
-      )}
-        </Layout>
-    );
+
+                    <div className="col-span-2 text-xs font-black uppercase text-slate-500">
+                      {STAGE_LABELS[p.current_stage]}
+                    </div>
+
+                    <div className="col-span-2 text-sm font-bold text-slate-500 uppercase">
+                      {formatDistanceToNow(new Date(p.created_at))} ago
+                    </div>
+
+                    <div className="col-span-2">
+                      <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${
+                        history?.action === 'APPROVED'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {history?.action}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Column 1: Pending Approval Projects */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="font-black uppercase tracking-wide">Pending Approval</h3>
+                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingApprovalProjects.length}</span>
+              </div>
+              <div className="space-y-4">
+                {pendingApprovalProjects.map(p => (
+                  <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => {
+                    setViewMode('REVIEW');
+                    setSelectedProject(p);
+                  }}>
+                    <div className="flex justify-between items-start mb-4">
+                      <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                        p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                          'bg-[#D946EF] text-white'
+                        }`}>
+                        {p.channel}
+                      </span>
+                      <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">
+                        {STAGE_LABELS[p.current_stage]}
+                      </span>
+                    </div>
+                    <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
+                    <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {formatDistanceToNow(new Date(p.created_at))} ago
+                    </div>
+                  </div>
+                ))}
+                {pendingApprovalProjects.length === 0 && <div className="p-8"></div>}
+              </div>
+            </div>
+
+            {/* Column 2: Projects Pending at CEO */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>
+                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingAtCEO.length}</span>
+              </div>
+              <div className="space-y-4">
+                {pendingAtCEO.map(p => (
+                  <div
+                    key={p.id}
+                    className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                      <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
+                        With CEO
+                      </span>
+                    </div>
+                    <h4 className="font-black text-lg text-slate-900 mb-4 uppercase">{p.title}</h4>
+                    <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden">
+                      <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+                {pendingAtCEO.length === 0 && <div className="p-8"></div>}
+              </div>
+            </div>
+
+            {/* Column 3: Projects in Production */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="font-black uppercase tracking-wide">Production</h3>
+                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inProduction.length}</span>
+              </div>
+              <div className="space-y-4">
+                {inProduction.map(p => (
+                  <div
+                    key={p.id}
+                    className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                        p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                          'bg-[#D946EF] text-white'
+                        }`}>
+                        {p.channel}
+                      </span>
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
+                        p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
+                          p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
+                            'bg-slate-100 text-slate-700'
+                      }`}>
+                        {p.assigned_to_role === Role.CINE ? 'WITH CINE' :
+                          p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
+                            p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
+                              STAGE_LABELS[p.current_stage]}
+                      </span>
+                    </div>
+                    <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                    <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-4">
+                      <div className="bg-[#4ADE80] h-full w-3/4"></div>
+                    </div>
+                  </div>
+                ))}
+                {inProduction.length === 0 && <div className="p-8"></div>}
+              </div>
+            </div>
+
+          </div>
+        )}
+      </div>
+    )}
+
+    {isCreatingScript && (
+      <CreateScript
+        creatorRole={Role.CMO}
+        onClose={() => setIsCreatingScript(false)}
+        onSuccess={async () => {
+          setIsCreatingScript(false);
+          await handleInternalRefresh();
+        }}
+      />
+    )}
+
+    {showPopup && (
+      <Popup
+        message={popupMessage}
+        stageName={stageName}
+        onClose={() => setShowPopup(false)}
+      />
+    )}
+  </Layout>
+  </>
+);
 };
 
 export default CmoDashboard;

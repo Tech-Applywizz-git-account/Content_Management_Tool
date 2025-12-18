@@ -23,6 +23,12 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [refreshKey, setRefreshKey] = useState(0);
+
+    const handleInternalRefresh = async () => {
+        await onRefresh(); // MUST refetch from Supabase
+        setRefreshKey(prev => prev + 1); // force UI re-render
+    };
 
     const handleViewChange = (view: string) => {
         setActiveView(view);
@@ -93,7 +99,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             ) : activeView === 'calendar' ? (
                 <OpsCalendar projects={inboxProjects || []} />
             ) : (
-                <div className="space-y-8 animate-fade-in">
+                <div key={refreshKey} className="space-y-8 animate-fade-in">
                     {/* Dashboard Content */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                         <div>
@@ -102,6 +108,12 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </h1>
                             <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
                         </div>
+                        <button
+                            onClick={handleInternalRefresh}
+                            className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
+                        >
+                            🔄 Refresh
+                        </button>
                     </div>
 
                     {/* Stats */}

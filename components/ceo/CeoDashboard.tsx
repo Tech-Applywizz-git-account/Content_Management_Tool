@@ -20,6 +20,7 @@ interface Props {
 const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
@@ -27,6 +28,11 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 const [selectedHistory, setSelectedHistory] = useState<any>(null);
 const historyMapRef = React.useRef<Map<string, any>>(new Map());
 const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
+
+  const handleInternalRefresh = async () => {
+    await onRefresh(); // MUST refetch from Supabase
+    setRefreshKey(prev => prev + 1); // force UI re-render
+  };
 
 
   // Popup state
@@ -112,6 +118,7 @@ useEffect(() => {
         action,
         comment,
         actor_name,
+        actor_id,
         timestamp
       `)
       .eq('actor_id', user.id)
@@ -214,23 +221,39 @@ if (selectedProject && viewMode === 'REVIEW') {
 
 // ✅ HISTORY MODE (READ-ONLY)
 if (selectedProject && viewMode === 'HISTORY') {
-  const writerName =
-    selectedProject.writer_name ||
+  const creatorName =
+    selectedProject.data?.cmo_name ||
     selectedProject.data?.writer_name ||
-    'Unknown Writer';
+    selectedProject.cmo_name ||
+    selectedProject.writer_name ||
+    'Unknown Creator';
 
   return (
     <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => {}}>
       <div className="p-8 space-y-6">
-        <button
-          onClick={() => {
-            setSelectedProject(null);
-            setSelectedHistory(null);
-          }}
-          className="font-bold underline"
-        >
-          ← Back to History
-        </button>
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => {
+              setSelectedProject(null);
+              setSelectedHistory(null);
+            }}
+            className="font-bold underline"
+          >
+            ← Back to History
+          </button>
+          {/* Edit button - only show if current user is the actor */}
+          {selectedHistory?.actor_id === user.id && (
+            <button
+              onClick={() => {
+                // Switch to review mode to edit
+                setViewMode('REVIEW');
+              }}
+              className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              Edit
+            </button>
+          )}
+        </div>
 
         <h1 className="text-3xl font-black uppercase">
           {selectedProject.title}
@@ -255,7 +278,7 @@ if (selectedProject && viewMode === 'HISTORY') {
         {/* STATUS */}
         <div className="border-2 border-black p-4 flex justify-between">
           <div>
-            <p><strong>Writer:</strong> {writerName}</p>
+            <p><strong>Creator:</strong> {creatorName}</p>
             <p><strong>Reviewed By:</strong> {selectedHistory?.actor_name}</p>
           </div>
           <div className="text-right">
@@ -334,7 +357,7 @@ if (activeView === 'calendar') {
         activeView={activeView}
         onChangeView={setActiveView}
     >
-      <div className="space-y-10 animate-fade-in">
+      <div key={refreshKey} className="space-y-10 animate-fade-in">
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -343,11 +366,19 @@ if (activeView === 'calendar') {
                 <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
             
-            {/* CEO has no create button - Role is purely approval */}
-            <div className="hidden md:block">
-                 <div className="bg-black text-white px-6 py-2 font-black uppercase border-2 border-black transform -rotate-2 shadow-[4px_4px_0px_0px_rgba(217,70,239,1)]">
-                     Quality Gate Mode
-                 </div>
+            <div className="flex space-x-2">
+                <button
+                    onClick={handleInternalRefresh}
+                    className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
+                >
+                    🔄 Refresh
+                </button>
+                {/* CEO has no create button - Role is purely approval */}
+                <div className="hidden md:block">
+                     <div className="bg-black text-white px-6 py-2 font-black uppercase border-2 border-black transform -rotate-2 shadow-[4px_4px_0px_0px_rgba(217,70,239,1)]">
+                         Quality Gate Mode
+                     </div>
+                </div>
             </div>
         </div>
 

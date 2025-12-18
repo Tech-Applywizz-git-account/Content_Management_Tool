@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Project, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
     project: Project;
@@ -9,6 +10,36 @@ interface Props {
 }
 
 const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
+    const [comments, setComments] = useState<any[]>([]);
+
+    useEffect(() => {
+        const fetchComments = async () => {
+            const { data, error } = await supabase
+                .from('workflow_history')
+                .select(`
+                    action,
+                    comment,
+                    actor_name,
+                    timestamp
+                `)
+                .eq('project_id', project.id)
+                .in('action', ['APPROVED', 'REJECTED'])
+                .order('timestamp', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching comments:', error);
+            } else {
+                setComments(data || []);
+            }
+        };
+
+        fetchComments();
+    }, [project.id]);
+
+    // Check if project was rejected
+    const isRejected = project.status === 'REJECTED';
+    const rejectionComment = comments.find(comment => comment.action === 'REJECTED');
+
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">
             <header className="h-16 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white/95 backdrop-blur z-20 shadow-[0_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -39,8 +70,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                 <h2 className="text-2xl font-black uppercase text-slate-900 mb-2">Current Status</h2>
                                 <p className="text-sm font-bold text-slate-500 uppercase">Submitted {formatDistanceToNow(new Date(project.created_at))} ago</p>
                             </div>
-                            <div className="bg-blue-600 text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                In Review
+                            <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                                {isRejected ? 'Rework Required' : 'In Review'}
                             </div>
                         </div>
 
@@ -70,7 +101,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                     <FileText className="w-5 h-5 text-blue-600" />
                                     <span className="text-xs font-bold uppercase text-slate-500">Status</span>
                                 </div>
-                                <p className="font-black text-lg uppercase">{project.status}</p>
+                                <p className="font-black text-lg uppercase">{isRejected ? 'Rework Required' : project.status}</p>
                             </div>
                         </div>
 
@@ -121,6 +152,45 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         </div>
                     </div>
 
+                    {/* Comments Section */}
+                    {(comments.length > 0 || isRejected) && (
+                        <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-center space-x-2 mb-6">
+                                <MessageSquare className="w-6 h-6" />
+                                <h3 className="text-xl font-black uppercase text-slate-900">Reviewer Comments</h3>
+                            </div>
+                            {isRejected && (
+                                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500">
+                                    <h4 className="font-bold text-red-800 mb-2">Rework Required</h4>
+                                    <p className="text-red-700">
+                                        {rejectionComment?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                    </p>
+                                    <p className="text-sm text-red-600 mt-2">
+                                        Rejected by {rejectionComment?.actor_name || 'Reviewer'} {rejectionComment?.timestamp && formatDistanceToNow(new Date(rejectionComment.timestamp))} ago
+                                    </p>
+                                </div>
+                            )}
+                            {comments.length > 0 && (
+                                <div className="space-y-6">
+                                    {comments.map((comment, index) => (
+                                        <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="font-bold text-slate-900">{comment.actor_name}</p>
+                                                    <p className="text-sm text-slate-600">{formatDistanceToNow(new Date(comment.timestamp))} ago</p>
+                                                </div>
+                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {comment.action}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Review History */}
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <div className="flex items-center space-x-2 mb-6">
@@ -152,25 +222,41 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                 </div>
                             )}
 
+                            {isRejected && (
+                                <div className="flex items-start space-x-4">
+                                    <div className="w-3 h-3 bg-red-600 border-2 border-black rounded-full mt-2"></div>
+                                    <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
+                                        <span className="text-xs font-bold uppercase text-slate-500">Recently</span>
+                                        <p className="font-black text-slate-900 uppercase mt-1">Rework Required</p>
+                                        <p className="text-sm text-slate-600 mt-2">Changes requested by reviewer</p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex items-start space-x-4">
-                                <div className="w-3 h-3 bg-slate-300 border-2 border-black rounded-full mt-2 animate-pulse"></div>
+                                <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
                                 <div className="flex-1 pl-6">
                                     <span className="text-xs font-bold uppercase text-slate-500">Current</span>
                                     <p className="font-black text-slate-900 uppercase mt-1">
-                                        {project.assigned_to_role === Role.CMO ? 'With CMO' :
+                                        {isRejected ? 'Rework Required' :
+                                            project.assigned_to_role === Role.CMO ? 'With CMO' :
                                             project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
                                     </p>
-                                    <p className="text-sm text-slate-600 mt-2">Awaiting review decision</p>
+                                    <p className="text-sm text-slate-600 mt-2">
+                                        {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
+                                    </p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Info Note */}
-                    <div className="bg-yellow-50 border-2 border-yellow-400 p-6">
-                        <p className="text-sm font-bold text-yellow-900">
-                            <strong className="uppercase">Note:</strong> You will be notified once the review is complete.
-                            If changes are requested, the project will return to your Drafts/Rework section.
+                    <div className={`p-6 ${isRejected ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
+                        <p className={`text-sm font-bold ${isRejected ? 'text-red-900' : 'text-yellow-900'}`}>
+                            <strong className="uppercase">Note:</strong> 
+                            {isRejected 
+                                ? 'This project requires rework. Please review the comments above and make the necessary changes, then resubmit for review.'
+                                : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>
 

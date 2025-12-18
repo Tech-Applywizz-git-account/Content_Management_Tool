@@ -1,6 +1,7 @@
 import React from 'react';
-import { Project } from '../../types';
+import { Project, Role } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+import { db } from '../../services/supabaseDb';
 
 interface HistoryEntry {
   action: 'APPROVED' | 'REJECTED';
@@ -13,24 +14,39 @@ interface Props {
   project: Project;
   history: HistoryEntry;
   onBack: () => void;
+  onEdit?: () => void; // Optional edit callback
+  currentUser?: { id: string; role: Role }; // Current user info
 }
 
-const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack }) => {
+const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, currentUser }) => {
   const writerName =
     project.writer_name ||
     project.data?.writer_name ||
     'Unknown Writer';
 
+  // Check if current user is the actor who made the decision
+  const isActor = currentUser?.id === project.cmo_id;
+
   return (
     <div className="p-8 space-y-8 animate-fade-in">
 
-      {/* Back */}
-      <button
-        onClick={onBack}
-        className="font-bold underline uppercase"
-      >
-        ← Back to History
-      </button>
+      {/* Back and Edit Buttons */}
+      <div className="flex justify-between items-center">
+        <button
+          onClick={onBack}
+          className="font-bold underline uppercase"
+        >
+          ← Back to History
+        </button>
+        {isActor && onEdit && (
+          <button
+            onClick={onEdit}
+            className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+          >
+            Edit
+          </button>
+        )}
+      </div>
 
       {/* Title */}
       <h1 className="text-4xl font-black uppercase tracking-tight">
