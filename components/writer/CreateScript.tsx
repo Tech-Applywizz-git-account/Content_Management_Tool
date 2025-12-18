@@ -3,17 +3,21 @@ import React, { useState, useEffect } from 'react';
 import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
+import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText } from 'lucide-react';
 
 interface Props {
     project?: Project; // If editing existing draft
     onClose: () => void;
     onSuccess: () => void;
+    creatorRole?: Role; // WRITER or CMO
 }
 
-const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
+const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRole }) => {
     const [formData, setFormData] = useState<ProjectData>(project?.data || {});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [reviewComment, setReviewComment] = useState<any>(null);
+    const [showConfirmation, setShowConfirmation] = useState(false);
     const currentUser = db.getCurrentUser();
 
 
@@ -36,6 +40,33 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
             window.removeEventListener('beforeLogout', handleBeforeLogout);
         };
     }, [formData, newProjectDetails, project]);
+
+    // Fetch reviewer comments for rejected projects
+    useEffect(() => {
+        const fetchReviewComment = async () => {
+            if (project?.id && project.status === 'REJECTED') {
+                try {
+                    const { data, error } = await supabase
+                        .from('workflow_history')
+                        .select('actor_name, comment, timestamp')
+                        .eq('project_id', project.id)
+                        .eq('action', 'REJECTED')
+                        .order('timestamp', { ascending: false })
+                        .limit(1);
+
+                    if (error) {
+                        console.error('Error fetching review comment:', error);
+                    } else if (data && data.length > 0) {
+                        setReviewComment(data[0]);
+                    }
+                } catch (err) {
+                    console.error('Error fetching review comment:', err);
+                }
+            }
+        };
+
+        fetchReviewComment();
+    }, [project]);
 
     const handleSaveDraft = async () => {
         console.log('🚀 Starting save draft process');
@@ -89,9 +120,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
         const [stageName, setStageName] = useState('');
         const [popupDuration, setPopupDuration] = useState<number>(5000);
 
-        const handleSubmitToCMO = async () => {
+        const handleSubmit = async () => {
   setIsSubmitting(true);
-  console.log('🚀 Starting submit to CMO process');
+  console.log('🚀 Starting submit process');
 
   try {
     let realProjectId = project?.id;
@@ -117,21 +148,45 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
       throw new Error('Cannot submit project without valid project ID');
     }
 
-    // 3️⃣ SAVE SCRIPT + WRITER INFO (ONCE)
-    await db.updateProjectData(realProjectId, {
+    // 3️⃣ SAVE SCRIPT + CREATOR INFO (ONCE)
+    const creatorData = {
       ...formData,
-      writer_id: currentUser.id,
-      writer_name: currentUser.full_name
-    });
+    };
+    
+    if (creatorRole === Role.CMO) {
+      // Store CMO information
+      creatorData.cmo_id = currentUser.id;
+      creatorData.cmo_name = currentUser.full_name;
+    } else {
+      // Default to Writer information
+      creatorData.writer_id = currentUser.id;
+      creatorData.writer_name = currentUser.full_name;
+    }
+    
+    await db.updateProjectData(realProjectId, creatorData);
 
     // 4️⃣ SUBMIT WORKFLOW
-    await db.submitToReview(realProjectId);
-
-    console.log('✅ Successfully submitted to CMO');
+    // If CMO is creating the script, submit directly to CEO (skip CMO review)
+    if (creatorRole === Role.CMO) {
+      await db.submitToFinalReview(realProjectId, Role.CEO);
+      console.log('✅ Successfully submitted to CEO');
+    } else {
+      await db.submitToReview(realProjectId);
+      console.log('✅ Successfully submitted to CMO');
+    }
 
     // Show popup after successful DB operation
-    const nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
-    setPopupMessage(`Script submitted successfully. Waiting for ${nextStageLabel}.`);
+    let nextStageLabel, creatorLabel;
+    if (creatorRole === Role.CMO) {
+      nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2] || 'Script Review (CEO)';
+      creatorLabel = 'CMO';
+      setPopupMessage(`${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`);
+    } else {
+      nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
+      creatorLabel = 'Writer';
+      setPopupMessage(`${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`);
+    }
+    
     setStageName(nextStageLabel);
     setPopupDuration(5000);
     setShowPopup(true);
@@ -139,8 +194,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
     await onSuccess(); // refresh dashboard immediately
     
   } catch (err: any) {
-    console.error('❌ Submit to CMO failed:', err);
-    alert(err.message || 'Failed to submit to CMO');
+    console.error('❌ Submit failed:', err);
+    const errorMessage = creatorRole === Role.CMO ? 'Failed to submit to CEO' : 'Failed to submit to CMO';
+    alert(err.message || errorMessage);
   } finally {
     setIsSubmitting(false);
   }
@@ -169,11 +225,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
                         Draft
                     </button>
                     <button
-                        onClick={handleSubmitToCMO}
+                        onClick={() => setShowConfirmation(true)}
                         disabled={isSubmitting}
                         className="px-6 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center"
                     >
-                        {isSubmitting ? 'Sending...' : 'Submit to CMO'}
+                        {isSubmitting ? 'Sending...' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
                         <Send className="w-4 h-4 ml-2" />
                     </button>
                 </div>
@@ -242,7 +298,35 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
                                 placeholder="What is the goal of this content?"
                             />
                         </div>
+                        {/* REWORK COMMENTS (ONLY FOR REJECTED PROJECTS) */}
+                        {project?.status === 'REJECTED' && (
+                          <div className="bg-red-50 p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                            <h3 className="font-black uppercase text-lg text-red-700 mb-4">
+                              Reviewer Comments
+                            </h3>
+
+                            {reviewComment ? (
+                              <div className="space-y-2">
+                                <p className="font-bold text-slate-900">
+                                  {reviewComment.actor_name || 'Reviewer'}
+                                  <span className="ml-2 text-xs uppercase text-red-600">
+                                    (REWORK REQUIRED)
+                                  </span>
+                                </p>
+
+                                <p className="text-slate-700 whitespace-pre-wrap">
+                                  {reviewComment.comment}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-slate-500">
+                                No comments provided by the reviewer.
+                              </p>
+                            )}
+                          </div>
+                        )}
                     </div>
+
 
                     {/* Right Col: Editor */}
                     <div className="lg:col-span-2 space-y-6">
@@ -273,6 +357,33 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess }) => {
                     onClose={() => setShowPopup(false)}
                     duration={popupDuration}
                 />
+            )}
+            
+            {/* Confirmation Popup */}
+            {showConfirmation && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
+                        <h3 className="text-2xl font-black uppercase mb-4">Confirm Submission</h3>
+                        <p className="mb-6">Are you sure you want to submit this script?</p>
+                        <div className="flex space-x-4">
+                            <button
+                                onClick={() => setShowConfirmation(false)}
+                                className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
+                            >
+                                No
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowConfirmation(false);
+                                    handleSubmit();
+                                }}
+                                className="flex-1 px-4 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                Yes
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

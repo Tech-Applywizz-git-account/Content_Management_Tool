@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../types';
+import React, { useState, useRef } from 'react';
+import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { ArrowLeft, Check, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
 import Popup from '../Popup';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface Props {
     project: Project;
@@ -11,8 +13,9 @@ interface Props {
 }
 
 const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
-    const [decision, setDecision] = useState<'APPROVED' | 'REWORK' | 'REJECTED' | null>(null);
+    const [decision, setDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [comment, setComment] = useState('');
+    const [reworkStage, setReworkStage] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Popup state
@@ -21,45 +24,95 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState<number>(5000);
 
+    const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO;
+    const isVideo = project.channel !== Channel.LINKEDIN;
+
+    const scriptContentRef = useRef<HTMLDivElement>(null);
+
+    const downloadPDF = async () => {
+        if (!scriptContentRef.current) return;
+
+        try {
+            // Create a clone of the content to avoid styling issues
+            const clone = scriptContentRef.current.cloneNode(true) as HTMLElement;
+            
+            // Create a temporary container
+            const tempContainer = document.createElement('div');
+            tempContainer.style.position = 'absolute';
+            tempContainer.style.left = '-9999px';
+            tempContainer.style.width = '800px'; // Standard PDF width
+            tempContainer.style.padding = '20px';
+            tempContainer.appendChild(clone);
+            document.body.appendChild(tempContainer);
+
+            // Convert to canvas
+            const canvas = await html2canvas(tempContainer, {
+                scale: 2, // Higher quality
+                useCORS: true,
+                logging: false
+            });
+
+            // Convert to PDF
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'px',
+                format: [canvas.width, canvas.height]
+            });
+            
+            const imgWidth = pdf.internal.pageSize.getWidth();
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            pdf.save(`${project.title}_script.pdf`);
+
+            // Clean up
+            document.body.removeChild(tempContainer);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            alert('Failed to generate PDF. Please try again.');
+        }
+    };
+
     const handleSubmit = async () => {
         setIsSubmitting(true);
         
         try {
-            if (decision === 'APPROVED') {
+            if (decision === 'APPROVE') {
                 // CMO Approval -> Moves to next stage based on current stage
-                console.log('Approving project:', project);
-                console.log('Current stage:', project.current_stage);
                 await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
 
-const nextStage =
-  project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1
-    ? WorkflowStage.SCRIPT_REVIEW_L2
-    : WorkflowStage.CINEMATOGRAPHY;
-
-// For final review CMO stage, show current stage; otherwise show next stage
-const displayStage = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? WorkflowStage.FINAL_REVIEW_CMO : nextStage;
-const stageLabel = STAGE_LABELS[displayStage];
-
-setPopupMessage(`CMO has approved. Current stage: ${stageLabel}.`);
-setStageName(stageLabel);
-setPopupDuration(5000);
-
-setTimeout(() => {
-  setShowPopup(true);
-}, 0);
-            }
-               else if (decision === 'REWORK') {
-                // Rework -> Moves back to WRITER (SCRIPT)
-                await db.rejectTask(project.id, WorkflowStage.SCRIPT, comment);
+                // Show popup for approval
+                let stageLabel, message;
+                if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+                    // For final review, show Ready for Publishing and mention CEO
+                    stageLabel = 'Ready for Publishing';
+                    message = `CMO has approved. Ready for CEO review.`;
+                } else {
+                    // For regular review, show next stage
+                    const nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 
+                        WorkflowStage.SCRIPT_REVIEW_L2 : WorkflowStage.CINEMATOGRAPHY;
+                    stageLabel = STAGE_LABELS[nextStage] || 'Next Stage';
+                    message = `CMO has approved. Current stage: ${stageLabel}.`;
+                }
+                setPopupMessage(message);
+                setStageName(stageLabel);
+                setPopupDuration(5000); // auto-close for approval
+                setTimeout(() => {
+                    setShowPopup(true);
+                }, 0);
+            } else if (decision === 'REWORK') {
+                // Rework -> Moves back to WRITER (SCRIPT) or other roles
+                await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
                 
                 // Show popup for rework
                 setPopupMessage('CMO has sent the script back for rework.');
                 setStageName('Script Rework');
                 setPopupDuration(5000); // manual close for rework
                 setTimeout(() => {
-  setShowPopup(true);
-}, 0);
-            } else if (decision === 'REJECTED') {
+                    setShowPopup(true);
+                }, 0);
+            } else if (decision === 'REJECT') {
                 // Full Reject
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
                 
@@ -68,8 +121,8 @@ setTimeout(() => {
                 setStageName('Rejected');
                 setPopupDuration(5000); // manual close for reject
                 setTimeout(() => {
-  setShowPopup(true);
-}, 0);
+                    setShowPopup(true);
+                }, 0);
             }
             // Do NOT call onComplete() immediately — wait until popup is closed so it is visible to the user
         } catch (error) {
@@ -80,112 +133,298 @@ setTimeout(() => {
         }
     };
 
+    const getReworkOptions = () => {
+        // CMO can send back to Writer from Script Review L1
+        if (project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1) {
+            return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' }];
+        }
+        
+        // For Final Review CMO, can send back to various roles
+        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+            const options = [
+                { value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Visuals)' },
+            ];
+            // If video channel, add Editor/Cine
+            if (isVideo) {
+                options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
+                options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
+            }
+            return options;
+        }
+        
+        // Default fallback
+        return [{ value: WorkflowStage.SCRIPT, label: 'Writer' }];
+    };
+
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
-            <header className="h-16 border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 bg-white/95 backdrop-blur z-20">
-                <div className="flex items-center space-x-4">
-                    <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
-                        <ArrowLeft className="w-5 h-5" />
+            {/* Header */}
+            <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center space-x-6">
+                    <button onClick={onBack} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
+                        <ArrowLeft className="w-6 h-6 text-black" />
                     </button>
-                    <h1 className="text-xl font-bold text-slate-900">Review: {project.title}</h1>
-                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded uppercase">{project.channel}</span>
-                    <span className="text-xs font-bold uppercase text-slate-500">Stage: {STAGE_LABELS[project.current_stage]}</span>
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Review: {project.title}</h1>
+                        <div className="flex items-center space-x-2 mt-1">
+                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                                project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
+                                    'bg-[#D946EF]'
+                                }`}>
+                                {project.channel}
+                            </span>
+                            <span className="text-xs font-bold uppercase text-slate-500">
+                                Stage: {STAGE_LABELS[project.current_stage]}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col md:flex-row max-w-[1600px] mx-auto w-full">
-                <div className="flex-1 p-8 overflow-y-auto">
-                    {/* Content Viewer */}
-                    <div className="max-w-3xl mx-auto space-y-8">
-                        <div className="bg-slate-50 p-8 rounded-xl border border-slate-200">
-                            <h3 className="text-sm font-bold text-slate-400 uppercase mb-4">Script Content</h3>
-                            <div className="prose prose-slate max-w-none font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap">
-                                {project.data.script_content || 'No content provided.'}
+            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+
+                {/* LEFT COLUMN: Content (70%) */}
+                <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
+
+                    {/* Info Block */}
+                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.writer_name || project.data?.writer_name || '—'}
                             </div>
                         </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
+                            <div className={`font-bold uppercase ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
+                                {project.priority}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Status</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.status}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Due Date</label>
+                            <div className="font-bold text-slate-900 uppercase">Today</div>
+                        </div>
+                    </div>
 
-                        {project.data.brief && (
-                            <div className="bg-white p-6 rounded-xl border border-slate-200">
-                                <h3 className="text-sm font-bold text-slate-400 uppercase mb-2">Original Brief</h3>
-                                <p className="text-slate-600">{project.data.brief}</p>
+                    {/* Brief Content */}
+                    {project.data?.brief && (
+                        <section className="space-y-4">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Brief / Notes</h3>
+                            <div className="border-2 border-black bg-white p-8 min-h-[100px] whitespace-pre-wrap text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                {project.data.brief}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Script Viewer */}
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Script & Message</h3>
+                            <button 
+                                onClick={downloadPDF}
+                                className="text-sm font-bold uppercase flex items-center bg-white border-2 border-black px-4 py-2 hover:bg-slate-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all"
+                            >
+                                <Download className="w-4 h-4 mr-2" /> Download PDF
+                            </button>
+                        </div>
+                        <div 
+                            ref={scriptContentRef}
+                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                        >
+                            {project.data?.script_content || 'No script content available.'}
+                        </div>
+                    </section>
+
+                    {/* Assets Section (Only for final review) */}
+                    {project.current_stage === WorkflowStage.FINAL_REVIEW_CMO && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Raw Video Asset */}
+                                {isVideo && project.video_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
+                                            <Video className="w-16 h-16 opacity-50" />
+                                        </div>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
+                                                <p className="text-xs text-slate-500 font-bold">Original footage</p>
+                                            </div>
+                                            <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Edited Video Asset */}
+                                {isVideo && project.edited_video_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
+                                            <Video className="w-16 h-16 opacity-50" />
+                                        </div>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
+                                                <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
+                                            </div>
+                                            <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Thumbnail/Creative Asset */}
+                                {project.thumbnail_link && (
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                        <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
+                                            <ImageIcon className="w-16 h-16" />
+                                        </div>
+                                        <div className="p-4 flex justify-between items-center bg-white">
+                                            <div>
+                                                <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
+                                                <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
+                                            </div>
+                                            <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    )}
+                </div>
+
+                {/* RIGHT COLUMN: Approval Panel (30%) - Sticky */}
+                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 md:top-20 md:h-[calc(100vh-80px)] overflow-y-auto z-10 flex flex-col">
+                    <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 inline-block">CMO Decision</h2>
+
+                    <div className="space-y-4 flex-1">
+                        {/* Approve Option */}
+                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'APPROVE' ? 'border-black bg-[#4ADE80]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                            <div className="flex items-center">
+                                <input
+                                    type="radio"
+                                    name="decision"
+                                    className="w-5 h-5 accent-black"
+                                    checked={decision === 'APPROVE'}
+                                    onChange={() => setDecision('APPROVE')}
+                                />
+                                <div className="ml-4 flex-1">
+                                    <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
+                                    <span className="text-xs font-bold uppercase text-slate-600">
+                                        {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CMO Review' : 'Ready for Publishing'}
+                                    </span>
+                                </div>
+                                <Check className="w-8 h-8 ml-auto text-black" />
+                            </div>
+                        </label>
+
+                        {/* Rework Option */}
+                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REWORK' ? 'border-black bg-[#FFD952]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                            <div className="flex items-center">
+                                <input
+                                    type="radio"
+                                    name="decision"
+                                    className="w-5 h-5 accent-black"
+                                    checked={decision === 'REWORK'}
+                                    onChange={() => { setDecision('REWORK'); setReworkStage(''); }}
+                                />
+                                <div className="ml-4 flex-1">
+                                    <span className="block font-black text-lg uppercase text-slate-900">Request Rework</span>
+                                    <span className="text-xs font-bold uppercase text-slate-600">Send back for edits</span>
+                                </div>
+                                <RotateCcw className="w-8 h-8 ml-auto text-black" />
+                            </div>
+                        </label>
+
+                        {/* Reject Option */}
+                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REJECT' ? 'border-black bg-[#FF4F4F] text-white' : 'border-black bg-white hover:bg-slate-50'}`}>
+                            <div className="flex items-center">
+                                <input
+                                    type="radio"
+                                    name="decision"
+                                    className="w-5 h-5 accent-black"
+                                    checked={decision === 'REJECT'}
+                                    onChange={() => setDecision('REJECT')}
+                                />
+                                <div className="ml-4 flex-1">
+                                    <span className={`block font-black text-lg uppercase ${decision === 'REJECT' ? 'text-white' : 'text-slate-900'}`}>Reject</span>
+                                    <span className={`text-xs font-bold uppercase ${decision === 'REJECT' ? 'text-white/80' : 'text-slate-600'}`}>Terminate workflow</span>
+                                </div>
+                                <X className={`w-8 h-8 ml-auto ${decision === 'REJECT' ? 'text-white' : 'text-black'}`} />
+                            </div>
+                        </label>
+                    </div>
+
+                    <div className="my-8 border-t-2 border-dashed border-slate-300"></div>
+
+                    {/* Conditional Inputs */}
+                    <div className="space-y-6">
+                        {decision === 'REWORK' && (
+                            <div className="animate-fade-in space-y-2">
+                                <label className="block text-xs font-black text-slate-500 uppercase">Send back to</label>
+                                <select
+                                    className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]"
+                                    value={reworkStage}
+                                    onChange={(e) => setReworkStage(e.target.value)}
+                                >
+                                    <option value="">-- Select Role --</option>
+                                    {getReworkOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        {(decision === 'REWORK' || decision === 'REJECT' || decision === 'APPROVE') && (
+                            <div className="animate-fade-in space-y-2">
+                                <label className="block text-xs font-black text-slate-500 uppercase">
+                                    {decision === 'APPROVE' ? 'Notes (Optional)' : 'Reason (Required)'}
+                                </label>
+                                <textarea
+                                    value={comment}
+                                    onChange={(e) => setComment(e.target.value)}
+                                    placeholder={decision === 'APPROVE' ? "Good job..." : "Please fix..."}
+                                    className="w-full p-4 border-2 border-black rounded-none text-sm min-h-[120px] focus:bg-yellow-50 focus:outline-none font-medium resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]"
+                                />
                             </div>
                         )}
                     </div>
-                </div>
 
-                {/* Right Panel: Decision */}
-                <div className="w-full md:w-[400px] bg-white border-l border-slate-200 p-6 shadow-xl sticky bottom-0 md:top-16 md:h-[calc(100vh-64px)]">
-                    <h2 className="text-xl font-bold text-slate-900 mb-6">CMO Decision</h2>
-
-                    <div className="space-y-3 mb-6">
+                    <div className="mt-8">
                         <button
-                            onClick={() => setDecision('APPROVED')}
-                            className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${decision === 'APPROVED' ? 'border-blue-600 bg-blue-50 text-blue-900' : 'border-slate-100 hover:border-slate-300'}`}
+                            disabled={!decision || isSubmitting || (decision === 'REWORK' && !reworkStage) || ((decision === 'REWORK' || decision === 'REJECT') && !comment)}
+                            onClick={handleSubmit}
+                            className={`w-full py-5 border-2 border-black font-black uppercase text-lg shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[6px] active:translate-x-[6px] transition-all flex justify-center items-center ${decision === 'REWORK' ? 'bg-[#FFD952] text-black' :
+                                decision === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
+                                    decision === 'APPROVE' ? 'bg-[#0085FF] text-white' :
+                                        'bg-slate-200 text-slate-400 cursor-not-allowed border-slate-300 shadow-none'
+                                }`}
                         >
-                            <div className="text-left">
-                                <span className="block font-bold">Approve Content</span>
-                                <span className="text-xs opacity-75">Move to Production</span>
-                            </div>
-                            <Check className="w-5 h-5" />
-                        </button>
-
-                        <button
-                            onClick={() => setDecision('REWORK')}
-                            className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${decision === 'REWORK' ? 'border-yellow-400 bg-yellow-50 text-yellow-900' : 'border-slate-100 hover:border-slate-300'}`}
-                        >
-                            <div className="text-left">
-                                <span className="block font-bold">Request Rework</span>
-                                <span className="text-xs opacity-75">Send back for edits</span>
-                            </div>
-                            <RotateCcw className="w-5 h-5" />
-                        </button>
-
-                        <button
-                            onClick={() => setDecision('REJECTED')}
-                            className={`w-full p-4 rounded-xl border-2 flex items-center justify-between transition-all ${decision === 'REJECTED' ? 'border-red-600 bg-red-50 text-red-900' : 'border-slate-100 hover:border-slate-300'}`}
-                        >
-                            <div className="text-left">
-                                <span className="block font-bold">Reject</span>
-                                <span className="text-xs opacity-75">Terminate workflow</span>
-                            </div>
-                            <X className="w-5 h-5" />
+                            {isSubmitting ? (
+                                <div className="w-6 h-6 border-4 border-current border-t-transparent rounded-full animate-spin" />
+                            ) : decision === 'REWORK' ? 'Send For Rework' :
+                                decision === 'REJECT' ? 'Confirm Rejection' :
+                                    decision === 'APPROVE' ? 'Approve & Continue' :
+                                        'Select Action'
+                            }
                         </button>
                     </div>
-
-                    <div className="space-y-4 animate-fade-in">
-                        <label className="block text-xs font-bold text-slate-500 uppercase">Comments {decision === 'REWORK' && '(Required)'}</label>
-                        <textarea
-                            value={comment}
-                            onChange={(e) => setComment(e.target.value)}
-                            className="w-full h-32 p-3 border border-slate-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder={decision === 'REWORK' ? "What needs to be fixed?" : "Optional notes..."}
-                        />
-                    </div>
-
-                    <button
-                        onClick={handleSubmit}
-                        disabled={!decision || isSubmitting || (decision === 'REWORK' && !comment)}
-                        className={`w-full mt-8 py-4 rounded-xl font-bold text-white shadow-lg transition-all ${decision === 'APPROVED' ? 'bg-blue-600 hover:bg-blue-700' :
-                            decision === 'REWORK' ? 'bg-yellow-500 hover:bg-yellow-600' :
-                                decision === 'REJECTED' ? 'bg-red-600 hover:bg-red-700' :
-                                    'bg-slate-300 cursor-not-allowed'
-                            }`}
-                    >
-                        {isSubmitting ? 'Processing...' : 'Confirm Decision'}
-                    </button>
-
                 </div>
             </div>
             {showPopup && (
-                        <Popup
-    message={popupMessage}
-    stageName={stageName}
-    onClose={() => {
-        setShowPopup(false);
-        onComplete(); // Call onComplete when popup is closed
-    }}
-    duration={popupDuration}
-/>
+                <Popup
+                    message={popupMessage}
+                    stageName={stageName}
+                    onClose={() => {
+                        setShowPopup(false);
+                        onComplete();
+                    }}
+                    duration={popupDuration}
+                />
             )}
         </div>
     );
