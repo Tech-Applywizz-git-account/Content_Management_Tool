@@ -96,7 +96,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                 // ignore
             }
         };
-    }, []);
+    }, [inboxProjects, historyProjects]);
 
     return (
         <Layout

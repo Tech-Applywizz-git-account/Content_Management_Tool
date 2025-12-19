@@ -23,6 +23,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState<number>(5000);
+    
+    // Confirmation popup state
+    const [showConfirmation, setShowConfirmation] = useState(false);
+    const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO;
     const isVideo = project.channel !== Channel.LINKEDIN;
@@ -397,7 +401,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     <div className="mt-8">
                         <button
                             disabled={!decision || isSubmitting || (decision === 'REWORK' && !reworkStage) || ((decision === 'REWORK' || decision === 'REJECT') && !comment)}
-                            onClick={handleSubmit}
+                            onClick={() => {
+                                setConfirmationAction(decision);
+                                setShowConfirmation(true);
+                            }}
                             className={`w-full py-5 border-2 border-black font-black uppercase text-lg shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[6px] active:translate-x-[6px] transition-all flex justify-center items-center ${decision === 'REWORK' ? 'bg-[#FFD952] text-black' :
                                 decision === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
                                     decision === 'APPROVE' ? 'bg-[#0085FF] text-white' :
@@ -425,6 +432,49 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     }}
                     duration={popupDuration}
                 />
+            )}
+            
+            {/* Confirmation Popup */}
+            {showConfirmation && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-black uppercase">Confirm Action</h3>
+                            <button 
+                                onClick={() => setShowConfirmation(false)}
+                                className="text-slate-500 hover:text-slate-700"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <p className="mb-6">
+                            {confirmationAction === 'APPROVE' && 'Are you sure you want to approve this content?'}
+                            {confirmationAction === 'REWORK' && 'Are you sure you want to send this content back for rework?'}
+                            {confirmationAction === 'REJECT' && 'Are you sure you want to reject this content?'}
+                        </p>
+                        <div className="flex space-x-4">
+                            <button
+                                onClick={() => setShowConfirmation(false)}
+                                className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
+                            >
+                                No
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowConfirmation(false);
+                                    handleSubmit();
+                                }}
+                                className={`flex-1 px-4 py-3 border-2 border-black font-black uppercase transition-colors ${confirmationAction === 'REWORK' ? 'bg-[#FFD952] text-black' :
+                                    confirmationAction === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
+                                        confirmationAction === 'APPROVE' ? 'bg-[#0085FF] text-white' :
+                                            'bg-slate-200 text-slate-400'
+                                }`}
+                            >
+                                Yes
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

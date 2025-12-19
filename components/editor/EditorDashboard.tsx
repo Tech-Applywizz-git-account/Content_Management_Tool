@@ -68,6 +68,18 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const allProjects = (inboxProjects || []).filter(p => p.current_stage === WorkflowStage.VIDEO_EDITING);
     const activeProjects = allProjects.filter(p => p.status !== TaskStatus.DONE);
 
+    // Add state for counts
+    const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
+    const [inProgressCount, setInProgressCount] = useState(0);
+    const [completedEditsCount, setCompletedEditsCount] = useState(0);
+
+    // Calculate counts when projects change
+    useEffect(() => {
+        setNeedsDeliveryCount(activeProjects.filter(p => !p.delivery_date).length);
+        setInProgressCount(activeProjects.filter(p => p.delivery_date && !p.edited_video_link).length);
+        setCompletedEditsCount(activeProjects.filter(p => p.edited_video_link).length);
+    }, [inboxProjects, historyProjects]);
+
     return (
         <Layout
             user={user as any}
@@ -111,19 +123,19 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="text-4xl font-black text-white mb-1">
-                                {activeProjects.filter(p => !p.delivery_date).length}
+                                {needsDeliveryCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
                         </div>
                         <div className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="text-4xl font-black text-white mb-1">
-                                {activeProjects.filter(p => p.delivery_date && !p.edited_video_link).length}
+                                {inProgressCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
                         </div>
                         <div className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <div className="text-4xl font-black text-white mb-1">
-                                {activeProjects.filter(p => p.edited_video_link).length}
+                                {completedEditsCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
                         </div>

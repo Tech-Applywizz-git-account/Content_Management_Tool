@@ -103,7 +103,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
                 // ignore
             }
         };
-    }, []);
+    }, [inboxProjects, historyProjects]);
 
     return (
         <Layout

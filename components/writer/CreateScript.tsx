@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -168,8 +168,18 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     // 4️⃣ SUBMIT WORKFLOW
     // If CMO is creating the script, submit directly to CEO (skip CMO review)
     if (creatorRole === Role.CMO) {
-      await db.submitToFinalReview(realProjectId, Role.CEO);
-      console.log('✅ Successfully submitted to CEO');
+      // For CMO-created scripts, we need to bypass the normal workflow and go straight to CEO review
+      // First, get the project to check its current state
+      const project = await db.getProjectById(realProjectId);
+      if (project) {
+        // Update the project directly to SCRIPT_REVIEW_L2 stage and assign to CEO
+        await db.projects.update(realProjectId, {
+          current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+          assigned_to_role: Role.CEO,
+          status: TaskStatus.WAITING_APPROVAL
+        });
+      }
+      console.log('✅ Successfully submitted directly to CEO');
     } else {
       await db.submitToReview(realProjectId);
       console.log('✅ Successfully submitted to CMO');
