@@ -19,6 +19,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     const [reviewComment, setReviewComment] = useState<any>(null);
     const [showConfirmation, setShowConfirmation] = useState(false);
     const currentUser = db.getCurrentUser();
+      
+    // Ensure we have a current user
+    if (!currentUser) {
+      throw new Error('No current user found. Please log in again.');
+    }
 
 
     const [newProjectDetails, setNewProjectDetails] = useState({
@@ -118,7 +123,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         const [showPopup, setShowPopup] = useState(false);
         const [popupMessage, setPopupMessage] = useState('');
         const [stageName, setStageName] = useState('');
-        const [popupDuration, setPopupDuration] = useState<number>(5000);
 
         const handleSubmit = async () => {
   setIsSubmitting(true);
@@ -141,12 +145,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       }
 
       realProjectId = createdProject.id;
+      console.log('✅ Project created with ID:', realProjectId);
     }
 
     // 2️⃣ HARD SAFETY CHECK
     if (!realProjectId) {
       throw new Error('Cannot submit project without valid project ID');
     }
+    
+    // Validate project ID format
+    if (realProjectId.startsWith('temp_')) {
+      throw new Error('Invalid project ID format. Project must be saved to database first.');
+    }
+
+    // Small delay to ensure project is fully created before proceeding
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // 3️⃣ SAVE SCRIPT + CREATOR INFO (ONCE)
     const creatorData = {
@@ -155,56 +168,78 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     
     if (creatorRole === Role.CMO) {
       // Store CMO information
-      creatorData.cmo_id = currentUser.id;
-      creatorData.cmo_name = currentUser.full_name;
+      creatorData.cmo_id = currentUser?.id;
+      creatorData.cmo_name = currentUser?.full_name;
     } else {
       // Default to Writer information
-      creatorData.writer_id = currentUser.id;
-      creatorData.writer_name = currentUser.full_name;
+      creatorData.writer_id = currentUser?.id;
+      creatorData.writer_name = currentUser?.full_name;
     }
     
     await db.updateProjectData(realProjectId, creatorData);
+    console.log('✅ Project data updated');
 
     // 4️⃣ SUBMIT WORKFLOW
     // If CMO is creating the script, submit directly to CEO (skip CMO review)
     if (creatorRole === Role.CMO) {
       // For CMO-created scripts, we need to bypass the normal workflow and go straight to CEO review
-      // First, get the project to check its current state
-      const project = await db.getProjectById(realProjectId);
-      if (project) {
-        // Update the project directly to SCRIPT_REVIEW_L2 stage and assign to CEO
-        await db.projects.update(realProjectId, {
-          current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-          assigned_to_role: Role.CEO,
-          status: TaskStatus.WAITING_APPROVAL
-        });
+      try {
+        const project = await db.getProjectById(realProjectId);
+        if (project) {
+          // Update the project directly to SCRIPT_REVIEW_L2 stage and assign to CEO
+          await db.projects.update(realProjectId, {
+            current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+            assigned_to_role: Role.CEO,
+            status: TaskStatus.WAITING_APPROVAL
+          });
+        }
+        console.log('✅ Successfully submitted directly to CEO');
+      } catch (updateError) {
+        console.error('❌ Failed to update project for CEO review:', updateError);
+        throw new Error(`Failed to submit directly to CEO: ${updateError.message || updateError}`);
       }
-      console.log('✅ Successfully submitted directly to CEO');
     } else {
       await db.submitToReview(realProjectId);
       console.log('✅ Successfully submitted to CMO');
     }
 
     // Show popup after successful DB operation
-    let nextStageLabel, creatorLabel;
+    let nextStageLabel, creatorLabel, message;
     if (creatorRole === Role.CMO) {
       nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2] || 'Script Review (CEO)';
       creatorLabel = 'CMO';
-      setPopupMessage(`${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`);
+      message = `${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`;
     } else {
       nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
       creatorLabel = 'Writer';
-      setPopupMessage(`${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`);
+      message = `${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`;
     }
     
     setStageName(nextStageLabel);
-    setPopupDuration(5000);
+    setPopupMessage(message);
+    console.log('Showing popup with message:', message);
+    console.log('Stage name:', nextStageLabel);
     setShowPopup(true);
-
-    await onSuccess(); // refresh dashboard immediately
+    console.log('Popup should be visible now');
+    
+    // Call onSuccess after a short delay to ensure popup is visible
+    setTimeout(() => {
+      onSuccess(); // refresh dashboard immediately
+    }, 1000);
     
   } catch (err: any) {
     console.error('❌ Submit failed:', err);
+    // Log more detailed error information
+    if (err.message) {
+      console.error('Error message:', err.message);
+    }
+    if (err.details) {
+      console.error('Error details:', err.details);
+    }
+    if (err.hint) {
+      console.error('Error hint:', err.hint);
+    }
+    
     const errorMessage = creatorRole === Role.CMO ? 'Failed to submit to CEO' : 'Failed to submit to CMO';
     alert(err.message || errorMessage);
   } finally {
@@ -365,7 +400,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     message={popupMessage}
                     stageName={stageName}
                     onClose={() => setShowPopup(false)}
-                    duration={popupDuration}
                 />
             )}
             

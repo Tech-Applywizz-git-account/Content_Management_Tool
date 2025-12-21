@@ -20,7 +20,7 @@ const Popup: React.FC<PopupProps> = ({ message, stageName, onClose, duration = 5
   }, [onClose, duration]);
 
   return (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-md">
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-[9999] max-w-md">
       <div className="flex justify-between items-start">
         <div>
           <p className="font-medium">{message}</p>
