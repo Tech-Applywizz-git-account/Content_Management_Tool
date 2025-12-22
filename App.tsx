@@ -64,6 +64,9 @@ function App() {
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminLogs, setAdminLogs] = useState<any[]>([]);
 
+  // CMO State - State for CMO dashboard all projects
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
     try {
@@ -127,20 +130,45 @@ function App() {
 
   // Session restoration on mount - Simplified with guaranteed state update
   useEffect(() => {
+    console.log('App: Initializing auth...');
     let mounted = true;
     let fallbackTimer: ReturnType<typeof setTimeout>;
 
     const initializeAuth = async () => {
-      if (!mounted) return;
+      console.log('App: initializeAuth called');
+      if (!mounted) {
+        console.log('App: Component unmounted, skipping initialization');
+        return;
+      }
 
       // IMPORTANT: Skip session restoration on password reset/set-password pages
       // These pages use recovery tokens, not regular sessions
       // Check both pathname and hash-based recovery URLs
       const isRecoveryFlow = location.pathname === '/set-password' ||
-        (location.hash && location.hash.includes('type=recovery'));
+        (location.hash && location.hash.includes('type=recovery')) ||
+        (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
+      
+      console.log('App: Checking recovery flow in initializeAuth', { pathname: location.pathname, hash: location.hash, href: window.location.href, isRecoveryFlow });
 
       if (isRecoveryFlow) {
-        console.log('On password reset page, skipping session restoration to preserve recovery token');
+        console.log('On password reset page, checking for recovery session');
+        // During recovery flow, Supabase creates a valid session but user state is not populated
+        // We need to populate user state from the recovery session to avoid falling back to Auth
+        try {
+          const { data } = await supabase.auth.getUser();
+          if (data?.user) {
+            console.log('Recovery session found, populating user state', data.user);
+            const profile = await db.users.getById(data.user.id);
+            if (profile) {
+              setUser(profile);
+              db.setCurrentUser(profile);
+              console.log('User state populated from recovery session', profile);
+            }
+          }
+        } catch (error) {
+          console.error('Error populating user state from recovery session:', error);
+        }
+        
         if (mounted) {
           setLoading(false);
           setIsRestoringSession(false);
@@ -255,6 +283,23 @@ function App() {
       document.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
+  }, [user]);
+
+  // Effect to fetch all projects for CMO dashboard
+  useEffect(() => {
+    // Only fetch for CMO users
+    if (user?.role === Role.CMO) {
+      const fetchAllProjects = async () => {
+        try {
+          const projects = await db.projects.getAll();
+          setAllProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch all projects for CMO:', error);
+        }
+      };
+      
+      fetchAllProjects();
+    }
   }, [user]);
 
   const refreshData = async (u: User = user!) => {
@@ -383,19 +428,31 @@ function App() {
   // Handle Set Password Route (both path and hash-based)
   // Supabase password reset links use hash fragments like /#access_token=...&type=recovery
   const isPasswordResetFlow = location.pathname === '/set-password' ||
-    (location.hash && location.hash.includes('type=recovery'));
+    (location.hash && location.hash.includes('type=recovery')) ||
+    // Also check if we're in a recovery flow based on URL parameters
+    (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
+  
+  console.log('App: Checking if on password reset flow', { 
+    pathname: location.pathname, 
+    hash: location.hash, 
+    href: window.location.href,
+    isPasswordResetFlow 
+  });
 
   if (isPasswordResetFlow) {
+    console.log('App: Rendering SetPassword component');
     return <SetPassword />;
   }
 
   // Show login if no user
+  console.log('App: Checking if user exists', { user });
   if (!user) {
+    console.log('App: Rendering Auth component');
     return <Auth onLogin={handleLogin} isRestoringSession={isRestoringSession} />;
   }
 
   // --- ADMIN FLOW ---
-  if (user.role === Role.ADMIN) {
+  if (user?.role === Role.ADMIN) {
     return (
       <AdminLayout
         user={user}
@@ -422,7 +479,7 @@ function App() {
   }
 
   // --- CEO FLOW ---
-  if (user.role === Role.CEO) {
+  if (user?.role === Role.CEO) {
     return (
       <CeoDashboard
         user={user}
@@ -435,20 +492,32 @@ function App() {
   }
 
   // --- CMO FLOW ---
-  if (user.role === Role.CMO) {
+  if (user?.role === Role.CMO) {
     return (
       <CmoDashboard
         user={user}
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
-        onRefresh={() => refreshData(user)}
+        allProjects={allProjects}
+        onRefresh={async () => {
+          if (user) {
+            await refreshData(user);
+            // Also refresh all projects
+            try {
+              const allProj = await db.projects.getAll();
+              setAllProjects(allProj);
+            } catch (error) {
+              console.error('Failed to refresh all projects for CMO:', error);
+            }
+          }
+        }}
         onLogout={handleLogout}
       />
     );
   }
 
   // --- WRITER FLOW ---
-  if (user.role === Role.WRITER) {
+  if (user?.role === Role.WRITER) {
     return (
       <WriterDashboard
         user={user}
@@ -461,7 +530,7 @@ function App() {
   }
 
   // --- CINEMATOGRAPHER FLOW ---
-  if (user.role === Role.CINE) {
+  if (user?.role === Role.CINE) {
     return (
       <CineDashboard
         user={user}
@@ -474,7 +543,7 @@ function App() {
   }
 
   // --- EDITOR FLOW ---
-  if (user.role === Role.EDITOR) {
+  if (user?.role === Role.EDITOR) {
     return (
       <EditorDashboard
         user={user}
@@ -487,7 +556,7 @@ function App() {
   }
 
   // --- DESIGNER FLOW ---
-  if (user.role === Role.DESIGNER) {
+  if (user?.role === Role.DESIGNER) {
     return (
       <DesignerDashboard
         user={user}
@@ -500,7 +569,7 @@ function App() {
   }
 
   // --- OPS FLOW ---
-  if (user.role === Role.OPS) {
+  if (user?.role === Role.OPS) {
     return (
       <OpsDashboard
         user={user}
@@ -513,7 +582,7 @@ function App() {
   }
 
   // --- OBSERVER FLOW ---
-  if (user.role === Role.OBSERVER) {
+  if (user?.role === Role.OBSERVER) {
     return <ObserverDashboard user={user} onLogout={handleLogout} />;
   }
 

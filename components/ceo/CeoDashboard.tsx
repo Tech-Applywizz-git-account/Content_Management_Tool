@@ -25,12 +25,16 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [rejectedCount, setRejectedCount] = useState(0);
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
   const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
-const [selectedHistory, setSelectedHistory] = useState<any>(null);
-const historyMapRef = React.useRef<Map<string, any>>(new Map());
-const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
+  const [selectedHistory, setSelectedHistory] = useState<any>(null);
+  // State for project data in history view
+  const [projectData, setProjectData] = useState<Project | null>(null);
+  const [loadingProject, setLoadingProject] = useState(true);
+  const historyMapRef = React.useRef<Map<string, any>>(new Map());
+  const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
 
   const handleInternalRefresh = async () => {
     await onRefresh(); // MUST refetch from Supabase
+    await loadCounts(); // Also reload counts
     setRefreshKey(prev => prev + 1); // force UI re-render
   };
 
@@ -41,47 +45,46 @@ const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboar
   const [stageName, setStageName] = useState('');
 
   // Load counts from the workflow_history table (count by user actions)
-  useEffect(() => {
-    const loadCounts = async () => {
+  const loadCounts = async () => {
+    try {
+      // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
+      const { count: approvedCountResult, error: approvedErr } = await supabase
+        .from('workflow_history')
+        .select('*', { head: true, count: 'exact' })
+        .eq('actor_id', user.id)
+        .eq('action', 'APPROVED');
+
+      if (approvedErr) throw approvedErr;
+
+      // Rejected: count all rejections where actor_id = user.id and action = REJECTED
+      const { count: rejectedCountResult, error: rejectedErr } = await supabase
+        .from('workflow_history')
+        .select('*', { head: true, count: 'exact' })
+        .eq('actor_id', user.id)
+        .eq('action', 'REJECTED');
+
+      if (rejectedErr) throw rejectedErr;
+
+      console.log('CEO Dashboard - Approved by user:', approvedCountResult, 'Reworks by user:', rejectedCountResult);
+      setApprovedCount(approvedCountResult || 0);
+      setRejectedCount(rejectedCountResult || 0);
+      // Debug: if rejected count is unexpected, fetch and log the rejected projects
       try {
-        // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
-        const { count: approvedCountResult, error: approvedErr } = await supabase
-          .from('workflow_history')
-          .select('*', { head: true, count: 'exact' })
-          .eq('actor_id', user.id)
-          .eq('action', 'APPROVED');
+        const { data: rejectedRows } = await supabase
+          .from('projects')
+          .select('id,title,current_stage,status')
+          .eq('status', TaskStatus.REJECTED);
 
-        if (approvedErr) throw approvedErr;
-
-        // Rejected: count only full rejections where project was sent back to SCRIPT stage
-        const { count: rejectedCountResult, error: rejectedErr } = await supabase
-          .from('workflow_history')
-          .select('*', { head: true, count: 'exact' })
-          .eq('actor_id', user.id)
-          .eq('action', 'REJECTED')
-          .eq('stage', WorkflowStage.SCRIPT);
-
-        if (rejectedErr) throw rejectedErr;
-
-        console.log('CEO Dashboard - Approved by user:', approvedCountResult, 'Rejected by user:', rejectedCountResult);
-        setApprovedCount(approvedCountResult || 0);
-        setRejectedCount(rejectedCountResult || 0);
-        // Debug: if rejected count is unexpected, fetch and log the rejected projects
-        try {
-          const { data: rejectedRows } = await supabase
-            .from('projects')
-            .select('id,title,current_stage,status')
-            .eq('status', TaskStatus.REJECTED);
-
-          console.log('CEO Dashboard - rejected projects list:', rejectedRows || []);
-        } catch (logErr) {
-          console.error('Failed to fetch rejected projects for debug:', logErr);
-        }
-      } catch (err) {
-        console.error('Failed to load counts from projects:', err);
+        console.log('CEO Dashboard - rejected projects list:', rejectedRows || []);
+      } catch (logErr) {
+        console.error('Failed to fetch rejected projects for debug:', logErr);
       }
-    };
+    } catch (err) {
+      console.error('Failed to load counts from projects:', err);
+    }
+  };
 
+  useEffect(() => {
     loadCounts();
 
     // Real-time subscription: reload counts when `projects` table changes
@@ -104,7 +107,7 @@ const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboar
         console.warn('Failed to remove CEO realtime subscription', e);
       }
     };
-  }, []);
+  }, [user.id]);
 
   // Load filtered history projects
 useEffect(() => {
@@ -114,38 +117,102 @@ useEffect(() => {
     const { data, error } = await supabase
       .from('workflow_history')
       .select(`
+        id,
         project_id,
         action,
         comment,
         actor_name,
         actor_id,
-        timestamp
+        timestamp,
+        stage
       `)
       .eq('actor_id', user.id)
-      .in('action', ['APPROVED', 'REJECTED']);
+      .eq('action', 'APPROVED')
+      .order('timestamp', { ascending: false });
 
     if (error || !data) {
       setFilteredHistoryProjects([]);
       return;
     }
 
-    // Map history by project_id
-    const map = new Map<string, any>();
-    data.forEach(h => map.set(h.project_id, h));
-    historyMapRef.current = map;
-
+    // Get unique project IDs
     const projectIds = [...new Set(data.map(h => h.project_id))];
-
-    const { data: projects } = await supabase
+    
+    // Fetch project details for all projects
+    const { data: projectsData, error: projectsError } = await supabase
       .from('projects')
       .select('*')
       .in('id', projectIds);
+      
+    if (projectsError) {
+      console.error('Failed to fetch projects:', projectsError);
+      setFilteredHistoryProjects([]);
+      return;
+    }
+    
+    // Create a map of project ID to project data
+    const projectMap = new Map();
+    projectsData.forEach(project => projectMap.set(project.id, project));
 
-    setFilteredHistoryProjects(projects || []);
+    // Store all history entries with project information
+    const historyEntries = data.map(entry => {
+      const project = projectMap.get(entry.project_id);
+      return {
+        ...entry,
+        // Include project information
+        title: project?.title || `Project ${entry.project_id}`,
+        channel: project?.channel || 'UNKNOWN',
+        current_stage: entry.stage,
+        created_at: entry.timestamp,
+        status: project?.status || 'UNKNOWN'
+      };
+    });
+    
+    // Map history by entry ID for detail view
+    const map = new Map<string, any>();
+    data.forEach(h => map.set(h.id, h));
+    historyMapRef.current = map;
+
+    setFilteredHistoryProjects(historyEntries);
   };
 
   loadHistory();
 }, [activeTab, user.id]);
+
+// Effect to fetch project data when viewing history detail
+React.useEffect(() => {
+  // Reset state when not viewing history detail
+  if (!selectedProject || viewMode !== 'HISTORY') {
+    setProjectData(null);
+    setLoadingProject(true);
+    return;
+  }
+  
+  const fetchProject = async () => {
+    setLoadingProject(true);
+    
+    try {
+      if (!selectedProject.project_id) return;
+      
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', selectedProject.project_id)
+        .single();
+        
+      if (error) throw error;
+      
+      setProjectData(data);
+    } catch (err) {
+      console.error('Failed to fetch project:', err);
+      setProjectData(null);
+    } finally {
+      setLoadingProject(false);
+    }
+  };
+  
+  fetchProject();
+}, [selectedProject, viewMode]);
 
 
 
@@ -155,10 +222,9 @@ useEffect(() => {
   const projects = activeTab === 'HISTORY' ? filteredHistoryProjects : (inboxProjects || []);
   
   // Logic: 
-  // Pending = Projects specifically assigned to CEO (Waiting for Approval)
+  // Pending = Projects in CEO review stages with WAITING_APPROVAL status
   // History = Projects CEO has previously acted on (in history) OR current projects not assigned to them but relevant
   const pendingApprovals = (inboxProjects || []).filter(p =>
-  p.assigned_to_role === Role.CEO &&
   p.status === TaskStatus.WAITING_APPROVAL &&
   (
     p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
@@ -221,11 +287,37 @@ if (selectedProject && viewMode === 'REVIEW') {
 
 // ✅ HISTORY MODE (READ-ONLY)
 if (selectedProject && viewMode === 'HISTORY') {
+  if (loadingProject) {
+    return (
+      <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => {}}>
+        <div className="p-8 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-4 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-4"></div>
+            <p>Loading project details...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+  
+  if (!projectData) {
+    return (
+      <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => {}}>
+        <div className="p-8">
+          <div className="bg-red-50 border-2 border-red-200 p-6 rounded-lg">
+            <h2 className="text-xl font-bold text-red-800 mb-2">Project Not Found</h2>
+            <p className="text-red-600">Unable to load project details.</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+  
   const creatorName =
-    selectedProject.data?.cmo_name ||
-    selectedProject.data?.writer_name ||
-    selectedProject.cmo_name ||
-    selectedProject.writer_name ||
+    projectData.data?.cmo_name ||
+    projectData.data?.writer_name ||
+    projectData.cmo_name ||
+    projectData.writer_name ||
     'Unknown Creator';
 
   return (
@@ -256,14 +348,17 @@ if (selectedProject && viewMode === 'HISTORY') {
         </div>
 
         <h1 className="text-3xl font-black uppercase">
-          {selectedProject.title}
+          {projectData.title} - Approved
         </h1>
+        <p className="text-slate-600">
+          Approved on {selectedHistory?.timestamp ? new Date(selectedHistory.timestamp).toLocaleDateString() : 'Unknown date'}
+        </p>
 
         {/* SCRIPT CONTENT */}
         <div className="border-2 border-black p-4 bg-slate-100">
           <h3 className="font-black uppercase mb-2">Script Content</h3>
           <pre className="whitespace-pre-wrap text-sm">
-            {selectedProject.data?.script_content || 'No script'}
+            {projectData.data?.script_content || 'No script'}
           </pre>
         </div>
 
@@ -275,15 +370,16 @@ if (selectedProject && viewMode === 'HISTORY') {
           </div>
         )}
 
-        {/* STATUS */}
+        {/* ACTION DETAILS */}
         <div className="border-2 border-black p-4 flex justify-between">
           <div>
             <p><strong>Creator:</strong> {creatorName}</p>
-            <p><strong>Reviewed By:</strong> {selectedHistory?.actor_name}</p>
+            <p><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
+            <p><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage] || selectedHistory?.stage}</p>
           </div>
           <div className="text-right">
             <p className="font-black text-green-600">
-              {selectedHistory?.action}
+              Approved
             </p>
             <p className="text-sm text-slate-500">
               {selectedHistory?.timestamp
@@ -420,7 +516,7 @@ if (activeView === 'calendar') {
                     <div className="font-black text-2xl text-white border-2 border-white rounded-full w-8 h-8 flex items-center justify-center">!</div>
                 </div>
                 <div className="text-7xl font-black mb-4 text-white">{rejectedCount}</div>
-                <div className="font-bold text-sm uppercase tracking-widest text-white opacity-80">Quality Control</div>
+                <div className="font-bold text-sm uppercase tracking-widest text-white opacity-80">Sent Back for Fixes</div>
             </div>
         </div>
 
@@ -450,6 +546,7 @@ if (activeView === 'calendar') {
   if (activeTab === 'HISTORY') {
     setViewMode('HISTORY');
     setSelectedProject(project);
+    // For history entries, we stored them by history entry ID
     setSelectedHistory(historyMapRef.current.get(project.id));
   } else {
     setViewMode('REVIEW');
@@ -457,7 +554,7 @@ if (activeView === 'calendar') {
   }
 }}
 
-                        className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 cursor-pointer hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 transition-all group relative overflow-hidden ${project.status === TaskStatus.REJECTED ? 'bg-red-50' : ''}`}
+                        className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 cursor-pointer hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 transition-all group relative overflow-hidden`}
                     >
                         <div className="flex justify-between items-start mb-6">
                             <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${
@@ -467,18 +564,14 @@ if (activeView === 'calendar') {
                             }`}>
                                 {project.channel}
                             </span>
-                            {(
-  project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
-  project.current_stage === WorkflowStage.FINAL_REVIEW_CEO
-) && (
-
-                                <span className="absolute top-0 right-0 bg-[#4ADE80] text-black text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black animate-pulse">
-                                    Action Required
+                            {activeTab === 'HISTORY' && (
+                                <span className="absolute top-0 right-0 bg-[#4ADE80] text-black text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black">
+                                    Approved
                                 </span>
                             )}
-                             {project.status === TaskStatus.REJECTED && (
-                                <span className="absolute top-0 right-0 bg-[#FF4F4F] text-white text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black">
-                                    Rework
+                            {activeTab === 'PENDING' && (
+                                <span className="absolute top-0 right-0 bg-[#4ADE80] text-black text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black animate-pulse">
+                                    Action Required
                                 </span>
                             )}
                         </div>
@@ -488,14 +581,39 @@ if (activeView === 'calendar') {
                         </h3>
                         
                         <div className="space-y-2 mt-8 border-t-2 border-slate-100 pt-4">
-                            <div className="flex justify-between text-sm">
-                                <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Current Stage</span>
-                                <span className="font-bold text-slate-900 uppercase text-xs">{STAGE_LABELS[project.current_stage]}</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Submitted</span>
-                                <span className="font-bold text-slate-900 uppercase text-xs">{format(new Date(project.created_at), 'MMM dd')}</span>
-                            </div>
+                            {activeTab === 'HISTORY' ? (
+                                <>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Action</span>
+                                        <span className={`font-bold text-slate-900 uppercase text-xs ${project.action === 'APPROVED' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {project.action}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Stage</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{STAGE_LABELS[project.current_stage] || project.current_stage}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Date</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{format(new Date(project.created_at), 'MMM dd, yyyy')}</span>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Current Stage</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{STAGE_LABELS[project.current_stage]}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Status</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{project.status}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Submitted</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{format(new Date(project.created_at), 'MMM dd')}</span>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                     ))}

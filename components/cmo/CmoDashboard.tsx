@@ -10,6 +10,7 @@ import CmoHistoryDetail from './CmoHistoryDetail';
 import CmoCalendar from './CmoCalendar';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
+import { db } from '../../services/supabaseDb';
 
 
 interface Props {
@@ -18,24 +19,31 @@ interface Props {
     historyProjects: Project[];
     onRefresh: () => void;
     onLogout: () => void;
+    // Add allProjects prop
+    allProjects?: Project[];
 }
 
 const STORAGE_KEY_PREFIX = 'cmo_dashboard_view_';
 
-const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout, allProjects }) => {
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const viewStorageKey = `activeView:${user.role}`;
-    const dashboardProjects = inboxProjects || [];
+    // Use allProjects for dashboard view, fallback to inboxProjects
+    const dashboardProjects = allProjects || inboxProjects || [];
     const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
     const historyMapRef = React.useRef<Map<string, any>>(new Map());
     const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
     const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
     const [isCreatingScript, setIsCreatingScript] = useState(false);
+    // State for counts
+    const [approvedCount, setApprovedCount] = useState(0);
+    const [rejectedCount, setRejectedCount] = useState(0);
 
     const handleInternalRefresh = async () => {
         await onRefresh(); // MUST refetch from Supabase
+        await loadCounts(); // Also reload counts
         setRefreshKey(prev => prev + 1); // force UI re-render
     };
 
@@ -83,6 +91,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     action,
                     comment,
                     actor_name,
+                    actor_id,
                     timestamp
                 `)
                 .eq('actor_id', user.id)
@@ -111,6 +120,39 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         loadHistory();
     }, [activeTab, user.id]);
 
+    // Load counts from the workflow_history table (count by user actions)
+    const loadCounts = async () => {
+        try {
+            // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
+            const { count: approvedCountResult, error: approvedErr } = await supabase
+                .from('workflow_history')
+                .select('*', { head: true, count: 'exact' })
+                .eq('actor_id', user.id)
+                .eq('action', 'APPROVED');
+
+            if (approvedErr) throw approvedErr;
+
+            // Rejected: count all rejections where actor_id = user.id and action = REJECTED
+            const { count: rejectedCountResult, error: rejectedErr } = await supabase
+                .from('workflow_history')
+                .select('*', { head: true, count: 'exact' })
+                .eq('actor_id', user.id)
+                .eq('action', 'REJECTED');
+
+            if (rejectedErr) throw rejectedErr;
+
+            console.log('CMO Dashboard - Approved by user:', approvedCountResult, 'Reworks by user:', rejectedCountResult);
+            setApprovedCount(approvedCountResult || 0);
+            setRejectedCount(rejectedCountResult || 0);
+        } catch (err) {
+            console.error('Failed to load counts from projects:', err);
+        }
+    };
+
+    useEffect(() => {
+        loadCounts();
+    }, [user.id]);
+
     // Use inboxProjects for dashboard view (role-based filtering)
     // Use historyProjects for MyWork view (participation-based filtering)
     // Use filtered history projects for History tab
@@ -122,11 +164,14 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     console.log('CMO Dashboard - inboxProjects:', inboxProjects);
 
     // Categorize Projects for CMO Dashboard
-    // Column 1: Pending Approval Projects (Projects assigned to CMO for review)
+    // Column 1: Pending Approval Projects (Projects in CMO review stages with WAITING_APPROVAL status)
     const pendingApprovalProjects = dashboardProjects.filter(
       p =>
-        p.assigned_to_role === Role.CMO &&
-        p.status === TaskStatus.WAITING_APPROVAL
+        p.status === TaskStatus.WAITING_APPROVAL &&
+        (
+          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
+          p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
+        )
     );
 
     // Column 2: Projects Pending at CEO (Projects that CMO has approved and sent to CEO)
@@ -323,7 +368,7 @@ if (selectedProject && viewMode === 'HISTORY') {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
             {/* Column 1: Pending Approval Projects */}
             <div className="space-y-4">
@@ -424,6 +469,18 @@ if (selectedProject && viewMode === 'HISTORY') {
                   </div>
                 ))}
                 {inProduction.length === 0 && <div className="p-8"></div>}
+              </div>
+            </div>
+
+            {/* Column 4: Rework Count */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-[#D946EF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="font-black uppercase tracking-wide">Reworks</h3>
+                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{rejectedCount}</span>
+              </div>
+              <div className="p-8 text-center bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="text-4xl font-black text-[#D946EF] mb-2">{rejectedCount}</div>
+                <div className="text-sm font-bold text-slate-500 uppercase">Sent Back for Fixes</div>
               </div>
             </div>
 

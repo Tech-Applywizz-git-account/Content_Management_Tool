@@ -225,7 +225,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             ref={scriptContentRef}
                             className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                         >
-                            {project.data.script_content || 'No script content available.'}
+                            {project.data?.script_content || 'No script content available.'}
                         </div>
                     </section>
 
