@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Lock, Eye, EyeOff, ArrowRight, CheckCircle } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { db } from '../services/supabaseDb';
 
 const SetPassword: React.FC = () => {
     const [searchParams] = useSearchParams();
@@ -22,19 +23,26 @@ const SetPassword: React.FC = () => {
 
     // Check for auth session on mount
     useEffect(() => {
+        console.log('SetPassword: Checking session...');
         const checkSession = async () => {
             const { data: { session }, error } = await supabase.auth.getSession();
+            console.log('SetPassword: Session check result:', { session, error });
 
             if (error || !session) {
                 console.error('No active session found:', error);
                 // Add retry delay before marking token as expired
                 setTimeout(async () => {
+                    console.log('SetPassword: Retrying session check...');
                     const retry = await supabase.auth.getSession();
+                    console.log('SetPassword: Retry result:', retry);
                     if (!retry.data.session) {
+                        console.log('SetPassword: Setting token error state');
                         setTokenError(true);
                         setError('Your invitation link has expired. Please request a new invitation from the administrator.');
                     }
                 }, 800);
+            } else {
+                console.log('SetPassword: Valid session found, but staying on page for password reset');
             }
         };
 
@@ -64,13 +72,24 @@ const SetPassword: React.FC = () => {
         
         // Fetch user and redirect by role
         const { data } = await supabase.auth.getUser();
-        const userRole = data.user?.user_metadata?.role;
+        if (data?.user) {
+          // Get the full user profile from the database to ensure we have the correct role
+          const profile = await db.users.getById(data.user.id);
+          const userRole =
+  profile?.role || data.user.user_metadata?.role;
 
-        if (userRole === 'ADMIN') navigate('/admin');
-        else if (userRole === 'CEO') navigate('/ceo');
-        else if (userRole === 'CMO') navigate('/cmo');
-        else if (userRole === 'WRITER') navigate('/writer');
-        else navigate('/');
+          if (userRole === 'ADMIN') navigate('/admin');
+          else if (userRole === 'CEO') navigate('/ceo');
+          else if (userRole === 'CMO') navigate('/cmo');
+          else if (userRole === 'WRITER') navigate('/writer');
+          else if (userRole === 'CINE') navigate('/cine');
+          else if (userRole === 'EDITOR') navigate('/editor');
+          else if (userRole === 'DESIGNER') navigate('/designer');
+          else if (userRole === 'OPS') navigate('/ops');
+          else navigate('/');
+        } else {
+          navigate('/');
+        }
 
     } catch (err: any) {
         const message = err.message || 'Failed to set password';

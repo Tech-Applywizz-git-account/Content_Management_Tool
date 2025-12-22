@@ -130,20 +130,45 @@ function App() {
 
   // Session restoration on mount - Simplified with guaranteed state update
   useEffect(() => {
+    console.log('App: Initializing auth...');
     let mounted = true;
     let fallbackTimer: ReturnType<typeof setTimeout>;
 
     const initializeAuth = async () => {
-      if (!mounted) return;
+      console.log('App: initializeAuth called');
+      if (!mounted) {
+        console.log('App: Component unmounted, skipping initialization');
+        return;
+      }
 
       // IMPORTANT: Skip session restoration on password reset/set-password pages
       // These pages use recovery tokens, not regular sessions
       // Check both pathname and hash-based recovery URLs
       const isRecoveryFlow = location.pathname === '/set-password' ||
-        (location.hash && location.hash.includes('type=recovery'));
+        (location.hash && location.hash.includes('type=recovery')) ||
+        (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
+      
+      console.log('App: Checking recovery flow in initializeAuth', { pathname: location.pathname, hash: location.hash, href: window.location.href, isRecoveryFlow });
 
       if (isRecoveryFlow) {
-        console.log('On password reset page, skipping session restoration to preserve recovery token');
+        console.log('On password reset page, checking for recovery session');
+        // During recovery flow, Supabase creates a valid session but user state is not populated
+        // We need to populate user state from the recovery session to avoid falling back to Auth
+        try {
+          const { data } = await supabase.auth.getUser();
+          if (data?.user) {
+            console.log('Recovery session found, populating user state', data.user);
+            const profile = await db.users.getById(data.user.id);
+            if (profile) {
+              setUser(profile);
+              db.setCurrentUser(profile);
+              console.log('User state populated from recovery session', profile);
+            }
+          }
+        } catch (error) {
+          console.error('Error populating user state from recovery session:', error);
+        }
+        
         if (mounted) {
           setLoading(false);
           setIsRestoringSession(false);
@@ -403,14 +428,26 @@ function App() {
   // Handle Set Password Route (both path and hash-based)
   // Supabase password reset links use hash fragments like /#access_token=...&type=recovery
   const isPasswordResetFlow = location.pathname === '/set-password' ||
-    (location.hash && location.hash.includes('type=recovery'));
+    (location.hash && location.hash.includes('type=recovery')) ||
+    // Also check if we're in a recovery flow based on URL parameters
+    (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
+  
+  console.log('App: Checking if on password reset flow', { 
+    pathname: location.pathname, 
+    hash: location.hash, 
+    href: window.location.href,
+    isPasswordResetFlow 
+  });
 
   if (isPasswordResetFlow) {
+    console.log('App: Rendering SetPassword component');
     return <SetPassword />;
   }
 
   // Show login if no user
+  console.log('App: Checking if user exists', { user });
   if (!user) {
+    console.log('App: Rendering Auth component');
     return <Auth onLogin={handleLogin} isRestoringSession={isRestoringSession} />;
   }
 
