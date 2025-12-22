@@ -14,7 +14,6 @@ const SetPassword: React.FC = () => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [success, setSuccess] = useState(false); // NEW: Show success popup
     const [tokenError, setTokenError] = useState(false);
 
     // Get email from URL params (sent in invitation email)
@@ -28,8 +27,14 @@ const SetPassword: React.FC = () => {
 
             if (error || !session) {
                 console.error('No active session found:', error);
-                setTokenError(true);
-                setError('Your invitation link has expired. Please request a new invitation from the administrator.');
+                // Add retry delay before marking token as expired
+                setTimeout(async () => {
+                    const retry = await supabase.auth.getSession();
+                    if (!retry.data.session) {
+                        setTokenError(true);
+                        setError('Your invitation link has expired. Please request a new invitation from the administrator.');
+                    }
+                }, 800);
             }
         };
 
@@ -56,7 +61,16 @@ const SetPassword: React.FC = () => {
         await supabase.auth.updateUser({ password });
 
         toast.success('Password set successfully');
-        navigate('/', { replace: true }); // ✅ THIS IS THE KEY
+        
+        // Fetch user and redirect by role
+        const { data } = await supabase.auth.getUser();
+        const userRole = data.user?.user_metadata?.role;
+
+        if (userRole === 'ADMIN') navigate('/admin');
+        else if (userRole === 'CEO') navigate('/ceo');
+        else if (userRole === 'CMO') navigate('/cmo');
+        else if (userRole === 'WRITER') navigate('/writer');
+        else navigate('/');
 
     } catch (err: any) {
         const message = err.message || 'Failed to set password';
@@ -71,22 +85,6 @@ const SetPassword: React.FC = () => {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-2 sm:p-4">
             <div className="bg-white border-2 border-black p-4 sm:p-8 md:p-12 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] w-full max-w-md relative my-auto max-h-[95vh] overflow-y-auto">
-
-                {/* Success Popup Overlay */}
-                {success && (
-                    <div className="absolute inset-0 bg-white z-50 flex flex-col items-center justify-center animate-fade-in">
-                        <div className="w-24 h-24 bg-green-500 border-4 border-black rounded-full flex items-center justify-center mb-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-bounce-in">
-                            <CheckCircle className="w-16 h-16 text-white" strokeWidth={3} />
-                        </div>
-                        <h2 className="text-2xl sm:text-3xl font-black uppercase mb-3">Success!</h2>
-                        <p className="text-slate-600 font-bold text-center mb-2">
-                            Your password has been set successfully
-                        </p>
-                        <p className="text-sm text-slate-500 text-center">
-                            Redirecting to dashboard...
-                        </p>
-                    </div>
-                )}
 
                 {/* Header */}
                 <div className="text-center mb-8">
@@ -176,7 +174,7 @@ const SetPassword: React.FC = () => {
                         disabled={loading}
                         className={`w-full bg-black hover:bg-slate-800 text-white p-4 border-2 border-black font-black uppercase flex items-center justify-center space-x-2 transition-all shadow-[6px_6px_0px_0px_rgba(100,100,100,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(100,100,100,1)] text-lg tracking-wide ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        <span>{loading ? 'Setting Password...' : 'Confirm & Login'}</span>
+                        <span>{loading ? 'Setting Password...' : 'Set Password'}</span>
                         {!loading && <ArrowRight className="w-5 h-5" />}
                     </button>
                 </form>

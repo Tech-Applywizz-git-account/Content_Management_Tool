@@ -321,7 +321,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="ml-4 flex-1">
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
-                                        {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CMO Review' : 'Ready for Publishing'}
+                                        {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' : 'Ready for Publishing'}
                                     </span>
                                 </div>
                                 <Check className="w-8 h-8 ml-auto text-black" />

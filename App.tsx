@@ -64,6 +64,9 @@ function App() {
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminLogs, setAdminLogs] = useState<any[]>([]);
 
+  // CMO State - State for CMO dashboard all projects
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
     try {
@@ -257,6 +260,23 @@ function App() {
     };
   }, [user]);
 
+  // Effect to fetch all projects for CMO dashboard
+  useEffect(() => {
+    // Only fetch for CMO users
+    if (user?.role === Role.CMO) {
+      const fetchAllProjects = async () => {
+        try {
+          const projects = await db.projects.getAll();
+          setAllProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch all projects for CMO:', error);
+        }
+      };
+      
+      fetchAllProjects();
+    }
+  }, [user]);
+
   const refreshData = async (u: User = user!) => {
     if (!u) return;
 
@@ -395,7 +415,7 @@ function App() {
   }
 
   // --- ADMIN FLOW ---
-  if (user.role === Role.ADMIN) {
+  if (user?.role === Role.ADMIN) {
     return (
       <AdminLayout
         user={user}
@@ -422,7 +442,7 @@ function App() {
   }
 
   // --- CEO FLOW ---
-  if (user.role === Role.CEO) {
+  if (user?.role === Role.CEO) {
     return (
       <CeoDashboard
         user={user}
@@ -435,20 +455,32 @@ function App() {
   }
 
   // --- CMO FLOW ---
-  if (user.role === Role.CMO) {
+  if (user?.role === Role.CMO) {
     return (
       <CmoDashboard
         user={user}
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
-        onRefresh={() => refreshData(user)}
+        allProjects={allProjects}
+        onRefresh={async () => {
+          if (user) {
+            await refreshData(user);
+            // Also refresh all projects
+            try {
+              const allProj = await db.projects.getAll();
+              setAllProjects(allProj);
+            } catch (error) {
+              console.error('Failed to refresh all projects for CMO:', error);
+            }
+          }
+        }}
         onLogout={handleLogout}
       />
     );
   }
 
   // --- WRITER FLOW ---
-  if (user.role === Role.WRITER) {
+  if (user?.role === Role.WRITER) {
     return (
       <WriterDashboard
         user={user}
@@ -461,7 +493,7 @@ function App() {
   }
 
   // --- CINEMATOGRAPHER FLOW ---
-  if (user.role === Role.CINE) {
+  if (user?.role === Role.CINE) {
     return (
       <CineDashboard
         user={user}
@@ -474,7 +506,7 @@ function App() {
   }
 
   // --- EDITOR FLOW ---
-  if (user.role === Role.EDITOR) {
+  if (user?.role === Role.EDITOR) {
     return (
       <EditorDashboard
         user={user}
@@ -487,7 +519,7 @@ function App() {
   }
 
   // --- DESIGNER FLOW ---
-  if (user.role === Role.DESIGNER) {
+  if (user?.role === Role.DESIGNER) {
     return (
       <DesignerDashboard
         user={user}
@@ -500,7 +532,7 @@ function App() {
   }
 
   // --- OPS FLOW ---
-  if (user.role === Role.OPS) {
+  if (user?.role === Role.OPS) {
     return (
       <OpsDashboard
         user={user}
@@ -513,7 +545,7 @@ function App() {
   }
 
   // --- OBSERVER FLOW ---
-  if (user.role === Role.OBSERVER) {
+  if (user?.role === Role.OBSERVER) {
     return <ObserverDashboard user={user} onLogout={handleLogout} />;
   }
 

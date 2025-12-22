@@ -7,6 +7,7 @@ interface HistoryEntry {
   action: 'APPROVED' | 'REJECTED';
   timestamp: string;
   actor_name: string;
+  actor_id: string;
   comment?: string;
 }
 
@@ -25,7 +26,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
     'Unknown Writer';
 
   // Check if current user is the actor who made the decision
-  const isActor = currentUser?.id === project.cmo_id;
+  const isActor = currentUser?.id === history.actor_id;
 
   return (
     <div className="p-8 space-y-8 animate-fade-in">
