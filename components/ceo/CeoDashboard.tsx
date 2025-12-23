@@ -225,7 +225,7 @@ React.useEffect(() => {
   // Pending = Projects in CEO review stages with WAITING_APPROVAL status
   // History = Projects CEO has previously acted on (in history) OR current projects not assigned to them but relevant
   const pendingApprovals = (inboxProjects || []).filter(p =>
-  p.status === TaskStatus.WAITING_APPROVAL &&
+  (p.status === TaskStatus.WAITING_APPROVAL || p.status === TaskStatus.REJECTED) &&
   (
     p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
     p.current_stage === WorkflowStage.FINAL_REVIEW_CEO
@@ -367,6 +367,14 @@ if (selectedProject && viewMode === 'HISTORY') {
           <div className="border-2 border-black p-4 bg-yellow-50">
             <h3 className="font-black uppercase mb-2">CEO Comment</h3>
             <p>{selectedHistory.comment}</p>
+          </div>
+        )}
+        
+        {/* REJECTION REASON */}
+        {selectedHistory?.action === 'REJECTED' && projectData?.rejected_reason && (
+          <div className="border-2 border-black p-4 bg-red-50">
+            <h3 className="font-black uppercase mb-2 text-red-800">Rejection Reason</h3>
+            <p className="text-red-700">{projectData.rejected_reason}</p>
           </div>
         )}
 
@@ -606,7 +614,7 @@ if (activeView === 'calendar') {
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Status</span>
-                                        <span className="font-bold text-slate-900 uppercase text-xs">{project.status}</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">{project.history && project.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'Rework' : project.status}</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Submitted</span>

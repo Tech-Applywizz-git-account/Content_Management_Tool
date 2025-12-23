@@ -52,51 +52,25 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
 
     useEffect(() => {
-        const loadCounts = async () => {
-            try {
-                const { data: projects, error } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .in('current_stage', [WorkflowStage.THUMBNAIL_DESIGN, WorkflowStage.CREATIVE_DESIGN]);
+        // Use the inboxProjects passed from App.tsx instead of making a separate query
+        // Filter to only show projects at THUMBNAIL_DESIGN or CREATIVE_DESIGN stages
+        const designerProjects = (inboxProjects || []).filter(p => 
+            p.current_stage === WorkflowStage.THUMBNAIL_DESIGN || 
+            p.current_stage === WorkflowStage.CREATIVE_DESIGN
+        );
+        const active = designerProjects.filter(p => p.status !== TaskStatus.DONE);
 
-                if (error) throw error;
+        setActiveProjectsCount(active.length);
+        setNeedsDeliveryCount(active.filter(p => !p.delivery_date).length);
 
-                const list = projects || [];
-                const active = list.filter((p: any) => p.status !== TaskStatus.DONE);
+        const inProgress = active.filter(p => {
+            if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
+            return p.delivery_date && !p.thumbnail_link;
+        }).length;
+        setInProgressCount(inProgress);
 
-                setActiveProjectsCount(active.length);
-
-                setNeedsDeliveryCount(active.filter((p: any) => !p.delivery_date).length);
-
-                const inProgress = active.filter((p: any) => {
-                    if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
-                    return p.delivery_date && !p.thumbnail_link;
-                }).length;
-                setInProgressCount(inProgress);
-
-                setDeliveredCount(active.filter((p: any) => !!p.creative_link || !!p.thumbnail_link).length);
-            } catch (err) {
-                console.error('Failed to load designer counts:', err);
-            }
-        };
-
-        loadCounts();
-
-        const subscription = supabase
-            .channel('public:projects:designer_counts')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
-                loadCounts();
-            })
-            .subscribe();
-
-        return () => {
-            try {
-                supabase.removeChannel(subscription);
-            } catch (e) {
-                // ignore
-            }
-        };
-    }, [inboxProjects, historyProjects]);
+        setDeliveredCount(active.filter(p => !!p.creative_link || !!p.thumbnail_link).length);
+    }, [inboxProjects]);
 
     return (
         <Layout

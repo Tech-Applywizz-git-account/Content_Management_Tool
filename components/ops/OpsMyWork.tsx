@@ -54,7 +54,11 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                                 >
                                     {project.channel}
                                 </span>
-                                {project.data?.live_url ? (
+                                {project.status === 'REJECTED' ? (
+                                    <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
+                                        Rework
+                                    </span>
+                                ) : project.data?.live_url ? (
                                     <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
                                         ✓ Posted
                                     </span>
@@ -101,20 +105,33 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
 
                                 {/* Status Info */}
                                 <div className="space-y-2 text-sm">
-                                    {project.post_scheduled_date && (
-                                        <div className="flex items-center gap-2 text-slate-700">
-                                            <Calendar size={16} />
-                                            <span>Scheduled: {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy')}</span>
+                                    {project.status === 'REJECTED' ? (
+                                        <div className="bg-red-50 border-2 border-red-400 p-2">
+                                            <p className="text-[10px] font-bold text-red-800 uppercase">Rework Requested</p>
+                                            {project.history && project.history.length > 0 && (
+                                                <p className="text-[10px] text-red-600 mt-1">
+                                                    {project.history[0].comment || 'No comment provided'}
+                                                </p>
+                                            )}
                                         </div>
-                                    )}
-                                    {project.data?.live_url && (
-                                        <div className="flex items-center gap-2 text-green-700">
-                                            <LinkIcon size={16} />
-                                            <span className="font-bold">Posted</span>
-                                        </div>
-                                    )}
-                                    {!project.post_scheduled_date && !project.data?.live_url && (
-                                        <div className="text-amber-600 font-bold">⏳ Needs Scheduling</div>
+                                    ) : (
+                                        <>
+                                            {project.post_scheduled_date && (
+                                                <div className="flex items-center gap-2 text-slate-700">
+                                                    <Calendar size={16} />
+                                                    <span>Scheduled: {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy')}</span>
+                                                </div>
+                                            )}
+                                            {project.data?.live_url && (
+                                                <div className="flex items-center gap-2 text-green-700">
+                                                    <LinkIcon size={16} />
+                                                    <span className="font-bold">Posted</span>
+                                                </div>
+                                            )}
+                                            {!project.post_scheduled_date && !project.data?.live_url && (
+                                                <div className="text-amber-600 font-bold">⏳ Needs Scheduling</div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>

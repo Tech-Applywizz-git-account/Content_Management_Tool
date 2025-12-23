@@ -97,7 +97,7 @@ export interface HistoryEvent {
   stage: WorkflowStage;
   actor_id: string;
   actor_name: string;
-  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED';
+  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED';
   comment?: string;
   timestamp: string;
 }

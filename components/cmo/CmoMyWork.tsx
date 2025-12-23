@@ -54,7 +54,7 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                   {task.channel}
                 </span>
                 <span className="text-xs font-black uppercase bg-blue-100 border-2 px-2 py-1">
-                  Pending Approval
+                  {task.history && task.history.some(h => h.action === 'REJECTED') ? 'Rework' : 'Pending Approval'}
                 </span>
               </div>
 

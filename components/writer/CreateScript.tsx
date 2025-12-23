@@ -18,6 +18,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [reviewComment, setReviewComment] = useState<any>(null);
     const [showConfirmation, setShowConfirmation] = useState(false);
+    const [previousScript, setPreviousScript] = useState<string | null>(null);
     const currentUser = db.getCurrentUser();
       
     // Ensure we have a current user
@@ -46,12 +47,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         };
     }, [formData, newProjectDetails, project]);
 
-    // Fetch reviewer comments for rejected projects
+    // Fetch reviewer comments and previous script for rejected projects
     useEffect(() => {
-        const fetchReviewComment = async () => {
+        const fetchReviewData = async () => {
             if (project?.id && project.status === 'REJECTED') {
                 try {
-                    const { data, error } = await supabase
+                    // Fetch reviewer comment
+                    const { data: commentData, error: commentError } = await supabase
                         .from('workflow_history')
                         .select('actor_name, comment, timestamp')
                         .eq('project_id', project.id)
@@ -59,18 +61,33 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         .order('timestamp', { ascending: false })
                         .limit(1);
 
-                    if (error) {
-                        console.error('Error fetching review comment:', error);
-                    } else if (data && data.length > 0) {
-                        setReviewComment(data[0]);
+                    if (commentError) {
+                        console.error('Error fetching review comment:', commentError);
+                    } else if (commentData && commentData.length > 0) {
+                        setReviewComment(commentData[0]);
+                    }
+                    
+                    // Fetch previous script version
+                    const { data: scriptData, error: scriptError } = await supabase
+                        .from('workflow_history')
+                        .select('script_content')
+                        .eq('project_id', project.id)
+                        .eq('action', 'REJECTED')
+                        .order('timestamp', { ascending: false })
+                        .limit(1);
+
+                    if (scriptError) {
+                        console.error('Error fetching previous script:', scriptError);
+                    } else if (scriptData && scriptData.length > 0 && scriptData[0].script_content) {
+                        setPreviousScript(scriptData[0].script_content);
                     }
                 } catch (err) {
-                    console.error('Error fetching review comment:', err);
+                    console.error('Error fetching review data:', err);
                 }
             }
         };
 
-        fetchReviewComment();
+        fetchReviewData();
     }, [project]);
 
     const handleSaveDraft = async () => {
@@ -375,6 +392,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
                     {/* Right Col: Editor */}
                     <div className="lg:col-span-2 space-y-6">
+                        {/* Previous Script (for rework projects) */}
+                        {project?.status === 'REJECTED' && previousScript && (
+                            <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                                <h3 className="font-black uppercase text-lg text-slate-900 mb-4">Previous Script Version</h3>
+                                <div className="font-serif text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                    {previousScript}
+                                </div>
+                                <p className="text-sm text-slate-500 mt-4 italic">This is the previous version of your script that was sent back for rework. Compare it with your changes above.</p>
+                            </div>
+                        )}
+                        
                         <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] min-h-[700px] flex flex-col">
                             <div className="border-b-2 border-black pb-4 mb-6 flex items-center justify-between">
                                 <div className="flex items-center space-x-2">

@@ -545,7 +545,10 @@ export const projects = {
   async getForRole(role: Role) {
     console.log(`📥 Fetching projects for role: ${role}`);
 
-    let query = supabase.from('projects').select('*');
+    let query = supabase.from('projects').select(`
+      *,
+      workflow_history(*)
+    `);
 
     // ✅ FIX: Filter by stage only, not assigned_to_role
     switch (role) {
@@ -600,7 +603,13 @@ export const projects = {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
 
-    return data as Project[];
+    // Process the data to ensure history is properly formatted
+    const processedData = data.map((project: any) => ({
+      ...project,
+      history: project.workflow_history || []
+    }));
+
+    return processedData as Project[];
   },
 
   // 🟢 MY WORK (UNION-based)
@@ -681,7 +690,7 @@ export const projects = {
       });
 
       // Convert to array and sort by latest activity
-      const result = Array.from(projectMap.values())
+      let result = Array.from(projectMap.values())
         .sort((a, b) => {
           const dateA = a.latest_activity ? new Date(a.latest_activity).getTime() : 0;
           const dateB = b.latest_activity ? new Date(b.latest_activity).getTime() : 0;
@@ -689,6 +698,33 @@ export const projects = {
         })
         // Remove the temporary latest_activity property
         .map(({ latest_activity, ...project }) => project);
+
+      // Fetch workflow history for each project to include in the response
+      const projectIds = result.map(p => p.id);
+      if (projectIds.length > 0) {
+        const { data: historyData, error: historyError } = await supabase
+          .from('workflow_history')
+          .select('*')
+          .in('project_id', projectIds)
+          .order('timestamp', { ascending: false });
+
+        if (!historyError && historyData) {
+          // Group history by project_id
+          const historyMap = new Map<string, any[]>();
+          historyData.forEach(entry => {
+            if (!historyMap.has(entry.project_id)) {
+              historyMap.set(entry.project_id, []);
+            }
+            historyMap.get(entry.project_id)!.push(entry);
+          });
+
+          // Attach history to each project
+          result = result.map(project => ({
+            ...project,
+            history: historyMap.get(project.id) || []
+          }));
+        }
+      }
 
       console.log(`✅ MY WORK fetched ${result.length} projects for ${user.role}`);
       return result as Project[];
@@ -808,7 +844,8 @@ export const workflow = {
         userId: string,
         userName: string,
         action: string,
-        comment?: string
+        comment?: string,
+        scriptContent?: string
     ) {
         // Map frontend action values to database enum values
         const actionMap: Record<string, string> = {
@@ -816,11 +853,14 @@ export const workflow = {
             'SUBMITTED': 'SUBMITTED',
             'APPROVED': 'APPROVED',
             'REJECTED': 'REJECTED',
-            'PUBLISHED': 'PUBLISHED'
+            'PUBLISHED': 'PUBLISHED',
+            'REWORK_VIDEO_SUBMITTED': 'REWORK_VIDEO_SUBMITTED',
+            'REWORK_EDIT_SUBMITTED': 'REWORK_EDIT_SUBMITTED',
+            'REWORK_DESIGN_SUBMITTED': 'REWORK_DESIGN_SUBMITTED'
         };
         
-        // Default to 'SUBMIT' if action not found in map
-        const dbAction = actionMap[action] || 'SUBMIT';
+        // Default to 'SUBMITTED' if action not found in map
+        const dbAction = actionMap[action] || 'SUBMITTED';
         
         // Log the data we're about to insert for debugging
         console.log('Recording workflow history with data:', {
@@ -829,7 +869,8 @@ export const workflow = {
             actor_id: userId,
             actor_name: userName,
             action: dbAction,
-            comment: comment || ''
+            comment: comment || '',
+            script_content: scriptContent || ''
         });
         
         const { error } = await supabase
@@ -840,7 +881,8 @@ export const workflow = {
                 actor_id: userId,
                 actor_name: userName,
                 action: dbAction,
-                comment: comment || ''
+                comment: comment || '',
+                script_content: scriptContent || null
             });
 
         if (error) {
@@ -851,7 +893,8 @@ export const workflow = {
                 actor_id: userId,
                 actor_name: userName,
                 action: dbAction,
-                comment: comment || ''
+                comment: comment || '',
+                script_content: scriptContent || null
             });
             // Log more detailed error information
             console.error('Full error details:', JSON.stringify(error, null, 2));
@@ -1021,10 +1064,10 @@ export const workflow = {
         returnToRole: Role,
         comment: string
     ) {
-        // First get the current project to know its current stage
+        // First get the current project to know its current stage and script content
         const { data: currentProject, error: fetchError } = await supabase
             .from('projects')
-            .select('current_stage')
+            .select('current_stage, data')
             .eq('id', projectId)
             .single();
 
@@ -1057,7 +1100,14 @@ export const workflow = {
         // Use the updated data directly since we used .select()
         const data = updateData[0];
 
-        // Add workflow history
+        // Extract script content and asset links if available
+        const scriptContent = currentProject?.data?.script_content || null;
+        const videoLink = currentProject?.video_link || null;
+        const editedVideoLink = currentProject?.edited_video_link || null;
+        const thumbnailLink = currentProject?.thumbnail_link || null;
+        const creativeLink = currentProject?.creative_link || null;
+
+        // Add workflow history with script content and asset links
         const { error: historyError } = await supabase
             .from('workflow_history')
             .insert({
@@ -1066,7 +1116,12 @@ export const workflow = {
                 actor_id: userId,
                 actor_name: userName,
                 action: 'REJECTED',
-                comment: comment || `Rejected by ${userRole}`
+                comment: comment || `Rejected by ${userRole}`,
+                script_content: scriptContent,
+                video_link: videoLink,
+                edited_video_link: editedVideoLink,
+                thumbnail_link: thumbnailLink,
+                creative_link: creativeLink
             });
 
         if (historyError) {
@@ -1797,21 +1852,50 @@ export const db = {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
 
-        const returnStageInfo = helpers.getNextStage(
-            targetStage,
-            project.content_type,
-            'REJECTED'
-        );
+        // Map target stage to appropriate role
+        const stageToRoleMap: Record<WorkflowStage, Role> = {
+            [WorkflowStage.SCRIPT]: Role.WRITER,
+            [WorkflowStage.SCRIPT_REVIEW_L1]: Role.CMO,
+            [WorkflowStage.SCRIPT_REVIEW_L2]: Role.CEO,
+            [WorkflowStage.CINEMATOGRAPHY]: Role.CINE,
+            [WorkflowStage.VIDEO_EDITING]: Role.EDITOR,
+            [WorkflowStage.THUMBNAIL_DESIGN]: Role.DESIGNER,
+            [WorkflowStage.CREATIVE_DESIGN]: Role.DESIGNER,
+            [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
+            [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
+            [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
+            [WorkflowStage.POSTED]: Role.OPS
+        };
+
+        // Special case: When CEO rejects from FINAL_REVIEW_CEO, send back to CMO instead of CEO
+        let targetRole = Role.WRITER;
+        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && targetStage !== WorkflowStage.SCRIPT) {
+            targetRole = Role.CMO;
+        } else {
+            targetRole = stageToRoleMap[targetStage] || Role.WRITER;
+        }
 
         const result = await workflow.reject(
             projectId,
             currentUserCache.id,
             currentUserCache.full_name,
             currentUserCache.role,
-            returnStageInfo.stage,
-            returnStageInfo.role,
+            targetStage,
+            targetRole,
             comment
         );
+
+        // Also store the rejection reason in the rejected_reason field
+        const { error: updateError } = await supabase
+            .from('projects')
+            .update({
+                rejected_reason: comment
+            })
+            .eq('id', projectId);
+
+        if (updateError) {
+            console.error('Failed to update rejected_reason field:', updateError);
+        }
 
         // Refresh the project data to ensure UI is up to date
         const updatedProject = await projects.getById(projectId);

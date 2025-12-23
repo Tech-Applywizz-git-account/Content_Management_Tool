@@ -303,24 +303,37 @@ function App() {
   }, [user]);
 
   const refreshData = async (u: User = user!) => {
-    if (!u) return;
+    console.log('🔄 App.tsx: refreshData called for user:', u?.full_name, 'role:', u?.role);
+    if (!u) {
+      console.log('⚠️ App.tsx: No user provided to refreshData');
+      return;
+    }
 
     try {
       if (u.role === Role.ADMIN) {
+        console.log('🔄 App.tsx: Refreshing admin data');
         const users = await db.getUsers();
+        console.log('✅ App.tsx: Users fetched:', users.length);
         setAdminUsers([...users]);
         const logs = await db.getSystemLogs();
+        console.log('✅ App.tsx: Logs fetched:', logs.length);
         setAdminLogs([...logs]);
       } else {
         // For all role-based dashboards, fetch both inbox and MyWork data
+        console.log('🔄 App.tsx: Refreshing role-based dashboard data for:', u.role);
         const inboxProjects = await db.getProjects(u);
+        console.log('✅ App.tsx: Inbox projects fetched:', inboxProjects.length);
         const myWorkProjects = await db.getMyWork(u);
+        console.log('✅ App.tsx: MyWork projects fetched:', myWorkProjects.length);
         
         // Set both datasets - dashboards will use appropriate one based on view
+        console.log('🔄 App.tsx: Updating projects state');
         setProjects({ inbox: inboxProjects, history: myWorkProjects });
+        console.log('✅ App.tsx: Projects state updated');
       }
+      console.log('✅ App.tsx: refreshData completed successfully');
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      console.error('❌ App.tsx: Error refreshing data:', error);
     }
   };
 
@@ -500,16 +513,26 @@ function App() {
         historyProjects={projects.history}
         allProjects={allProjects}
         onRefresh={async () => {
+          console.log('🔄 App.tsx: CMO Dashboard refresh triggered');
           if (user) {
+            console.log('🔄 App.tsx: Calling refreshData for user:', user.full_name);
             await refreshData(user);
+            console.log('✅ App.tsx: refreshData completed');
+            
             // Also refresh all projects
             try {
+              console.log('🔄 App.tsx: Refreshing all projects');
               const allProj = await db.projects.getAll();
+              console.log('✅ App.tsx: All projects fetched:', allProj.length);
               setAllProjects(allProj);
+              console.log('✅ App.tsx: All projects state updated');
             } catch (error) {
-              console.error('Failed to refresh all projects for CMO:', error);
+              console.error('❌ App.tsx: Failed to refresh all projects for CMO:', error);
             }
+          } else {
+            console.log('⚠️ App.tsx: No user found during refresh');
           }
+          console.log('✅ App.tsx: CMO Dashboard refresh completed');
         }}
         onLogout={handleLogout}
       />

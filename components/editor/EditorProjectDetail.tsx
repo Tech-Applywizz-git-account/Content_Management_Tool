@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,15 +11,34 @@ interface Props {
     onBack: () => void;
     onUpdate: () => void;
 }
+const isReworkProject = (project: Project) =>
+  project.history?.some(h =>
+    h.action === 'REJECTED' ||
+    h.action?.startsWith('REWORK_')
+  );
 
 const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
-    const [deliveryDate, setDeliveryDate] = useState(project.delivery_date || '');
+    // For rework projects, keep existing data but track new inputs
+    const processedProject = {...project};
+    
+    const [deliveryDate, setDeliveryDate] = useState(processedProject.delivery_date || '');
     
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
-    const [editedVideoLink, setEditedVideoLink] = useState(project.edited_video_link || '');
+    const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
+    const isRework = isReworkProject(project);
+const hasEditedVideo = !!project.edited_video_link;
+
+
+    // Reset form fields when project changes
+    useEffect(() => {
+        // For rework projects, keep existing data
+        const processedProject = {...project};
+        setDeliveryDate(processedProject.delivery_date || '');
+        setEditedVideoLink(processedProject.edited_video_link || '');
+    }, [project]);
 
     const handleSetDeliveryDate = async () => {
         if (!deliveryDate) {
@@ -79,27 +98,41 @@ const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => 
                 return;
             }
             
-            // Record the action in workflow history
+            // Determine if this is a rework submission based on project status
+        
+            
+            // Record the action in workflow history with appropriate action type
+            const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
+            const comment = isRework 
+                ? `Rework edited video uploaded: ${editedVideoLink}` 
+                : `Edited video uploaded: ${editedVideoLink}`;
+            
             await db.workflow.recordAction(
                 project.id,
                 WorkflowStage.THUMBNAIL_DESIGN, // stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
-                'SUBMITTED', // Use allowed action value
-                `Edited video uploaded: ${editedVideoLink}`
+                actionType, // Use appropriate action value
+                comment
             );
             
             // Update the project with the edited video link and move to THUMBNAIL_DESIGN stage
+            // For rework, we reset the status to IN_PROGRESS
             await db.projects.update(project.id, { 
                 edited_video_link: editedVideoLink,
                 current_stage: WorkflowStage.THUMBNAIL_DESIGN,
-                assigned_to_role: Role.DESIGNER
+                assigned_to_role: Role.DESIGNER,
+                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
             });
-            console.log(`Edited video uploaded: ${editedVideoLink}`);
+            console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
             
             // Show popup notification using STAGE_LABELS for the next stage
             const nextStage = STAGE_LABELS[WorkflowStage.THUMBNAIL_DESIGN] || 'Thumbnail Design';
-            setPopupMessage(`Edited video uploaded successfully for ${project.title}. Waiting for ${nextStage}.`);
+            const popupMessageText = isRework
+                ? `Rework edited video uploaded successfully for ${project.title}. Waiting for ${nextStage}.`
+                : `Edited video uploaded successfully for ${project.title}. Waiting for ${nextStage}.`;
+            
+            setPopupMessage(popupMessageText);
             setStageName(nextStage);
             setShowPopup(true);
         } catch (error) {
@@ -139,6 +172,107 @@ const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => 
                     </div>
                 </div>
             </div>
+
+           {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
+{isRework && project.assigned_to_role === Role.EDITOR && project.history?.length > 0 && (
+  <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+    
+    {/* Header */}
+    <div className="flex items-center space-x-2 mb-4">
+      <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+        <span className="text-white font-bold text-sm">!</span>
+      </div>
+      <h2 className="text-xl font-black uppercase text-red-800">
+        Rework Required
+      </h2>
+    </div>
+
+    <div className="space-y-4">
+
+      {/* Reviewer Comment */}
+      <div className="p-4 bg-white border-l-4 border-red-500">
+        <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+        <p className="text-red-700">
+          {project.history[0]?.comment ||
+            'No specific reason provided. Please review your submission and make necessary changes.'}
+        </p>
+        <p className="text-sm text-red-600 mt-2">
+          Rejected by {project.history[0]?.actor_name || 'Reviewer'}
+        </p>
+      </div>
+
+      {/* Existing Project Data (READ-ONLY) */}
+      <div className="bg-white border-2 border-gray-300 p-4">
+        <h4 className="font-bold text-gray-800 mb-3">
+          Existing Project Data
+        </h4>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {(project.delivery_date || isRework) && (
+
+            <div>
+              <span className="text-sm font-bold text-gray-600 block mb-1">
+                Current Delivery Date
+              </span>
+              <p className="font-medium">{project.delivery_date}</p>
+            </div>
+          )}
+
+          {project.edited_video_link && (
+            <div>
+              <span className="text-sm font-bold text-gray-600 block mb-1">
+                Previous Edited Video
+              </span>
+              <a
+                href={project.edited_video_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline break-all"
+              >
+                {project.edited_video_link}
+              </a>
+            </div>
+          )}
+
+          {project.video_link && (
+            <div>
+              <span className="text-sm font-bold text-gray-600 block mb-1">
+                Raw Video Link
+              </span>
+              <a
+                href={project.video_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline break-all"
+              >
+                {project.video_link}
+              </a>
+            </div>
+          )}
+
+          {project.shoot_date && (
+            <div>
+              <span className="text-sm font-bold text-gray-600 block mb-1">
+                Shoot Date
+              </span>
+              <p className="font-medium">{project.shoot_date}</p>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {/* Instruction */}
+      <div className="bg-red-100 border-2 border-red-200 p-3">
+        <p className="text-sm text-red-800 font-bold">
+          Please review the feedback above and submit a new edited video in the section below.
+        </p>
+      </div>
+
+    </div>
+  </div>
+)}
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -224,60 +358,74 @@ const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => 
                     )}
                 </div>
 
-                {/* Edited Video Upload Section */}
-                {project.delivery_date && (
-                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Film className="w-5 h-5" />
-                            <h2 className="text-xl font-black uppercase">Edited Video Upload</h2>
-                        </div>
+              {/* Edited Video Upload Section */}
+{(project.delivery_date || isRework) && (
+  <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+    <div className="flex items-center gap-2 mb-4">
+      <Film className="w-5 h-5" />
+      <h2 className="text-xl font-black uppercase">
+        {isRework ? 'Rework Edited Video Upload' : 'Edited Video Upload'}
+      </h2>
+    </div>
 
-                        {!project.edited_video_link ? (
-                            <div className="space-y-4">
-                                <p className="text-slate-600 font-medium">Upload the final edited video link</p>
-                                <div className="flex gap-3">
-                                    <input
-                                        type="url"
-                                        value={editedVideoLink}
-                                        onChange={(e) => setEditedVideoLink(e.target.value)}
-                                        placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
-                                        className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
-                                    />
-                                    <button
-                                        onClick={handleUploadEditedVideo}
-                                        className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                    >
-                                        <Upload className="w-5 h-5 inline mr-2" />
-                                        Upload
-                                    </button>
-                                </div>
-                                <p className="text-sm text-slate-500">
-                                    🎬 Once uploaded, Designer will be automatically notified for thumbnail creation
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="bg-green-50 border-2 border-green-600 p-4">
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Film className="w-5 h-5 text-green-800" />
-                                        <p className="text-sm font-bold uppercase text-green-800">✓ Edited Video Delivered</p>
-                                    </div>
-                                    <a
-                                        href={project.edited_video_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block p-3 bg-white border-2 border-green-400 text-green-600 font-medium hover:bg-green-50 transition-colors break-all"
-                                    >
-                                        {project.edited_video_link}
-                                    </a>
-                                    <p className="text-sm text-green-800 font-medium">
-                                        → Project has been moved to Designer for thumbnail creation
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+    {/* Show previous edited video if exists */}
+    {hasEditedVideo && (
+      <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
+        <p className="text-sm font-bold uppercase text-gray-700 mb-2">
+          Previous Edited Video
+        </p>
+        <a
+          href={project.edited_video_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block break-all text-blue-600 underline"
+        >
+          {project.edited_video_link}
+        </a>
+      </div>
+    )}
+
+    {/* ALWAYS show input for REWORK */}
+    {(isRework || !hasEditedVideo) && (
+      <div className="space-y-4">
+        <p className="text-slate-600 font-medium">
+          {isRework
+            ? 'Upload new edited video link for rework'
+            : 'Upload final edited video link'}
+        </p>
+
+        <div className="flex gap-3">
+          <input
+            type="url"
+            value={editedVideoLink}
+            onChange={(e) => setEditedVideoLink(e.target.value)}
+            placeholder="https://drive.google.com/file/d/..."
+            className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+          />
+          <button
+            onClick={handleUploadEditedVideo}
+            className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+          >
+            <Upload className="w-5 h-5 inline mr-2" />
+            {isRework ? 'Submit Rework Edit' : 'Upload'}
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* Delivered state ONLY for non-rework */}
+    {hasEditedVideo && !isRework && (
+      <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
+        <p className="text-sm font-bold uppercase text-green-800">
+          ✓ Edited Video Delivered
+        </p>
+        <p className="text-sm text-green-800 mt-1">
+          → Project has been moved to Designer for thumbnail creation
+        </p>
+      </div>
+    )}
+  </div>
+)}
 
                 {/* Project Info */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">

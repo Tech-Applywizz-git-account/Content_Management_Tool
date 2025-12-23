@@ -39,12 +39,20 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     const [isCreatingScript, setIsCreatingScript] = useState(false);
     // State for counts
     const [approvedCount, setApprovedCount] = useState(0);
-    const [rejectedCount, setRejectedCount] = useState(0);
 
     const handleInternalRefresh = async () => {
+        console.log('🔄 CMO Dashboard: Refresh button clicked');
+        console.log('🔄 CMO Dashboard: Calling onRefresh() to fetch data from Supabase');
         await onRefresh(); // MUST refetch from Supabase
+        console.log('✅ CMO Dashboard: Data fetch completed');
+        
+        console.log('🔄 CMO Dashboard: Reloading counts');
         await loadCounts(); // Also reload counts
+        console.log('✅ CMO Dashboard: Counts reloaded');
+        
+        console.log('🔄 CMO Dashboard: Updating refresh key to force UI re-render');
         setRefreshKey(prev => prev + 1); // force UI re-render
+        console.log('✅ CMO Dashboard: Refresh completed');
     };
 
     // Popup state
@@ -122,8 +130,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
     // Load counts from the workflow_history table (count by user actions)
     const loadCounts = async () => {
+        console.log('🔄 CMO Dashboard: Loading counts from workflow_history');
         try {
             // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
+            console.log('🔄 CMO Dashboard: Fetching approved count for user:', user.id);
             const { count: approvedCountResult, error: approvedErr } = await supabase
                 .from('workflow_history')
                 .select('*', { head: true, count: 'exact' })
@@ -132,20 +142,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
             if (approvedErr) throw approvedErr;
 
-            // Rejected: count all rejections where actor_id = user.id and action = REJECTED
-            const { count: rejectedCountResult, error: rejectedErr } = await supabase
-                .from('workflow_history')
-                .select('*', { head: true, count: 'exact' })
-                .eq('actor_id', user.id)
-                .eq('action', 'REJECTED');
-
-            if (rejectedErr) throw rejectedErr;
-
-            console.log('CMO Dashboard - Approved by user:', approvedCountResult, 'Reworks by user:', rejectedCountResult);
+            console.log('✅ CMO Dashboard: Approved count loaded:', approvedCountResult);
             setApprovedCount(approvedCountResult || 0);
-            setRejectedCount(rejectedCountResult || 0);
         } catch (err) {
-            console.error('Failed to load counts from projects:', err);
+            console.error('❌ CMO Dashboard: Failed to load counts from projects:', err);
         }
     };
 
@@ -162,17 +162,25 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     
     console.log('CMO Dashboard - activeView:', activeView);
     console.log('CMO Dashboard - inboxProjects:', inboxProjects);
+const isReworkProject = (p: Project) =>
+  p.history?.some(h =>
+    h.action === 'REJECTED' ||
+    h.action?.startsWith('REWORK_')
+  );
 
     // Categorize Projects for CMO Dashboard
     // Column 1: Pending Approval Projects (Projects in CMO review stages with WAITING_APPROVAL status)
-    const pendingApprovalProjects = dashboardProjects.filter(
-      p =>
-        p.status === TaskStatus.WAITING_APPROVAL &&
-        (
-          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-          p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
-        )
-    );
+    
+  const pendingApprovalProjects = dashboardProjects.filter(
+  p =>
+    p.assigned_to_role === Role.CMO &&
+    (
+      p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
+      p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
+    ) &&
+    p.status !== TaskStatus.DONE
+);
+
 
     // Column 2: Projects Pending at CEO (Projects that CMO has approved and sent to CEO)
     const pendingAtCEO = dashboardProjects.filter(
@@ -295,7 +303,10 @@ if (selectedProject && viewMode === 'HISTORY') {
             </button>
 
             <button
-              onClick={handleInternalRefresh}
+              onClick={() => {
+                console.log('🖱️ CMO Dashboard: Refresh button clicked');
+                handleInternalRefresh();
+              }}
               className="bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
             >
               🔄 Refresh
@@ -361,6 +372,11 @@ if (selectedProject && viewMode === 'HISTORY') {
                       }`}>
                         {history?.action}
                       </span>
+                      {history?.action === 'REJECTED' && p.rejected_reason && (
+                        <div className="text-xs text-red-700 mt-1 truncate" title={p.rejected_reason}>
+                          Reason: {p.rejected_reason}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -368,7 +384,7 @@ if (selectedProject && viewMode === 'HISTORY') {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
             {/* Column 1: Pending Approval Projects */}
             <div className="space-y-4">
@@ -389,9 +405,16 @@ if (selectedProject && viewMode === 'HISTORY') {
                         }`}>
                         {p.channel}
                       </span>
-                      <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">
-                        {STAGE_LABELS[p.current_stage]}
-                      </span>
+                      <span
+  className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${
+    isReworkProject(p)
+      ? 'bg-orange-100 text-orange-800'
+      : 'bg-slate-100 text-slate-800'
+  }`}
+>
+  {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
+</span>
+
                     </div>
                     <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
                     <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
@@ -451,12 +474,12 @@ if (selectedProject && viewMode === 'HISTORY') {
                         }`}>
                         {p.channel}
                       </span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                         p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
                           p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
                             'bg-slate-100 text-slate-700'
                       }`}>
-                        {p.assigned_to_role === Role.CINE ? 'WITH CINE' :
+                        {p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'Rework' : p.assigned_to_role === Role.CINE ? 'WITH CINE' :
                           p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
                             p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
                               STAGE_LABELS[p.current_stage]}
@@ -472,17 +495,7 @@ if (selectedProject && viewMode === 'HISTORY') {
               </div>
             </div>
 
-            {/* Column 4: Rework Count */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[#D946EF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide">Reworks</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{rejectedCount}</span>
-              </div>
-              <div className="p-8 text-center bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <div className="text-4xl font-black text-[#D946EF] mb-2">{rejectedCount}</div>
-                <div className="text-sm font-bold text-slate-500 uppercase">Sent Back for Fixes</div>
-              </div>
-            </div>
+
 
           </div>
         )}
