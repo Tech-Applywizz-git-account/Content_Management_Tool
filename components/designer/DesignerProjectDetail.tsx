@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,18 +11,40 @@ interface Props {
     onBack: () => void;
     onUpdate: () => void;
 }
+const isReworkProject = (project: Project) =>
+  project.history?.some(h =>
+    h.action === 'REJECTED' ||
+    h.action?.startsWith('REWORK_')
+  );
 
 const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
-    const [deliveryDate, setDeliveryDate] = useState(project.delivery_date || '');
+    // For rework projects, keep existing data but track new inputs
+    const processedProject = {...project};
+    
+    const [deliveryDate, setDeliveryDate] = useState(processedProject.delivery_date || '');
     
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
-    const [thumbnailLink, setThumbnailLink] = useState(project.thumbnail_link || '');
-    const [creativeLink, setCreativeLink] = useState(project.creative_link || '');
+    const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
+    const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO';
+    const isRework = isReworkProject(project);
+const hasAsset = isVideo
+  ? !!project.thumbnail_link
+  : !!project.creative_link;
+
+
+    // Reset form fields when project changes
+    useEffect(() => {
+        // For rework projects, keep existing data
+        const processedProject = {...project};
+        setDeliveryDate(processedProject.delivery_date || '');
+        setThumbnailLink(processedProject.thumbnail_link || '');
+        setCreativeLink(processedProject.creative_link || '');
+    }, [project]);
 
     const handleSetDeliveryDate = async () => {
         if (!deliveryDate) {
@@ -83,20 +105,30 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
                 return;
             }
             
-            // Record the action in workflow history
+            // Determine if this is a rework submission based on project status
+            const isRework = project.status === 'REJECTED';
+            
+            // Record the action in workflow history with appropriate action type
+            const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'SUBMITTED';
+            const comment = isRework 
+                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded: ${link}` 
+                : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`;
+            
             await db.workflow.recordAction(
                 project.id,
                 WorkflowStage.FINAL_REVIEW_CMO, // stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
-                'SUBMITTED', // Use allowed action value
-                `${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`
+                actionType, // Use appropriate action value
+                comment
             );
             
             // Update the project with the file link and move to FINAL_REVIEW_CMO stage
+            // For rework, we reset the status to IN_PROGRESS
             const updates: Partial<Project> = {
                 current_stage: WorkflowStage.FINAL_REVIEW_CMO,
-                assigned_to_role: Role.CMO
+                assigned_to_role: Role.CMO,
+                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
             };
             
             if (isVideo) {
@@ -107,11 +139,15 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
             
             await db.projects.update(project.id, updates);
             
-            console.log(`${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
+            console.log(`${isRework ? 'Rework ' : ''}${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
             
             // Show popup notification using STAGE_LABELS for the next stage
             const nextLabel = STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'CMO Final Review';
-            setPopupMessage(`${isVideo ? 'Thumbnail' : 'Creative'} uploaded successfully for ${project.title}. Waiting for ${nextLabel}.`);
+            const popupMessageText = isRework
+                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded successfully for ${project.title}. Waiting for ${nextLabel}.`
+                : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded successfully for ${project.title}. Waiting for ${nextLabel}.`;
+            
+            setPopupMessage(popupMessageText);
             setStageName(nextLabel);
             setShowPopup(true);
         } catch (error) {
@@ -157,6 +193,87 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
                     </div>
                 </div>
             </div>
+
+            {/* Rework Information Box (Only shown for rejected projects assigned to Designer) */}
+            {project.status === 'REJECTED' && project.assigned_to_role === Role.DESIGNER && project.history && project.history.length > 0 && (
+                <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="flex items-center space-x-2 mb-4">
+                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">!</span>
+                        </div>
+                        <h2 className="text-xl font-black uppercase text-red-800">Rework Required</h2>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="p-4 bg-white border-l-4 border-red-500">
+                            <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+                            <p className="text-red-700">
+                                {project.history[0].comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                            </p>
+                            <p className="text-sm text-red-600 mt-2">
+                                Rejected by {project.history[0].actor_name || 'Reviewer'}
+                            </p>
+                        </div>
+                        
+                        {/* Existing Data Display */}
+                        <div className="bg-white border-2 border-gray-300 p-4">
+                            <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {project.delivery_date && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Delivery Date</span>
+                                        <p className="font-medium">{project.delivery_date}</p>
+                                    </div>
+                                )}
+                                {isVideo && project.thumbnail_link && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Thumbnail Link</span>
+                                        <a 
+                                            href={project.thumbnail_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all"
+                                        >
+                                            {project.thumbnail_link}
+                                        </a>
+                                    </div>
+                                )}
+                                {!isVideo && project.creative_link && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Creative Link</span>
+                                        <a 
+                                            href={project.creative_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all"
+                                        >
+                                            {project.creative_link}
+                                        </a>
+                                    </div>
+                                )}
+                                {isVideo && project.edited_video_link && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Edited Video Link</span>
+                                        <a 
+                                            href={project.edited_video_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all"
+                                        >
+                                            {project.edited_video_link}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="bg-red-100 border-2 border-red-200 p-3">
+                            <p className="text-sm text-red-800 font-bold">
+                                Please update the delivery date and/or creative/thumbnail link below. Both old and new data will be visible for comparison.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -246,66 +363,85 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
                     )}
                 </div>
 
-                {/* Upload Section */}
-                {project.delivery_date && (
-                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
-                            <h2 className="text-xl font-black uppercase">
-                                {isVideo ? 'Thumbnail Upload' : 'Creative Upload'}
-                            </h2>
-                        </div>
+             {/* Upload Section */}
+{project.delivery_date && (
+  <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+    <div className="flex items-center gap-2 mb-4">
+      {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
+      <h2 className="text-xl font-black uppercase">
+        {isRework
+          ? `Rework ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
+          : `${isVideo ? 'Thumbnail' : 'Creative'} Upload`}
+      </h2>
+    </div>
 
-                        {!(isVideo ? project.thumbnail_link : project.creative_link) ? (
-                            <div className="space-y-4">
-                                <p className="text-slate-600 font-medium">
-                                    Upload the {isVideo ? 'thumbnail image' : 'creative file'} link
-                                </p>
-                                <div className="flex gap-3">
-                                    <input
-                                        type="url"
-                                        value={isVideo ? thumbnailLink : creativeLink}
-                                        onChange={(e) => (isVideo ? setThumbnailLink : setCreativeLink)(e.target.value)}
-                                        placeholder={`https://drive.google.com/${isVideo ? 'thumbnail' : 'creative'}.${isVideo ? 'jpg' : 'pdf'}`}
-                                        className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
-                                    />
-                                    <button
-                                        onClick={handleUploadFile}
-                                        className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                    >
-                                        <Upload className="w-5 h-5 inline mr-2" />
-                                        Upload
-                                    </button>
-                                </div>
-                                <p className="text-sm text-slate-500">
-                                    ✨ Once uploaded, CMO will be automatically notified for final review
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="bg-green-50 border-2 border-green-600 p-4">
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        {isVideo ? <FileImage className="w-5 h-5 text-green-800" /> : <Palette className="w-5 h-5 text-green-800" />}
-                                        <p className="text-sm font-bold uppercase text-green-800">
-                                            ✓ {isVideo ? 'Thumbnail' : 'Creative'} Delivered
-                                        </p>
-                                    </div>
-                                    <a
-                                        href={isVideo ? project.thumbnail_link : project.creative_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block p-3 bg-white border-2 border-green-400 text-green-600 font-medium hover:bg-green-50 transition-colors break-all"
-                                    >
-                                        {isVideo ? project.thumbnail_link : project.creative_link}
-                                    </a>
-                                    <p className="text-sm text-green-800 font-medium">
-                                        → Project has been moved to CMO for final review
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+    {/* SHOW OLD ASSET IF EXISTS */}
+    {hasAsset && (
+      <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
+        <p className="text-sm font-bold uppercase text-gray-700 mb-2">
+          Previous {isVideo ? 'Thumbnail' : 'Creative'}
+        </p>
+        <a
+          href={isVideo ? project.thumbnail_link : project.creative_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block break-all text-blue-600 underline"
+        >
+          {isVideo ? project.thumbnail_link : project.creative_link}
+        </a>
+      </div>
+    )}
+
+    {/* ALWAYS SHOW INPUT IF REWORK */}
+    {(isRework || !hasAsset) && (
+      <div className="space-y-4">
+        <p className="text-slate-600 font-medium">
+          {isRework
+            ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rework`
+            : `Upload ${isVideo ? 'thumbnail' : 'creative'} link`}
+        </p>
+
+        <div className="flex gap-3">
+          <input
+            type="url"
+            value={isVideo ? thumbnailLink : creativeLink}
+            onChange={(e) =>
+              isVideo
+                ? setThumbnailLink(e.target.value)
+                : setCreativeLink(e.target.value)
+            }
+            placeholder="https://drive.google.com/file/d/..."
+            className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+          />
+          <button
+            onClick={handleUploadFile}
+            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+          >
+            <Upload className="w-5 h-5 inline mr-2" />
+            {isRework ? 'Submit Rework Design' : 'Upload'}
+          </button>
+        </div>
+
+        <p className="text-sm text-slate-500">
+          ✨ Once uploaded, CMO will be notified for final review
+        </p>
+      </div>
+    )}
+
+    {/* FINAL STATE — ONLY IF NOT REWORK */}
+    {hasAsset && !isRework && (
+      <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
+        <p className="text-sm font-bold uppercase text-green-800">
+          ✓ {isVideo ? 'Thumbnail' : 'Creative'} Delivered
+        </p>
+        <p className="text-sm text-green-800 mt-1">
+          → Project has been moved to CMO for final review
+        </p>
+      </div>
+    )}
+  </div>
+)}
+
 
                 {/* Project Info */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">

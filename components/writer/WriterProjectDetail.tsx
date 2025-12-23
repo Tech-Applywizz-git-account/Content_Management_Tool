@@ -11,10 +11,13 @@ interface Props {
 
 const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
     const [comments, setComments] = useState<any[]>([]);
+    const [previousScript, setPreviousScript] = useState<string | null>(null);
+    const [rejectionReason, setRejectionReason] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchComments = async () => {
-            const { data, error } = await supabase
+        const fetchData = async () => {
+            // Fetch comments
+            const { data: commentsData, error: commentsError } = await supabase
                 .from('workflow_history')
                 .select(`
                     action,
@@ -26,15 +29,42 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                 .in('action', ['APPROVED', 'REJECTED'])
                 .order('timestamp', { ascending: false });
 
-            if (error) {
-                console.error('Error fetching comments:', error);
+            if (commentsError) {
+                console.error('Error fetching comments:', commentsError);
             } else {
-                setComments(data || []);
+                setComments(commentsData || []);
+            }
+
+            // Fetch previous script version and rejection reason if project is rejected
+            if (project.status === 'REJECTED') {
+                const { data: historyData, error: historyError } = await supabase
+                    .from('workflow_history')
+                    .select('script_content')
+                    .eq('project_id', project.id)
+                    .eq('action', 'REJECTED')
+                    .order('timestamp', { ascending: false })
+                    .limit(1);
+
+                if (historyError) {
+                    // Handle case where script_content column doesn't exist yet
+                    if (historyError.code === '42703') {
+                        console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
+                    } else {
+                        console.error('Error fetching previous script:', historyError);
+                    }
+                } else if (historyData && historyData.length > 0 && historyData[0].script_content) {
+                    setPreviousScript(historyData[0].script_content);
+                }
+                
+                // Fetch rejection reason from project
+                if (project.rejected_reason) {
+                    setRejectionReason(project.rejected_reason);
+                }
             }
         };
 
-        fetchComments();
-    }, [project.id]);
+        fetchData();
+    }, [project.id, project.status, project.rejected_reason]);
 
     // Check if project was rejected
     const isRejected = project.status === 'REJECTED';
@@ -126,11 +156,34 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                     {/* Script Content */}
                     <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Script Content</h3>
-                        <div className="prose prose-slate max-w-none">
-                            <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
-                                {project.data.script_content || 'No content available'}
+                        
+                        {isRejected && previousScript ? (
+                            // Show both old and new scripts side by side for rework projects
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {/* Previous Script */}
+                                <div className="bg-white border-2 border-slate-300 p-6">
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Previous Script</h4>
+                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                        {previousScript}
+                                    </div>
+                                </div>
+                                
+                                {/* Current Script */}
+                                <div className="bg-white border-2 border-slate-300 p-6">
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Updated Script</h4>
+                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                        {project.data.script_content || 'No content available'}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            // Show single script for non-rework projects
+                            <div className="prose prose-slate max-w-none">
+                                <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
+                                    {project.data.script_content || 'No content available'}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Project Details */}
@@ -161,9 +214,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                             </div>
                             {isRejected && (
                                 <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500">
-                                    <h4 className="font-bold text-red-800 mb-2">Rework Required</h4>
+                                    <h4 className="font-bold text-red-800 mb-2">Project Rejected</h4>
                                     <p className="text-red-700">
-                                        {rejectionComment?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                        {rejectionReason || rejectionComment?.comment || 'No specific reason provided.'}
                                     </p>
                                     <p className="text-sm text-red-600 mt-2">
                                         Rejected by {rejectionComment?.actor_name || 'Reviewer'} {rejectionComment?.timestamp && formatDistanceToNow(new Date(rejectionComment.timestamp))} ago
@@ -255,7 +308,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         <p className={`text-sm font-bold ${isRejected ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong> 
                             {isRejected 
-                                ? 'This project requires rework. Please review the comments above and make the necessary changes, then resubmit for review.'
+                                ? 'This project has been rejected and is now read-only. The rejection reason is displayed above. Please contact your supervisor for further instructions.'
                                 : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>

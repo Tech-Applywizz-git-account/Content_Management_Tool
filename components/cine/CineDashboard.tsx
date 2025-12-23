@@ -61,49 +61,18 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
 
     useEffect(() => {
-        const loadCounts = async () => {
-            try {
-                const { data: projects, error } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .eq('current_stage', WorkflowStage.CINEMATOGRAPHY);
+        // Use the inboxProjects passed from App.tsx instead of making a separate query
+        const activeProjects = (inboxProjects || []).filter(p => p.status !== TaskStatus.DONE);
 
-                if (error) throw error;
+        setActiveProjectsCount(activeProjects.length);
+        setNeedsScheduleCount(activeProjects.filter(p => !p.shoot_date).length);
+        setScheduledShootsCount(activeProjects.filter(p => p.shoot_date && !p.video_link).length);
 
-                const list = projects || [];
-
-                const active = list.filter((p: any) => p.status !== TaskStatus.DONE);
-
-                setActiveProjectsCount(active.length);
-                setNeedsScheduleCount(active.filter((p: any) => !p.shoot_date).length);
-                setScheduledShootsCount(active.filter((p: any) => p.shoot_date && !p.video_link).length);
-
-                // Footage uploaded: consider multiple possible fields
-                setFootageUploadedCount(
-                    active.filter((p: any) => !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link) ).length
-                );
-            } catch (err) {
-                console.error('Failed to load cinematography counts:', err);
-            }
-        };
-
-        loadCounts();
-
-        const subscription = supabase
-            .channel('public:projects:cine_counts')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
-                loadCounts();
-            })
-            .subscribe();
-
-        return () => {
-            try {
-                supabase.removeChannel(subscription);
-            } catch (e) {
-                // ignore
-            }
-        };
-    }, [inboxProjects, historyProjects]);
+        // Footage uploaded: consider multiple possible fields
+        setFootageUploadedCount(
+            activeProjects.filter(p => !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)).length
+        );
+    }, [inboxProjects]);
 
     return (
         <Layout

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -13,16 +13,15 @@ interface Props {
 }
 
 const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, onUpdate }) => {
-     const [localProject, setLocalProject] = useState<Project>(initialProject);
+     // For rework projects, keep existing data but track new inputs
+     const processedProject = {...initialProject};
+     
+     const [localProject, setLocalProject] = useState<Project>(processedProject);
 
      
-  const [shootDate, setShootDate] = useState(
-    localProject.shoot_date || ''
-  );
+  const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
 
-  const [videoLink, setVideoLink] = useState(
-    localProject.video_link || ''
-  );
+  const [videoLink, setVideoLink] = useState(processedProject.video_link || '');
     
 
     
@@ -31,6 +30,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
 
+    // Reset form fields when project changes
+    useEffect(() => {
+        const processedProject = {...initialProject};
+        setShootDate(processedProject.shoot_date || '');
+        setVideoLink(processedProject.video_link || '');
+        setLocalProject(processedProject);
+    }, [initialProject]);
 
     const handleSetShootDate = async () => {
         if (!shootDate) {
@@ -122,8 +128,6 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
             return;
         }
   
-
-
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
@@ -134,14 +138,22 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 return;
             }
             
+            // Determine if this is a rework submission based on project status
+            const isRework = localProject.status === 'REJECTED';
+            
             // Record the action in workflow history before updating the project
+            const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'SUBMITTED';
+            const comment = isRework 
+                ? `Rework video uploaded: ${videoLink}` 
+                : `Raw video uploaded: ${videoLink}`;
+            
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
                 fromStage: localProject.current_stage,
                 toStage: WorkflowStage.VIDEO_EDITING,
                 userId: user.id,
-                action: 'SUBMITTED',
-                comment: `Raw video uploaded: ${videoLink}`
+                action: actionType,
+                comment: comment
             });
             
             await db.workflow.recordAction(
@@ -149,32 +161,36 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 WorkflowStage.VIDEO_EDITING, // stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
-                'SUBMITTED', // Use allowed action value
-                `Raw video uploaded: ${videoLink}`
+                actionType, // Use appropriate action value
+                comment
             );
             
             // Update the project with the video link and move to VIDEO_EDITING stage
-           // Update the project with the video link and move to VIDEO_EDITING stage
-await db.projects.update(localProject.id, { 
-  video_link: videoLink,
-  current_stage: WorkflowStage.VIDEO_EDITING,
-  assigned_to_role: Role.EDITOR
-});
+            // For rework, we reset the status to IN_PROGRESS
+            await db.projects.update(localProject.id, { 
+                video_link: videoLink,
+                current_stage: WorkflowStage.VIDEO_EDITING,
+                assigned_to_role: Role.EDITOR,
+                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
+            });
 
-// ✅ Update local state ONLY after success
-setLocalProject(prev => ({
-  ...prev,
-  video_link: videoLink,
-  current_stage: WorkflowStage.VIDEO_EDITING,
-  assigned_to_role: Role.EDITOR
-}));
+            // ✅ Update local state ONLY after success
+            setLocalProject(prev => ({
+                ...prev,
+                video_link: videoLink,
+                current_stage: WorkflowStage.VIDEO_EDITING,
+                assigned_to_role: Role.EDITOR,
+                status: 'IN_PROGRESS'
+            }));
 
             
             // Show popup notification using STAGE_LABELS for the next stage
             const nextStageLabel = STAGE_LABELS[WorkflowStage.VIDEO_EDITING] || 'Video Editing';
-            setPopupMessage(
-  `Raw video uploaded for "${localProject.title}". The project has moved to ${nextStageLabel}.`
-);
+            const popupMessageText = isRework
+                ? `Rework video uploaded for "${localProject.title}". The project has moved to ${nextStageLabel}.`
+                : `Raw video uploaded for "${localProject.title}". The project has moved to ${nextStageLabel}.`;
+            
+            setPopupMessage(popupMessageText);
 
             setStageName(nextStageLabel);
             setShowPopup(true);
@@ -221,6 +237,61 @@ setLocalProject(prev => ({
                     </div>
                 </div>
             </div>
+
+            {/* Rework Information Box (Only shown for rejected projects assigned to Cine) */}
+            {localProject.status === 'REJECTED' && localProject.assigned_to_role === Role.CINE && localProject.history && localProject.history.length > 0 && (
+                <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="flex items-center space-x-2 mb-4">
+                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold text-sm">!</span>
+                        </div>
+                        <h2 className="text-xl font-black uppercase text-red-800">Rework Required</h2>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="p-4 bg-white border-l-4 border-red-500">
+                            <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+                            <p className="text-red-700">
+                                {localProject.history[0].comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                            </p>
+                            <p className="text-sm text-red-600 mt-2">
+                                Rejected by {localProject.history[0].actor_name || 'Reviewer'}
+                            </p>
+                        </div>
+                        
+                        {/* Existing Data Display */}
+                        <div className="bg-white border-2 border-gray-300 p-4">
+                            <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {localProject.shoot_date && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
+                                        <p className="font-medium">{localProject.shoot_date}</p>
+                                    </div>
+                                )}
+                                {localProject.video_link && (
+                                    <div>
+                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Video Link</span>
+                                        <a 
+                                            href={localProject.video_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all"
+                                        >
+                                            {localProject.video_link}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="bg-red-100 border-2 border-red-200 p-3">
+                            <p className="text-sm text-red-800 font-bold">
+                                Please update the shoot date and/or video link below. Both old and new data will be visible for comparison.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
@@ -298,7 +369,53 @@ setLocalProject(prev => ({
                             <h2 className="text-xl font-black uppercase">Video Upload</h2>
                         </div>
 
-                        {!localProject.video_link ? (
+                        {localProject.status === 'REJECTED' ? (
+                            <div className="space-y-4">
+                                {/* Show existing video link as read-only */}
+                                {localProject.video_link && (
+                                    <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <Video className="w-5 h-5 text-blue-800" />
+                                                <p className="text-sm font-bold uppercase text-blue-800">Previous Video Link</p>
+                                            </div>
+                                            <a
+                                                href={localProject.video_link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                            >
+                                                {localProject.video_link}
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {/* Input for new video link */}
+                                <div className="space-y-4">
+                                    <p className="text-slate-600 font-medium">Upload the new video link for rework</p>
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="url"
+                                            value={videoLink}
+                                            onChange={(e) => setVideoLink(e.target.value)}
+                                            placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
+                                            className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                        <button
+                                            onClick={handleUploadVideo}
+                                            className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                        >
+                                            <Upload className="w-5 h-5 inline mr-2" />
+                                            Submit Rework Video
+                                        </button>
+                                    </div>
+                                    <p className="text-sm text-slate-500">
+                                        🎬 Once uploaded, the Editor will be automatically notified
+                                    </p>
+                                </div>
+                            </div>
+                        ) : !localProject.video_link ? (
                             <div className="space-y-4">
                                 <p className="text-slate-600 font-medium">Upload the video link after shooting</p>
                                 <div className="flex gap-3">
