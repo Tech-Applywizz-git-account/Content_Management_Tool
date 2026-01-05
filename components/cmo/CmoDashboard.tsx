@@ -11,6 +11,7 @@ import CmoCalendar from './CmoCalendar';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 
 interface Props {
@@ -355,6 +356,18 @@ if (selectedProject && viewMode === 'HISTORY') {
                         {p.channel}
                       </span>
                     </div>
+                    <div className="col-span-2">
+                      <span
+                        className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                ? 'bg-red-500 text-white'
+                                : p.priority === 'MEDIUM'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                        }`}
+                      >
+                        {p.priority}
+                      </span>
+                    </div>
 
                     <div className="col-span-2 text-xs font-black uppercase text-slate-500">
                       {STAGE_LABELS[p.current_stage]}
@@ -406,12 +419,21 @@ if (selectedProject && viewMode === 'HISTORY') {
                         {p.channel}
                       </span>
                       <span
+                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                ? 'bg-red-500 text-white'
+                                : p.priority === 'MEDIUM'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                        }`}
+                      >
+                        {p.priority}
+                      </span>
+                      <span
   className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${
     isReworkProject(p)
       ? 'bg-orange-100 text-orange-800'
       : 'bg-slate-100 text-slate-800'
-  }`}
->
+  }`}>
   {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
 </span>
 
@@ -441,6 +463,16 @@ if (selectedProject && viewMode === 'HISTORY') {
                   >
                     <div className="flex justify-between items-start mb-4">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                      <span
+                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                ? 'bg-red-500 text-white'
+                                : p.priority === 'MEDIUM'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                        }`}
+                      >
+                        {p.priority}
+                      </span>
                       <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
                         With CEO
                       </span>
@@ -473,6 +505,16 @@ if (selectedProject && viewMode === 'HISTORY') {
                           'bg-[#D946EF] text-white'
                         }`}>
                         {p.channel}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                ? 'bg-red-500 text-white'
+                                : p.priority === 'MEDIUM'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                        }`}
+                      >
+                        {p.priority}
                       </span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                         p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :

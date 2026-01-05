@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -13,7 +14,6 @@ interface Props {
 }
 const isReworkProject = (project: Project) =>
   project.history?.some(h =>
-    h.action === 'REJECTED' ||
     h.action?.startsWith('REWORK_')
   );
 
@@ -31,7 +31,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO';
-    const isRework = isReworkProject(project);
+    // Use the new workflow state logic
+    const workflowState = getWorkflowState(project);
+    const isRework = workflowState.isRework;
+    const isRejected = workflowState.isRejected;
 const hasAsset = isVideo
   ? !!project.thumbnail_link
   : !!project.creative_link;
@@ -106,7 +109,8 @@ const hasAsset = isVideo
             }
             
             // Determine if this is a rework submission based on project status
-            const isRework = project.status === 'REJECTED';
+            const isRework = isReworkProject(project);
+            const isRejected = project.status === 'REJECTED';
             
             // Record the action in workflow history with appropriate action type
             const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'SUBMITTED';
@@ -128,7 +132,7 @@ const hasAsset = isVideo
             const updates: Partial<Project> = {
                 current_stage: WorkflowStage.FINAL_REVIEW_CMO,
                 assigned_to_role: Role.CMO,
-                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
+                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
             };
             
             if (isVideo) {
@@ -189,6 +193,16 @@ const hasAsset = isVideo
                             <span className="text-sm text-slate-500 font-bold">
                                 Due: {formatDistanceToNow(new Date(project.due_date))} from now
                             </span>
+                            <span
+                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                        ? 'bg-red-500 text-white'
+                                        : project.priority === 'MEDIUM'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                    }`}
+                            >
+                                {project.priority}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -201,7 +215,14 @@ const hasAsset = isVideo
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
                             <span className="text-white font-bold text-sm">!</span>
                         </div>
-                        <h2 className="text-xl font-black uppercase text-red-800">Rework Required</h2>
+                        <div>
+                            <h2 className="text-xl font-black uppercase text-red-800">
+                                {isRejected ? 'Project Rejected' : 'Rework Required'}
+                            </h2>
+                            <p className="text-sm font-bold text-red-600">
+                                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+                            </p>
+                        </div>
                     </div>
                     <div className="space-y-4">
                         <div className="p-4 bg-white border-l-4 border-red-500">
@@ -369,7 +390,9 @@ const hasAsset = isVideo
     <div className="flex items-center gap-2 mb-4">
       {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
       <h2 className="text-xl font-black uppercase">
-        {isRework
+        {isRejected
+          ? `Rejected ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
+          : isRework
           ? `Rework ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
           : `${isVideo ? 'Thumbnail' : 'Creative'} Upload`}
       </h2>
@@ -392,11 +415,13 @@ const hasAsset = isVideo
       </div>
     )}
 
-    {/* ALWAYS SHOW INPUT IF REWORK */}
-    {(isRework || !hasAsset) && (
+    {/* ALWAYS SHOW INPUT IF REWORK OR REJECTED */}
+    {(isRework || isRejected || !hasAsset) && (
       <div className="space-y-4">
         <p className="text-slate-600 font-medium">
-          {isRework
+          {isRejected
+            ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rejected project`
+            : isRework
             ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rework`
             : `Upload ${isVideo ? 'thumbnail' : 'creative'} link`}
         </p>
@@ -418,7 +443,7 @@ const hasAsset = isVideo
             className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
           >
             <Upload className="w-5 h-5 inline mr-2" />
-            {isRework ? 'Submit Rework Design' : 'Upload'}
+            {isRejected ? 'Submit Rejected Design' : isRework ? 'Submit Rework Design' : 'Upload'}
           </button>
         </div>
 

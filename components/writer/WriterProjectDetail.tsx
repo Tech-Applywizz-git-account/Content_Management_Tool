@@ -3,6 +3,7 @@ import { Project, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -13,6 +14,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
     const [comments, setComments] = useState<any[]>([]);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+    const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -26,7 +28,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                     timestamp
                 `)
                 .eq('project_id', project.id)
-                .in('action', ['APPROVED', 'REJECTED'])
+                .in('action', ['APPROVED', 'REJECTED', 'REWORK'])
                 .order('timestamp', { ascending: false });
 
             if (commentsError) {
@@ -35,25 +37,51 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                 setComments(commentsData || []);
             }
 
-            // Fetch previous script version and rejection reason if project is rejected
-            if (project.status === 'REJECTED') {
-                const { data: historyData, error: historyError } = await supabase
+            // Use the new workflow state logic to determine the latest action
+            const workflowState = getWorkflowState(project);
+            
+            // Determine return type based on the latest action
+            if (workflowState.isRejected) {
+                setReturnType('reject');
+            } else if (workflowState.isRework) {
+                setReturnType('rework');
+            }
+            
+            // Fetch the most recent workflow history entry to get script content
+            const { data: historyData, error: historyError } = await supabase
+                .from('workflow_history')
+                .select('script_content, action, comment, timestamp, actor_name')
+                .eq('project_id', project.id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+
+            if (historyError) {
+                console.error('Error fetching workflow history:', historyError);
+            } else if (historyData && historyData.length > 0) {
+                // Fetch previous script version based on the latest action
+                let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
+                const { data: scriptData, error: scriptError } = await supabase
                     .from('workflow_history')
                     .select('script_content')
                     .eq('project_id', project.id)
-                    .eq('action', 'REJECTED')
+                    .eq('action', scriptAction)
                     .order('timestamp', { ascending: false })
                     .limit(1);
 
-                if (historyError) {
+                if (scriptError) {
                     // Handle case where script_content column doesn't exist yet
-                    if (historyError.code === '42703') {
-                        console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
+                    if (scriptError.code === '42703') {
+                        console.warn(`script_content column not found in workflow_history table. This is expected if the migration hasn't been applied yet.`);
                     } else {
-                        console.error('Error fetching previous script:', historyError);
+                        console.error('Error fetching previous script:', scriptError);
                     }
-                } else if (historyData && historyData.length > 0 && historyData[0].script_content) {
-                    setPreviousScript(historyData[0].script_content);
+                } else if (scriptData && scriptData.length > 0 && scriptData[0].script_content) {
+                    setPreviousScript(scriptData[0].script_content);
+                } else {
+                    // Fallback to the script content from the latest history entry
+                    if (historyData && historyData.length > 0 && historyData[0].script_content) {
+                        setPreviousScript(historyData[0].script_content);
+                    }
                 }
                 
                 // Fetch rejection reason from project
@@ -66,8 +94,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
         fetchData();
     }, [project.id, project.status, project.rejected_reason]);
 
-    // Check if project was rejected
-    const isRejected = project.status === 'REJECTED';
+    // Use the new workflow state logic
+    const workflowState = getWorkflowState(project);
+    const isRework = workflowState.isRework;
+    const isRejected = workflowState.isRejected;
     const rejectionComment = comments.find(comment => comment.action === 'REJECTED');
 
     return (
@@ -101,7 +131,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                 <p className="text-sm font-bold text-slate-500 uppercase">Submitted {formatDistanceToNow(new Date(project.created_at))} ago</p>
                             </div>
                             <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                                {isRejected ? 'Rework Required' : 'In Review'}
+                                {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
                             </div>
                         </div>
 
@@ -131,7 +161,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                     <FileText className="w-5 h-5 text-blue-600" />
                                     <span className="text-xs font-bold uppercase text-slate-500">Status</span>
                                 </div>
-                                <p className="font-black text-lg uppercase">{isRejected ? 'Rework Required' : project.status}</p>
+                                <p className="font-black text-lg uppercase">{isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : project.status}</p>
                             </div>
                         </div>
 
@@ -280,8 +310,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                     <div className="w-3 h-3 bg-red-600 border-2 border-black rounded-full mt-2"></div>
                                     <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
                                         <span className="text-xs font-bold uppercase text-slate-500">Recently</span>
-                                        <p className="font-black text-slate-900 uppercase mt-1">Rework Required</p>
-                                        <p className="text-sm text-slate-600 mt-2">Changes requested by reviewer</p>
+                                        <p className="font-black text-slate-900 uppercase mt-1">{returnType === 'reject' ? 'Project Rejected' : 'Rework Required'}</p>
+                                        <p className="text-sm text-slate-600 mt-2">{returnType === 'reject' ? 'Project rejected by reviewer' : 'Changes requested by reviewer'}</p>
                                     </div>
                                 </div>
                             )}
@@ -291,7 +321,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                 <div className="flex-1 pl-6">
                                     <span className="text-xs font-bold uppercase text-slate-500">Current</span>
                                     <p className="font-black text-slate-900 uppercase mt-1">
-                                        {isRejected ? 'Rework Required' :
+                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
                                             project.assigned_to_role === Role.CMO ? 'With CMO' :
                                             project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
                                     </p>
@@ -308,7 +338,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         <p className={`text-sm font-bold ${isRejected ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong> 
                             {isRejected 
-                                ? 'This project has been rejected and is now read-only. The rejection reason is displayed above. Please contact your supervisor for further instructions.'
+                                ? returnType === 'reject'
+                                    ? 'This project has been rejected. The rejection reason is displayed above. You can make changes and resubmit for review.'
+                                    : 'This project has been sent for rework. The reviewer comments are displayed above. You can make changes and resubmit for review.'
                                 : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>

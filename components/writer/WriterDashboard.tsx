@@ -68,15 +68,8 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     // Use historyProjects for MyWork view (participation-based filtering)
     const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
 
-    // Categorize Projects - use all projects from getMyWork without filtering by assigned_to_role
-    const drafts = dashboardProjects.filter(
-  p =>
-    p.status === TaskStatus.TODO ||
-    p.status === TaskStatus.IN_PROGRESS ||
-    p.status === TaskStatus.REJECTED
-);
-
-const inReview = dashboardProjects.filter(
+    // Categorize Projects - mutually exclusive categorization
+    const inReview = dashboardProjects.filter(
   p =>
     p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
     p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2
@@ -91,6 +84,15 @@ const inProduction = dashboardProjects.filter(
     p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
     p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
     p.current_stage === WorkflowStage.OPS_SCHEDULING
+);
+
+const drafts = dashboardProjects.filter(
+  p =>
+    !inReview.some(reviewP => reviewP.id === p.id) &&
+    !inProduction.some(productionP => productionP.id === p.id) &&
+    (p.current_stage === WorkflowStage.SCRIPT ||
+     p.current_stage === WorkflowStage.REWORK ||
+     (p.status === TaskStatus.REJECTED && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2))
 );
     
 
@@ -205,6 +207,16 @@ const inProduction = dashboardProjects.filter(
                                                 }`}>
                                                 {p.channel}
                                             </span>
+                                            <span
+                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                                        ? 'bg-red-500 text-white'
+                                                        : p.priority === 'MEDIUM'
+                                                            ? 'bg-yellow-500 text-black'
+                                                            : 'bg-green-500 text-white'
+                                                }`}
+                                            >
+                                                {p.priority}
+                                            </span>
                                             {p.status === TaskStatus.REJECTED && (
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rework</span>
                                             )}
@@ -235,6 +247,16 @@ const inProduction = dashboardProjects.filter(
                                     >
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                                            <span
+                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                                        ? 'bg-red-500 text-white'
+                                                        : p.priority === 'MEDIUM'
+                                                            ? 'bg-yellow-500 text-black'
+                                                            : 'bg-green-500 text-white'
+                                                }`}
+                                            >
+                                                {p.priority}
+                                            </span>
                                             <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
                                                 {p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
                                             </span>
@@ -263,6 +285,16 @@ const inProduction = dashboardProjects.filter(
                                                     'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
+                                            </span>
+                                            <span
+                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                                        ? 'bg-red-500 text-white'
+                                                        : p.priority === 'MEDIUM'
+                                                            ? 'bg-yellow-500 text-black'
+                                                            : 'bg-green-500 text-white'
+                                                }`}
+                                            >
+                                                {p.priority}
                                             </span>
                                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                                                 p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :

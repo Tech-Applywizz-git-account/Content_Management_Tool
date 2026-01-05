@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -13,7 +14,6 @@ interface Props {
 }
 const isReworkProject = (project: Project) =>
   project.history?.some(h =>
-    h.action === 'REJECTED' ||
     h.action?.startsWith('REWORK_')
   );
 
@@ -28,7 +28,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => 
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
-    const isRework = isReworkProject(project);
+    // Use the new workflow state logic
+    const workflowState = getWorkflowState(project);
+    const isRework = workflowState.isRework;
+    const isRejected = workflowState.isRejected;
 const hasEditedVideo = !!project.edited_video_link;
 
 
@@ -99,8 +102,8 @@ const hasEditedVideo = !!project.edited_video_link;
             }
             
             // Determine if this is a rework submission based on project status
-        
-            
+            const isRejected = project.status === 'REJECTED';
+                        
             // Record the action in workflow history with appropriate action type
             const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
             const comment = isRework 
@@ -122,7 +125,7 @@ const hasEditedVideo = !!project.edited_video_link;
                 edited_video_link: editedVideoLink,
                 current_stage: WorkflowStage.THUMBNAIL_DESIGN,
                 assigned_to_role: Role.DESIGNER,
-                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
+                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
             });
             console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
             
@@ -168,6 +171,16 @@ const hasEditedVideo = !!project.edited_video_link;
                             <span className="text-sm text-slate-500 font-bold">
                                 Due: {formatDistanceToNow(new Date(project.due_date))} from now
                             </span>
+                            <span
+                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                        ? 'bg-red-500 text-white'
+                                        : project.priority === 'MEDIUM'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                    }`}
+                            >
+                                {project.priority}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -182,9 +195,14 @@ const hasEditedVideo = !!project.edited_video_link;
       <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
         <span className="text-white font-bold text-sm">!</span>
       </div>
-      <h2 className="text-xl font-black uppercase text-red-800">
-        Rework Required
-      </h2>
+      <div>
+        <h2 className="text-xl font-black uppercase text-red-800">
+          {isRejected ? 'Project Rejected' : 'Rework Required'}
+        </h2>
+        <p className="text-sm font-bold text-red-600">
+          {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+        </p>
+      </div>
     </div>
 
     <div className="space-y-4">
@@ -364,7 +382,11 @@ const hasEditedVideo = !!project.edited_video_link;
     <div className="flex items-center gap-2 mb-4">
       <Film className="w-5 h-5" />
       <h2 className="text-xl font-black uppercase">
-        {isRework ? 'Rework Edited Video Upload' : 'Edited Video Upload'}
+        {isRejected
+          ? 'Rejected Edited Video Upload'
+          : isRework
+          ? 'Rework Edited Video Upload'
+          : 'Edited Video Upload'}
       </h2>
     </div>
 
@@ -385,11 +407,13 @@ const hasEditedVideo = !!project.edited_video_link;
       </div>
     )}
 
-    {/* ALWAYS show input for REWORK */}
-    {(isRework || !hasEditedVideo) && (
+    {/* ALWAYS show input for REWORK or REJECTED */}
+    {(isRework || isRejected || !hasEditedVideo) && (
       <div className="space-y-4">
         <p className="text-slate-600 font-medium">
-          {isRework
+          {isRejected
+            ? 'Upload new edited video link for rejected project'
+            : isRework
             ? 'Upload new edited video link for rework'
             : 'Upload final edited video link'}
         </p>
@@ -407,7 +431,7 @@ const hasEditedVideo = !!project.edited_video_link;
             className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
           >
             <Upload className="w-5 h-5 inline mr-2" />
-            {isRework ? 'Submit Rework Edit' : 'Upload'}
+            {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
           </button>
         </div>
       </div>

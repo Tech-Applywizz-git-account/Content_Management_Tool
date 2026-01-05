@@ -778,7 +778,7 @@ export const projects = {
     // defaults - ensure proper initial state
     current_stage: WorkflowStage.SCRIPT,
     status: TaskStatus.TODO,
-    priority: projectData.priority || 'NORMAL'
+    priority: projectData.priority || 'MEDIUM'
   }])
   .select()
   .single();
@@ -1062,7 +1062,8 @@ export const workflow = {
         userRole: Role,
         returnToStage: WorkflowStage,
         returnToRole: Role,
-        comment: string
+        comment: string,
+        isRework: boolean = false  // Added parameter to distinguish between rework and reject
     ) {
         // First get the current project to know its current stage and script content
         const { data: currentProject, error: fetchError } = await supabase
@@ -1082,7 +1083,7 @@ export const workflow = {
             .update({
                 current_stage: returnToStage,
                 assigned_to_role: returnToRole,
-                status: TaskStatus.REJECTED
+                status: TaskStatus.REJECTED  // Status is still REJECTED for both rework and reject
             })
             .eq('id', projectId)
             .select();
@@ -1107,6 +1108,9 @@ export const workflow = {
         const thumbnailLink = currentProject?.thumbnail_link || null;
         const creativeLink = currentProject?.creative_link || null;
 
+        // Determine the action type based on isRework parameter
+        const actionType = isRework ? 'REWORK' : 'REJECTED';
+
         // Add workflow history with script content and asset links
         const { error: historyError } = await supabase
             .from('workflow_history')
@@ -1115,8 +1119,8 @@ export const workflow = {
                 stage: returnToStage,
                 actor_id: userId,
                 actor_name: userName,
-                action: 'REJECTED',
-                comment: comment || `Rejected by ${userRole}`,
+                action: actionType,
+                comment: comment || (isRework ? `Rework requested by ${userRole}` : `Rejected by ${userRole}`),
                 script_content: scriptContent,
                 video_link: videoLink,
                 edited_video_link: editedVideoLink,
@@ -1429,8 +1433,10 @@ export const helpers = {
                 [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
-                [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS }
+                [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+                [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER }
             };
+            
             return rejectMap[currentStage];
         }
 
@@ -1449,7 +1455,8 @@ export const helpers = {
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
-            [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS }
+            [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },
+            [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO }
         };
         return approvalMap[currentStage];
     },
@@ -1671,13 +1678,14 @@ export const db = {
         }
     },
 
-    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO'): Promise<Project> {
+    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'MEDIUM'): Promise<Project> {
         const projectData = {
             title,
             channel,
             content_type: contentType,
             assigned_to_role: Role.WRITER, // Always starts with writer
             due_date: dueDate,
+            priority,
             data: {}
         };
 
@@ -1828,6 +1836,10 @@ export const db = {
             throw new Error('Cannot reject project with temporary ID. Project must be saved to Supabase first.');
         }
 
+        // Determine if this is a rework request based on the comment or target stage
+        // If the comment contains 'Project killed' or 'terminated', it's a reject, otherwise it's rework
+        const isRework = !comment.includes('Project killed') && !comment.includes('terminated');
+
         // Get the project with retry mechanism
         let project;
         let attempts = 0;
@@ -1864,7 +1876,8 @@ export const db = {
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
-            [WorkflowStage.POSTED]: Role.OPS
+            [WorkflowStage.POSTED]: Role.OPS,
+            [WorkflowStage.REWORK]: Role.WRITER
         };
 
         // Special case: When CEO rejects from FINAL_REVIEW_CEO, send back to CMO instead of CEO
@@ -1882,7 +1895,8 @@ export const db = {
             currentUserCache.role,
             targetStage,
             targetRole,
-            comment
+            comment,
+            isRework
         );
 
         // Also store the rejection reason in the rejected_reason field

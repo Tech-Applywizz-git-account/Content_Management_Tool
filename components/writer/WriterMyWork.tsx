@@ -14,7 +14,14 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   const [reviewComments, setReviewComments] = useState<any[]>([]);
 
 
-  const myTasks = projects || [];
+  // Remove duplicate projects based on ID
+  const uniqueProjects = new Map<string, Project>();
+  (projects || []).forEach(project => {
+    if (!uniqueProjects.has(project.id)) {
+      uniqueProjects.set(project.id, project);
+    }
+  });
+  const myTasks: Project[] = Array.from(uniqueProjects.values());
 
   /* ===============================
      DETAIL VIEW (SCRIPT VIEW)
@@ -118,7 +125,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
         .from('workflow_history')
         .select('action, comment, actor_name, timestamp')
         .eq('project_id', task.id)
-        .in('action', ['REJECTED', 'APPROVED'])
+        .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
         .order('timestamp', { ascending: false })
     );
 
@@ -142,18 +149,34 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                 >
                   {task.channel}
                 </span>
-
+                
+                <span
+                  className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.priority === 'HIGH'
+                        ? 'bg-red-500 text-white'
+                        : task.priority === 'MEDIUM'
+                            ? 'bg-yellow-500 text-black'
+                            : 'bg-green-500 text-white'
+                    }`}
+                >
+                  {task.priority}
+                </span>
+                
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 ${
-                    task.status === TaskStatus.REJECTED
+                    // Check if this is a rework project (REWORK action in history)
+                    task.history?.some(h => h.action === 'REWORK')
+                      ? 'bg-orange-100 text-orange-800 border-2 border-orange-600'
+                      : task.history?.some(h => h.action === 'REJECTED')
                       ? 'bg-red-100 text-red-700 border-red-600'
                       : task.status === TaskStatus.DONE
                       ? 'bg-green-100 text-green-700 border-green-600'
                       : 'bg-blue-100 text-blue-700 border-blue-600'
                   }`}
                 >
-                  {task.status === TaskStatus.REJECTED
+                  {task.history?.some(h => h.action === 'REWORK')
                     ? 'Rework'
+                    : task.history?.some(h => h.action === 'REJECTED')
+                    ? 'Rejected'
                     : task.status === TaskStatus.DONE
                     ? 'Approved'
                     : 'In Progress'}
