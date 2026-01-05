@@ -53,6 +53,16 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                 <span className="text-xs font-black uppercase border-2 px-2 py-1">
                   {task.channel}
                 </span>
+                <span
+                  className={`text-xs font-black uppercase border-2 px-2 py-1 ${task.priority === 'HIGH'
+                        ? 'bg-red-500 text-white'
+                        : task.priority === 'MEDIUM'
+                            ? 'bg-yellow-500 text-black'
+                            : 'bg-green-500 text-white'
+                    }`}
+                >
+                  {task.priority}
+                </span>
                 <span className="text-xs font-black uppercase bg-blue-100 border-2 px-2 py-1">
                   {task.history && task.history.some(h => h.action === 'REJECTED') ? 'Rework' : 'Pending Approval'}
                 </span>

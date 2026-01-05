@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -15,8 +16,18 @@ interface Props {
 const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, onUpdate }) => {
      // For rework projects, keep existing data but track new inputs
      const processedProject = {...initialProject};
-     
+         
      const [localProject, setLocalProject] = useState<Project>(processedProject);
+         
+     const isReworkProject = (project: Project) =>
+       project.history?.some(h =>
+         h.action?.startsWith('REWORK_')
+       );
+         
+     // Use the new workflow state logic
+     const workflowState = getWorkflowState(localProject);
+     const isRework = workflowState.isRework;
+     const isRejected = workflowState.isRejected;
 
      
   const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
@@ -138,8 +149,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 return;
             }
             
-            // Determine if this is a rework submission based on project status
-            const isRework = localProject.status === 'REJECTED';
+            // Determine if this is a rework submission based on the new workflow state logic
+            const workflowState = getWorkflowState(localProject);
+            const isRework = workflowState.isRework;
+            const isRejected = workflowState.isRejected;
             
             // Record the action in workflow history before updating the project
             const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'SUBMITTED';
@@ -171,7 +184,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 video_link: videoLink,
                 current_stage: WorkflowStage.VIDEO_EDITING,
                 assigned_to_role: Role.EDITOR,
-                status: 'IN_PROGRESS' // Reset status from REJECTED to IN_PROGRESS
+                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
             });
 
             // ✅ Update local state ONLY after success
@@ -233,6 +246,16 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                             <span className="text-sm text-slate-500 font-bold">
                                 Due: {formatDistanceToNow(new Date(localProject.due_date))} from now
                             </span>
+                            <span
+                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
+                                        ? 'bg-red-500 text-white'
+                                        : localProject.priority === 'MEDIUM'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                    }`}
+                            >
+                                {localProject.priority}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -245,7 +268,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
                             <span className="text-white font-bold text-sm">!</span>
                         </div>
-                        <h2 className="text-xl font-black uppercase text-red-800">Rework Required</h2>
+                        <div>
+                            <h2 className="text-xl font-black uppercase text-red-800">
+                                {isRejected ? 'Project Rejected' : 'Rework Required'}
+                            </h2>
+                            <p className="text-sm font-bold text-red-600">
+                                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+                            </p>
+                        </div>
                     </div>
                     <div className="space-y-4">
                         <div className="p-4 bg-white border-l-4 border-red-500">
@@ -369,7 +399,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                             <h2 className="text-xl font-black uppercase">Video Upload</h2>
                         </div>
 
-                        {localProject.status === 'REJECTED' ? (
+                        {isRejected ? (
                             <div className="space-y-4">
                                 {/* Show existing video link as read-only */}
                                 {localProject.video_link && (
@@ -393,7 +423,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                                 
                                 {/* Input for new video link */}
                                 <div className="space-y-4">
-                                    <p className="text-slate-600 font-medium">Upload the new video link for rework</p>
+                                    <p className="text-slate-600 font-medium">Upload the new video link for rejected project</p>
                                     <div className="flex gap-3">
                                         <input
                                             type="url"
@@ -407,7 +437,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                                             className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                                         >
                                             <Upload className="w-5 h-5 inline mr-2" />
-                                            Submit Rework Video
+                                            Submit Rejected Video
                                         </button>
                                     </div>
                                     <p className="text-sm text-slate-500">

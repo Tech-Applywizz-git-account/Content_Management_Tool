@@ -6,6 +6,7 @@ import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } f
 import Popup from '../Popup';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -154,18 +155,18 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
                 
                 // Show popup for rework
-                setPopupMessage('CMO has sent the script back for rework.');
+                setPopupMessage('CMO has sent the script back for rework. The recipient will have full editing capabilities.');
                 setStageName('Script Rework');
                 setPopupDuration(5000); // manual close for rework
                 setTimeout(() => {
                     setShowPopup(true);
                 }, 0);
             } else if (decision === 'REJECT') {
-                // Full Reject
+                // Full Reject - don't send back to a specific role, just reject the project
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
                 
                 // Show popup for rejection
-                setPopupMessage('CMO has rejected the script.');
+                setPopupMessage('CMO has rejected the script. The recipient will see comments but have limited editing capabilities.');
                 setStageName('Rejected');
                 setPopupDuration(5000); // manual close for reject
                 setTimeout(() => {
@@ -223,6 +224,16 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             </span>
                             <span className="text-xs font-bold uppercase text-slate-500">
                                 Stage: {STAGE_LABELS[project.current_stage]}
+                            </span>
+                            <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                        ? 'bg-red-500 text-white'
+                                        : project.priority === 'MEDIUM'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                    }`}
+                            >
+                                {project.priority}
                             </span>
                         </div>
                     </div>
@@ -322,7 +333,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="space-y-8">
                                     {/* Raw Video Assets */}
                                     {isVideo && (project.video_link || previousAssets?.video_link) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-2 gap-6">
                                             {/* Previous Raw Video */}
                                             {previousAssets?.video_link && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -365,7 +376,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
                                     {/* Edited Video Assets */}
                                     {isVideo && (project.edited_video_link || previousAssets?.edited_video_link) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-2 gap-6">
                                             {/* Previous Edited Video */}
                                             {previousAssets?.edited_video_link && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -408,7 +419,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
                                     {/* Thumbnail/Creative Assets */}
                                     {(project.thumbnail_link || previousAssets?.thumbnail_link) && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-2 gap-6">
                                             {/* Previous Thumbnail/Creative */}
                                             {previousAssets?.thumbnail_link && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -451,7 +462,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 </div>
                             ) : (
                                 // Show single assets for non-rework projects
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-3 gap-6">
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -602,7 +613,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
                     <div className="mt-8">
                         <button
-                            disabled={!decision || isSubmitting || (decision === 'REWORK' && (!reworkStage || reworkStage === '')) || ((decision === 'REWORK' || decision === 'REJECT') && (!comment || comment.trim() === ''))}
+                            disabled={!decision || isSubmitting || (decision === 'REWORK' && (!reworkStage || reworkStage === '')) || (decision === 'REJECT' && (!comment || comment.trim() === '')) || (decision === 'APPROVE' && (!comment || comment.trim() === ''))}
                             onClick={() => {
                                 console.log('Button clicked', { decision, reworkStage, comment });
                                 setConfirmationAction(decision);

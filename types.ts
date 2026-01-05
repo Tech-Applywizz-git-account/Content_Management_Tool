@@ -28,6 +28,7 @@ export enum WorkflowStage {
   FINAL_REVIEW_CEO = 'FINAL_REVIEW_CEO', // CEO Round 2
   OPS_SCHEDULING = 'OPS_SCHEDULING', // Ops schedules post
   POSTED = 'POSTED', // Content posted/completed
+  REWORK = 'REWORK', // Rework stage
 }
 
 export enum TaskStatus {
@@ -43,7 +44,7 @@ export enum UserStatus {
   INACTIVE = 'INACTIVE',
 }
 
-export type Priority = 'HIGH' | 'NORMAL';
+export type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type ContentType = 'VIDEO' | 'CREATIVE_ONLY';
 
 export interface User {
@@ -97,7 +98,7 @@ export interface HistoryEvent {
   stage: WorkflowStage;
   actor_id: string;
   actor_name: string;
-  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED';
+  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED';
   comment?: string;
   timestamp: string;
 }
@@ -148,4 +149,5 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
   [WorkflowStage.POSTED]: 'Posted',
+  [WorkflowStage.REWORK]: 'Rework',
 };

@@ -5,6 +5,7 @@ import Layout from '../Layout';
 import CeoReviewScreen from './CeoReviewScreen';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
+import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import CeoCalendar from './CeoCalendar';
@@ -571,6 +572,16 @@ if (activeView === 'calendar') {
                                 'bg-[#D946EF] text-white'
                             }`}>
                                 {project.channel}
+                            </span>
+                            <span
+                                className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                        ? 'bg-red-500 text-white'
+                                        : project.priority === 'MEDIUM'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                }`}
+                            >
+                                {project.priority}
                             </span>
                             {activeTab === 'HISTORY' && (
                                 <span className="absolute top-0 right-0 bg-[#4ADE80] text-black text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black">

@@ -30,6 +30,18 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                     const isScheduled = !!project.shoot_date;
                     const isUploaded = !!project.video_link;
                     
+                    // Check if this is a rework project (REWORK_* actions)
+                    const isRework = project.history?.some(h => 
+                                     h.action?.startsWith('REWORK_')
+                                   );
+                    
+                    // Check if this is a rejected project (only if there are no rework actions)
+                    // This prevents projects that were sent for rework from showing as rejected
+                    const isRejected = !isRework && (project.status === 'REJECTED' || 
+                                     project.history?.some(h => 
+                                       h.action === 'REJECTED'
+                                     ));
+                    
                     return (
                         <div
                             key={project.id}
@@ -37,7 +49,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                             className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
                         >
                             <div className="p-6 space-y-4">
-                                {/* Channel Badge */}
+                                {/* Channel and Priority Badges */}
                                 <div className="flex justify-between items-start">
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
@@ -49,7 +61,25 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                     >
                                         {project.channel}
                                     </span>
-                                    {isUploaded ? (
+                                    <span
+                                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                                ? 'bg-red-500 text-white'
+                                                : project.priority === 'MEDIUM'
+                                                    ? 'bg-yellow-500 text-black'
+                                                    : 'bg-green-500 text-white'
+                                            }`}
+                                    >
+                                        {project.priority}
+                                    </span>
+                                    {isRejected ? (
+                                        <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
+                                            Rejected
+                                        </span>
+                                    ) : isRework ? (
+                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
+                                            Rework
+                                        </span>
+                                    ) : isUploaded ? (
                                         <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
                                             ✓ Uploaded
                                         </span>

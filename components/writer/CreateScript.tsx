@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../types';
+import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus, Priority } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText } from 'lucide-react';
+import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X } from 'lucide-react';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     project?: Project; // If editing existing draft
@@ -19,6 +20,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     const [reviewComment, setReviewComment] = useState<any>(null);
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
+    const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null); // 'rework' or 'reject'
     const currentUser = db.getCurrentUser();
       
     // Ensure we have a current user
@@ -31,8 +33,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         title: project?.title || '',
         channel: project?.channel || Channel.LINKEDIN,
         contentType: project?.content_type || ('VIDEO' as ContentType),
-        dueDate: project?.due_date || new Date().toISOString().split('T')[0]
+        dueDate: project?.due_date || new Date().toISOString().split('T')[0],
+        priority: project?.priority || ('Normal' as Priority)
     });
+    
+    // State for validation error
+    const [validationError, setValidationError] = useState<string | null>(null);
+    
+    // Check for invalid channel/content type combinations
+    useEffect(() => {
+        if (newProjectDetails.channel === Channel.LINKEDIN && newProjectDetails.contentType === 'VIDEO') {
+            setValidationError('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
+        } else {
+            setValidationError(null);
+        }
+    }, [newProjectDetails.channel, newProjectDetails.contentType]);
 
     // Listen for beforeLogout event to save changes automatically
     useEffect(() => {
@@ -47,32 +62,42 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         };
     }, [formData, newProjectDetails, project]);
 
-    // Fetch reviewer comments and previous script for rejected projects
+    // Fetch reviewer comments and previous script for rework/rejected projects
     useEffect(() => {
         const fetchReviewData = async () => {
-            if (project?.id && project.status === 'REJECTED') {
+            if (project?.id) {
                 try {
-                    // Fetch reviewer comment
-                    const { data: commentData, error: commentError } = await supabase
+                    // Use the new workflow state logic to determine the latest action
+                    const workflowState = getWorkflowState(project);
+                    
+                    // Determine return type based on the latest action
+                    if (workflowState.isRejected) {
+                        setReturnType('reject');
+                    } else if (workflowState.isRework) {
+                        setReturnType('rework');
+                    }
+                    
+                    // Fetch the most recent workflow history entry to get comments
+                    const { data: historyData, error: historyError } = await supabase
                         .from('workflow_history')
-                        .select('actor_name, comment, timestamp')
+                        .select('actor_name, comment, timestamp, action')
                         .eq('project_id', project.id)
-                        .eq('action', 'REJECTED')
                         .order('timestamp', { ascending: false })
                         .limit(1);
 
-                    if (commentError) {
-                        console.error('Error fetching review comment:', commentError);
-                    } else if (commentData && commentData.length > 0) {
-                        setReviewComment(commentData[0]);
+                    if (historyError) {
+                        console.error('Error fetching workflow history:', historyError);
+                    } else if (historyData && historyData.length > 0) {
+                        setReviewComment(historyData[0]);
                     }
                     
-                    // Fetch previous script version
+                    // Fetch previous script version based on the latest action
+                    let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
                     const { data: scriptData, error: scriptError } = await supabase
                         .from('workflow_history')
                         .select('script_content')
                         .eq('project_id', project.id)
-                        .eq('action', 'REJECTED')
+                        .eq('action', scriptAction)
                         .order('timestamp', { ascending: false })
                         .limit(1);
 
@@ -115,7 +140,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     newProjectDetails.title,
                     newProjectDetails.channel,
                     newProjectDetails.dueDate,
-                    newProjectDetails.contentType
+                    newProjectDetails.contentType,
+                    newProjectDetails.priority
                 );
                 console.log('Created project with ID:', createdProject.id);
                 await db.updateProjectData(createdProject.id, {
@@ -154,7 +180,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         newProjectDetails.title,
         newProjectDetails.channel,
         newProjectDetails.dueDate,
-        newProjectDetails.contentType
+        newProjectDetails.contentType,
+        newProjectDetails.priority
       );
 
       if (!createdProject?.id) {
@@ -197,8 +224,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     console.log('✅ Project data updated');
 
     // 4️⃣ SUBMIT WORKFLOW
-    // If CMO is creating the script, submit directly to CEO (skip CMO review)
-    if (creatorRole === Role.CMO) {
+    // Determine workflow based on latest action
+    const workflowState = project ? getWorkflowState(project) : { isRejected: false, isRework: false, isInReview: false, isApproved: false, latestAction: null };
+    if (workflowState.isRejected || workflowState.isRework) {
+      // When resubmitting a rejected or rework project, use the normal workflow
+      await db.submitToReview(realProjectId);
+      console.log('✅ Successfully resubmitted rejected/rework project');
+    } else if (creatorRole === Role.CMO) {
       // For CMO-created scripts, we need to bypass the normal workflow and go straight to CEO review
       try {
         const project = await db.getProjectById(realProjectId);
@@ -222,7 +254,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
     // Show popup after successful DB operation
     let nextStageLabel, creatorLabel, message;
-    if (creatorRole === Role.CMO) {
+    if (workflowState.isRejected || workflowState.isRework) {
+      // For rejected or rework projects being resubmitted
+      const projectDetails = await db.getProjectById(realProjectId);
+      nextStageLabel = STAGE_LABELS[projectDetails?.current_stage || WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
+      const actionType = workflowState.isRework ? 'Rework' : 'Rejected';
+      message = `${actionType} script resubmitted successfully. Waiting for ${nextStageLabel}.`;
+    } else if (creatorRole === Role.CMO) {
       nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2] || 'Script Review (CEO)';
       creatorLabel = 'CMO';
       message = `${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`;
@@ -288,10 +326,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     </button>
                     <button
                         onClick={() => setShowConfirmation(true)}
-                        disabled={isSubmitting}
-                        className="px-6 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center"
+                        disabled={isSubmitting || !!validationError}
+                        className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${validationError ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
                     >
-                        {isSubmitting ? 'Sending...' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
+                        {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
                         <Send className="w-4 h-4 ml-2" />
                     </button>
                 </div>
@@ -348,6 +386,36 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                         </button>
                                     </div>
                                 </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Priority</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {(['LOW', 'NORMAL', 'HIGH'] as const).map(priority => (
+                                            <button
+                                                key={priority}
+                                                onClick={() => setNewProjectDetails({ ...newProjectDetails, priority: priority })}
+                                                className={`p-2 text-xs font-black uppercase border-2 border-black ${newProjectDetails.priority === priority ? 'bg-black text-white' : 'bg-white hover:bg-slate-50'}`}
+                                            >
+                                                {priority}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                {/* Validation Error Message */}
+                                {validationError && (
+                                    <div className="mt-4 p-4 bg-red-100 border-2 border-red-400 text-red-800 rounded-lg">
+                                        <div className="flex items-start">
+                                            <div className="flex-shrink-0">
+                                                <X className="h-5 w-5 text-red-600" />
+                                            </div>
+                                            <div className="ml-3">
+                                                <p className="text-sm font-bold uppercase">Invalid Combination</p>
+                                                <p className="text-sm mt-1">{validationError}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -360,11 +428,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                 placeholder="What is the goal of this content?"
                             />
                         </div>
-                        {/* REWORK COMMENTS (ONLY FOR REJECTED PROJECTS) */}
-                        {project?.status === 'REJECTED' && (
+                        {/* REWORK COMMENTS (ONLY FOR REJECTED/REWORK PROJECTS) */}
+                        {project && (getWorkflowState(project).isRejected || getWorkflowState(project).isRework) && (
                           <div className="bg-red-50 p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                             <h3 className="font-black uppercase text-lg text-red-700 mb-4">
                               Reviewer Comments
+                              {returnType === 'reject' && (
+                                <span className="block text-sm font-normal text-red-600 mt-1">
+                                  (Project was rejected - limited editing capabilities)
+                                </span>
+                              )}
+                              {returnType === 'rework' && (
+                                <span className="block text-sm font-normal text-red-600 mt-1">
+                                  (Project sent for rework - full editing capabilities)
+                                </span>
+                              )}
                             </h3>
 
                             {reviewComment ? (
@@ -372,7 +450,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                 <p className="font-bold text-slate-900">
                                   {reviewComment.actor_name || 'Reviewer'}
                                   <span className="ml-2 text-xs uppercase text-red-600">
-                                    (REWORK REQUIRED)
+                                    ({returnType === 'reject' ? 'PROJECT REJECTED' : 'REWORK REQUIRED'})
                                   </span>
                                 </p>
 
@@ -393,7 +471,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     {/* Right Col: Editor */}
                     <div className="lg:col-span-2 space-y-6">
                         {/* Previous Script (for rework projects) */}
-                        {project?.status === 'REJECTED' && previousScript && (
+                        {project && getWorkflowState(project).isRework && previousScript && (
                             <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
                                 <h3 className="font-black uppercase text-lg text-slate-900 mb-4">Previous Script Version</h3>
                                 <div className="font-serif text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">

@@ -422,7 +422,7 @@ function App() {
   };
 
   const handleCreateProject = async (title: string, channel: Channel, dueDate: string) => {
-    await db.createProject(title, channel, dueDate);
+    await db.createProject(title, channel, dueDate, 'VIDEO', 'MEDIUM');
     refreshData(user!);
   };
 

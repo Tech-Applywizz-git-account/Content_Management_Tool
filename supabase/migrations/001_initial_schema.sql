@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
         'REJECTED',
         'DONE'
     )),
-    priority VARCHAR(10) DEFAULT 'NORMAL' CHECK (priority IN ('HIGH', 'NORMAL')),
+    priority VARCHAR(10) DEFAULT 'MEDIUM' CHECK (priority IN ('HIGH', 'MEDIUM', 'LOW')),
     assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
     due_date DATE,
     shoot_date DATE,

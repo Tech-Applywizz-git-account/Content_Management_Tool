@@ -42,7 +42,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                         className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
                     >
                         <div className="p-6 space-y-4">
-                            {/* Channel Badge */}
+                            {/* Channel and Priority Badges */}
                             <div className="flex justify-between items-start">
                                 <span
                                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
@@ -53,6 +53,16 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                                         }`}
                                 >
                                     {project.channel}
+                                </span>
+                                <span
+                                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                            ? 'bg-red-500 text-white'
+                                            : project.priority === 'MEDIUM'
+                                                ? 'bg-yellow-500 text-black'
+                                                : 'bg-green-500 text-white'
+                                    }`}
+                                >
+                                    {project.priority}
                                 </span>
                                 {project.status === 'REJECTED' ? (
                                     <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
