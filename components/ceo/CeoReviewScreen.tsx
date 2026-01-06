@@ -29,6 +29,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         creative_link: string | null;
     } | null>(null);
     
+
+    
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -40,6 +42,23 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
+    const getReworkRoleLabel = (stage: WorkflowStage) => {
+  switch (stage) {
+    case WorkflowStage.SCRIPT:
+      return 'Writer';
+    case WorkflowStage.FINAL_REVIEW_CMO:
+      return 'CMO';
+    case WorkflowStage.VIDEO_EDITING:
+      return 'Editor';
+    case WorkflowStage.CINEMATOGRAPHY:
+      return 'Cinematographer';
+    case WorkflowStage.CREATIVE_DESIGN:
+      return 'Designer';
+    default:
+      return 'Team';
+  }
+};
+
 
     useEffect(() => {
         const fetchPreviousScript = async () => {
@@ -143,15 +162,18 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
   setShowPopup(true);
 }, 0);
             } else if (decision === 'REWORK') {
+                // Send the project for rework
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
                 
                 // Show popup for rework
-                setPopupMessage('CEO has sent the script back for rework. The recipient will have full editing capabilities.');
-                setStageName('Script Rework');
-                setPopupDuration(5000); // manual close for rework
-                setTimeout(() => {
-  setShowPopup(true);
-}, 0);
+                const roleLabel = getReworkRoleLabel(reworkStage as WorkflowStage);
+
+setPopupMessage(
+  `CEO has sent the script back for rework to the ${roleLabel}.`
+);
+
+setStageName(`Rework → ${roleLabel}`);
+
             } else if (decision === 'REJECT') {
                 // Full reject goes back to SCRIPT/Draft usually, or a specific REJECTED state
                 // For reject, we don't send back to a specific role, just reject the project
@@ -308,6 +330,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             </div>
                         )}
                     </section>
+                    
+
 
                     {/* Assets Section (Only for final review) */}
                     {project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && (
@@ -579,6 +603,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     <option value="">-- Select Role --</option>
                                     {getReworkOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                 </select>
+                                
+
                             </div>
                         )}
 
@@ -599,7 +625,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     <div className="mt-8">
                         <button
-                            disabled={!decision || isSubmitting || (decision === 'REWORK' && (!reworkStage || reworkStage === '')) || (decision === 'REJECT' && (!comment || comment.trim() === '')) || (decision === 'APPROVE' && (!comment || comment.trim() === ''))}
+                            disabled={!decision || isSubmitting || (decision === 'REWORK' && (!reworkStage || reworkStage === '')) || (decision === 'REJECT' && (!comment || comment.trim() === ''))}
                             onClick={() => {
                                 console.log('Button clicked', { decision, reworkStage, comment });
                                 setConfirmationAction(decision);

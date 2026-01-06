@@ -5,10 +5,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
+    userRole: Role;
     onBack: () => void;
     onUpdate: () => void;
 }
@@ -17,7 +18,7 @@ const isReworkProject = (project: Project) =>
     h.action?.startsWith('REWORK_')
   );
 
-const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
+const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate }) => {
     // For rework projects, keep existing data but track new inputs
     const processedProject = {...project};
     
@@ -27,12 +28,17 @@ const EditorProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => 
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
+    const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
     const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
     // Use the new workflow state logic
     const workflowState = getWorkflowState(project);
     const isRework = workflowState.isRework;
     const isRejected = workflowState.isRejected;
-const hasEditedVideo = !!project.edited_video_link;
+    
+    // Determine if current user can edit based on role and workflow state
+    const canEdit = canUserEdit(userRole, workflowState, project.assigned_to_role);
+    
+    const hasEditedVideo = !!project.edited_video_link;
 
 
     // Reset form fields when project changes
@@ -78,6 +84,8 @@ const hasEditedVideo = !!project.edited_video_link;
             const stageLabel = STAGE_LABELS[WorkflowStage.VIDEO_EDITING] || 'Video Editing';
             setPopupMessage(`Delivery date set for ${project.title} on ${deliveryDate}. `);
             setStageName(stageLabel);
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error('Failed to set delivery date:', error);
@@ -91,6 +99,12 @@ const hasEditedVideo = !!project.edited_video_link;
             return;
         }
         
+        // Check if user has permission to edit
+        if (!canEdit) {
+            alert('You do not have permission to edit this project');
+            return;
+        }
+        
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
@@ -101,9 +115,6 @@ const hasEditedVideo = !!project.edited_video_link;
                 return;
             }
             
-            // Determine if this is a rework submission based on project status
-            const isRejected = project.status === 'REJECTED';
-                        
             // Record the action in workflow history with appropriate action type
             const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
             const comment = isRework 
@@ -127,7 +138,35 @@ const hasEditedVideo = !!project.edited_video_link;
                 assigned_to_role: Role.DESIGNER,
                 status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
             });
+            
             console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
+            
+            // Find the designer user to notify
+            const { data: designerUsers } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', Role.DESIGNER)
+                .eq('status', 'ACTIVE');
+            
+            if (designerUsers && designerUsers.length > 0) {
+                // Send notification to all designers
+                for (const designer of designerUsers) {
+                    try {
+                        // Use type assertion to access the notifications service
+                        const dbWithNotifications = db as any;
+                        await dbWithNotifications.notifications.create(
+                            designer.id,
+                            project.id,
+                            'ASSET_UPLOADED',
+                            'New Edited Video Available',
+                            `${user?.user_metadata?.full_name || 'Editor'} has uploaded an edited video for: ${project.title}. Please review and create the thumbnail.`
+                        );
+                    } catch (notificationError) {
+                        console.error('Failed to send notification:', notificationError);
+                        // Continue with the process even if notification fails
+                    }
+                }
+            }
             
             // Show popup notification using STAGE_LABELS for the next stage
             const nextStage = STAGE_LABELS[WorkflowStage.THUMBNAIL_DESIGN] || 'Thumbnail Design';
@@ -137,6 +176,8 @@ const hasEditedVideo = !!project.edited_video_link;
             
             setPopupMessage(popupMessageText);
             setStageName(nextStage);
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error('Failed to upload edited video:', error);
@@ -187,7 +228,7 @@ const hasEditedVideo = !!project.edited_video_link;
             </div>
 
            {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
-{isRework && project.assigned_to_role === Role.EDITOR && project.history?.length > 0 && (
+{(isRework || isRejected) && project.history?.length > 0 && (
   <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
     
     {/* Header */}
@@ -211,11 +252,11 @@ const hasEditedVideo = !!project.edited_video_link;
       <div className="p-4 bg-white border-l-4 border-red-500">
         <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
         <p className="text-red-700">
-          {project.history[0]?.comment ||
+          {getLatestReworkRejectComment(project)?.comment ||
             'No specific reason provided. Please review your submission and make necessary changes.'}
         </p>
         <p className="text-sm text-red-600 mt-2">
-          Rejected by {project.history[0]?.actor_name || 'Reviewer'}
+          {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project)?.actor_name || 'Reviewer'}
         </p>
       </div>
 
@@ -327,6 +368,8 @@ const hasEditedVideo = !!project.edited_video_link;
                         {project.data.script_content || 'No script content available'}
                     </div>
                 </div>
+                
+
 
                 {/* Delivery Date Section */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -407,8 +450,8 @@ const hasEditedVideo = !!project.edited_video_link;
       </div>
     )}
 
-    {/* ALWAYS show input for REWORK or REJECTED */}
-    {(isRework || isRejected || !hasEditedVideo) && (
+    {/* Show input if user has edit permissions */}
+    {(canEdit || !hasEditedVideo) && (
       <div className="space-y-4">
         <p className="text-slate-600 font-medium">
           {isRejected
@@ -480,6 +523,7 @@ const hasEditedVideo = !!project.edited_video_link;
                 <Popup
                     message={popupMessage}
                     stageName={stageName}
+                    duration={popupDuration}
                     onClose={() => {
                         setShowPopup(false);
                         onUpdate();

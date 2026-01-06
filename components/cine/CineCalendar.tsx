@@ -7,7 +7,7 @@ interface Props {
     projects: Project[];
 }
 
-const CineCalendar: React.FC<Props> = ({ projects }) => {
+const CineCalendar: React.FC<Props> = ({ projects = [] }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const monthStart = startOfMonth(currentDate);
@@ -15,12 +15,12 @@ const CineCalendar: React.FC<Props> = ({ projects }) => {
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     // Get shoot dates from projects
-    const shootDates = projects
+    const shootDates = projects && Array.isArray(projects) ? projects
         .filter(p => p.shoot_date)
         .map(p => ({
             date: p.shoot_date!,
             project: p
-        }));
+        })) : [];
 
     const hasShootOnDate = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -90,10 +90,10 @@ const CineCalendar: React.FC<Props> = ({ projects }) => {
                                 className={`aspect-square border-2 border-black p-2 flex flex-col items-center justify-center transition-all ${isCurrentDay
                                         ? 'bg-yellow-200 font-black'
                                         : shoot
-                                            ? 'bg-blue-100 hover:bg-blue-200 cursor-pointer'
+                                            ? `bg-blue-100 hover:bg-blue-200 cursor-pointer ${shoot.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
                                             : 'bg-white hover:bg-slate-50'
                                     } ${!isSameMonth(date, currentDate) ? 'opacity-40' : ''}`}
-                                title={shoot ? shoot.project.title : undefined}
+                                title={shoot ? `${shoot.project.title} (${shoot.project.priority})` : undefined}
                             >
                                 <div className="text-sm font-bold">{format(date, 'd')}</div>
                                 {shoot && (
@@ -118,7 +118,7 @@ const CineCalendar: React.FC<Props> = ({ projects }) => {
                         {shootDates.map(({ date, project }) => (
                             <div
                                 key={project.id}
-                                className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between"
+                                className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                             >
                                 <div className="flex items-center gap-4">
                                     <div className="bg-blue-100 border-2 border-black px-3 py-2">

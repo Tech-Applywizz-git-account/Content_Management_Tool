@@ -199,7 +199,7 @@ const drafts = dashboardProjects.filter(
                             </div>
                             <div className="space-y-4">
                                 {drafts.map(p => (
-                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.status === TaskStatus.REJECTED ? 'bg-red-50' : ''}`} onClick={() => handleEdit(p)}>
+                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.status === TaskStatus.REJECTED ? 'bg-red-50' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleEdit(p)}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -209,13 +209,13 @@ const drafts = dashboardProjects.filter(
                                             </span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-500 text-white'
+                                                        ? 'bg-red-600 text-white font-black'
                                                         : p.priority === 'MEDIUM'
                                                             ? 'bg-yellow-500 text-black'
                                                             : 'bg-green-500 text-white'
                                                 }`}
                                             >
-                                                {p.priority}
+                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             {p.status === TaskStatus.REJECTED && (
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rework</span>
@@ -243,19 +243,19 @@ const drafts = dashboardProjects.filter(
                                     <div
                                         key={p.id}
                                         onClick={() => handleViewProject(p)}
-                                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                        className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                                     >
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-500 text-white'
+                                                        ? 'bg-red-600 text-white font-black'
                                                         : p.priority === 'MEDIUM'
                                                             ? 'bg-yellow-500 text-black'
                                                             : 'bg-green-500 text-white'
                                                 }`}
                                             >
-                                                {p.priority}
+                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
                                                 {p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
@@ -278,7 +278,7 @@ const drafts = dashboardProjects.filter(
                             </div>
                             <div className="space-y-4">
                                 {inProduction.map(p => (
-                                    <div key={p.id} className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                    <div key={p.id} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -288,13 +288,13 @@ const drafts = dashboardProjects.filter(
                                             </span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-500 text-white'
+                                                        ? 'bg-red-600 text-white font-black'
                                                         : p.priority === 'MEDIUM'
                                                             ? 'bg-yellow-500 text-black'
                                                             : 'bg-green-500 text-white'
                                                 }`}
                                             >
-                                                {p.priority}
+                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                                                 p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :

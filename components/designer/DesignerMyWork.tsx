@@ -2,6 +2,7 @@ import React from 'react';
 import { Project, Role } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { Video, Palette, FileImage, CalendarIcon } from 'lucide-react';
+import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
     user: { full_name: string; role: Role };
@@ -30,23 +31,16 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) =>
                     const isVideo = project.content_type === 'VIDEO';
                     const isDelivered = isVideo ? !!project.thumbnail_link : !!project.creative_link;
                     
-                    // Check if this is a rework project (REWORK_* actions)
-                    const isRework = project.history?.some(h => 
-                                     h.action?.startsWith('REWORK_')
-                                   );
-                    
-                    // Check if this is a rejected project (only if there are no rework actions)
-                    // This prevents projects that were sent for rework from showing as rejected
-                    const isRejected = !isRework && (project.status === 'REJECTED' || 
-                                     project.history?.some(h => 
-                                       h.action === 'REJECTED'
-                                     ));
+                    // Use the centralized workflow state detection
+                    const workflowState = getWorkflowState(project);
+                    const isRework = workflowState.isRework;
+                    const isRejected = workflowState.isRejected;
                     
                     return (
                         <div
                             key={project.id}
                             onClick={() => onSelectProject(project)}
-                            className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
+                            className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                         >
                             <div className="p-6 space-y-4">
                                 {/* Channel and Priority Badges */}

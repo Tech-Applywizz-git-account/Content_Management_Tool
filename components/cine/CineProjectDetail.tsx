@@ -5,15 +5,16 @@ import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
+    userRole: Role;
     onBack: () => void;
     onUpdate: () => void;
 }
 
-const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, onUpdate }) => {
+const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate }) => {
      // For rework projects, keep existing data but track new inputs
      const processedProject = {...initialProject};
          
@@ -28,6 +29,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
      const workflowState = getWorkflowState(localProject);
      const isRework = workflowState.isRework;
      const isRejected = workflowState.isRejected;
+     
+     // Determine if current user can edit based on role and workflow state
+     const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
 
      
   const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
@@ -40,6 +44,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
+    const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
     // Reset form fields when project changes
     useEffect(() => {
@@ -121,6 +126,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
             const stageLabel = STAGE_LABELS[WorkflowStage.CINEMATOGRAPHY] || 'Cinematography';
             setPopupMessage(`Shoot scheduled for ${localProject.title} on ${shootDate}.`);
             setStageName(stageLabel);
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error('Failed to set shoot date:', error);
@@ -138,7 +145,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
             alert('Please enter a video link');
             return;
         }
-  
+        
+        // Check if user has permission to edit
+        if (!canEdit) {
+            alert('You do not have permission to edit this project');
+            return;
+        }
+        
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
@@ -196,6 +209,32 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 status: 'IN_PROGRESS'
             }));
 
+            // Find the editor user to notify
+            const { data: editorUsers } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', Role.EDITOR)
+                .eq('status', 'ACTIVE');
+            
+            if (editorUsers && editorUsers.length > 0) {
+                // Send notification to all editors
+                for (const editor of editorUsers) {
+                    try {
+                        // Use type assertion to access the notifications service
+                        const dbWithNotifications = db as any;
+                        await dbWithNotifications.notifications.create(
+                            editor.id,
+                            localProject.id,
+                            'ASSET_UPLOADED',
+                            'New Raw Video Available',
+                            `${user?.user_metadata?.full_name || 'Cinematographer'} has uploaded a raw video for: ${localProject.title}. Please review and edit.`
+                        );
+                    } catch (notificationError) {
+                        console.error('Failed to send notification:', notificationError);
+                        // Continue with the process even if notification fails
+                    }
+                }
+            }
             
             // Show popup notification using STAGE_LABELS for the next stage
             const nextStageLabel = STAGE_LABELS[WorkflowStage.VIDEO_EDITING] || 'Video Editing';
@@ -206,6 +245,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
             setPopupMessage(popupMessageText);
 
             setStageName(nextStageLabel);
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error('Failed to upload video:', error);
@@ -261,8 +302,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 </div>
             </div>
 
-            {/* Rework Information Box (Only shown for rejected projects assigned to Cine) */}
-            {localProject.status === 'REJECTED' && localProject.assigned_to_role === Role.CINE && localProject.history && localProject.history.length > 0 && (
+            {/* Rework Information Box (Shown for rework projects assigned to Cine) */}
+            {(isRework || isRejected) && localProject.history && localProject.history.length > 0 && (
                 <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center space-x-2 mb-4">
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -281,10 +322,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                         <div className="p-4 bg-white border-l-4 border-red-500">
                             <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
                             <p className="text-red-700">
-                                {localProject.history[0].comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                {getLatestReworkRejectComment(localProject)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
                             </p>
                             <p className="text-sm text-red-600 mt-2">
-                                Rejected by {localProject.history[0].actor_name || 'Reviewer'}
+                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
                         
@@ -335,6 +376,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                         {localProject.data.script_content || 'No script content available'}
                     </div>
                 </div>
+                
+
 
                 {/* Shoot Scheduling Section */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -399,9 +442,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                             <h2 className="text-xl font-black uppercase">Video Upload</h2>
                         </div>
 
-                        {isRejected ? (
+                        {(canEdit) ? (
                             <div className="space-y-4">
-                                {/* Show existing video link as read-only */}
+                                {/* Show existing video link as reference */}
                                 {localProject.video_link && (
                                     <div className="bg-blue-50 border-2 border-blue-600 p-4">
                                         <div className="space-y-3">
@@ -423,7 +466,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                                 
                                 {/* Input for new video link */}
                                 <div className="space-y-4">
-                                    <p className="text-slate-600 font-medium">Upload the new video link for rejected project</p>
+                                    <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
                                     <div className="flex gap-3">
                                         <input
                                             type="url"
@@ -437,7 +480,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                                             className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                                         >
                                             <Upload className="w-5 h-5 inline mr-2" />
-                                            Submit Rejected Video
+                                            {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : 'Upload Video'}
                                         </button>
                                     </div>
                                     <p className="text-sm text-slate-500">
@@ -521,6 +564,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, onBack, o
                 <Popup
                     message={popupMessage}
                     stageName={stageName}
+                    duration={popupDuration}
                     onClose={() => {
                         setShowPopup(false);
                         onUpdate();

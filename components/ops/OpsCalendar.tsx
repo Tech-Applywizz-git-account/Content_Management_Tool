@@ -122,7 +122,7 @@ const OpsCalendar: React.FC<Props> = ({ projects = [] }) => {
                     </h2>
                     <div className="space-y-3">
                         {upcomingPosts.map(project => (
-                            <div key={project.id} className="border-2 border-black p-4 bg-white flex items-center justify-between">
+                            <div key={project.id} className={`border-2 border-black p-4 bg-white flex items-center justify-between ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className={`w-3 h-3 ${getPlatformColor(project.channel)} border border-black`}></div>
                                     <div>

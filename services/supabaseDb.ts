@@ -11,6 +11,8 @@ import {
     UserStatus
 } from '../types';
 
+import { Notification } from '../types';
+
 console.log('🔍 Initializing supabaseDb service');
 
 // ============================================================================
@@ -743,7 +745,32 @@ export const projects = {
             .single();
 
         if (error) throw error;
-        return data as Project;
+        
+        // Fetch workflow history for this project
+        const { data: historyData, error: historyError } = await supabase
+            .from('workflow_history')
+            .select('*')
+            .eq('project_id', id)
+            .order('timestamp', { ascending: false });
+
+        if (historyError) {
+            console.error('Failed to fetch workflow history:', historyError);
+            // Return project without history if history fetch fails
+            return {
+                ...(data as Project),
+                history: []
+            };
+        }
+        
+        return {
+            ...(data as Project),
+            history: historyData || []
+        };
+    },
+
+    // Get project by ID with history (alias for clarity)
+    async getByIdWithHistory(id: string) {
+        return this.getById(id);
     },
 
     // Create new project
@@ -975,6 +1002,32 @@ export const workflow = {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
         }
+        
+        // Find users with the next role to notify
+        const { data: nextRoleUsers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role', nextRole)
+            .eq('status', 'ACTIVE');
+        
+        if (nextRoleUsers && nextRoleUsers.length > 0) {
+            // Send notification to all users with the next role
+            for (const nextRoleUser of nextRoleUsers) {
+                try {
+                    const dbWithNotifications = db as any;
+                    await dbWithNotifications.notifications.create(
+                        nextRoleUser.id,
+                        projectId,
+                        'ASSET_UPLOADED',
+                        'New Project Available',
+                        `${userName} has submitted a project for review: ${data.title}. Please review.`
+                    );
+                } catch (notificationError) {
+                    console.error('Failed to send notification:', notificationError);
+                    // Continue with the process even if notification fails
+                }
+            }
+        }
 
         return data;
     },
@@ -1049,6 +1102,32 @@ export const workflow = {
         if (historyError) {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
+        }
+        
+        // Find users with the next role to notify
+        const { data: nextRoleUsers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role', nextRole)
+            .eq('status', 'ACTIVE');
+        
+        if (nextRoleUsers && nextRoleUsers.length > 0) {
+            // Send notification to all users with the next role
+            for (const nextRoleUser of nextRoleUsers) {
+                try {
+                    const dbWithNotifications = db as any;
+                    await dbWithNotifications.notifications.create(
+                        nextRoleUser.id,
+                        projectId,
+                        'ASSET_UPLOADED',
+                        'New Project Available',
+                        `${userName} has approved a project: ${data.title}. Please review and take the next action.`
+                    );
+                } catch (notificationError) {
+                    console.error('Failed to send notification:', notificationError);
+                    // Continue with the process even if notification fails
+                }
+            }
         }
 
         return data;
@@ -1131,6 +1210,32 @@ export const workflow = {
         if (historyError) {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
+        }
+        
+        // Find users with the return role to notify
+        const { data: returnRoleUsers } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role', returnToRole)
+            .eq('status', 'ACTIVE');
+        
+        if (returnRoleUsers && returnRoleUsers.length > 0) {
+            // Send notification to all users with the return role
+            for (const returnRoleUser of returnRoleUsers) {
+                try {
+                    const dbWithNotifications = db as any;
+                    await dbWithNotifications.notifications.create(
+                        returnRoleUser.id,
+                        projectId,
+                        'REWORK_REQUESTED',
+                        'Rework Requested',
+                        `${userName} has requested rework on a project: ${data.title}. Please review the feedback and make necessary changes.`
+                    );
+                } catch (notificationError) {
+                    console.error('Failed to send notification:', notificationError);
+                    // Continue with the process even if notification fails
+                }
+            }
         }
 
         return data;
@@ -1409,7 +1514,7 @@ export const storage = {
 
 export const helpers = {
     // Get workflow next stage based on content type
-    getNextStage(currentStage: WorkflowStage, contentType: ContentType, action: 'APPROVED' | 'REJECTED'): {
+    getNextStage(currentStage: WorkflowStage, contentType: ContentType, action: 'APPROVED' | 'REJECTED', projectData?: any): {
         stage: WorkflowStage;
         role: Role;
     } {
@@ -1449,7 +1554,15 @@ export const helpers = {
                 role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
             },
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-            [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER },
+            [WorkflowStage.VIDEO_EDITING]: { 
+                // If this is a VIDEO project and thumbnail is not required, skip THUMBNAIL_DESIGN stage
+                stage: contentType === 'VIDEO' && projectData?.thumbnail_required === false 
+                    ? WorkflowStage.FINAL_REVIEW_CMO 
+                    : WorkflowStage.THUMBNAIL_DESIGN, 
+                role: contentType === 'VIDEO' && projectData?.thumbnail_required === false 
+                    ? Role.CMO 
+                    : Role.DESIGNER 
+            },
             [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
@@ -1742,7 +1855,8 @@ export const db = {
         const nextStageInfo = helpers.getNextStage(
             project.current_stage,
             project.content_type,
-            'APPROVED'
+            'APPROVED',
+            project.data
         );
 
         const result = await workflow.submitForReview(
@@ -1803,7 +1917,8 @@ export const db = {
         const nextStageInfo = helpers.getNextStage(
             project.current_stage,
             project.content_type,
-            'APPROVED'
+            'APPROVED',
+            project.data
         );
 
         console.log('Next stage info:', nextStageInfo);
@@ -1957,6 +2072,106 @@ export const tokenHealthCheck = (): {
     } catch (error) {
         console.error('🔴 Token Health: Corrupted token detected:', error);
         return { healthy: false, status: 'tokens_corrupted', action: 'clear' };
+    }
+};
+
+// ============================================================================
+// NOTIFICATIONS SERVICE
+// ============================================================================
+
+export const notifications = {
+    // Create a new notification
+    async create(userId: string, projectId: string, type: string, title: string, message: string) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .insert({
+                user_id: userId,
+                project_id: projectId,
+                type,
+                title,
+                message
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to create notification:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Get notifications for a user
+    async getForUser(userId: string, limit: number = 50) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.error('Failed to fetch notifications:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Mark a notification as read
+    async markAsRead(notificationId: string) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .update({
+                is_read: true,
+                read_at: new Date().toISOString()
+            })
+            .eq('id', notificationId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to mark notification as read:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Mark all notifications for a user as read
+    async markAllAsRead(userId: string) {
+        const { error } = await supabase
+            .from('notifications')
+            .update({
+                is_read: true,
+                read_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+            .eq('is_read', false);
+
+        if (error) {
+            console.error('Failed to mark all notifications as read:', error);
+            throw error;
+        }
+
+        return true;
+    },
+
+    // Get unread count for a user
+    async getUnreadCount(userId: string) {
+        const { count, error } = await supabase
+            .from('notifications')
+            .select('*', { count: 'exact' })
+            .eq('user_id', userId)
+            .eq('is_read', false);
+
+        if (error) {
+            console.error('Failed to get unread count:', error);
+            throw error;
+        }
+
+        return count || 0;
     }
 };
 

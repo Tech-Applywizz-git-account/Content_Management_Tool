@@ -15,12 +15,12 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     // Get delivery dates from projects
-    const deliveryDates = projects
+    const deliveryDates = projects && Array.isArray(projects) ? projects
         .filter(p => p.delivery_date)
         .map(p => ({
             date: p.delivery_date!,
             project: p
-        }));
+        })) : [];
 
     const hasDeliveryOnDate = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -92,8 +92,8 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                                         ? 'bg-yellow-200 font-black'
                                         : delivery
                                             ? isVideo
-                                                ? 'bg-blue-100 hover:bg-blue-200 cursor-pointer'
-                                                : 'bg-purple-100 hover:bg-purple-200 cursor-pointer'
+                                                ? `bg-blue-100 hover:bg-blue-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
+                                                : `bg-purple-100 hover:bg-purple-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
                                             : 'bg-white hover:bg-slate-50'
                                     }`}
                                 title={delivery ? delivery.project.title : undefined}
@@ -127,7 +127,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                             return (
                                 <div
                                     key={project.id}
-                                    className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between"
+                                    className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                                 >
                                     <div className="flex items-center gap-4">
                                         <div

@@ -97,10 +97,13 @@ const WriterCalendar: React.FC<Props> = ({ projects = [] }) => {
                                             className={`text-xs p-2 border border-black truncate ${project.channel === 'YOUTUBE' ? 'bg-red-100' :
                                                     project.channel === 'LINKEDIN' ? 'bg-blue-100' :
                                                         'bg-purple-100'
-                                                }`}
+                                                } ${project.priority === 'HIGH' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
                                             title={project.title}
                                         >
                                             {project.title}
+                                            {project.priority === 'HIGH' && (
+                                                <span className="ml-1 text-[8px] font-black text-red-700">★</span>
+                                            )}
                                         </div>
                                     ))}
                                     {dayProjects.length > 2 && (

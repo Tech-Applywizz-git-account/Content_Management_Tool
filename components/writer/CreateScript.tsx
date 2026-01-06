@@ -31,8 +31,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
     const [newProjectDetails, setNewProjectDetails] = useState({
         title: project?.title || '',
-        channel: project?.channel || Channel.LINKEDIN,
-        contentType: project?.content_type || ('VIDEO' as ContentType),
+        channel: project?.channel || '', // No default selection
+        contentType: project?.content_type || '', // No default selection
         dueDate: project?.due_date || new Date().toISOString().split('T')[0],
         priority: project?.priority || ('Normal' as Priority)
     });
@@ -136,6 +136,20 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         } else {
             try {
                 console.log('Creating new project...');
+                
+                // Validate required fields for new projects
+                if (!newProjectDetails.title.trim()) {
+                  throw new Error('Title is required. Please enter a title for your script.');
+                }
+                
+                if (!newProjectDetails.channel) {
+                  throw new Error('Channel is required. Please select a channel for your script.');
+                }
+                
+                if (!newProjectDetails.contentType) {
+                  throw new Error('Content type is required. Please select a content type for your script.');
+                }
+                
                 const createdProject = await db.createProject(
                     newProjectDetails.title,
                     newProjectDetails.channel,
@@ -200,6 +214,19 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     // Validate project ID format
     if (realProjectId.startsWith('temp_')) {
       throw new Error('Invalid project ID format. Project must be saved to database first.');
+    }
+    
+    // Validate required fields for new projects
+    if (!newProjectDetails.title.trim()) {
+      throw new Error('Title is required. Please enter a title for your script.');
+    }
+    
+    if (!newProjectDetails.channel) {
+      throw new Error('Channel is required. Please select a channel for your script.');
+    }
+    
+    if (!newProjectDetails.contentType) {
+      throw new Error('Content type is required. Please select a content type for your script.');
     }
 
     // Small delay to ensure project is fully created before proceeding
@@ -319,15 +346,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={handleSaveDraft}
-                        className="px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none"
+                        disabled={!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType}
+                        className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <Save className="w-4 h-4 mr-2" />
                         Draft
                     </button>
                     <button
                         onClick={() => setShowConfirmation(true)}
-                        disabled={isSubmitting || !!validationError}
-                        className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${validationError ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+                        disabled={isSubmitting || !!validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType}
+                        className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
                     >
                         {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
                         <Send className="w-4 h-4 ml-2" />
@@ -343,18 +371,18 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         {!project && (
                             <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
                                 <h3 className="font-black uppercase text-lg text-slate-900">Project Info</h3>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Title</label>
+                                <div className={`${!newProjectDetails.title.trim() ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Title *</label>
                                     <input
                                         type="text"
                                         value={newProjectDetails.title}
                                         onChange={e => setNewProjectDetails({ ...newProjectDetails, title: e.target.value })}
-                                        className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold"
+                                        className={`w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold ${!newProjectDetails.title.trim() ? 'border-red-500' : ''}`}
                                         placeholder="e.g. Q4 Updates"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Channel</label>
+                                <div className={`${!newProjectDetails.channel ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Channel *</label>
                                     <div className="grid grid-cols-3 gap-2">
                                         {Object.values(Channel).map(c => (
                                             <button
@@ -367,8 +395,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                         ))}
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
+                                <div className={`${!newProjectDetails.contentType ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type *</label>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button
                                             onClick={() => setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' })}
@@ -386,6 +414,61 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                         </button>
                                     </div>
                                 </div>
+                                
+                                {/* Thumbnail Required Field - Only for Video Content Type */}
+                                {newProjectDetails.contentType === 'VIDEO' && (
+                                    <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                                        <h3 className="font-black uppercase text-lg text-slate-900 mb-4">Thumbnail Requirements</h3>
+                                        <div className="space-y-4">
+                                            <div className="flex space-x-4">
+                                                <label className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="thumbnail_required_radio"
+                                                        checked={formData.thumbnail_required === true}
+                                                        onChange={() => setFormData({ ...formData, thumbnail_required: true })}
+                                                        className="w-5 h-5"
+                                                    />
+                                                    <span className="font-bold text-slate-900">Yes</span>
+                                                </label>
+                                                <label className="flex items-center space-x-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="thumbnail_required_radio"
+                                                        checked={formData.thumbnail_required === false}
+                                                        onChange={() => setFormData({ ...formData, thumbnail_required: false })}
+                                                        className="w-5 h-5"
+                                                    />
+                                                    <span className="font-bold text-slate-900">No</span>
+                                                </label>
+                                            </div>
+                                            
+                                            {formData.thumbnail_required && (
+                                                <div className="space-y-4 mt-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Reference (Optional)</label>
+                                                        <input
+                                                            type="url"
+                                                            value={formData.thumbnail_reference_link || ''}
+                                                            onChange={e => setFormData({ ...formData, thumbnail_reference_link: e.target.value })}
+                                                            className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium"
+                                                            placeholder="https://example.com/reference-thumbnail.jpg"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Notes / Description</label>
+                                                        <textarea
+                                                            value={formData.thumbnail_notes || ''}
+                                                            onChange={e => setFormData({ ...formData, thumbnail_notes: e.target.value })}
+                                                            className="w-full p-4 border-2 border-black rounded-none text-sm min-h-[100px] focus:bg-yellow-50 focus:outline-none font-medium resize-none"
+                                                            placeholder="Describe the desired thumbnail concept, colors, style, text, etc."
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                                 
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Priority</label>
@@ -428,6 +511,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                 placeholder="What is the goal of this content?"
                             />
                         </div>
+                                                
                         {/* REWORK COMMENTS (ONLY FOR REJECTED/REWORK PROJECTS) */}
                         {project && (getWorkflowState(project).isRejected || getWorkflowState(project).isRework) && (
                           <div className="bg-red-50 p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">

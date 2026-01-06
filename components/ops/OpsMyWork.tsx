@@ -39,7 +39,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                     <div
                         key={project.id}
                         onClick={() => onSelectProject(project)}
-                        className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
+                        className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                     >
                         <div className="p-6 space-y-4">
                             {/* Channel and Priority Badges */}

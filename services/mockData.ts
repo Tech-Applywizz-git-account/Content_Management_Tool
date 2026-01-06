@@ -124,7 +124,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.CINEMATOGRAPHY,
         assigned_to_role: Role.CINE,
         status: TaskStatus.TODO,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
         data: {
@@ -140,7 +140,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
         assigned_to_role: Role.CMO,
         status: TaskStatus.WAITING_APPROVAL,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
         data: {
@@ -156,7 +156,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.VIDEO_EDITING,
         assigned_to_role: Role.EDITOR,
         status: TaskStatus.IN_PROGRESS,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
         data: {
@@ -191,7 +191,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.CREATIVE_DESIGN,
         assigned_to_role: Role.DESIGNER,
         status: TaskStatus.TODO,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 4).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
         data: {
@@ -207,7 +207,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.OPS_SCHEDULING,
         assigned_to_role: Role.OPS,
         status: TaskStatus.TODO,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() + 1000 * 60 * 60 * 6).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
         data: {
@@ -224,7 +224,7 @@ export const MOCK_PROJECTS: Project[] = [
         current_stage: WorkflowStage.POSTED,
         assigned_to_role: Role.OPS,
         status: TaskStatus.DONE,
-        priority: 'NORMAL',
+        priority: 'MEDIUM',
         due_date: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
         created_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
         data: {

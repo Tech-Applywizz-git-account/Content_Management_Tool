@@ -563,7 +563,7 @@ if (activeView === 'calendar') {
   }
 }}
 
-                        className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 cursor-pointer hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 transition-all group relative overflow-hidden`}
+                        className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 cursor-pointer hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 transition-all group relative overflow-hidden ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                     >
                         <div className="flex justify-between items-start mb-6">
                             <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${
@@ -575,13 +575,13 @@ if (activeView === 'calendar') {
                             </span>
                             <span
                                 className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                        ? 'bg-red-500 text-white'
+                                        ? 'bg-red-600 text-white font-black'
                                         : project.priority === 'MEDIUM'
                                             ? 'bg-yellow-500 text-black'
                                             : 'bg-green-500 text-white'
                                 }`}
                             >
-                                {project.priority}
+                                {project.priority}{project.priority === 'HIGH' && ' ★'}
                             </span>
                             {activeTab === 'HISTORY' && (
                                 <span className="absolute top-0 right-0 bg-[#4ADE80] text-black text-[10px] font-black uppercase px-3 py-1 border-l-2 border-b-2 border-black">

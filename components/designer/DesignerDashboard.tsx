@@ -83,6 +83,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
             {selectedProject ? (
                 <DesignerProjectDetail
                     project={selectedProject}
+                    userRole={user.role}
                     onBack={() => setSelectedProject(null)}
                     onUpdate={() => {
                         setSelectedProject(null);

@@ -12,6 +12,7 @@ import {
   X,
   Calendar
 } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -103,6 +104,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-black uppercase truncate">{user.full_name}</p>
             </div>
+            <NotificationBell userId={user.id} />
           </div>
           <button
             onClick={onLogout}

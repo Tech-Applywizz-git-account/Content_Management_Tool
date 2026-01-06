@@ -168,6 +168,13 @@ const isReworkProject = (p: Project) =>
     h.action === 'REJECTED' ||
     h.action?.startsWith('REWORK_')
   );
+  const isHighPriority = (p: Project) =>
+  p.priority?.toUpperCase?.() === 'HIGH';
+  const priorityCardClass = (p: Project) =>
+  isHighPriority(p)
+    ? 'ring-4 ring-red-500 ring-offset-2 shadow-red-300/50'
+    : '';
+
 
     // Categorize Projects for CMO Dashboard
     // Column 1: Pending Approval Projects (Projects in CMO review stages with WAITING_APPROVAL status)
