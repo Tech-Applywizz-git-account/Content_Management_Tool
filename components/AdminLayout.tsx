@@ -11,6 +11,7 @@ import {
   X,
   Search
 } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 export type AdminView = 'DASH' | 'USERS' | 'USER_ADD' | 'ROLES' | 'LOGS' | 'SETTINGS';
 
@@ -71,6 +72,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, currentView, 
               <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
               <p className="text-xs text-slate-500 truncate">Administrator</p>
             </div>
+            <NotificationBell userId={user.id} />
           </div>
           <button
             onClick={(e) => {

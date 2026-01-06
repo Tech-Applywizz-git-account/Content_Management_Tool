@@ -7,7 +7,7 @@ interface Props {
     projects: Project[];
 }
 
-const CeoCalendar: React.FC<Props> = ({ projects }) => {
+const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const monthStart = startOfMonth(currentDate);
@@ -15,7 +15,7 @@ const CeoCalendar: React.FC<Props> = ({ projects }) => {
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     // Get all projects with any dates
-    const datedProjects = projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date);
+    const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date) : [];
 
     const getProjectsForDay = (day: Date) => {
         const dayProjects = [];
@@ -190,10 +190,13 @@ const CeoCalendar: React.FC<Props> = ({ projects }) => {
                                     {dayProjects.map((project: any) => (
                                         <div
                                             key={`${project.id}-${project.dateType}`}
-                                            className={`text-xs p-1 ${getDateTypeColor(project.dateType)} text-white font-bold truncate`}
-                                            title={`${project.title} - ${getDateTypeLabel(project.dateType)} Date`}
+                                            className={`text-xs p-1 ${getDateTypeColor(project.dateType)} text-white font-bold truncate ${project.priority === 'HIGH' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                                            title={`${project.title} (${project.priority}) - ${getDateTypeLabel(project.dateType)} Date`}
                                         >
                                             {project.title} ({getDateTypeLabel(project.dateType)})
+                                            {project.priority === 'HIGH' && (
+                                                <span className="ml-1 text-[8px] font-black text-red-200">★</span>
+                                            )}
                                         </div>
                                     ))}
                                 </div>

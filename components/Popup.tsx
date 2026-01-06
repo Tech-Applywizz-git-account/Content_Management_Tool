@@ -19,8 +19,11 @@ const Popup: React.FC<PopupProps> = ({ message, stageName, onClose, duration = 5
     return () => clearTimeout(timer);
   }, [onClose, duration]);
 
+  // Determine if this is a rework message for special styling
+  const isReworkMessage = message.toLowerCase().includes('rework');
+
   return (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white p-4 rounded-lg shadow-lg z-[9999] max-w-md">
+    <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 ${isReworkMessage ? 'bg-orange-600' : 'bg-blue-600'} text-white p-4 rounded-lg shadow-lg z-[9999] max-w-md`}>
       <div className="flex justify-between items-start">
         <div>
           <p className="font-medium">{message}</p>

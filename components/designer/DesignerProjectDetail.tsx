@@ -5,10 +5,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
+    userRole: Role;
     onBack: () => void;
     onUpdate: () => void;
 }
@@ -17,7 +18,7 @@ const isReworkProject = (project: Project) =>
     h.action?.startsWith('REWORK_')
   );
 
-const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
+const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate }) => {
     // For rework projects, keep existing data but track new inputs
     const processedProject = {...project};
     
@@ -27,6 +28,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
+    const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
     const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || '');
 
@@ -35,7 +37,11 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) =
     const workflowState = getWorkflowState(project);
     const isRework = workflowState.isRework;
     const isRejected = workflowState.isRejected;
-const hasAsset = isVideo
+    
+    // Determine if current user can edit based on role and workflow state
+    const canEdit = canUserEdit(userRole, workflowState, project.assigned_to_role);
+    
+    const hasAsset = isVideo
   ? !!project.thumbnail_link
   : !!project.creative_link;
 
@@ -84,6 +90,8 @@ const hasAsset = isVideo
             const stageLabel = isVideo ? STAGE_LABELS[WorkflowStage.THUMBNAIL_DESIGN] : STAGE_LABELS[WorkflowStage.CREATIVE_DESIGN];
             setPopupMessage(`Delivery date set for ${project.title} on ${deliveryDate}. This date will be visible on calendars for all team members.`);
             setStageName(stageLabel || (isVideo ? 'Thumbnail Design' : 'Creative Design'));
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error('Failed to set delivery date:', error);
@@ -98,6 +106,12 @@ const hasAsset = isVideo
             return;
         }
         
+        // Check if user has permission to edit
+        if (!canEdit) {
+            alert('You do not have permission to edit this project');
+            return;
+        }
+        
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
@@ -107,10 +121,6 @@ const hasAsset = isVideo
                 alert('User not authenticated');
                 return;
             }
-            
-            // Determine if this is a rework submission based on project status
-            const isRework = isReworkProject(project);
-            const isRejected = project.status === 'REJECTED';
             
             // Record the action in workflow history with appropriate action type
             const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'SUBMITTED';
@@ -145,6 +155,33 @@ const hasAsset = isVideo
             
             console.log(`${isRework ? 'Rework ' : ''}${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
             
+            // Find the CMO user to notify
+            const { data: cmoUsers } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', Role.CMO)
+                .eq('status', 'ACTIVE');
+            
+            if (cmoUsers && cmoUsers.length > 0) {
+                // Send notification to all CMOs
+                for (const cmo of cmoUsers) {
+                    try {
+                        // Use type assertion to access the notifications service
+                        const dbWithNotifications = db as any;
+                        await dbWithNotifications.notifications.create(
+                            cmo.id,
+                            project.id,
+                            'ASSET_UPLOADED',
+                            'New Thumbnail/Creative Available',
+                            `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${project.title}. Please review.`
+                        );
+                    } catch (notificationError) {
+                        console.error('Failed to send notification:', notificationError);
+                        // Continue with the process even if notification fails
+                    }
+                }
+            }
+            
             // Show popup notification using STAGE_LABELS for the next stage
             const nextLabel = STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'CMO Final Review';
             const popupMessageText = isRework
@@ -153,6 +190,8 @@ const hasAsset = isVideo
             
             setPopupMessage(popupMessageText);
             setStageName(nextLabel);
+            // For rework scenarios, use longer duration to ensure visibility
+            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
         } catch (error) {
             console.error(`Failed to upload ${isVideo ? 'thumbnail' : 'creative'}:`, error);
@@ -209,7 +248,7 @@ const hasAsset = isVideo
             </div>
 
             {/* Rework Information Box (Only shown for rejected projects assigned to Designer) */}
-            {project.status === 'REJECTED' && project.assigned_to_role === Role.DESIGNER && project.history && project.history.length > 0 && (
+            {(isRework || isRejected) && project.history && project.history.length > 0 && (
                 <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center space-x-2 mb-4">
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -228,10 +267,10 @@ const hasAsset = isVideo
                         <div className="p-4 bg-white border-l-4 border-red-500">
                             <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
                             <p className="text-red-700">
-                                {project.history[0].comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                {getLatestReworkRejectComment(project)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
                             </p>
                             <p className="text-sm text-red-600 mt-2">
-                                Rejected by {project.history[0].actor_name || 'Reviewer'}
+                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
                         
@@ -333,6 +372,44 @@ const hasAsset = isVideo
                         {project.data.script_content || 'No content available'}
                     </div>
                 </div>
+                
+                {/* Thumbnail Requirements - Show if video and thumbnail required */}
+                {isVideo && project.data.thumbnail_required && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Palette className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Thumbnail Requirements</h2>
+                        </div>
+                        <div className="space-y-4">
+                            {project.data.thumbnail_reference_link && (
+                                <div>
+                                    <p className="font-bold text-slate-500 uppercase text-xs mb-1">Reference Thumbnail</p>
+                                    <a 
+                                        href={project.data.thumbnail_reference_link} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                    >
+                                        {project.data.thumbnail_reference_link}
+                                    </a>
+                                </div>
+                            )}
+                            
+                            {project.data.thumbnail_notes && (
+                                <div>
+                                    <p className="font-bold text-slate-500 uppercase text-xs mb-1">Thumbnail Notes</p>
+                                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-medium text-slate-900 leading-relaxed whitespace-pre-wrap">
+                                        {project.data.thumbnail_notes}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {!project.data.thumbnail_reference_link && !project.data.thumbnail_notes && (
+                                <p className="text-slate-500 italic">No specific thumbnail requirements provided.</p>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Delivery Date Section */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -415,8 +492,8 @@ const hasAsset = isVideo
       </div>
     )}
 
-    {/* ALWAYS SHOW INPUT IF REWORK OR REJECTED */}
-    {(isRework || isRejected || !hasAsset) && (
+    {/* Show input if user has edit permissions */}
+    {(canEdit || !hasAsset) && (
       <div className="space-y-4">
         <p className="text-slate-600 font-medium">
           {isRejected
@@ -497,6 +574,7 @@ const hasAsset = isVideo
                 <Popup
                     message={popupMessage}
                     stageName={stageName}
+                    duration={popupDuration}
                     onClose={() => {
                         setShowPopup(false);
                         onUpdate();

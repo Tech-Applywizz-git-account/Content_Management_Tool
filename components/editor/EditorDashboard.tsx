@@ -91,6 +91,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             {selectedProject ? (
                 <EditorProjectDetail
                     project={selectedProject}
+                    userRole={user.role}
                     onBack={() => setSelectedProject(null)}
                     onUpdate={() => {
                         setSelectedProject(null);

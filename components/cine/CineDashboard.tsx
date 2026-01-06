@@ -85,6 +85,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             {selectedProject ? (
                 <CineProjectDetail
                     project={selectedProject}
+                    userRole={user.role}
                     onBack={() => setSelectedProject(null)}
                     onUpdate={() => {
                         setSelectedProject(null);

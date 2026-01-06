@@ -90,7 +90,7 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
                                 className={`aspect-square border-2 border-black p-2 flex flex-col items-center justify-center transition-all ${isCurrentDay
                                         ? 'bg-yellow-200 font-black'
                                         : delivery
-                                            ? 'bg-orange-100 hover:bg-orange-200 cursor-pointer'
+                                            ? `bg-orange-100 hover:bg-orange-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
                                             : 'bg-white hover:bg-slate-50'
                                     }`}
                                 title={delivery ? delivery.project.title : undefined}
@@ -118,7 +118,7 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
                         {deliveryDates.map(({ date, project }) => (
                             <div
                                 key={project.id}
-                                className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between"
+                                className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                             >
                                 <div className="flex items-center gap-4">
                                     <div className="bg-orange-100 border-2 border-black px-3 py-2">

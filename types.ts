@@ -90,6 +90,9 @@ export interface ProjectData {
   tags?: string;
   live_url?: string;
   video_title_final?: string;
+  thumbnail_required?: boolean;
+  thumbnail_reference_link?: string;
+  thumbnail_notes?: string;
   [key: string]: any;
 }
 
@@ -151,3 +154,18 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',
 };
+
+// Notification types
+export type NotificationType = 'ASSET_UPLOADED' | 'ASSET_UPDATED' | 'PROJECT_ASSIGNED' | 'REVIEW_READY' | 'REWORK_REQUESTED' | 'APPROVAL_GRANTED';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  project_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  read_at?: string;
+}
