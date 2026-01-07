@@ -184,67 +184,69 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             
             await db.workflow.recordAction(
                 localProject.id,
-                WorkflowStage.VIDEO_EDITING, // stage
+                localProject.current_stage, // Record action at current stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
                 actionType, // Use appropriate action value
                 comment
             );
             
-            // Update the project with the video link and move to VIDEO_EDITING stage
-            // For rework, we reset the status to IN_PROGRESS
+            // Update the project with the video link and advance the workflow
+            // This will properly route to the correct next stage
             await db.projects.update(localProject.id, { 
-                video_link: videoLink,
-                current_stage: WorkflowStage.VIDEO_EDITING,
-                assigned_to_role: Role.EDITOR,
-                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
+                video_link: videoLink
             });
+            
+            // Advance workflow to next stage based on project settings
+            await db.advanceWorkflow(localProject.id, comment);
 
             // ✅ Update local state ONLY after success
             setLocalProject(prev => ({
                 ...prev,
-                video_link: videoLink,
-                current_stage: WorkflowStage.VIDEO_EDITING,
-                assigned_to_role: Role.EDITOR,
-                status: 'IN_PROGRESS'
+                video_link: videoLink
             }));
-
-            // Find the editor user to notify
-            const { data: editorUsers } = await supabase
-                .from('users')
-                .select('id')
-                .eq('role', Role.EDITOR)
-                .eq('status', 'ACTIVE');
             
-            if (editorUsers && editorUsers.length > 0) {
-                // Send notification to all editors
-                for (const editor of editorUsers) {
-                    try {
-                        // Use type assertion to access the notifications service
-                        const dbWithNotifications = db as any;
-                        await dbWithNotifications.notifications.create(
-                            editor.id,
-                            localProject.id,
-                            'ASSET_UPLOADED',
-                            'New Raw Video Available',
-                            `${user?.user_metadata?.full_name || 'Cinematographer'} has uploaded a raw video for: ${localProject.title}. Please review and edit.`
-                        );
-                    } catch (notificationError) {
-                        console.error('Failed to send notification:', notificationError);
-                        // Continue with the process even if notification fails
+            // Get updated project to determine who to notify
+            const updatedProject = await db.getProjectById(localProject.id);
+            
+            // Find users to notify based on the next assigned role
+            if (updatedProject?.assigned_to_role) {
+                const { data: nextUsers } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', updatedProject.assigned_to_role)
+                    .eq('status', 'ACTIVE');
+                
+                if (nextUsers && nextUsers.length > 0) {
+                    // Send notification to all users of the assigned role
+                    for (const nextUser of nextUsers) {
+                        try {
+                            // Use type assertion to access the notifications service
+                            const dbWithNotifications = db as any;
+                            await dbWithNotifications.notifications.create(
+                                nextUser.id,
+                                localProject.id,
+                                'ASSET_UPLOADED',
+                                'New Raw Video Available',
+                                `${user?.user_metadata?.full_name || 'Cinematographer'} has uploaded a raw video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+                            );
+                        } catch (notificationError) {
+                            console.error('Failed to send notification:', notificationError);
+                            // Continue with the process even if notification fails
+                        }
                     }
                 }
             }
             
-            // Show popup notification using STAGE_LABELS for the next stage
-            const nextStageLabel = STAGE_LABELS[WorkflowStage.VIDEO_EDITING] || 'Video Editing';
+            // Show popup notification using STAGE_LABELS for the actual next stage
+            const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.VIDEO_EDITING] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
-                ? `Rework video uploaded for "${localProject.title}". The project has moved to ${nextStageLabel}.`
-                : `Raw video uploaded for "${localProject.title}". The project has moved to ${nextStageLabel}.`;
+                ? `Rework video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`
+                : `Raw video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`;
             
             setPopupMessage(popupMessageText);
 
-            setStageName(nextStageLabel);
+            setStageName(actualNextStageLabel);
             // For rework scenarios, use longer duration to ensure visibility
             setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);

@@ -209,9 +209,14 @@ setStageName(`Rework → ${roleLabel}`);
         
         // For Final Review CMO, can send back to various roles
         if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
-            const options = [
-                { value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Visuals)' },
-            ];
+            const options = [];
+            
+            // Add Designer option only if thumbnail is required
+            const thumbnailRequired = project.data?.thumbnail_required;
+            if (thumbnailRequired !== false) { // Include designer if thumbnail_required is true or undefined
+                options.push({ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Visuals)' });
+            }
+            
             // If video channel, add Editor/Cine
             if (isVideo) {
                 options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
@@ -288,6 +293,26 @@ setStageName(`Rework → ${roleLabel}`);
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Due Date</label>
                             <div className="font-bold text-slate-900 uppercase">Today</div>
                         </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Content Type</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.content_type}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Required</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.data?.thumbnail_required === undefined ? '—' : project.data.thumbnail_required ? 'Yes' : 'No'}
+                            </div>
+                        </div>
+                        {project.data?.thumbnail_notes && (
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>
+                                <div className="font-bold text-slate-900 max-h-12 overflow-y-auto">
+                                    {project.data.thumbnail_notes}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Brief Content */}

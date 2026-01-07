@@ -1162,7 +1162,7 @@ export const workflow = {
             .update({
                 current_stage: returnToStage,
                 assigned_to_role: returnToRole,
-                status: TaskStatus.REJECTED  // Status is still REJECTED for both rework and reject
+                status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED  // Set appropriate status based on rework flag
             })
             .eq('id', projectId)
             .select();
@@ -1556,6 +1556,7 @@ export const helpers = {
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
             [WorkflowStage.VIDEO_EDITING]: { 
                 // If this is a VIDEO project and thumbnail is not required, skip THUMBNAIL_DESIGN stage
+                // thumbnail_required defaults to true if not set, so only skip if explicitly set to false
                 stage: contentType === 'VIDEO' && projectData?.thumbnail_required === false 
                     ? WorkflowStage.FINAL_REVIEW_CMO 
                     : WorkflowStage.THUMBNAIL_DESIGN, 
@@ -1995,9 +1996,9 @@ export const db = {
             [WorkflowStage.REWORK]: Role.WRITER
         };
 
-        // Special case: When CEO rejects from FINAL_REVIEW_CEO, send back to CMO instead of CEO
+        // Special case: When CEO rejects (not rework) from FINAL_REVIEW_CEO, send back to CMO instead of CEO
         let targetRole = Role.WRITER;
-        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && targetStage !== WorkflowStage.SCRIPT) {
+        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && targetStage !== WorkflowStage.SCRIPT && !isRework) {
             targetRole = Role.CMO;
         } else {
             targetRole = stageToRoleMap[targetStage] || Role.WRITER;
