@@ -57,12 +57,12 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
       if (approvedErr) throw approvedErr;
 
-      // Rejected: count all rejections where actor_id = user.id and action = REJECTED
+      // Rework: count only reworks where actor_id = user.id
       const { count: rejectedCountResult, error: rejectedErr } = await supabase
         .from('workflow_history')
         .select('*', { head: true, count: 'exact' })
         .eq('actor_id', user.id)
-        .eq('action', 'REJECTED');
+        .eq('action', 'REWORK');
 
       if (rejectedErr) throw rejectedErr;
 
@@ -88,24 +88,33 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   useEffect(() => {
     loadCounts();
 
-    // Real-time subscription: reload counts when `projects` table changes
-    const subscription = supabase
+    // Real-time subscriptions: reload counts when `projects` or `workflow_history` table changes
+    const projectsSubscription = supabase
       .channel('public:projects:ceo_counts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, (payload) => {
-        console.debug('CEO Dashboard realtime event:', payload);
+        console.debug('CEO Dashboard projects realtime event:', payload);
         loadCounts();
       })
       .subscribe();
 
-    console.debug('CEO Dashboard realtime subscription created');
+    const historySubscription = supabase
+      .channel('public:workflow_history:ceo_counts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'workflow_history' }, (payload) => {
+        console.debug('CEO Dashboard workflow history realtime event:', payload);
+        loadCounts();
+      })
+      .subscribe();
+
+    console.debug('CEO Dashboard realtime subscriptions created');
 
     return () => {
-      // cleanup subscription
+      // cleanup subscriptions
       try {
-        supabase.removeChannel(subscription);
-        console.debug('CEO Dashboard realtime subscription removed');
+        supabase.removeChannel(projectsSubscription);
+        supabase.removeChannel(historySubscription);
+        console.debug('CEO Dashboard realtime subscriptions removed');
       } catch (e) {
-        console.warn('Failed to remove CEO realtime subscription', e);
+        console.warn('Failed to remove CEO realtime subscriptions', e);
       }
     };
   }, [user.id]);

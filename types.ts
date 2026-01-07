@@ -36,6 +36,7 @@ export enum TaskStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   WAITING_APPROVAL = 'WAITING_APPROVAL',
   REJECTED = 'REJECTED',
+  REWORK = 'REWORK',
   DONE = 'DONE',
 }
 

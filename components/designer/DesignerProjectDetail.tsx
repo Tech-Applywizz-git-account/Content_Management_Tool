@@ -130,20 +130,16 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             
             await db.workflow.recordAction(
                 project.id,
-                WorkflowStage.FINAL_REVIEW_CMO, // stage
+                project.current_stage, // Record action at current stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
                 actionType, // Use appropriate action value
                 comment
             );
             
-            // Update the project with the file link and move to FINAL_REVIEW_CMO stage
-            // For rework, we reset the status to IN_PROGRESS
-            const updates: Partial<Project> = {
-                current_stage: WorkflowStage.FINAL_REVIEW_CMO,
-                assigned_to_role: Role.CMO,
-                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
-            };
+            // Update the project with the file link and advance the workflow
+            // This will properly route to the correct next stage
+            const updates: Partial<Project> = {};
             
             if (isVideo) {
                 updates.thumbnail_link = link;
@@ -153,43 +149,51 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             
             await db.projects.update(project.id, updates);
             
+            // Advance workflow to next stage based on project settings
+            await db.advanceWorkflow(project.id, comment);
+            
             console.log(`${isRework ? 'Rework ' : ''}${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
             
-            // Find the CMO user to notify
-            const { data: cmoUsers } = await supabase
-                .from('users')
-                .select('id')
-                .eq('role', Role.CMO)
-                .eq('status', 'ACTIVE');
+            // Get updated project to determine who to notify
+            const updatedProject = await db.getProjectById(project.id);
             
-            if (cmoUsers && cmoUsers.length > 0) {
-                // Send notification to all CMOs
-                for (const cmo of cmoUsers) {
-                    try {
-                        // Use type assertion to access the notifications service
-                        const dbWithNotifications = db as any;
-                        await dbWithNotifications.notifications.create(
-                            cmo.id,
-                            project.id,
-                            'ASSET_UPLOADED',
-                            'New Thumbnail/Creative Available',
-                            `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${project.title}. Please review.`
-                        );
-                    } catch (notificationError) {
-                        console.error('Failed to send notification:', notificationError);
-                        // Continue with the process even if notification fails
+            // Find users to notify based on the next assigned role
+            if (updatedProject?.assigned_to_role) {
+                const { data: nextUsers } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', updatedProject.assigned_to_role)
+                    .eq('status', 'ACTIVE');
+                
+                if (nextUsers && nextUsers.length > 0) {
+                    // Send notification to all users of the assigned role
+                    for (const nextUser of nextUsers) {
+                        try {
+                            // Use type assertion to access the notifications service
+                            const dbWithNotifications = db as any;
+                            await dbWithNotifications.notifications.create(
+                                nextUser.id,
+                                project.id,
+                                'ASSET_UPLOADED',
+                                'New Thumbnail/Creative Available',
+                                `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${project.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+                            );
+                        } catch (notificationError) {
+                            console.error('Failed to send notification:', notificationError);
+                            // Continue with the process even if notification fails
+                        }
                     }
                 }
             }
             
-            // Show popup notification using STAGE_LABELS for the next stage
-            const nextLabel = STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'CMO Final Review';
+            // Show popup notification using STAGE_LABELS for the actual next stage
+            const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.FINAL_REVIEW_CMO] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
-                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded successfully for ${project.title}. Waiting for ${nextLabel}.`
-                : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded successfully for ${project.title}. Waiting for ${nextLabel}.`;
+                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`
+                : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`;
             
             setPopupMessage(popupMessageText);
-            setStageName(nextLabel);
+            setStageName(actualNextStageLabel);
             // For rework scenarios, use longer duration to ensure visibility
             setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);

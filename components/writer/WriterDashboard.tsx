@@ -92,7 +92,14 @@ const drafts = dashboardProjects.filter(
     !inProduction.some(productionP => productionP.id === p.id) &&
     (p.current_stage === WorkflowStage.SCRIPT ||
      p.current_stage === WorkflowStage.REWORK ||
-     (p.status === TaskStatus.REJECTED && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2))
+     (p.status === TaskStatus.REWORK && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2))
+);
+
+const rejectedProjects = dashboardProjects.filter(
+  p =>
+    !inReview.some(reviewP => reviewP.id === p.id) &&
+    !inProduction.some(productionP => productionP.id === p.id) &&
+    (p.status === TaskStatus.REJECTED && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2)
 );
     
 
@@ -195,11 +202,14 @@ const drafts = dashboardProjects.filter(
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                 <h3 className="font-black uppercase tracking-wide">Drafts / Rework</h3>
-                                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{drafts.length}</span>
+                                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{Array.from(new Set([...drafts, ...rejectedProjects].map(p => p.id))).length}</span>
                             </div>
                             <div className="space-y-4">
-                                {drafts.map(p => (
-                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.status === TaskStatus.REJECTED ? 'bg-red-50' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleEdit(p)}>
+                                {Array.from(new Set([...drafts, ...rejectedProjects].map(p => p.id))).map(id => {
+                                    const p = [...drafts, ...rejectedProjects].find(proj => proj.id === id);
+                                    return p;
+                                }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(p => (
+                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : ''} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => p.status === TaskStatus.REWORK ? handleEdit(p) : p.status === TaskStatus.REJECTED ? handleViewProject(p) : {}}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -218,6 +228,9 @@ const drafts = dashboardProjects.filter(
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             {p.status === TaskStatus.REJECTED && (
+                                                <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rejected</span>
+                                            )}
+                                            {p.status === TaskStatus.REWORK && (
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rework</span>
                                             )}
                                         </div>
@@ -228,7 +241,7 @@ const drafts = dashboardProjects.filter(
                                         </div>
                                     </div>
                                 ))}
-                                {drafts.length === 0 && <div className="p-8 text-center font-bold text-slate-400 border-2 border-dashed border-slate-300 uppercase text-sm">No active drafts</div>}
+                                {Array.from(new Set([...drafts, ...rejectedProjects].map(p => p.id))).length === 0 && <div className="p-8 text-center font-bold text-slate-400 border-2 border-dashed border-slate-300 uppercase text-sm">No active drafts</div>}
                             </div>
                         </div>
 

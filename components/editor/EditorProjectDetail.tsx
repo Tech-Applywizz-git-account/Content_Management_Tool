@@ -123,59 +123,64 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             
             await db.workflow.recordAction(
                 project.id,
-                WorkflowStage.THUMBNAIL_DESIGN, // stage
+                project.current_stage, // Record action at current stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
                 actionType, // Use appropriate action value
                 comment
             );
             
-            // Update the project with the edited video link and move to THUMBNAIL_DESIGN stage
-            // For rework, we reset the status to IN_PROGRESS
+            // Update the project with the edited video link and advance the workflow
+            // This will properly check thumbnail_required and route to correct stage
             await db.projects.update(project.id, { 
-                edited_video_link: editedVideoLink,
-                current_stage: WorkflowStage.THUMBNAIL_DESIGN,
-                assigned_to_role: Role.DESIGNER,
-                status: TaskStatus.IN_PROGRESS // Reset status from REJECTED to IN_PROGRESS
+                edited_video_link: editedVideoLink
             });
+            
+            // Advance workflow to next stage based on project settings
+            await db.advanceWorkflow(project.id, comment);
             
             console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
             
-            // Find the designer user to notify
-            const { data: designerUsers } = await supabase
-                .from('users')
-                .select('id')
-                .eq('role', Role.DESIGNER)
-                .eq('status', 'ACTIVE');
+            // Get updated project to determine who to notify
+            const updatedProject = await db.getProjectById(project.id);
             
-            if (designerUsers && designerUsers.length > 0) {
-                // Send notification to all designers
-                for (const designer of designerUsers) {
-                    try {
-                        // Use type assertion to access the notifications service
-                        const dbWithNotifications = db as any;
-                        await dbWithNotifications.notifications.create(
-                            designer.id,
-                            project.id,
-                            'ASSET_UPLOADED',
-                            'New Edited Video Available',
-                            `${user?.user_metadata?.full_name || 'Editor'} has uploaded an edited video for: ${project.title}. Please review and create the thumbnail.`
-                        );
-                    } catch (notificationError) {
-                        console.error('Failed to send notification:', notificationError);
-                        // Continue with the process even if notification fails
+            // Find users to notify based on the next assigned role
+            if (updatedProject?.assigned_to_role) {
+                const { data: nextUsers } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', updatedProject.assigned_to_role)
+                    .eq('status', 'ACTIVE');
+                
+                if (nextUsers && nextUsers.length > 0) {
+                    // Send notification to all users of the assigned role
+                    for (const nextUser of nextUsers) {
+                        try {
+                            // Use type assertion to access the notifications service
+                            const dbWithNotifications = db as any;
+                            await dbWithNotifications.notifications.create(
+                                nextUser.id,
+                                project.id,
+                                'ASSET_UPLOADED',
+                                'New Edited Video Available',
+                                `${user?.user_metadata?.full_name || 'Editor'} has uploaded an edited video for: ${project.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+                            );
+                        } catch (notificationError) {
+                            console.error('Failed to send notification:', notificationError);
+                            // Continue with the process even if notification fails
+                        }
                     }
                 }
             }
             
-            // Show popup notification using STAGE_LABELS for the next stage
-            const nextStage = STAGE_LABELS[WorkflowStage.THUMBNAIL_DESIGN] || 'Thumbnail Design';
+            // Show popup notification using STAGE_LABELS for the actual next stage
+            const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.THUMBNAIL_DESIGN] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
-                ? `Rework edited video uploaded successfully for ${project.title}. Waiting for ${nextStage}.`
-                : `Edited video uploaded successfully for ${project.title}. Waiting for ${nextStage}.`;
+                ? `Rework edited video uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`
+                : `Edited video uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`;
             
             setPopupMessage(popupMessageText);
-            setStageName(nextStage);
+            setStageName(actualNextStageLabel);
             // For rework scenarios, use longer duration to ensure visibility
             setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
             setShowPopup(true);
