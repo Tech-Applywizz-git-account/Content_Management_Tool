@@ -20,10 +20,12 @@ interface Props {
 
 const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'REWORK'>('PENDING');
+
   const [refreshKey, setRefreshKey] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
+  const [ceoPendingCount, setCeoPendingCount] = useState(0);
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
   const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
@@ -32,6 +34,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [loadingProject, setLoadingProject] = useState(true);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());
   const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
+  const [reworkProjects, setReworkProjects] = useState<Project[]>([]);
+
 
   const handleInternalRefresh = async () => {
     await onRefresh(); // MUST refetch from Supabase
@@ -45,7 +49,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
 
-  // Load counts from the workflow_history table (count by user actions)
+  // Load counts from the workflow_history table and projects table (count by user actions)
   const loadCounts = async () => {
     try {
       // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
@@ -57,18 +61,48 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
       if (approvedErr) throw approvedErr;
 
-      // Rework: count only reworks where actor_id = user.id
-      const { count: rejectedCountResult, error: rejectedErr } = await supabase
+      // Rework: count projects that were sent for rework by the CEO user and are currently in REWORK status
+      // First, find workflow_history entries where CEO performed REWORK/REJECTED action
+      const { data: historyData, error: historyErr } = await supabase
         .from('workflow_history')
-        .select('*', { head: true, count: 'exact' })
+        .select('project_id')
         .eq('actor_id', user.id)
-        .eq('action', 'REWORK');
+        .in('action', ['REWORK', 'REJECTED']);
+      
+      if (historyErr) throw historyErr;
+      
+      let reworkCountResult = 0;
+      
+      if (historyData && historyData.length > 0) {
+        const projectIds = [...new Set(historyData.map(h => h.project_id))];
+        
+        // Then count projects that are currently in REWORK status
+        const { count: projectCount, error: projectErr } = await supabase
+          .from('projects')
+          .select('*', { head: true, count: 'exact' })
+          .in('id', projectIds)
+          .eq('status', 'REWORK');
+          
+        if (projectErr) throw projectErr;
+        reworkCountResult = projectCount || 0;
+      } else {
+        // If no history entries found, count is 0
+        reworkCountResult = 0;
+      }
 
-      if (rejectedErr) throw rejectedErr;
+      // Pending: count projects assigned to the user with WAITING_APPROVAL status
+      const { count: pendingCountResult, error: pendingErr } = await supabase
+        .from('projects')
+        .select('*', { head: true, count: 'exact' })
+        .eq('assigned_to_role', user.role)
+        .eq('status', TaskStatus.WAITING_APPROVAL);
 
-      console.log('CEO Dashboard - Approved by user:', approvedCountResult, 'Reworks by user:', rejectedCountResult);
+      if (pendingErr) throw pendingErr;
+
+      console.log('CEO Dashboard - Approved by user:', approvedCountResult, 'Reworks by user:', reworkCountResult, 'Pending:', pendingCountResult);
       setApprovedCount(approvedCountResult || 0);
-      setRejectedCount(rejectedCountResult || 0);
+      setRejectedCount(reworkCountResult || 0); // Set rework count to rejectedCount state for the rework card
+      setCeoPendingCount(pendingCountResult || 0); // New state for pending count
       // Debug: if rejected count is unexpected, fetch and log the rejected projects
       try {
         const { data: rejectedRows } = await supabase
@@ -105,6 +139,15 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       })
       .subscribe();
 
+    // Listen for project deletions specifically
+    const deletionSubscription = supabase
+      .channel('public:projects:deletion_ceo_counts')
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'projects' }, (payload) => {
+        console.debug('CEO Dashboard project deletion event:', payload);
+        loadCounts();
+      })
+      .subscribe();
+
     console.debug('CEO Dashboard realtime subscriptions created');
 
     return () => {
@@ -112,6 +155,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       try {
         supabase.removeChannel(projectsSubscription);
         supabase.removeChannel(historySubscription);
+        supabase.removeChannel(deletionSubscription);
         console.debug('CEO Dashboard realtime subscriptions removed');
       } catch (e) {
         console.warn('Failed to remove CEO realtime subscriptions', e);
@@ -242,6 +286,66 @@ React.useEffect(() => {
   )
 );
 
+  // Get all projects that are currently in rework status and were sent back by the CEO
+ useEffect(() => {
+  if (activeTab !== 'REWORK') return;
+
+  const loadReworkProjects = async () => {
+    // 1️⃣ Find rework actions done by this CEO
+    const { data: history, error } = await supabase
+      .from('workflow_history')
+      .select('project_id, timestamp')
+      .eq('actor_id', user.id)
+      .in('action', ['REWORK', 'REJECTED'])
+      .order('timestamp', { ascending: false });
+
+    if (error || !history?.length) {
+      setReworkProjects([]);
+      return;
+    }
+
+    // 2️⃣ Fetch projects for those actions
+    const projectIds = [...new Set(history.map(h => h.project_id))];
+
+    const { data: projects } = await supabase
+      .from('projects')
+      .select('*, workflow_history(*)')
+      .in('id', projectIds)
+      .eq('status', 'REWORK');
+
+    setReworkProjects(projects || []);
+  };
+
+  loadReworkProjects();
+  
+  // Real-time subscription for rework projects
+  const reworkSubscription = supabase
+    .channel('public:workflow_history:rework_projects')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'workflow_history' }, (payload) => {
+      // Only reload if the change is related to this CEO's rework actions
+      if (payload.new?.actor_id === user.id && ['REWORK', 'REJECTED'].includes(payload.new?.action || payload.old?.action)) {
+        loadReworkProjects();
+      }
+    })
+    .subscribe();
+    
+  // Cleanup function
+  return () => {
+    try {
+      supabase.removeChannel(reworkSubscription);
+    } catch (e) {
+      console.warn('Failed to remove rework projects subscription', e);
+    }
+  };
+}, [activeTab, user.id]);
+
+
+  // Filter pending approvals for rework projects
+  const filteredPendingApprovals = pendingApprovals.filter(p =>
+    p.status === TaskStatus.REWORK ||
+    p.history?.some(h => h.action === 'REWORK' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED')
+  );
+
 
 
   // For history, we show all projects from historyProjects
@@ -255,7 +359,9 @@ React.useEffect(() => {
 
 
   // Stats Calculations
-  const pendingCount = pendingApprovals.length;
+  const inboxPendingCount = pendingApprovals.length;
+  const filteredPendingCount = filteredPendingApprovals.length;
+  const reworkProjectsCount = reworkProjects.length;
   // Approved and rejected counts are loaded from workflow history
 
   const handleReview = (project: Project) => {
@@ -276,7 +382,7 @@ if (selectedProject && viewMode === 'REVIEW') {
         setSelectedProject(null);
         setViewMode('REVIEW');
         try {
-          await onRefresh();
+          await handleInternalRefresh();
         } catch (e) {
           console.error('Failed to refresh after back:', e);
         }
@@ -285,7 +391,7 @@ if (selectedProject && viewMode === 'REVIEW') {
         setSelectedProject(null);
         setViewMode('REVIEW');
         try {
-          await onRefresh();
+          await handleInternalRefresh();
         } catch (e) {
           console.error('Failed to refresh after complete:', e);
         }
@@ -425,7 +531,7 @@ if (selectedProject && viewMode === 'HISTORY') {
         onBack={async () => {
           setSelectedProject(null);
           try {
-            await onRefresh();
+            await handleInternalRefresh();
           } catch (e) {
             console.error('Failed to refresh after back (secondary):', e);
           }
@@ -433,7 +539,7 @@ if (selectedProject && viewMode === 'HISTORY') {
         onComplete={async () => {
           setSelectedProject(null);
           try {
-            await onRefresh();
+            await handleInternalRefresh();
           } catch (e) {
             console.error('Failed to refresh after complete (secondary):', e);
           }
@@ -507,7 +613,7 @@ if (activeView === 'calendar') {
                     <h3 className="font-black uppercase text-xl text-black tracking-tight group-hover:underline decoration-2 underline-offset-4">Pending<br/>Approvals</h3>
                     <Clock className="w-8 h-8 text-black" />
                 </div>
-                <div className="text-7xl font-black mb-4 text-black">{pendingCount}</div>
+                <div className="text-7xl font-black mb-4 text-black">{ceoPendingCount}</div>
                 <div className="font-bold text-sm uppercase tracking-widest text-black opacity-80">Requires Action</div>
             </div>
 
@@ -526,7 +632,7 @@ if (activeView === 'calendar') {
 
             {/* Magenta Card - REJECTION RATE (Mockup) */}
             <div 
-                onClick={() => setActiveTab('HISTORY')}
+                onClick={() => setActiveTab('REWORK')}
                 className="bg-[#D946EF] p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer group"
             >
                 <div className="flex justify-between items-start mb-6">
@@ -545,7 +651,7 @@ if (activeView === 'calendar') {
                     onClick={() => setActiveTab('PENDING')}
                     className={`text-2xl font-black uppercase pb-2 px-2 transition-all ${activeTab === 'PENDING' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    Inbox ({pendingCount})
+                    Inbox ({inboxPendingCount})
                 </button>
                 <button 
                     onClick={() => setActiveTab('HISTORY')}
@@ -553,11 +659,17 @@ if (activeView === 'calendar') {
                 >
                     History
                 </button>
+                <button 
+                    onClick={() => setActiveTab('REWORK')}
+                    className={`text-2xl font-black uppercase pb-2 px-2 transition-all ${activeTab === 'REWORK' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                    Rework ({reworkProjectsCount})
+                </button>
             </div>
             
-            {(activeTab === 'PENDING' ? pendingApprovals : historyProjectsFiltered).length > 0 ? (
+            {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).length > 0 ? (
                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                    {(activeTab === 'PENDING' ? pendingApprovals : historyProjectsFiltered).map(project => (
+                    {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).map(project => (
                     <div 
                         key={project.id}
                         onClick={() => {

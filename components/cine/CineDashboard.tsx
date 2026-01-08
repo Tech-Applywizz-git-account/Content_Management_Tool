@@ -25,6 +25,10 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [activeFilter, setActiveFilter] = useState<
+  'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | null
+>(null);
+
     const [shootDate, setShootDate] = useState<string>('');
     const [videoLink, setVideoLink] = useState<string>('');
     const [refreshKey, setRefreshKey] = useState(0);
@@ -39,20 +43,65 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
 
-    const handleViewChange = (view: string) => {
-        setActiveView(view);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(viewStorageKey, view);
-        }
-    };
+   // Handle top-level view changes (Dashboard / My Work / Calendar)
+const handleViewChange = (view: string) => {
+  setActiveView(view);
 
-    useEffect(() => {
-        setActiveView(getStoredView());
-    }, [viewStorageKey]);
+  // ✅ IMPORTANT:
+  // If user manually clicks "My Work",
+  // clear any dashboard-based filters
+  if (view === 'mywork') {
+    setActiveFilter(null);
+  }
 
-    // Use inboxProjects for dashboard view (role-based filtering)
-    // Use historyProjects for MyWork view (participation-based filtering)
-    const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(viewStorageKey, view);
+  }
+};
+
+// Restore last active view on load
+useEffect(() => {
+  const storedView = getStoredView();
+  setActiveView(storedView);
+
+  // Safety: never restore dashboard filters on reload
+  setActiveFilter(null);
+}, [viewStorageKey]);
+
+/**
+ * Projects shown in MyWork:
+ * - If user came from dashboard cards → filtered
+ * - If user clicked My Work manually → ALL projects
+ */
+const filteredProjects = React.useMemo(() => {
+  // No filter → show ALL cine projects
+  if (!activeFilter) {
+    return historyProjects || [];
+  }
+
+  // Filtered views (from dashboard cards)
+  return (historyProjects || []).filter(project => {
+    switch (activeFilter) {
+      case 'NEEDS_SCHEDULE':
+        return !project.shoot_date;
+
+      case 'SCHEDULED':
+        return project.shoot_date && !project.video_link;
+
+      case 'UPLOADED':
+        return (
+          !!project.video_link ||
+          !!project.video_url ||
+          !!project.data?.raw_footage_link
+        );
+
+      default:
+        return true;
+    }
+  });
+}, [activeFilter, historyProjects]);
+
+
 
     // Counts derived directly from projects table (source of truth)
     const [needsScheduleCount, setNeedsScheduleCount] = useState<number>(0);
@@ -84,16 +133,26 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
         >
             {selectedProject ? (
                 <CineProjectDetail
-                    project={selectedProject}
-                    userRole={user.role}
-                    onBack={() => setSelectedProject(null)}
-                    onUpdate={() => {
-                        setSelectedProject(null);
-                        onRefresh();
-                    }}
-                />
+  project={selectedProject}
+  userRole={user.role}
+  onBack={() => {
+    setSelectedProject(null);
+    setActiveFilter(null);
+  }}
+  onUpdate={() => {
+    setSelectedProject(null);
+    setActiveFilter(null);
+    onRefresh();
+  }}
+/>
+
             ) : activeView === 'mywork' ? (
-                <CineMyWork user={user} projects={historyProjects} onSelectProject={setSelectedProject} />
+                <CineMyWork
+  user={user}
+  projects={activeFilter ? filteredProjects : historyProjects}
+  onSelectProject={setSelectedProject}
+/>
+
             ) : activeView === 'calendar' ? (
                 <CineCalendar projects={inboxProjects} />
             ) : (
@@ -116,25 +175,55 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
 
                     {/* Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <div className="text-4xl font-black text-white mb-1">
-                                    {needsScheduleCount}
-                                </div>
-                            <div className="text-sm font-bold uppercase text-white/80">Needs Schedule</div>
-                        </div>
-                        <div className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <div className="text-4xl font-black text-white mb-1">
-                                {scheduledShootsCount}
-                            </div>
-                            <div className="text-sm font-bold uppercase text-white/80">Scheduled Shoots</div>
-                        </div>
-                        <div className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <div className="text-4xl font-black text-white mb-1">
-                                {footageUploadedCount}
-                            </div>
-                            <div className="text-sm font-bold uppercase text-white/80">Footage Uploaded</div>
-                        </div>
-                    </div>
+  {/* NEEDS SCHEDULE */}
+  <div
+    onClick={() => {
+      setActiveFilter('NEEDS_SCHEDULE');
+      setActiveView('mywork');
+    }}
+    className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+  >
+    <div className="text-4xl font-black text-white mb-1">
+      {needsScheduleCount}
+    </div>
+    <div className="text-sm font-bold uppercase text-white/80">
+      Needs Schedule
+    </div>
+  </div>
+
+  {/* SCHEDULED SHOOTS */}
+  <div
+    onClick={() => {
+      setActiveFilter('SCHEDULED');
+      setActiveView('mywork');
+    }}
+    className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+  >
+    <div className="text-4xl font-black text-white mb-1">
+      {scheduledShootsCount}
+    </div>
+    <div className="text-sm font-bold uppercase text-white/80">
+      Scheduled Shoots
+    </div>
+  </div>
+
+  {/* FOOTAGE UPLOADED */}
+  <div
+    onClick={() => {
+      setActiveFilter('UPLOADED');
+      setActiveView('mywork');
+    }}
+    className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+  >
+    <div className="text-4xl font-black text-white mb-1">
+      {footageUploadedCount}
+    </div>
+    <div className="text-sm font-bold uppercase text-white/80">
+      Footage Uploaded
+    </div>
+  </div>
+</div>
+
 
                     {/* Quick Overview */}
                     <div className="space-y-4">

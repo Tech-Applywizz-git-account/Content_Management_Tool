@@ -23,7 +23,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
-    const dashboardProjects = historyProjects || [];
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
         if (typeof window === 'undefined') return 'dashboard';
@@ -63,44 +62,66 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         return () => { try { supabase.removeChannel(subscription); } catch (e) {} };
     }, [onRefresh]);
-
+console.table(
+  inboxProjects?.map(p => ({
+    title: p.title,
+    stage: p.current_stage,
+    status: p.status,
+    created_by: p.created_by
+  }))
+);
     // Use inboxProjects for dashboard view (role-based filtering)
     // Use historyProjects for MyWork view (participation-based filtering)
     const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
-
+    // For Writer dashboard, we want to show ALL projects created by the writer
+    // regardless of current stage, not just inbox projects
+    const allWriterProjects = [...new Set([...(inboxProjects || []), ...(historyProjects || [])].map(p => p.id))]
+        .map(id => [...(inboxProjects || []), ...(historyProjects || [])].find(p => p.id === id)!);
+    
+    const dashboardProjects = activeView === 'mywork' ? (historyProjects || []) : allWriterProjects;
+    
     // Categorize Projects - mutually exclusive categorization
-    const inReview = dashboardProjects.filter(
-  p =>
-    p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-    p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2
+ const inReview = dashboardProjects.filter(p =>
+  p.created_by === user.id &&
+  [
+    WorkflowStage.SCRIPT_REVIEW_L1,
+    WorkflowStage.SCRIPT_REVIEW_L2
+  ].includes(p.current_stage)
 );
 
-const inProduction = dashboardProjects.filter(
-  p =>
-    p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-    p.current_stage === WorkflowStage.VIDEO_EDITING ||
-    p.current_stage === WorkflowStage.THUMBNAIL_DESIGN ||
-    p.current_stage === WorkflowStage.CREATIVE_DESIGN ||
-    p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-    p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-    p.current_stage === WorkflowStage.OPS_SCHEDULING
+const inProduction = dashboardProjects.filter(p =>
+  p.created_by === user.id &&
+  [
+    WorkflowStage.CINEMATOGRAPHY,
+    WorkflowStage.VIDEO_EDITING,
+    WorkflowStage.THUMBNAIL_DESIGN,
+    WorkflowStage.CREATIVE_DESIGN,
+    WorkflowStage.FINAL_REVIEW_CMO,
+    WorkflowStage.FINAL_REVIEW_CEO,
+    WorkflowStage.OPS_SCHEDULING
+  ].includes(p.current_stage)
 );
 
-const drafts = dashboardProjects.filter(
-  p =>
-    !inReview.some(reviewP => reviewP.id === p.id) &&
-    !inProduction.some(productionP => productionP.id === p.id) &&
-    (p.current_stage === WorkflowStage.SCRIPT ||
-     p.current_stage === WorkflowStage.REWORK ||
-     (p.status === TaskStatus.REWORK && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2))
+
+const drafts = dashboardProjects.filter(p =>
+  p.created_by === user.id &&
+  (
+    p.current_stage === WorkflowStage.SCRIPT ||
+    p.current_stage === WorkflowStage.REWORK ||
+    p.status === TaskStatus.REWORK
+  )
 );
 
-const rejectedProjects = dashboardProjects.filter(
-  p =>
-    !inReview.some(reviewP => reviewP.id === p.id) &&
-    !inProduction.some(productionP => productionP.id === p.id) &&
-    (p.status === TaskStatus.REJECTED && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 && p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2)
+
+const rejectedProjects = dashboardProjects.filter(p =>
+  p.created_by === user.id &&
+  p.status === TaskStatus.REJECTED &&
+  ![
+    WorkflowStage.SCRIPT_REVIEW_L1,
+    WorkflowStage.SCRIPT_REVIEW_L2
+  ].includes(p.current_stage)
 );
+
     
 
     const handleEdit = (project: Project) => {

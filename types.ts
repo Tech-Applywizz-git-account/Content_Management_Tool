@@ -45,7 +45,7 @@ export enum UserStatus {
   INACTIVE = 'INACTIVE',
 }
 
-export type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
+export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
 export type ContentType = 'VIDEO' | 'CREATIVE_ONLY';
 
 export interface User {
@@ -71,6 +71,7 @@ export interface Project {
   status: TaskStatus;
   priority: Priority;
   due_date: string;
+  created_by: string; // User ID of the creator
   created_at: string;
   shoot_date?: string; // Cinematographer sets
   delivery_date?: string; // Editor/Designer sets
@@ -94,6 +95,10 @@ export interface ProjectData {
   thumbnail_required?: boolean;
   thumbnail_reference_link?: string;
   thumbnail_notes?: string;
+  actor?: string;
+  location?: string;
+  lighting?: string;
+  angles?: string;
   [key: string]: any;
 }
 

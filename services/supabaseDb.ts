@@ -636,7 +636,7 @@ export const projects = {
       const { data: assignedByIdData, error: assignedByIdError } = await supabase
         .from('projects')
         .select('*')
-        .eq('assigned_to_user_id', user.id);
+        .eq('assigned_to_user_id', user.id)
 
       if (assignedByIdError) throw assignedByIdError;
 
@@ -1915,12 +1915,111 @@ export const db = {
         console.log('Current stage:', project.current_stage);
         console.log('Content type:', project.content_type);
 
-        const nextStageInfo = helpers.getNextStage(
-            project.current_stage,
-            project.content_type,
-            'APPROVED',
-            project.data
-        );
+        // Check if the project was recently in rework status by checking workflow history
+        const { data: workflowHistory, error: historyError } = await supabase
+            .from('workflow_history')
+            .select('*')
+            .eq('project_id', projectId)
+            .order('timestamp', { ascending: false })
+            .limit(10); // Get recent history entries
+
+        let isFromRework = false;
+        let reworkInitiator: string | null = null;
+        
+        if (workflowHistory && workflowHistory.length > 0) {
+            // Check if the most recent action was a rework or rejection
+            const recentRework = workflowHistory.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
+            if (recentRework) {
+                isFromRework = true;
+                reworkInitiator = recentRework.actor_id;
+            }
+        }
+
+        // Determine the next stage based on current stage and whether it's from rework
+        let nextStageInfo;
+        
+        if (isFromRework) {
+            // If this project is coming back from rework, we may need to skip certain stages
+            if (project.current_stage === WorkflowStage.SCRIPT) {
+                // If writer completed rework, and it was initiated by CEO, go directly to CEO
+                // Otherwise (if initiated by CMO), go back to CMO
+                if (reworkInitiator) {
+                    // Get the user who initiated the rework to check their role
+                    const { data: reworkUser, error: userError } = await supabase
+                        .from('users')
+                        .select('role')
+                        .eq('id', reworkInitiator)
+                        .single();
+                    
+                    if (reworkUser && reworkUser.role === Role.CEO) {
+                        // If CEO initiated the rework, go directly to CEO
+                        nextStageInfo = { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO };
+                    } else {
+                        // If CMO or other role initiated the rework, use normal flow (back to CMO)
+                        nextStageInfo = helpers.getNextStage(
+                            project.current_stage,
+                            project.content_type,
+                            'APPROVED',
+                            project.data
+                        );
+                    }
+                } else {
+                    // Use normal flow if we can't determine rework initiator
+                    nextStageInfo = helpers.getNextStage(
+                        project.current_stage,
+                        project.content_type,
+                        'APPROVED',
+                        project.data
+                    );
+                }
+            } else if ([WorkflowStage.CINEMATOGRAPHY, WorkflowStage.VIDEO_EDITING, WorkflowStage.THUMBNAIL_DESIGN, WorkflowStage.CREATIVE_DESIGN].includes(project.current_stage)) {
+                // If other roles completed rework, and it was initiated by CEO, go directly to CEO
+                if (reworkInitiator) {
+                    const { data: reworkUser, error: userError } = await supabase
+                        .from('users')
+                        .select('role')
+                        .eq('id', reworkInitiator)
+                        .single();
+                    
+                    if (reworkUser && reworkUser.role === Role.CEO) {
+                        // If CEO initiated the rework, go directly to CEO
+                        nextStageInfo = { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO };
+                    } else {
+                        // Otherwise, use normal flow
+                        nextStageInfo = helpers.getNextStage(
+                            project.current_stage,
+                            project.content_type,
+                            'APPROVED',
+                            project.data
+                        );
+                    }
+                } else {
+                    // Use normal flow if we can't determine rework initiator
+                    nextStageInfo = helpers.getNextStage(
+                        project.current_stage,
+                        project.content_type,
+                        'APPROVED',
+                        project.data
+                    );
+                }
+            } else {
+                // For other stages, use normal flow
+                nextStageInfo = helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+            }
+        } else {
+            // Not from rework, use normal flow
+            nextStageInfo = helpers.getNextStage(
+                project.current_stage,
+                project.content_type,
+                'APPROVED',
+                project.data
+            );
+        }
 
         console.log('Next stage info:', nextStageInfo);
 
@@ -1952,7 +2051,7 @@ export const db = {
             throw new Error('Cannot reject project with temporary ID. Project must be saved to Supabase first.');
         }
 
-        // Determine if this is a rework request based on the comment or target stage
+        // Determine if this is a rework request based on the comment content
         // If the comment contains 'Project killed' or 'terminated', it's a reject, otherwise it's rework
         const isRework = !comment.includes('Project killed') && !comment.includes('terminated');
 

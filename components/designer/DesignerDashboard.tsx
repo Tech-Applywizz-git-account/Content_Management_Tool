@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
 import { Palette, Video, FileImage } from 'lucide-react';
 import DesignerMyWork from './DesignerMyWork';
@@ -23,6 +23,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'DELIVERED' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleInternalRefresh = async () => {
@@ -30,20 +31,62 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         setRefreshKey(prev => prev + 1); // force UI re-render
     };
 
-    const handleViewChange = (view: string) => {
-        setActiveView(view);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(viewStorageKey, view);
-        }
-    };
+    // Handle top-level view changes (Dashboard / My Work / Calendar)
+const handleViewChange = (view: string) => {
+  setActiveView(view);
 
-    useEffect(() => {
-        setActiveView(getStoredView());
-    }, [viewStorageKey]);
+  // ✅ IMPORTANT:
+  // If user manually clicks "My Work",
+  // clear any dashboard-based filters
+  if (view === 'mywork') {
+    setActiveFilter(null);
+  }
 
-    // Use inboxProjects for dashboard view (role-based filtering)
-    // Use historyProjects for MyWork view (participation-based filtering)
-    const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(viewStorageKey, view);
+  }
+};
+
+// Restore last active view on load
+useEffect(() => {
+  const storedView = getStoredView();
+  setActiveView(storedView);
+
+  // Safety: never restore dashboard filters on reload
+  setActiveFilter(null);
+}, [viewStorageKey]);
+
+
+
+    /**
+ * Projects shown in MyWork:
+ * - If user came from dashboard cards → filtered
+ * - If user clicked My Work manually → ALL projects
+ */
+const filteredProjects = React.useMemo(() => {
+  // No filter → show ALL designer projects
+  if (!activeFilter) {
+    return historyProjects || [];
+  }
+
+  // Filtered views (from dashboard cards)
+  return (historyProjects || []).filter(project => {
+    switch (activeFilter) {
+      case 'NEEDS_DELIVERY':
+        return !project.delivery_date;
+
+      case 'IN_PROGRESS':
+        if (project.content_type === 'CREATIVE_ONLY') return project.delivery_date && !project.creative_link;
+        return project.delivery_date && !project.thumbnail_link;
+
+      case 'DELIVERED':
+        return !!project.creative_link || !!project.thumbnail_link;
+
+      default:
+        return true;
+    }
+  });
+}, [activeFilter, historyProjects]);
 
     // Counts derived directly from projects table (source of truth)
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState<number>(0);
@@ -61,6 +104,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         const active = designerProjects.filter(p => p.status !== TaskStatus.DONE);
 
         setActiveProjectsCount(active.length);
+        
         setNeedsDeliveryCount(active.filter(p => !p.delivery_date).length);
 
         const inProgress = active.filter(p => {
@@ -91,7 +135,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <DesignerMyWork user={user} projects={historyProjects} onSelectProject={setSelectedProject} />
+                <DesignerMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={setSelectedProject} />
             ) : activeView === 'calendar' ? (
                 <DesignerCalendar projects={inboxProjects} />
             ) : (
@@ -114,19 +158,37 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
 
                     {/* Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div
+                            onClick={() => {
+                                setActiveFilter('NEEDS_DELIVERY');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
-                                        {needsDeliveryCount}
-                                    </div>
+                                {needsDeliveryCount}
+                            </div>
                             <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
                         </div>
-                        <div className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div
+                            onClick={() => {
+                                setActiveFilter('IN_PROGRESS');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {inProgressCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
                         </div>
-                        <div className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div
+                            onClick={() => {
+                                setActiveFilter('DELIVERED');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {deliveredCount}
                             </div>

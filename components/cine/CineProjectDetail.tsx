@@ -379,6 +379,124 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     </div>
                 </div>
                 
+                {/* Cinematography Instructions */}
+                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                    <h2 className="text-xl font-black uppercase mb-4">Cinematography Instructions</h2>
+                    
+                    {/* Writer Name */}
+                    {localProject.data.writer_name && (
+                        <div className="mb-4">
+                            <span className="text-sm font-bold text-slate-500 uppercase">Writer</span>
+                            <p className="font-medium text-slate-900">{localProject.data.writer_name}</p>
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Actor</label>
+                            <input
+                                type="text"
+                                value={localProject.data.actor || ''}
+                                onChange={(e) => setLocalProject(prev => ({
+                                    ...prev,
+                                    data: {
+                                        ...prev.data,
+                                        actor: e.target.value
+                                    }
+                                }))}
+                                disabled={!canEdit}
+                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
+                                placeholder="e.g. Female presenter, 30s, business attire"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Location</label>
+                            <input
+                                type="text"
+                                value={localProject.data.location || ''}
+                                onChange={(e) => setLocalProject(prev => ({
+                                    ...prev,
+                                    data: {
+                                        ...prev.data,
+                                        location: e.target.value
+                                    }
+                                }))}
+                                disabled={!canEdit}
+                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
+                                placeholder="e.g. Office, studio, outdoor street"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Lighting</label>
+                            <input
+                                type="text"
+                                value={localProject.data.lighting || ''}
+                                onChange={(e) => setLocalProject(prev => ({
+                                    ...prev,
+                                    data: {
+                                        ...prev.data,
+                                        lighting: e.target.value
+                                    }
+                                }))}
+                                disabled={!canEdit}
+                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
+                                placeholder="e.g. Soft daylight, cinematic, low-key"
+                            />
+                        </div>
+                        
+                        <div>
+                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Angles</label>
+                            <input
+                                type="text"
+                                value={localProject.data.angles || ''}
+                                onChange={(e) => setLocalProject(prev => ({
+                                    ...prev,
+                                    data: {
+                                        ...prev.data,
+                                        angles: e.target.value
+                                    }
+                                }))}
+                                disabled={!canEdit}
+                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
+                                placeholder="e.g. Medium shot, close-up, over-the-shoulder"
+                            />
+                        </div>
+                    </div>
+                    
+                    {/* Save Button for Cinematography Fields */}
+                    {canEdit && (
+                        <div className="mt-4 flex justify-end">
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await db.updateProjectData(localProject.id, {
+                                            ...localProject.data,
+                                            actor: localProject.data.actor,
+                                            location: localProject.data.location,
+                                            lighting: localProject.data.lighting,
+                                            angles: localProject.data.angles
+                                        });
+                                        
+                                        // Show success message
+                                        setPopupMessage('Cinematography instructions updated successfully');
+                                        setStageName('Updated');
+                                        setShowPopup(true);
+                                        setPopupDuration(3000);
+                                    } catch (error) {
+                                        console.error('Error updating cinematography instructions:', error);
+                                        alert('Failed to update cinematography instructions');
+                                    }
+                                }}
+                                className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                Save Instructions
+                            </button>
+                        </div>
+                    )}
+                </div>
+                
 
 
                 {/* Shoot Scheduling Section */}
