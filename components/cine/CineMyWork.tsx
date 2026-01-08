@@ -105,6 +105,12 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                             {formatDistanceToNow(new Date(project.due_date))}
                                         </span>
                                     </div>
+                                    <div className="flex justify-between">
+                                        <span className="font-bold text-slate-400 uppercase text-xs">Submitted</span>
+                                        <span className="font-bold text-slate-900">
+                                            {new Date(project.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Action Hint */}

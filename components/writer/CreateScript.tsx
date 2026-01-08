@@ -40,14 +40,89 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     // State for validation error
     const [validationError, setValidationError] = useState<string | null>(null);
     
-    // Check for invalid channel/content type combinations
+    // Helper function to check if project was sent back from CEO after CMO approval
+    const wasProjectSentBackFromCEO = async (projectId: string | undefined) => {
+      if (!projectId) return false;
+      
+      try {
+        const { data: historyData, error: historyError } = await supabase
+          .from('workflow_history')
+          .select('actor_id, action, from_stage, to_stage, timestamp')
+          .eq('project_id', projectId)
+          .order('timestamp', { ascending: false });
+          
+        if (historyError || !historyData) {
+          console.error('Error fetching workflow history:', historyError);
+          return false;
+        }
+        
+        // Check if the project was sent back for rework by a CEO
+        // Find if there was a REWORK or REJECT action by a CEO
+        const ceoReworkHistory = historyData.find(history => 
+          (history.action === 'REWORK' || history.action === 'REJECTED')
+        );
+        
+        if (ceoReworkHistory) {
+          // Check if the actor was a CEO by fetching their role
+          try {
+            const { data: userData, error } = await supabase
+              .from('users')
+              .select('role')
+              .eq('id', ceoReworkHistory.actor_id)
+              .single();
+            
+            if (!error && userData && userData.role === 'CEO') {
+              return true;
+            }
+          } catch (err) {
+            console.error('Error checking user role:', err);
+          }
+        }
+        
+        return false;
+      } catch (error) {
+        console.error('Error checking if project was sent back from CEO:', error);
+        return false;
+      }
+    };
+    
+    // Helper function to submit project directly to CEO
+    const submitDirectlyToCEO = async (projectId: string) => {
+      try {
+        await db.projects.update(projectId, {
+          current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+          assigned_to_role: Role.CEO,
+          status: TaskStatus.WAITING_APPROVAL
+        });
+        
+        // Add workflow history entry
+        const project = await db.getProjectById(projectId);
+        await supabase.from('workflow_history').insert([{
+          project_id: projectId,
+          from_stage: project?.current_stage || WorkflowStage.SCRIPT,
+          to_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+          action: 'SUBMITTED',
+          actor_id: currentUser.id,
+          actor_name: currentUser.full_name,
+          comment: 'Resubmitted after CEO rework',
+          timestamp: new Date().toISOString()
+        }]);
+      } catch (error) {
+        console.error('Error submitting directly to CEO:', error);
+        throw error;
+      }
+    };
+    
+    // Check for invalid channel/content type combinations and thumbnail requirement
     useEffect(() => {
         if (newProjectDetails.channel === Channel.LINKEDIN && newProjectDetails.contentType === 'VIDEO') {
             setValidationError('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
+        } else if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
+            setValidationError('Thumbnail requirement must be specified for video content.');
         } else {
             setValidationError(null);
         }
-    }, [newProjectDetails.channel, newProjectDetails.contentType]);
+    }, [newProjectDetails.channel, newProjectDetails.contentType, formData.thumbnail_required]);
 
     // Listen for beforeLogout event to save changes automatically
     useEffect(() => {
@@ -150,6 +225,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   throw new Error('Content type is required. Please select a content type for your script.');
                 }
                 
+                // Validate thumbnail requirement for video content
+                if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
+                  throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
+                }
+                
                 const createdProject = await db.createProject(
                     newProjectDetails.title,
                     newProjectDetails.channel,
@@ -197,6 +277,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         newProjectDetails.contentType,
         newProjectDetails.priority
       );
+      await db.projects.update(createdProject.id, {
+        created_by: currentUser.id,
+        assigned_to_user_id: currentUser.id
+      });
+      
+      // Update project data with writer information
+      await db.updateProjectData(createdProject.id, {
+        writer_id: currentUser.id,
+        writer_name: currentUser.full_name
+      });
 
       if (!createdProject?.id) {
         throw new Error('Project creation failed – no ID returned');
@@ -228,6 +318,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     if (!newProjectDetails.contentType) {
       throw new Error('Content type is required. Please select a content type for your script.');
     }
+    
+    // Validate thumbnail requirement for video content
+    if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
+      throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
+    }
 
     // Small delay to ensure project is fully created before proceeding
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -253,10 +348,15 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     // 4️⃣ SUBMIT WORKFLOW
     // Determine workflow based on latest action
     const workflowState = project ? getWorkflowState(project) : { isRejected: false, isRework: false, isInReview: false, isApproved: false, latestAction: null };
+    
+    // Check if project was sent back from CEO after CMO approval
+    const wasSentBackFromCEO = await wasProjectSentBackFromCEO(project?.id);
+    
     if (workflowState.isRejected || workflowState.isRework) {
-      // When resubmitting a rejected or rework project, use the normal workflow
-      await db.submitToReview(realProjectId);
-      console.log('✅ Successfully resubmitted rejected/rework project');
+      // For rework projects, use advanceWorkflow which has built-in logic to determine the next stage
+      // based on who initiated the rework (this handles the CEO rework scenario)
+      await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
+      console.log('✅ Successfully resubmitted rework project via advanceWorkflow');
     } else if (creatorRole === Role.CMO) {
       // For CMO-created scripts, we need to bypass the normal workflow and go straight to CEO review
       try {
@@ -346,16 +446,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={handleSaveDraft}
-                        disabled={!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType}
-                        className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
+                        className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         <Save className="w-4 h-4 mr-2" />
                         Draft
                     </button>
                     <button
                         onClick={() => setShowConfirmation(true)}
-                        disabled={isSubmitting || !!validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType}
-                        className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+                        disabled={isSubmitting || !!validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
+                        className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(validationError || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
                     >
                         {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
                         <Send className="w-4 h-4 ml-2" />
@@ -417,55 +517,57 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                 
                                 {/* Thumbnail Required Field - Only for Video Content Type */}
                                 {newProjectDetails.contentType === 'VIDEO' && (
-                                    <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                                        <h3 className="font-black uppercase text-lg text-slate-900 mb-4">Thumbnail Requirements</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex space-x-4">
-                                                <label className="flex items-center space-x-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="thumbnail_required_radio"
-                                                        checked={formData.thumbnail_required === true}
-                                                        onChange={() => setFormData({ ...formData, thumbnail_required: true })}
-                                                        className="w-5 h-5"
-                                                    />
-                                                    <span className="font-bold text-slate-900">Yes</span>
-                                                </label>
-                                                <label className="flex items-center space-x-2 cursor-pointer">
-                                                    <input
-                                                        type="radio"
-                                                        name="thumbnail_required_radio"
-                                                        checked={formData.thumbnail_required === false}
-                                                        onChange={() => setFormData({ ...formData, thumbnail_required: false })}
-                                                        className="w-5 h-5"
-                                                    />
-                                                    <span className="font-bold text-slate-900">No</span>
-                                                </label>
-                                            </div>
-                                            
-                                            {formData.thumbnail_required && (
-                                                <div className="space-y-4 mt-4">
-                                                    <div>
-                                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Reference (Optional)</label>
+                                    <div className={`${!formData.thumbnail_required ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                                        <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                                            <h3 className="font-black uppercase text-lg text-slate-900 mb-4">Thumbnail Requirements</h3>
+                                            <div className="space-y-4">
+                                                <div className="flex space-x-4">
+                                                    <label className="flex items-center space-x-2 cursor-pointer">
                                                         <input
-                                                            type="url"
-                                                            value={formData.thumbnail_reference_link || ''}
-                                                            onChange={e => setFormData({ ...formData, thumbnail_reference_link: e.target.value })}
-                                                            className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium"
-                                                            placeholder="https://example.com/reference-thumbnail.jpg"
+                                                            type="radio"
+                                                            name="thumbnail_required_radio"
+                                                            checked={formData.thumbnail_required === true}
+                                                            onChange={() => setFormData({ ...formData, thumbnail_required: true })}
+                                                            className="w-5 h-5"
                                                         />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Notes / Description</label>
-                                                        <textarea
-                                                            value={formData.thumbnail_notes || ''}
-                                                            onChange={e => setFormData({ ...formData, thumbnail_notes: e.target.value })}
-                                                            className="w-full p-4 border-2 border-black rounded-none text-sm min-h-[100px] focus:bg-yellow-50 focus:outline-none font-medium resize-none"
-                                                            placeholder="Describe the desired thumbnail concept, colors, style, text, etc."
+                                                        <span className="font-bold text-slate-900">Yes</span>
+                                                    </label>
+                                                    <label className="flex items-center space-x-2 cursor-pointer">
+                                                        <input
+                                                            type="radio"
+                                                            name="thumbnail_required_radio"
+                                                            checked={formData.thumbnail_required === false}
+                                                            onChange={() => setFormData({ ...formData, thumbnail_required: false })}
+                                                            className="w-5 h-5"
                                                         />
-                                                    </div>
+                                                        <span className="font-bold text-slate-900">No</span>
+                                                    </label>
                                                 </div>
-                                            )}
+                                                
+                                                {formData.thumbnail_required && (
+                                                    <div className="space-y-4 mt-4">
+                                                        <div>
+                                                            <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Reference (Optional)</label>
+                                                            <input
+                                                                type="url"
+                                                                value={formData.thumbnail_reference_link || ''}
+                                                                onChange={e => setFormData({ ...formData, thumbnail_reference_link: e.target.value })}
+                                                                className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium"
+                                                                placeholder="https://example.com/reference-thumbnail.jpg"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Thumbnail Notes / Description</label>
+                                                            <textarea
+                                                                value={formData.thumbnail_notes || ''}
+                                                                onChange={e => setFormData({ ...formData, thumbnail_notes: e.target.value })}
+                                                                className="w-full p-4 border-2 border-black rounded-none text-sm min-h-[100px] focus:bg-yellow-50 focus:outline-none font-medium resize-none"
+                                                                placeholder="Describe the desired thumbnail concept, colors, style, text, etc."
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -484,6 +586,76 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                                         ))}
                                     </div>
                                 </div>
+                                {/* Cinematography Instructions (Optional) */}
+<div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
+  <h3 className="font-black uppercase text-lg text-slate-900">
+    Cinematography Instructions
+    <span className="block text-xs font-medium text-slate-500 mt-1">
+      (Optional – helps the cinematographer plan the shoot)
+    </span>
+  </h3>
+
+  <div>
+    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+      Actor
+    </label>
+    <input
+      type="text"
+      value={formData.actor || ''}
+      onChange={e =>
+        setFormData({ ...formData, actor: e.target.value })
+      }
+      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+      placeholder="e.g. Female presenter, 30s, business attire"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+      Location
+    </label>
+    <input
+      type="text"
+      value={formData.location || ''}
+      onChange={e =>
+        setFormData({ ...formData, location: e.target.value })
+      }
+      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+      placeholder="e.g. Office, studio, outdoor street"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+      Lighting
+    </label>
+    <input
+      type="text"
+      value={formData.lighting || ''}
+      onChange={e =>
+        setFormData({ ...formData, lighting: e.target.value })
+      }
+      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+      placeholder="e.g. Soft daylight, cinematic, low-key"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+      Angles
+    </label>
+    <input
+      type="text"
+      value={formData.angles || ''}
+      onChange={e =>
+        setFormData({ ...formData, angles: e.target.value })
+      }
+      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+      placeholder="e.g. Medium shot, close-up, over-the-shoulder"
+    />
+  </div>
+</div>
+
                                 
                                 {/* Validation Error Message */}
                                 {validationError && (

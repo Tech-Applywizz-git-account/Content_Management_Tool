@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { Calendar as CalendarIcon, Upload, Video, Film } from 'lucide-react';
@@ -24,6 +24,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleInternalRefresh = async () => {
@@ -31,16 +32,32 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         setRefreshKey(prev => prev + 1); // force UI re-render
     };
 
-    const handleViewChange = (view: string) => {
-        setActiveView(view);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(viewStorageKey, view);
-        }
-    };
+    // Handle top-level view changes (Dashboard / My Work / Calendar)
+const handleViewChange = (view: string) => {
+  setActiveView(view);
 
-    useEffect(() => {
-        setActiveView(getStoredView());
-    }, [viewStorageKey]);
+  // ✅ IMPORTANT:
+  // If user manually clicks "My Work",
+  // clear any dashboard-based filters
+  if (view === 'mywork') {
+    setActiveFilter(null);
+  }
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(viewStorageKey, view);
+  }
+};
+
+// Restore last active view on load
+useEffect(() => {
+  const storedView = getStoredView();
+  setActiveView(storedView);
+
+  // Safety: never restore dashboard filters on reload
+  setActiveFilter(null);
+}, [viewStorageKey]);
+
+
 
     // Realtime: refresh inbox when projects table changes
     useEffect(() => {
@@ -60,9 +77,34 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         };
     }, [onRefresh]);
 
-    // Use inboxProjects for dashboard view (role-based filtering)
-    // Use historyProjects for MyWork view (participation-based filtering)
-    const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
+    /**
+ * Projects shown in MyWork:
+ * - If user came from dashboard cards → filtered
+ * - If user clicked My Work manually → ALL projects
+ */
+const filteredProjects = React.useMemo(() => {
+  // No filter → show ALL editor projects
+  if (!activeFilter) {
+    return historyProjects || [];
+  }
+
+  // Filtered views (from dashboard cards)
+  return (historyProjects || []).filter(project => {
+    switch (activeFilter) {
+      case 'NEEDS_DELIVERY':
+        return !project.delivery_date;
+
+      case 'IN_PROGRESS':
+        return project.delivery_date && !project.edited_video_link;
+
+      case 'COMPLETED':
+        return !!project.edited_video_link;
+
+      default:
+        return true;
+    }
+  });
+}, [activeFilter, historyProjects]);
 
     // ✅ FIXED: Remove mock data and use real projects filtered by stage
     const allProjects = (inboxProjects || []).filter(p => p.current_stage === WorkflowStage.VIDEO_EDITING);
@@ -77,7 +119,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     useEffect(() => {
         setNeedsDeliveryCount(activeProjects.filter(p => !p.delivery_date).length);
         setInProgressCount(activeProjects.filter(p => p.delivery_date && !p.edited_video_link).length);
-        setCompletedEditsCount(activeProjects.filter(p => p.edited_video_link).length);
+        setCompletedEditsCount(activeProjects.filter(p => !!p.edited_video_link).length);
     }, [inboxProjects, historyProjects]);
 
     return (
@@ -99,7 +141,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <EditorMyWork user={user} projects={historyProjects} onSelectProject={setSelectedProject} />
+                <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={setSelectedProject} />
             ) : activeView === 'calendar' ? (
                 <EditorCalendar projects={inboxProjects} />
             ) : (
@@ -122,19 +164,42 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
                     {/* Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        {/* NEEDS DELIVERY DATE */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('NEEDS_DELIVERY');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {needsDeliveryCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
                         </div>
-                        <div className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+
+                        {/* IN PROGRESS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('IN_PROGRESS');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {inProgressCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
                         </div>
-                        <div className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+
+                        {/* COMPLETED EDITS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('COMPLETED');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {completedEditsCount}
                             </div>

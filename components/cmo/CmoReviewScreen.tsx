@@ -64,7 +64,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 .from('workflow_history')
                 .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link')
                 .eq('project_id', project.id)
-                .in('action', ['REJECTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'])
+                .in('action', ['REJECTED', 'REWORK', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'])
                 .order('timestamp', { ascending: false })
                 .limit(1);
 
@@ -259,6 +259,11 @@ setStageName(`Rework → ${roleLabel}`);
                             >
                                 {project.priority}
                             </span>
+                            {previousScript && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-[#FFD952] text-black">
+                                    REWORK
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -287,6 +292,12 @@ setStageName(`Rework → ${roleLabel}`);
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Status</label>
                             <div className="font-bold text-slate-900 uppercase">
                                 {project.status}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {previousScript ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -337,34 +348,39 @@ setStageName(`Rework → ${roleLabel}`);
                             </button>
                         </div>
                         
-                        {previousScript ? (
-                            // Show both old and new scripts side by side
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Previous Script */}
-                                <div className="bg-white border-2 border-slate-300 p-6">
-                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Previous Script</h4>
-                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {previousScript}
+                        {/* Wrapper for PDF generation - both cases */}
+                        <div 
+                            ref={scriptContentRef}
+                            className="overflow-auto"
+                        >
+                            {previousScript ? (
+                                // Show both old and new scripts side by side
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Previous Script */}
+                                    <div className="bg-white border-2 border-slate-300 p-6">
+                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Previous Script</h4>
+                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                            {previousScript}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Current Script */}
+                                    <div className="bg-white border-2 border-slate-300 p-6">
+                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Current Script</h4>
+                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                            {project.data?.script_content || 'No script content available.'}
+                                        </div>
                                     </div>
                                 </div>
-                                
-                                {/* Current Script */}
-                                <div className="bg-white border-2 border-slate-300 p-6">
-                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Current Script</h4>
-                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {project.data?.script_content || 'No script content available.'}
-                                    </div>
+                            ) : (
+                                // Show single script for non-rework projects
+                                <div 
+                                    className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                >
+                                    {project.data?.script_content || 'No script content available.'}
                                 </div>
-                            </div>
-                        ) : (
-                            // Show single script for non-rework projects
-                            <div 
-                                ref={scriptContentRef}
-                                className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                            >
-                                {project.data?.script_content || 'No script content available.'}
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </section>
                     
 
