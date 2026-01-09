@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
@@ -203,6 +203,99 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         }
     };
 
+    const handleDirectUpload = async () => {
+        const link = isVideo ? thumbnailLink : creativeLink;
+        if (!link) {
+            alert(`Please enter the ${isVideo ? 'thumbnail' : 'creative'} link`);
+            return;
+        }
+        
+        try {
+            // Get user session
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+            
+            if (!user) {
+                alert('User not authenticated');
+                return;
+            }
+            
+            // Record the action in workflow history
+            await db.workflow.recordAction(
+                project.id,
+                project.current_stage, // Record action at current stage
+                user.id,
+                user.email || user.id, // userName (using email or ID as fallback)
+                'DIRECT_UPLOAD', // Use direct upload action
+                `Direct ${isVideo ? 'thumbnail' : 'creative'} upload: ${link}`
+            );
+            
+            // Update the project with the file link
+            const updates: Partial<Project> = {};
+            
+            if (isVideo) {
+                updates.thumbnail_link = link;
+            } else {
+                updates.creative_link = link;
+            }
+            
+            await db.projects.update(project.id, updates);
+            
+            // Skip to CMO review stage directly
+            await db.workflow.approve(
+                project.id,
+                user.id,
+                user.email || user.id,
+                userRole,
+                WorkflowStage.FINAL_REVIEW_CMO, // Skip to CMO review
+                Role.CMO,
+                `Direct upload to CMO review: ${link}`
+            );
+            
+            console.log(`Direct ${isVideo ? 'thumbnail' : 'creative'} uploaded: ${link}`);
+            
+            // Get updated project to determine who to notify
+            const updatedProject = await db.getProjectById(project.id);
+            
+            // Notify CMO users
+            const { data: cmoUsers } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', Role.CMO)
+                .eq('status', 'ACTIVE');
+            
+            if (cmoUsers && cmoUsers.length > 0) {
+                // Send notification to all CMO users
+                for (const cmoUser of cmoUsers) {
+                    try {
+                        // Use type assertion to access the notifications service
+                        const dbWithNotifications = db as any;
+                        await dbWithNotifications.notifications.create(
+                            cmoUser.id,
+                            project.id,
+                            'ASSET_UPLOADED',
+                            'New Direct Upload Available',
+                            `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} directly for: ${project.title}. Please review and proceed with ${STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'Final Review CMO'}.`
+                        );
+                    } catch (notificationError) {
+                        console.error('Failed to send notification:', notificationError);
+                        // Continue with the process even if notification fails
+                    }
+                }
+            }
+            
+            // Show popup notification
+            const nextStageLabel = STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'Final Review CMO';
+            setPopupMessage(`${isVideo ? 'Thumbnail' : 'Creative'} uploaded directly for ${project.title}. Sent to ${nextStageLabel}.`);
+            setStageName(nextStageLabel);
+            setPopupDuration(5000);
+            setShowPopup(true);
+        } catch (error) {
+            console.error(`Failed to upload ${isVideo ? 'thumbnail' : 'creative'} directly:`, error);
+            alert(`❌ Failed to upload ${isVideo ? 'thumbnail' : 'creative'} directly. Please try again.`);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 animate-fade-in">
             {/* Header */}
@@ -234,12 +327,12 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 {isVideo ? '🎬 Thumbnail Task' : '🎨 Creative Task'}
                             </span>
                             <span className="text-sm text-slate-500 font-bold">
-                                Due: {formatDistanceToNow(new Date(project.due_date))} from now
+                                Due: {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                             </span>
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                         ? 'bg-red-500 text-white'
-                                        : project.priority === 'MEDIUM'
+                                        : project.priority === 'NORMAL'
                                             ? 'bg-yellow-500 text-black'
                                             : 'bg-green-500 text-white'
                                     }`}
@@ -548,6 +641,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
   </div>
 )}
 
+            {/* New Direct Upload Section - For Designer to upload assets directly */}
+           
+
 
                 {/* Project Info */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -564,7 +660,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
                             <p className="font-bold text-slate-900 mt-1">
-                                {formatDistanceToNow(new Date(project.created_at))} ago
+                                {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                             </p>
                         </div>
                         <div>

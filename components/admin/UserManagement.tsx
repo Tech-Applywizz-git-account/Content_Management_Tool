@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { User, Role, UserStatus, SystemLog } from '../../types';
 import { supabase, supabaseAdmin } from '../../src/integrations/supabase/client';
 import { Search, Plus, Filter, Edit2, Shield, Power, Key, X, User as UserIcon, AlertTriangle, Trash2 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { AdminView } from '../AdminLayout';
 
 interface Props {
@@ -118,7 +118,7 @@ const UserManagement: React.FC<Props> = ({ users, logs, onRefresh, onNavigate })
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-slate-500">
-                                        {user.last_login ? formatDistanceToNow(new Date(user.last_login), { addSuffix: true }) : 'Never'}
+                                        {user.last_login ? format(new Date(user.last_login), 'MMM dd, yyyy h:mm a') : 'Never'}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end space-x-2">

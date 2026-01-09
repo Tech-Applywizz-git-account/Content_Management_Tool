@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, Role } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { Video, Palette, FileImage, CalendarIcon } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
 
@@ -58,7 +58,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) =>
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                                 ? 'bg-red-500 text-white'
-                                                : project.priority === 'MEDIUM'
+                                                : project.priority === 'NORMAL'
                                                     ? 'bg-yellow-500 text-black'
                                                     : 'bg-green-500 text-white'
                                             }`}
@@ -115,7 +115,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) =>
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
                                         <span className="font-bold text-slate-900">
-                                            {formatDistanceToNow(new Date(project.due_date))}
+                                            {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
                                 </div>
@@ -125,6 +125,9 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) =>
                                     <button className="w-full bg-[#D946EF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
                                         {!project.delivery_date ? 'Set Delivery Date' : isDelivered ? 'View Details' : `Upload ${isVideo ? 'Thumbnail' : 'Creative'}`}
                                     </button>
+                                    <p className="text-xs text-slate-500 mt-1 text-center">
+                                        Direct upload option available in detail view
+                                    </p>
                                 </div>
                             </div>
                         </div>

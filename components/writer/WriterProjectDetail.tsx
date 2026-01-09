@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, STAGE_LABELS } from '../../types';
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
 
@@ -128,7 +128,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         <div className="flex items-start justify-between mb-6">
                             <div>
                                 <h2 className="text-2xl font-black uppercase text-slate-900 mb-2">Current Status</h2>
-                                <p className="text-sm font-bold text-slate-500 uppercase">Submitted {formatDistanceToNow(new Date(project.created_at))} ago</p>
+                                <p className="text-sm font-bold text-slate-500 uppercase">Submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
                             </div>
                             <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
                                 {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
@@ -249,7 +249,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                         {rejectionReason || rejectionComment?.comment || 'No specific reason provided.'}
                                     </p>
                                     <p className="text-sm text-red-600 mt-2">
-                                        Rejected by {rejectionComment?.actor_name || 'Reviewer'} {rejectionComment?.timestamp && formatDistanceToNow(new Date(rejectionComment.timestamp))} ago
+                                        Rejected by {rejectionComment?.actor_name || 'Reviewer'} {rejectionComment?.timestamp && format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}
                                     </p>
                                 </div>
                             )}
@@ -260,7 +260,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <p className="font-bold text-slate-900">{comment.actor_name}</p>
-                                                    <p className="text-sm text-slate-600">{formatDistanceToNow(new Date(comment.timestamp))} ago</p>
+                                                    <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
                                                 </div>
                                                 <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                                     {comment.action}
@@ -287,7 +287,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                 <div className="w-3 h-3 bg-blue-600 border-2 border-black rounded-full mt-2"></div>
                                 <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
                                     <span className="text-xs font-bold uppercase text-slate-500">
-                                        {formatDistanceToNow(new Date(project.created_at))} ago
+                                        {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                                     </span>
                                     <p className="font-black text-slate-900 uppercase mt-1">Script Submitted</p>
                                     <p className="text-sm text-slate-600 mt-2">Script submitted for review by Writer</p>

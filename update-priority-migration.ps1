@@ -15,10 +15,10 @@ if (-not $serviceKey) {
 $url = "https://zxnevoulicmapqmniaos.supabase.co/rest/v1/rpc/exec_sql"
 
 $sql = @"
--- First, update existing 'NORMAL' values to 'MEDIUM' (as they're functionally equivalent)
+-- Update any 'MEDIUM' values to 'NORMAL' to align with TypeScript types
 UPDATE public.projects 
-SET priority = 'MEDIUM' 
-WHERE priority = 'NORMAL';
+SET priority = 'NORMAL' 
+WHERE priority = 'MEDIUM';
 
 -- Then alter the table to update the CHECK constraint
 ALTER TABLE public.projects 
@@ -26,7 +26,7 @@ DROP CONSTRAINT IF EXISTS projects_priority_check;
 
 ALTER TABLE public.projects 
 ADD CONSTRAINT projects_priority_check 
-CHECK (priority IN ('HIGH', 'MEDIUM', 'LOW'));
+CHECK (priority IN ('HIGH', 'NORMAL', 'LOW'));
 "@
 
 $headers = @{

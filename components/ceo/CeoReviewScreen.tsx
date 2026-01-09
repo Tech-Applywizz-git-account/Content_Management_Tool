@@ -28,36 +28,57 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         thumbnail_link: string | null;
         creative_link: string | null;
     } | null>(null);
-    
 
-    
+
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState<number>(0);
-    
+
     // Confirmation popup state
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
+    
+    // Effect to track when CEO opens the project for the first time
+    useEffect(() => {
+        const trackProjectOpen = async () => {
+            try {
+                // Check if this is the first time the project is being opened by a reviewer
+                if (!project.first_review_opened_at && !project.first_review_opened_by_role) {
+                    // Update the project to record that it was opened by CEO
+                    await db.projects.update(project.id, {
+                        first_review_opened_at: new Date().toISOString(),
+                        first_review_opened_by_role: Role.CEO
+                    });
+                }
+            } catch (error) {
+                console.error('Error tracking project open:', error);
+            }
+        };
+
+        trackProjectOpen();
+    }, [project.id, project.first_review_opened_at, project.first_review_opened_by_role]);
+
     const getReworkRoleLabel = (stage: WorkflowStage) => {
-  switch (stage) {
-    case WorkflowStage.SCRIPT:
-      return 'Writer';
-    case WorkflowStage.FINAL_REVIEW_CMO:
-      return 'CMO';
-    case WorkflowStage.VIDEO_EDITING:
-      return 'Editor';
-    case WorkflowStage.CINEMATOGRAPHY:
-      return 'Cinematographer';
-    case WorkflowStage.CREATIVE_DESIGN:
-      return 'Designer';
-    default:
-      return 'Team';
-  }
-};
+        switch (stage) {
+            case WorkflowStage.SCRIPT:
+                return 'Writer';
+            case WorkflowStage.FINAL_REVIEW_CMO:
+                return 'CMO';
+            case WorkflowStage.VIDEO_EDITING:
+                return 'Editor';
+            case WorkflowStage.CINEMATOGRAPHY:
+                return 'Cinematographer';
+            case WorkflowStage.CREATIVE_DESIGN:
+                return 'Designer';
+            default:
+                return 'Team';
+        }
+    };
 
 
     useEffect(() => {
@@ -82,7 +103,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 if (historyData[0].script_content) {
                     setPreviousScript(historyData[0].script_content);
                 }
-                
+
                 // Set previous asset links
                 setPreviousAssets({
                     video_link: historyData[0].video_link,
@@ -102,7 +123,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         try {
             // Create a clone of the content to avoid styling issues
             const clone = scriptContentRef.current.cloneNode(true) as HTMLElement;
-            
+
             // Create a temporary container
             const tempContainer = document.createElement('div');
             tempContainer.style.position = 'absolute';
@@ -126,10 +147,10 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 unit: 'px',
                 format: [canvas.width, canvas.height]
             });
-            
+
             const imgWidth = pdf.internal.pageSize.getWidth();
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
-            
+
             pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
             pdf.save(`${project.title}_script.pdf`);
 
@@ -150,29 +171,40 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 await db.advanceWorkflow(project.id, comment || 'Approved by CEO');
 
                 // Show popup for approval
-                const nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ? 
-                    WorkflowStage.CINEMATOGRAPHY : WorkflowStage.OPS_SCHEDULING;
-                // For final review CEO stage, show OPS_SCHEDULING as current stage
-                const displayStage = project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? WorkflowStage.OPS_SCHEDULING : nextStage;
-                const stageLabel = STAGE_LABELS[displayStage] || 'Next Stage';
-                setPopupMessage(`CEO has approved. Current stage: ${stageLabel}.`);
+                let nextStage, displayStage, stageLabel;
+
+                // SPECIAL CASE: If this is an idea project, it goes back to writer
+                if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+                    nextStage = WorkflowStage.SCRIPT;
+                    displayStage = WorkflowStage.SCRIPT;
+                    stageLabel = STAGE_LABELS[WorkflowStage.SCRIPT] || 'SCRIPT';
+                    setPopupMessage(`CEO has approved the idea. Sent back to writer to convert into script.`);
+                } else {
+                    nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ?
+                        WorkflowStage.CINEMATOGRAPHY : WorkflowStage.OPS_SCHEDULING;
+                    // For final review CEO stage (non-idea), show OPS_SCHEDULING as current stage
+                    displayStage = project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? WorkflowStage.OPS_SCHEDULING : nextStage;
+                    stageLabel = STAGE_LABELS[displayStage] || 'Next Stage';
+                    setPopupMessage(`CEO has approved. Current stage: ${stageLabel}.`);
+                }
+
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
                 setTimeout(() => {
-  setShowPopup(true);
-}, 0);
+                    setShowPopup(true);
+                }, 0);
             } else if (decision === 'REWORK') {
                 // Send the project for rework
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
-                
+
                 // Show popup for rework
                 const roleLabel = getReworkRoleLabel(reworkStage as WorkflowStage);
 
-setPopupMessage(
-  `CEO has sent the script back for rework to the ${roleLabel}.`
-);
+                setPopupMessage(
+                    `CEO has sent the script back for rework to the ${roleLabel}.`
+                );
 
-setStageName(`Rework → ${roleLabel}`);
+                setStageName(`Rework → ${roleLabel}`);
 
             } else if (decision === 'REJECT') {
                 // Full reject goes back to SCRIPT/Draft usually, or a specific REJECTED state
@@ -181,14 +213,14 @@ setStageName(`Rework → ${roleLabel}`);
                 // Adding 'Project terminated' to trigger reject behavior in backend logic
                 const rejectComment = (comment ? comment + ' - Project terminated' : 'Rejected completely by CEO - Project terminated');
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, rejectComment);
-                
+
                 // Show popup for rejection
                 setPopupMessage('CEO has rejected the script. The recipient will see comments but have limited editing capabilities.');
                 setStageName('Rejected');
                 setPopupDuration(5000); // manual close for reject
                 setTimeout(() => {
-  setShowPopup(true);
-}, 0);
+                    setShowPopup(true);
+                }, 0);
             }
             // Do NOT call onComplete() immediately — wait until popup is closed so it is visible to the user
         } catch (error) {
@@ -200,6 +232,11 @@ setStageName(`Rework → ${roleLabel}`);
     };
 
     const getReworkOptions = () => {
+        // For idea projects, always send back to Writer regardless of stage
+        if (project.data?.source === 'IDEA_PROJECT') {
+            return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
+        }
+
         // STRICT CEO LOGIC
         // 1. Script Review Stage: Can ONLY go back to Writer.
         if (project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
@@ -211,13 +248,13 @@ setStageName(`Rework → ${roleLabel}`);
             const options = [
                 { value: WorkflowStage.FINAL_REVIEW_CMO, label: 'CMO (Review Feedback)' },
             ];
-            
+
             // Add Designer option only if thumbnail is required
             const thumbnailRequired = project.data?.thumbnail_required;
             if (thumbnailRequired !== false) { // Include designer if thumbnail_required is true or undefined
                 options.push({ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Visuals)' });
             }
-            
+
             // If video channel, add Editor/Cine
             if (project.channel !== Channel.LINKEDIN) {
                 options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
@@ -254,10 +291,10 @@ setStageName(`Rework → ${roleLabel}`);
                             </span>
                             <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                        ? 'bg-red-500 text-white'
-                                        : project.priority === 'MEDIUM'
-                                            ? 'bg-yellow-500 text-black'
-                                            : 'bg-green-500 text-white'
+                                    ? 'bg-red-500 text-white'
+                                    : project.priority === 'NORMAL'
+                                        ? 'bg-yellow-500 text-black'
+                                        : 'bg-green-500 text-white'
                                     }`}
                             >
                                 {project.priority}
@@ -294,7 +331,7 @@ setStageName(`Rework → ${roleLabel}`);
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {previousScript ? 'Rework' : 'New'}
+                                {project.data?.source === 'IDEA_PROJECT' ? 'Idea' : previousScript ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -333,16 +370,16 @@ setStageName(`Rework → ${roleLabel}`);
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">Script & Message</h3>
-                            <button 
+                            <button
                                 onClick={downloadPDF}
                                 className="text-sm font-bold uppercase flex items-center bg-white border-2 border-black px-4 py-2 hover:bg-slate-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all"
                             >
                                 <Download className="w-4 h-4 mr-2" /> Download PDF
                             </button>
                         </div>
-                        
+
                         {/* Wrapper for PDF generation - both cases */}
-                        <div 
+                        <div
                             ref={scriptContentRef}
                             className="overflow-auto"
                         >
@@ -356,26 +393,30 @@ setStageName(`Rework → ${roleLabel}`);
                                             {previousScript}
                                         </div>
                                     </div>
-                                    
+
                                     {/* Current Script */}
                                     <div className="bg-white border-2 border-slate-300 p-6">
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Current Script</h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                            {project.data?.script_content || 'No script content available.'}
+                                            {project.data?.source === 'IDEA_PROJECT'
+                                                ? project.data.idea_description
+                                                : project.data?.script_content || 'No script content available.'}
                                         </div>
                                     </div>
                                 </div>
                             ) : (
                                 // Show single script for non-rework projects
-                                <div 
+                                <div
                                     className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    {project.data?.script_content || 'No script content available.'}
+                                    {project.data?.source === 'IDEA_PROJECT'
+                                        ? project.data.idea_description
+                                        : project.data?.script_content || 'No script content available.'}
                                 </div>
                             )}
                         </div>
                     </section>
-                    
+
 
 
                     {/* Assets Section (Only for final review) */}
@@ -407,7 +448,7 @@ setStageName(`Rework → ${roleLabel}`);
                                                     </div>
                                                 </div>
                                             )}
-                                            
+
                                             {/* Current Raw Video */}
                                             {project.video_link && (
                                                 <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -450,7 +491,7 @@ setStageName(`Rework → ${roleLabel}`);
                                                     </div>
                                                 </div>
                                             )}
-                                            
+
                                             {/* Current Edited Video */}
                                             {project.edited_video_link && (
                                                 <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -493,7 +534,7 @@ setStageName(`Rework → ${roleLabel}`);
                                                     </div>
                                                 </div>
                                             )}
-                                            
+
                                             {/* Current Thumbnail/Creative */}
                                             {project.thumbnail_link && (
                                                 <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -648,7 +689,7 @@ setStageName(`Rework → ${roleLabel}`);
                                     <option value="">-- Select Role --</option>
                                     {getReworkOptions().map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                 </select>
-                                
+
 
                             </div>
                         )}
@@ -704,7 +745,7 @@ setStageName(`Rework → ${roleLabel}`);
                     duration={popupDuration}
                 />
             )}
-            
+
             {/* Confirmation Popup */}
             {showConfirmation && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -712,7 +753,7 @@ setStageName(`Rework → ${roleLabel}`);
                     <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-black uppercase">Confirm Action</h3>
-                            <button 
+                            <button
                                 onClick={() => setShowConfirmation(false)}
                                 className="text-slate-500 hover:text-slate-700"
                             >
@@ -740,7 +781,7 @@ setStageName(`Rework → ${roleLabel}`);
                                     confirmationAction === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
                                         confirmationAction === 'APPROVE' ? 'bg-[#0085FF] text-white' :
                                             'bg-slate-200 text-slate-400'
-                                }`}
+                                    }`}
                             >
                                 Yes
                             </button>

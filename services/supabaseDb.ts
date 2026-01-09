@@ -23,7 +23,7 @@ export const auth = {
     // Sign in with email/password
     async signIn(email: string, password: string) {
         console.log('🔐 Attempting login for:', email);
-        
+
         try {
             // Pre-login signOut to ensure clean state (safe to ignore errors)
             try {
@@ -86,29 +86,29 @@ export const auth = {
             // Sign out with local scope first
             console.log('Signing out with local scope...');
             const { error: localError } = await supabase.auth.signOut({ scope: 'local' });
-            
+
             if (localError) {
                 console.warn('Local sign out failed:', localError);
             } else {
                 console.log('Local sign out successful');
             }
-            
+
             // Then sign out with global scope
             console.log('Signing out with global scope...');
             const { error: globalError } = await supabase.auth.signOut({ scope: 'global' });
-            
+
             if (globalError) {
                 console.warn('Global sign out failed:', globalError);
             } else {
                 console.log('Global sign out successful');
             }
-            
+
             // Return any error that occurred
             const finalError = localError || globalError;
             if (finalError) {
                 throw finalError;
             }
-            
+
             return { error: null };
         } catch (error) {
             console.error('Sign out error:', error);
@@ -188,7 +188,7 @@ export const auth = {
                 // 2. Create Public User Record
                 // Use admin client for DB upsert to bypass RLS issues and handle potential triggers or existing records
                 console.log('🔄 Upserting to public.users...');
-                
+
                 // Prepare user record data
                 const userRecordData: any = {
                     id: invitedUserId,
@@ -231,14 +231,14 @@ export const auth = {
             if (!session) throw new Error('No active session found to authorize Edge Function');
 
             // Prepare the payload
-            const payload: any = { 
-                email, 
+            const payload: any = {
+                email,
                 userData: {
                     full_name: userData.full_name,
                     role: userData.role,
                     phone: userData.phone
                 },
-                redirectTo: `${window.location.origin}/set-password` 
+                redirectTo: `${window.location.origin}/set-password`
             };
 
             const response = await fetch(`${supabaseUrl}/functions/v1/invite-user`, {
@@ -532,209 +532,217 @@ export const users = {
 // PROJECT MANAGEMENT
 // ============================================================================
 export const projects = {
-  // Get all projects
-  async getAll() {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Get all projects
+    async getAll() {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    return data as Project[];
-  },
+        if (error) throw error;
+        return data as Project[];
+    },
 
-  // 🔴 DASHBOARD PROJECTS (role-based inbox)
-  async getForRole(role: Role) {
-    console.log(`📥 Fetching projects for role: ${role}`);
+    // 🔴 DASHBOARD PROJECTS (role-based inbox)
+    async getForRole(role: Role) {
+        console.log(`📥 Fetching projects for role: ${role}`);
 
-    let query = supabase.from('projects').select(`
+        let query = supabase.from('projects').select(`
       *,
       workflow_history(*)
     `);
 
-    // ✅ FIX: Filter by stage only, not assigned_to_role
-    switch (role) {
-      case Role.WRITER:
-        // Writer inbox: SCRIPT, REJECTED
-        query = query.or(
-          `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED}`
-        );
-        break;
-      
-      case Role.CMO:
-        // CMO inbox: SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO
-        query = query.or(
-          `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L1},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CMO}`
-        );
-        break;
-        
-      case Role.CEO:
-        // CEO inbox: SCRIPT_REVIEW_L2 and FINAL_REVIEW_CEO
-        query = query.or(
-          `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L2},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CEO}`
-        );
-        break;
-        
-      case Role.CINE:
-        // Cinematographer inbox: CINEMATOGRAPHY only
-        query = query.eq('current_stage', WorkflowStage.CINEMATOGRAPHY);
-        break;
-        
-      case Role.EDITOR:
-        // Editor inbox: VIDEO_EDITING only
-        query = query.eq('current_stage', WorkflowStage.VIDEO_EDITING);
-        break;
-        
-      case Role.DESIGNER:
-        // Designer inbox: THUMBNAIL, CREATIVE only
-        query = query.or(
-          `current_stage.eq.${WorkflowStage.THUMBNAIL_DESIGN},current_stage.eq.${WorkflowStage.CREATIVE_DESIGN}`
-        );
-        break;
-        
-      case Role.OPS:
-        // Ops inbox: OPS_SCHEDULING only
-        query = query.eq('current_stage', WorkflowStage.OPS_SCHEDULING);
-        break;
-        
-      default:
-        // For roles without specific inbox stages, return empty array
-        return [];
-    }
+        // ✅ FIX: Filter by stage only, not assigned_to_role
+        switch (role) {
+            case Role.WRITER:
+                // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL
+                query = query.or(
+                    `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL}`
+                );
+                break;
 
-    const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) throw error;
+            case Role.CMO:
+                // CMO inbox: SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO
+                query = query.or(
+                    `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L1},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CMO}`
+                );
+                break;
 
-    // Process the data to ensure history is properly formatted
-    const processedData = data.map((project: any) => ({
-      ...project,
-      history: project.workflow_history || []
-    }));
+            case Role.CEO:
+                // CEO inbox: SCRIPT_REVIEW_L2 and FINAL_REVIEW_CEO
+                query = query.or(
+                    `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L2},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CEO}`
+                );
+                break;
 
-    return processedData as Project[];
-  },
+            case Role.CINE:
+                // Cinematographer inbox: CINEMATOGRAPHY only
+                query = query.eq('current_stage', WorkflowStage.CINEMATOGRAPHY);
+                break;
 
-  // 🟢 MY WORK (UNION-based)
-  async getMyWork(user: User) {
-    console.log(`📘 Fetching MY WORK for ${user.role} (${user.id})`);
+            case Role.EDITOR:
+                // Editor inbox: VIDEO_EDITING only
+                query = query.eq('current_stage', WorkflowStage.VIDEO_EDITING);
+                break;
 
-    try {
-      // ✅ FIX: Include all projects where user participated based on the My Work Visibility Persistence Rule
-      // 1. Projects where user is actor in workflow_history
-      const { data: historyData, error: historyError } = await supabase
-        .from('workflow_history')
-        .select(`
+            case Role.DESIGNER:
+                // Designer inbox: THUMBNAIL, CREATIVE only
+                query = query.or(
+                    `current_stage.eq.${WorkflowStage.THUMBNAIL_DESIGN},current_stage.eq.${WorkflowStage.CREATIVE_DESIGN}`
+                );
+                break;
+
+            case Role.OPS:
+                // Ops inbox: include projects that have moved forward after CEO approval
+                // These projects should be visible to Ops even if assigned to other roles
+                query = query.in('current_stage', [
+                    WorkflowStage.CINEMATOGRAPHY,
+                    WorkflowStage.VIDEO_EDITING,
+                    WorkflowStage.FINAL_REVIEW_CMO,
+                    WorkflowStage.FINAL_REVIEW_CEO,
+                    WorkflowStage.OPS_SCHEDULING,
+                    WorkflowStage.POSTED
+                ]);
+                break;
+
+            default:
+                // For roles without specific inbox stages, return empty array
+                return [];
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+
+        // Process the data to ensure history is properly formatted
+        const processedData = data.map((project: any) => ({
+            ...project,
+            history: project.workflow_history || []
+        }));
+
+        return processedData as Project[];
+    },
+
+    // 🟢 MY WORK (UNION-based)
+    async getMyWork(user: User) {
+        console.log(`📘 Fetching MY WORK for ${user.role} (${user.id})`);
+
+        try {
+            // ✅ FIX: Include all projects where user participated based on the My Work Visibility Persistence Rule
+            // 1. Projects where user is actor in workflow_history
+            const { data: historyData, error: historyError } = await supabase
+                .from('workflow_history')
+                .select(`
           project_id,
           timestamp,
           projects (*)
         `)
-        .eq('actor_id', user.id);
+                .eq('actor_id', user.id);
 
-      if (historyError) throw historyError;
+            if (historyError) throw historyError;
 
-      // 2. Projects assigned to the user by ID
-      const { data: assignedByIdData, error: assignedByIdError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('assigned_to_user_id', user.id)
+            // 2. Projects assigned to the user by ID
+            const { data: assignedByIdData, error: assignedByIdError } = await supabase
+                .from('projects')
+                .select('*')
+                .eq('assigned_to_user_id', user.id)
 
-      if (assignedByIdError) throw assignedByIdError;
+            if (assignedByIdError) throw assignedByIdError;
 
-      // 3. Projects assigned to the user's role
-      const { data: assignedByRoleData, error: assignedByRoleError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('assigned_to_role', user.role);
+            // 3. Projects assigned to the user's role
+            const { data: assignedByRoleData, error: assignedByRoleError } = await supabase
+                .from('projects')
+                .select('*')
+                .eq('assigned_to_role', user.role);
 
-      if (assignedByRoleError) throw assignedByRoleError;
+            if (assignedByRoleError) throw assignedByRoleError;
 
-      // ✅ Merge all results and remove duplicates
-      const projectMap = new Map<string, Project & { latest_activity?: Date }>();
-      
-      // Add history projects
-      historyData.forEach((row: any) => {
-        if (row.projects) {
-          const project = row.projects;
-          // Only set latest_activity if not already set or if this timestamp is newer
-          if (!projectMap.has(project.id) || 
-              !projectMap.get(project.id)?.latest_activity || 
-              new Date(row.timestamp) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-            projectMap.set(project.id, {
-              ...project,
-              latest_activity: new Date(row.timestamp)
+            // ✅ Merge all results and remove duplicates
+            const projectMap = new Map<string, Project & { latest_activity?: Date }>();
+
+            // Add history projects
+            historyData.forEach((row: any) => {
+                if (row.projects) {
+                    const project = row.projects;
+                    // Only set latest_activity if not already set or if this timestamp is newer
+                    if (!projectMap.has(project.id) ||
+                        !projectMap.get(project.id)?.latest_activity ||
+                        new Date(row.timestamp) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                        projectMap.set(project.id, {
+                            ...project,
+                            latest_activity: new Date(row.timestamp)
+                        });
+                    }
+                }
             });
-          }
-        }
-      });
 
-      // Add projects assigned to user by ID (may overwrite history entries if more recent)
-      assignedByIdData.forEach((project: any) => {
-        if (!projectMap.has(project.id) || 
-            !projectMap.get(project.id)?.latest_activity ||
-            new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-          projectMap.set(project.id, {
-            ...project,
-            latest_activity: new Date(project.updated_at)
-          });
-        }
-      });
+            // Add projects assigned to user by ID (may overwrite history entries if more recent)
+            assignedByIdData.forEach((project: any) => {
+                if (!projectMap.has(project.id) ||
+                    !projectMap.get(project.id)?.latest_activity ||
+                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                    projectMap.set(project.id, {
+                        ...project,
+                        latest_activity: new Date(project.updated_at)
+                    });
+                }
+            });
 
-      // Add projects assigned to user's role (may overwrite previous entries if more recent)
-      assignedByRoleData.forEach((project: any) => {
-        if (!projectMap.has(project.id) || 
-            !projectMap.get(project.id)?.latest_activity ||
-            new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-          projectMap.set(project.id, {
-            ...project,
-            latest_activity: new Date(project.updated_at)
-          });
-        }
-      });
+            // Add projects assigned to user's role (may overwrite previous entries if more recent)
+            assignedByRoleData.forEach((project: any) => {
+                if (!projectMap.has(project.id) ||
+                    !projectMap.get(project.id)?.latest_activity ||
+                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                    projectMap.set(project.id, {
+                        ...project,
+                        latest_activity: new Date(project.updated_at)
+                    });
+                }
+            });
 
-      // Convert to array and sort by latest activity
-      let result = Array.from(projectMap.values())
-        .sort((a, b) => {
-          const dateA = a.latest_activity ? new Date(a.latest_activity).getTime() : 0;
-          const dateB = b.latest_activity ? new Date(b.latest_activity).getTime() : 0;
-          return dateB - dateA; // Descending order (newest first)
-        })
-        // Remove the temporary latest_activity property
-        .map(({ latest_activity, ...project }) => project);
+            // Convert to array and sort by latest activity
+            let result = Array.from(projectMap.values())
+                .sort((a, b) => {
+                    const dateA = a.latest_activity ? new Date(a.latest_activity).getTime() : 0;
+                    const dateB = b.latest_activity ? new Date(b.latest_activity).getTime() : 0;
+                    return dateB - dateA; // Descending order (newest first)
+                })
+                // Remove the temporary latest_activity property
+                .map(({ latest_activity, ...project }) => project);
 
-      // Fetch workflow history for each project to include in the response
-      const projectIds = result.map(p => p.id);
-      if (projectIds.length > 0) {
-        const { data: historyData, error: historyError } = await supabase
-          .from('workflow_history')
-          .select('*')
-          .in('project_id', projectIds)
-          .order('timestamp', { ascending: false });
+            // Fetch workflow history for each project to include in the response
+            const projectIds = result.map(p => p.id);
+            if (projectIds.length > 0) {
+                const { data: historyData, error: historyError } = await supabase
+                    .from('workflow_history')
+                    .select('*')
+                    .in('project_id', projectIds)
+                    .order('timestamp', { ascending: false });
 
-        if (!historyError && historyData) {
-          // Group history by project_id
-          const historyMap = new Map<string, any[]>();
-          historyData.forEach(entry => {
-            if (!historyMap.has(entry.project_id)) {
-              historyMap.set(entry.project_id, []);
+                if (!historyError && historyData) {
+                    // Group history by project_id
+                    const historyMap = new Map<string, any[]>();
+                    historyData.forEach(entry => {
+                        if (!historyMap.has(entry.project_id)) {
+                            historyMap.set(entry.project_id, []);
+                        }
+                        historyMap.get(entry.project_id)!.push(entry);
+                    });
+
+                    // Attach history to each project
+                    result = result.map(project => ({
+                        ...project,
+                        history: historyMap.get(project.id) || []
+                    }));
+                }
             }
-            historyMap.get(entry.project_id)!.push(entry);
-          });
 
-          // Attach history to each project
-          result = result.map(project => ({
-            ...project,
-            history: historyMap.get(project.id) || []
-          }));
+            console.log(`✅ MY WORK fetched ${result.length} projects for ${user.role}`);
+            return result as Project[];
+        } catch (error) {
+            console.error('❌ Failed to fetch MY WORK:', error);
+            throw error;
         }
-      }
-
-      console.log(`✅ MY WORK fetched ${result.length} projects for ${user.role}`);
-      return result as Project[];
-    } catch (error) {
-      console.error('❌ Failed to fetch MY WORK:', error);
-      throw error;
-    }
-  },
+    },
 
     // Get project by ID
     async getById(id: string) {
@@ -745,7 +753,7 @@ export const projects = {
             .single();
 
         if (error) throw error;
-        
+
         // Fetch workflow history for this project
         const { data: historyData, error: historyError } = await supabase
             .from('workflow_history')
@@ -761,7 +769,7 @@ export const projects = {
                 history: []
             };
         }
-        
+
         return {
             ...(data as Project),
             history: historyData || []
@@ -774,50 +782,49 @@ export const projects = {
     },
 
     // Create new project
-   async create(projectData: {
-  title: string;
-  channel: Channel;
-  content_type: ContentType;
+    async create(projectData: {
+        title: string;
+        channel: Channel;
+        content_type: ContentType;
 
-  // ✅ ADD THESE
-  current_stage?: WorkflowStage;
-  status?: TaskStatus;
-  
-  assigned_to_role: Role;
-  assigned_to_user_id?: string;
-  priority?: Priority;
-  due_date: string;
-  data: any;
-})
- {
+        // ✅ ADD THESE
+        current_stage?: WorkflowStage;
+        status?: TaskStatus;
+
+        assigned_to_role: Role;
+        assigned_to_user_id?: string;
+        priority?: Priority;
+        due_date: string;
+        data: any;
+    }) {
         console.log('Creating project with data:', projectData);
         const { data, error } = await supabase
-  .from('projects')
-  .insert([{
-    title: projectData.title,
-    channel: projectData.channel,
-    content_type: projectData.content_type,
-    assigned_to_role: projectData.assigned_to_role,
-    assigned_to_user_id: projectData.assigned_to_user_id ?? null,
-    due_date: projectData.due_date,
-    data: projectData.data,
+            .from('projects')
+            .insert([{
+                title: projectData.title,
+                channel: projectData.channel,
+                content_type: projectData.content_type,
+                assigned_to_role: projectData.assigned_to_role,
+                assigned_to_user_id: projectData.assigned_to_user_id ?? null,
+                due_date: projectData.due_date,
+                data: projectData.data,
 
-    // defaults - ensure proper initial state
-    current_stage: WorkflowStage.SCRIPT,
-    status: TaskStatus.TODO,
-    priority: projectData.priority || 'MEDIUM'
-  }])
-  .select()
-  .single();
+                // Use provided values or defaults if not provided
+                current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
+                status: projectData.status || TaskStatus.TODO,
+                priority: projectData.priority || 'NORMAL'
+            }])
+            .select()
+            .single();
 
-if (error) {
-  console.error('Failed to create project:', error);
-  throw error;
-}
+        if (error) {
+            console.error('Failed to create project:', error);
+            throw error;
+        }
 
-console.log('Successfully created project with ID:', data.id);
-return data as Project;
- },
+        console.log('Successfully created project with ID:', data.id);
+        return data as Project;
+    },
 
     // Update project
     async update(id: string, updates: Partial<Project>) {
@@ -885,10 +892,10 @@ export const workflow = {
             'REWORK_EDIT_SUBMITTED': 'REWORK_EDIT_SUBMITTED',
             'REWORK_DESIGN_SUBMITTED': 'REWORK_DESIGN_SUBMITTED'
         };
-        
+
         // Default to 'SUBMITTED' if action not found in map
         const dbAction = actionMap[action] || 'SUBMITTED';
-        
+
         // Log the data we're about to insert for debugging
         console.log('Recording workflow history with data:', {
             project_id: projectId,
@@ -899,7 +906,7 @@ export const workflow = {
             comment: comment || '',
             script_content: scriptContent || ''
         });
-        
+
         const { error } = await supabase
             .from('workflow_history')
             .insert({
@@ -925,7 +932,7 @@ export const workflow = {
             });
             // Log more detailed error information
             console.error('Full error details:', JSON.stringify(error, null, 2));
-            
+
             // Try to get more specific error information
             if (error.message) {
                 console.error('Error message:', error.message);
@@ -936,7 +943,7 @@ export const workflow = {
             if (error.hint) {
                 console.error('Error hint:', error.hint);
             }
-            
+
             throw error;
         }
     },
@@ -1002,14 +1009,14 @@ export const workflow = {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
         }
-        
+
         // Find users with the next role to notify
         const { data: nextRoleUsers } = await supabase
             .from('users')
             .select('id')
             .eq('role', nextRole)
             .eq('status', 'ACTIVE');
-        
+
         if (nextRoleUsers && nextRoleUsers.length > 0) {
             // Send notification to all users with the next role
             for (const nextRoleUser of nextRoleUsers) {
@@ -1042,15 +1049,15 @@ export const workflow = {
         nextRole: Role,
         comment?: string
     ) {
-        // First get the current project to know its current stage
+        // First get the current project to preserve important fields
         const { data: currentProject, error: fetchError } = await supabase
             .from('projects')
-            .select('current_stage')
+            .select('current_stage, created_by_user_id, created_by_name, writer_id, writer_name')
             .eq('id', projectId)
             .single();
 
         if (fetchError) {
-            console.error('Failed to fetch current project:', fetchError);
+            console.error('Failed to fetch current project for approval:', fetchError);
             throw fetchError;
         }
 
@@ -1060,7 +1067,12 @@ export const workflow = {
             .update({
                 current_stage: nextStage,
                 assigned_to_role: nextRole,
-                status: TaskStatus.WAITING_APPROVAL
+                status: TaskStatus.WAITING_APPROVAL,
+                // Preserve creator information
+                created_by_user_id: currentProject?.created_by_user_id || null,
+                created_by_name: currentProject?.created_by_name || null,
+                writer_id: currentProject?.writer_id || null,
+                writer_name: currentProject?.writer_name || null
             })
             .eq('id', projectId)
             .select();
@@ -1087,7 +1099,7 @@ export const workflow = {
             action: 'APPROVED',
             comment: comment || `Approved by ${userRole}`
         });
-        
+
         const { error: historyError } = await supabase
             .from('workflow_history')
             .insert({
@@ -1103,14 +1115,14 @@ export const workflow = {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
         }
-        
+
         // Find users with the next role to notify
         const { data: nextRoleUsers } = await supabase
             .from('users')
             .select('id')
             .eq('role', nextRole)
             .eq('status', 'ACTIVE');
-        
+
         if (nextRoleUsers && nextRoleUsers.length > 0) {
             // Send notification to all users with the next role
             for (const nextRoleUser of nextRoleUsers) {
@@ -1144,15 +1156,15 @@ export const workflow = {
         comment: string,
         isRework: boolean = false  // Added parameter to distinguish between rework and reject
     ) {
-        // First get the current project to know its current stage and script content
+        // First get the current project to preserve important fields
         const { data: currentProject, error: fetchError } = await supabase
             .from('projects')
-            .select('current_stage, data')
+            .select('current_stage, data, created_by_user_id, created_by_name, writer_id, writer_name')
             .eq('id', projectId)
             .single();
 
         if (fetchError) {
-            console.error('Failed to fetch current project:', fetchError);
+            console.error('Failed to fetch current project for reject:', fetchError);
             throw fetchError;
         }
 
@@ -1162,7 +1174,12 @@ export const workflow = {
             .update({
                 current_stage: returnToStage,
                 assigned_to_role: returnToRole,
-                status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED  // Set appropriate status based on rework flag
+                status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED,  // Set appropriate status based on rework flag
+                // Preserve creator information
+                created_by_user_id: currentProject?.created_by_user_id || null,
+                created_by_name: currentProject?.created_by_name || null,
+                writer_id: currentProject?.writer_id || null,
+                writer_name: currentProject?.writer_name || null
             })
             .eq('id', projectId)
             .select();
@@ -1211,14 +1228,14 @@ export const workflow = {
             console.error('Failed to add workflow history:', historyError);
             throw historyError;
         }
-        
+
         // Find users with the return role to notify
         const { data: returnRoleUsers } = await supabase
             .from('users')
             .select('id')
             .eq('role', returnToRole)
             .eq('status', 'ACTIVE');
-        
+
         if (returnRoleUsers && returnRoleUsers.length > 0) {
             // Send notification to all users with the return role
             for (const returnRoleUser of returnRoleUsers) {
@@ -1350,10 +1367,10 @@ export const workflowHistory = {
             'REJECTED': 'REJECTED',
             'PUBLISHED': 'PUBLISHED'
         };
-        
+
         // Default to 'submit' if action not found in maps
         const dbAction = actionMap[entry.action] || 'SUBMITTED';
-        
+
         // Map the entry to match the actual database schema
         const dbEntry = {
             project_id: entry.project_id,
@@ -1363,7 +1380,7 @@ export const workflowHistory = {
             action: dbAction,
             comment: entry.comment || ''
         };
-        
+
         const { data, error } = await supabase
             .from('workflow_history')
             .insert([dbEntry])
@@ -1541,7 +1558,7 @@ export const helpers = {
                 [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
                 [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER }
             };
-            
+
             return rejectMap[currentStage];
         }
 
@@ -1554,15 +1571,15 @@ export const helpers = {
                 role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
             },
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-            [WorkflowStage.VIDEO_EDITING]: { 
+            [WorkflowStage.VIDEO_EDITING]: {
                 // If this is a VIDEO project and thumbnail is not required, skip THUMBNAIL_DESIGN stage
                 // thumbnail_required defaults to true if not set, so only skip if explicitly set to false
-                stage: contentType === 'VIDEO' && projectData?.thumbnail_required === false 
-                    ? WorkflowStage.FINAL_REVIEW_CMO 
-                    : WorkflowStage.THUMBNAIL_DESIGN, 
-                role: contentType === 'VIDEO' && projectData?.thumbnail_required === false 
-                    ? Role.CMO 
-                    : Role.DESIGNER 
+                stage: contentType === 'VIDEO' && projectData?.thumbnail_required === false
+                    ? WorkflowStage.FINAL_REVIEW_CMO
+                    : WorkflowStage.THUMBNAIL_DESIGN,
+                role: contentType === 'VIDEO' && projectData?.thumbnail_required === false
+                    ? Role.CMO
+                    : Role.DESIGNER
             },
             [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
@@ -1729,7 +1746,7 @@ export const db = {
                 console.warn('Failed to log logout event:', logError);
             }
         }
-        
+
         try {
             const result = await auth.signOut();
             if (result.error) {
@@ -1740,7 +1757,7 @@ export const db = {
             console.error('Sign out failed:', signOutError);
             // Continue anyway to ensure local state is cleared
         }
-        
+
         currentUserCache = null;
     },
 
@@ -1792,7 +1809,14 @@ export const db = {
         }
     },
 
-    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'MEDIUM'): Promise<Project> {
+    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'NORMAL'): Promise<Project> {
+        // Get current user information, either from cache or directly from auth
+        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
+        const currentUserFullName = currentUserCache?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.name || 
+                                  null;
+        
         const projectData = {
             title,
             channel,
@@ -1800,11 +1824,156 @@ export const db = {
             assigned_to_role: Role.WRITER, // Always starts with writer
             due_date: dueDate,
             priority,
-            data: {}
+            data: {},
+            // Set creator information
+            created_by_user_id: currentUserId,
+            created_by_name: currentUserFullName,
+            writer_id: currentUserId,
+            writer_name: currentUserFullName,
         };
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
+        return createdProject;
+    },
+
+    async createDirectCreativeProject(title: string, channel: Channel, dueDate: string, priority: Priority = 'NORMAL'): Promise<Project> {
+        // Get current user information, either from cache or directly from auth
+        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
+        const currentUserFullName = currentUserCache?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.name || 
+                                  null;
+        
+        // Create a project that starts at the FINAL_REVIEW_CMO stage for direct creative uploads
+        const projectData = {
+            title,
+            channel,
+            content_type: 'CREATIVE_ONLY' as ContentType, // Always CREATIVE_ONLY for direct uploads
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO, // Start at CMO review
+            assigned_to_role: Role.CMO, // Assign to CMO first
+            status: TaskStatus.WAITING_APPROVAL, // Waiting for approval
+            due_date: dueDate,
+            priority,
+            data: {},
+            // Set creator information
+            created_by_user_id: currentUserId,
+            created_by_name: currentUserFullName,
+            writer_id: currentUserId,
+            writer_name: currentUserFullName,
+        };
+
+        // Create the project and return the real project with Supabase UUID
+        const createdProject = await projects.create(projectData);
+
+        // Record the creation in workflow history
+        if (currentUserId && currentUserFullName) {
+            await workflow.recordAction(
+                createdProject.id,
+                WorkflowStage.FINAL_REVIEW_CMO,
+                currentUserId,
+                currentUserFullName,
+                'CREATED',
+                'Direct Creative Upload project created'
+            );
+        }
+
+        return createdProject;
+    },
+
+    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL'): Promise<Project> {
+        // Get current user information, either from cache or directly from auth
+        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
+        const currentUserFullName = currentUserCache?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.name || 
+                                  null;
+        
+        // Create a project that starts at the FINAL_REVIEW_CMO stage for designer-initiated projects
+        const projectData = {
+            title,
+            channel,
+            content_type: 'CREATIVE_ONLY' as ContentType, // Always CREATIVE_ONLY for designer projects
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO, // Start at CMO review
+            assigned_to_role: Role.CMO, // Assign to CMO first
+            assigned_to_user_id: null, // No specific user assigned yet
+            status: TaskStatus.WAITING_APPROVAL, // Waiting for approval
+            due_date: dueDate,
+            priority,
+            data: {
+                brief: description, // Store description as brief
+                creative_link: link, // Store the creative link
+                source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
+            },
+            // Set creator information
+            created_by_user_id: currentUserId,
+            created_by_name: currentUserFullName,
+            writer_id: currentUserId,
+            writer_name: currentUserFullName,
+        };
+
+        // Create the project and return the real project with Supabase UUID
+        const createdProject = await projects.create(projectData);
+
+        // Record the creation in workflow history
+        if (currentUserId && currentUserFullName) {
+            await workflow.recordAction(
+                createdProject.id,
+                WorkflowStage.FINAL_REVIEW_CMO,
+                currentUserId,
+                currentUserFullName,
+                'CREATED',
+                'Designer-initiated creative project created'
+            );
+        }
+
+        return createdProject;
+    },
+
+    async createIdeaProject(title: string, channel: Channel, contentType: ContentType, description: string, priority: Priority = 'NORMAL'): Promise<Project> {
+        // Create an idea project that starts at the FINAL_REVIEW_CMO stage
+        // Get current user information, either from cache or directly from auth
+        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
+        const currentUserFullName = currentUserCache?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
+                                  (await auth.getCurrentUser())?.user_metadata?.name || 
+                                  null;
+        
+        const projectData = {
+            title,
+            channel,
+            content_type: contentType,
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO, // Start at CMO review
+            assigned_to_role: Role.CMO, // Assign to CMO first
+            status: TaskStatus.WAITING_APPROVAL, // Waiting for approval
+            due_date: new Date().toISOString().split('T')[0], // Use today's date
+            priority,
+            data: {
+                idea_description: description, // Store the idea description
+                source: 'IDEA_PROJECT' // Track that this project was created as an idea
+            },
+            // Set creator information
+            created_by_user_id: currentUserId,
+            created_by_name: currentUserFullName,
+            writer_id: currentUserId,
+            writer_name: currentUserFullName,
+        };
+
+        // Create the project and return the real project with Supabase UUID
+        const createdProject = await projects.create(projectData);
+
+        // Record the creation in workflow history
+        if (currentUserCache) {
+            await workflow.recordAction(
+                createdProject.id,
+                WorkflowStage.FINAL_REVIEW_CMO,
+                currentUserCache.id,
+                currentUserCache.full_name,
+                'CREATED',
+                'Idea project created and submitted to CMO'
+            );
+        }
+
         return createdProject;
     },
 
@@ -1833,7 +2002,7 @@ export const db = {
         let project;
         let attempts = 0;
         const maxAttempts = 3;
-        
+
         while (attempts < maxAttempts) {
             try {
                 project = await projects.getById(projectId);
@@ -1841,14 +2010,14 @@ export const db = {
             } catch (error) {
                 console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
             }
-            
+
             attempts++;
             if (attempts < maxAttempts) {
                 // Wait 100ms before retrying
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
-        
+
         if (!project) {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
@@ -1891,7 +2060,7 @@ export const db = {
         let project;
         let attempts = 0;
         const maxAttempts = 3;
-        
+
         while (attempts < maxAttempts) {
             try {
                 project = await projects.getById(projectId);
@@ -1899,14 +2068,14 @@ export const db = {
             } catch (error) {
                 console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
             }
-            
+
             attempts++;
             if (attempts < maxAttempts) {
                 // Wait 100ms before retrying
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
-        
+
         if (!project) {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
@@ -1925,7 +2094,7 @@ export const db = {
 
         let isFromRework = false;
         let reworkInitiator: string | null = null;
-        
+
         if (workflowHistory && workflowHistory.length > 0) {
             // Check if the most recent action was a rework or rejection
             const recentRework = workflowHistory.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
@@ -1937,7 +2106,7 @@ export const db = {
 
         // Determine the next stage based on current stage and whether it's from rework
         let nextStageInfo;
-        
+
         if (isFromRework) {
             // If this project is coming back from rework, we may need to skip certain stages
             if (project.current_stage === WorkflowStage.SCRIPT) {
@@ -1950,7 +2119,7 @@ export const db = {
                         .select('role')
                         .eq('id', reworkInitiator)
                         .single();
-                    
+
                     if (reworkUser && reworkUser.role === Role.CEO) {
                         // If CEO initiated the rework, go directly to CEO
                         nextStageInfo = { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO };
@@ -1980,7 +2149,7 @@ export const db = {
                         .select('role')
                         .eq('id', reworkInitiator)
                         .single();
-                    
+
                     if (reworkUser && reworkUser.role === Role.CEO) {
                         // If CEO initiated the rework, go directly to CEO
                         nextStageInfo = { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO };
@@ -2013,12 +2182,18 @@ export const db = {
             }
         } else {
             // Not from rework, use normal flow
-            nextStageInfo = helpers.getNextStage(
-                project.current_stage,
-                project.content_type,
-                'APPROVED',
-                project.data
-            );
+            // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
+            // send it back to the writer to convert the idea into a script
+            if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+                nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
+            } else {
+                nextStageInfo = helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+            }
         }
 
         console.log('Next stage info:', nextStageInfo);
@@ -2059,7 +2234,7 @@ export const db = {
         let project;
         let attempts = 0;
         const maxAttempts = 3;
-        
+
         while (attempts < maxAttempts) {
             try {
                 project = await projects.getById(projectId);
@@ -2067,14 +2242,14 @@ export const db = {
             } catch (error) {
                 console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
             }
-            
+
             attempts++;
             if (attempts < maxAttempts) {
                 // Wait 100ms before retrying
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
-        
+
         if (!project) {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
@@ -2154,11 +2329,11 @@ export const tokenHealthCheck = (): {
     action?: 'clear' | 'keep';
 } => {
     const tokens = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
-    
+
     if (tokens.length === 0) {
         return { healthy: true, status: 'no_tokens', action: 'keep' };
     }
-    
+
     try {
         // Check if we can parse token data (validate JSON format)
         tokens.forEach(key => {
@@ -2167,7 +2342,7 @@ export const tokenHealthCheck = (): {
                 JSON.parse(value); // Validate JSON structure
             }
         });
-        
+
         return { healthy: true, status: 'tokens_valid_format', action: 'keep' };
     } catch (error) {
         console.error('🔴 Token Health: Corrupted token detected:', error);

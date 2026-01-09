@@ -1,5 +1,5 @@
 import React from 'react';
-import { Project } from '../../types';
+import { Project, WorkflowStage, Role, TaskStatus } from '../../types';
 import { Calendar, FileText, Video, Image, Link as LinkIcon } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -7,12 +7,56 @@ interface Props {
     user: { full_name: string };
     projects: Project[];
     onSelectProject: (project: Project) => void;
+    filterCategory?: string; // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
 }
 
-const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
-    // Show all projects the ops person has participated in (submitted / approved / rejected)
-    // No filtering by assigned_to_role - show all projects from getMyWork
-    const myTasks = projects || [];
+const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory = 'all' }) => {
+    // Filter projects based on the selected category
+    const filteredProjects = projects.filter(project => {
+        switch(filterCategory) {
+            case 'ceoapproved':
+                return 
+                    project.current_stage === WorkflowStage.CINEMATOGRAPHY ||
+                    project.current_stage === WorkflowStage.VIDEO_EDITING ||
+                    project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+                    project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+                    project.current_stage === WorkflowStage.OPS_SCHEDULING ||
+                    project.current_stage === WorkflowStage.POSTED;
+            case 'readytoschedule':
+                return project.current_stage === WorkflowStage.OPS_SCHEDULING &&
+                       !project.post_scheduled_date;
+            case 'scheduled':
+                return project.current_stage === WorkflowStage.OPS_SCHEDULING &&
+                       project.post_scheduled_date &&
+                       !project.data?.live_url;
+            case 'postedthisweek':
+                if (project.current_stage !== WorkflowStage.POSTED) return false;
+                const postedDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : null;
+                if (!postedDate) return false;
+                const weekAgo = new Date(Date.now() - 7 * 86400000);
+                return postedDate >= weekAgo;
+            default:
+                return true; // 'all' case
+        }
+    });
+    
+    // Show filtered projects based on the selected category
+    const myTasks = filteredProjects || [];
+
+    const getHeaderText = () => {
+        switch(filterCategory) {
+            case 'ceoapproved':
+                return 'CEO-approved project' + (myTasks.length !== 1 ? 's' : '');
+            case 'readytoschedule':
+                return 'ready to schedule project' + (myTasks.length !== 1 ? 's' : '');
+            case 'scheduled':
+                return 'scheduled project' + (myTasks.length !== 1 ? 's' : '');
+            case 'postedthisweek':
+                return 'posted this week project' + (myTasks.length !== 1 ? 's' : '');
+            default:
+                return 'project' + (myTasks.length !== 1 ? 's' : '') + ' I\'ve worked on';
+        }
+    };
 
     const getPlatformColor = (channel: string) => {
         switch (channel) {
@@ -30,7 +74,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                     My Work
                 </h1>
                 <p className="font-bold text-lg text-slate-500">
-                    {myTasks.length} {myTasks.length === 1 ? 'project' : 'projects'} I've worked on
+                    {myTasks.length} {getHeaderText()} I've worked on
                 </p>
             </div>
 
@@ -57,7 +101,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject }) => {
                                 <span
                                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                             ? 'bg-red-500 text-white'
-                                            : project.priority === 'MEDIUM'
+                                            : project.priority === 'NORMAL'
                                                 ? 'bg-yellow-500 text-black'
                                                 : 'bg-green-500 text-white'
                                     }`}

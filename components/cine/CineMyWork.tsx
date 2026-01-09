@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, Role } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { CalendarIcon, Video } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
 
@@ -58,7 +58,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                                 ? 'bg-red-500 text-white'
-                                                : project.priority === 'MEDIUM'
+                                                : project.priority === 'NORMAL'
                                                     ? 'bg-yellow-500 text-black'
                                                     : 'bg-green-500 text-white'
                                             }`}
@@ -102,13 +102,13 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
                                         <span className="font-bold text-slate-900">
-                                            {formatDistanceToNow(new Date(project.due_date))}
+                                            {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Submitted</span>
                                         <span className="font-bold text-slate-900">
-                                            {new Date(project.created_at).toLocaleDateString()}
+                                            {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
                                 </div>

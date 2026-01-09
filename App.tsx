@@ -421,8 +421,18 @@ function App() {
     console.log('✅ Logout: Complete');
   };
 
-  const handleCreateProject = async (title: string, channel: Channel, dueDate: string) => {
-    await db.createProject(title, channel, dueDate, 'VIDEO', 'MEDIUM');
+  const handleCreateProject = async (title: string, channel: Channel, dueDate: string, isDirectCreative?: boolean) => {
+    if (isDirectCreative) {
+      // For direct creative uploads, create a project that starts at the final review stage
+      await db.createDirectCreativeProject(title, channel, dueDate);
+    } else {
+      await db.createProject(title, channel, dueDate, 'VIDEO', 'NORMAL');
+    }
+    refreshData(user!);
+  };
+
+  const handleCreateIdeaProject = async (title: string, channel: Channel, contentType: 'VIDEO' | 'CREATIVE_ONLY', description: string) => {
+    await db.createIdeaProject(title, channel, contentType, description);
     refreshData(user!);
   };
 

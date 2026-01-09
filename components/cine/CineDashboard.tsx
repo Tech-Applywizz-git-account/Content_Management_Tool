@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Upload, Video } from 'lucide-react';
 import CineMyWork from './CineMyWork';
 import CineCalendar from './CineCalendar';

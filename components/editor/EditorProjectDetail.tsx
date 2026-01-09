@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
@@ -215,12 +215,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                                 {project.channel}
                             </span>
                             <span className="text-sm text-slate-500 font-bold">
-                                Due: {formatDistanceToNow(new Date(project.due_date))} from now
+                                Due: {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                             </span>
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                         ? 'bg-red-500 text-white'
-                                        : project.priority === 'MEDIUM'
+                                        : project.priority === 'NORMAL'
                                             ? 'bg-yellow-500 text-black'
                                             : 'bg-green-500 text-white'
                                     }`}
@@ -514,7 +514,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
                             <p className="font-bold text-slate-900 mt-1">
-                                {formatDistanceToNow(new Date(project.created_at))} ago
+                                {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                             </p>
                         </div>
                         <div>

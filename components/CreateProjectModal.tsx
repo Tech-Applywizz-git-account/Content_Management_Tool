@@ -5,13 +5,14 @@ import { X, Calendar } from 'lucide-react';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (title: string, channel: Channel, dueDate: string) => void;
+  onSubmit: (title: string, channel: Channel, dueDate: string, isDirectCreative?: boolean) => void;
 }
 
 const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) => {
   const [title, setTitle] = useState('');
   const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
   const [dueDate, setDueDate] = useState('');
+  const [isDirectCreative, setIsDirectCreative] = useState(false);
 
   // Listen for beforeLogout event to close modal automatically
   useEffect(() => {
@@ -31,11 +32,12 @@ const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !dueDate) return;
-    onSubmit(title, channel, dueDate);
+    onSubmit(title, channel, dueDate, isDirectCreative);
     // Reset form
     setTitle('');
     setChannel(Channel.LINKEDIN);
     setDueDate('');
+    setIsDirectCreative(false);
   };
 
   return (
@@ -93,6 +95,22 @@ const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) => {
                 required
               />
             </div>
+          </div>
+
+          {/* Direct Creative Upload Option */}
+          <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded">
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isDirectCreative}
+                onChange={(e) => setIsDirectCreative(e.target.checked)}
+                className="w-5 h-5"
+              />
+              <div>
+                <span className="block text-sm font-bold uppercase text-slate-900">Direct Creative Upload</span>
+                <span className="block text-xs text-slate-600 mt-1">Start project directly with creative assets (skip script writing)</span>
+              </div>
+            </label>
           </div>
 
           <div className="pt-4 flex justify-end space-x-4">

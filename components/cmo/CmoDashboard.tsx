@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
@@ -181,10 +181,14 @@ const isReworkProject = (p: Project) =>
     
   const pendingApprovalProjects = dashboardProjects.filter(
   p =>
-    p.assigned_to_role === Role.CMO &&
     (
-      p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-      p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
+      (p.assigned_to_role === Role.CMO &&
+      (
+        p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
+      )) ||
+      // Also show idea projects that originated as ideas
+      (p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.FINAL_REVIEW_CMO)
     ) &&
     p.status !== TaskStatus.DONE
 );
@@ -367,7 +371,7 @@ if (selectedProject && viewMode === 'HISTORY') {
                       <span
                         className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                 ? 'bg-red-500 text-white'
-                                : p.priority === 'MEDIUM'
+                                : p.priority === 'NORMAL'
                                     ? 'bg-yellow-500 text-black'
                                     : 'bg-green-500 text-white'
                         }`}
@@ -379,9 +383,13 @@ if (selectedProject && viewMode === 'HISTORY') {
                     <div className="col-span-2 text-xs font-black uppercase text-slate-500">
                       {STAGE_LABELS[p.current_stage]}
                     </div>
-
-                    <div className="col-span-2 text-sm font-bold text-slate-500 uppercase">
-                      {formatDistanceToNow(new Date(p.created_at))} ago
+                    <div className="col-span-2">
+                      <div className="text-xs font-bold uppercase text-slate-700 mb-1">
+                        By: {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                      </div>
+                      <div className="text-xs font-bold text-slate-500 uppercase">
+                        {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                      </div>
                     </div>
 
                     <div className="col-span-2">
@@ -428,7 +436,7 @@ if (selectedProject && viewMode === 'HISTORY') {
                       <span
                         className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                 ? 'bg-red-500 text-white'
-                                : p.priority === 'MEDIUM'
+                                : p.priority === 'NORMAL'
                                     ? 'bg-yellow-500 text-black'
                                     : 'bg-green-500 text-white'
                         }`}
@@ -439,16 +447,21 @@ if (selectedProject && viewMode === 'HISTORY') {
   className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${
     isReworkProject(p)
       ? 'bg-orange-100 text-orange-800'
-      : 'bg-slate-100 text-slate-800'
+      : p.data?.source === 'IDEA_PROJECT'
+        ? 'bg-purple-200 text-purple-800'
+        : 'bg-slate-100 text-slate-800'
   }`}>
-  {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
+  {isReworkProject(p) ? 'REWORK' : p.data?.source === 'IDEA_PROJECT' ? 'IDEA' : STAGE_LABELS[p.current_stage]}
 </span>
 
                     </div>
                     <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
                     <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+                      <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                    </div>
+                    <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                       <Clock className="w-3 h-3 mr-1" />
-                      {formatDistanceToNow(new Date(p.created_at))} ago
+                      {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                     </div>
                   </div>
                 ))}
@@ -473,7 +486,7 @@ if (selectedProject && viewMode === 'HISTORY') {
                       <span
                         className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                 ? 'bg-red-500 text-white'
-                                : p.priority === 'MEDIUM'
+                                : p.priority === 'NORMAL'
                                     ? 'bg-yellow-500 text-black'
                                     : 'bg-green-500 text-white'
                         }`}
@@ -516,7 +529,7 @@ if (selectedProject && viewMode === 'HISTORY') {
                       <span
                         className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                 ? 'bg-red-500 text-white'
-                                : p.priority === 'MEDIUM'
+                                : p.priority === 'NORMAL'
                                     ? 'bg-yellow-500 text-black'
                                     : 'bg-green-500 text-white'
                         }`}

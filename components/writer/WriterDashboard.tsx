@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
-import { Plus, Clock } from 'lucide-react';
+import { Plus, Lightbulb, Clock } from 'lucide-react';
 import CreateScript from './CreateScript';
+import CreateIdeaProject from './CreateIdeaProject';
 import WriterProjectDetail from './WriterProjectDetail';
 import WriterMyWork from './WriterMyWork';
 import WriterCalendar from './WriterCalendar';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import Layout from '../Layout';
 import Popup from '../Popup';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -20,8 +21,10 @@ interface Props {
 
 const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
     const [isCreating, setIsCreating] = useState(false);
+    const [isCreatingIdea, setIsCreatingIdea] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
+    const [reworkProject, setReworkProject] = useState<Project | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
@@ -29,11 +32,25 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         return localStorage.getItem(viewStorageKey) || 'dashboard';
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
+    const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
+
 
     const handleInternalRefresh = async () => {
         await onRefresh(); // MUST refetch from Supabase
         setRefreshKey(prev => prev + 1); // force UI re-render
     };
+    const isWriterProject = (p: Project) => {
+  return (
+    // project explicitly assigned to this writer
+
+    // OR project created by this writer
+    p.created_by === user.id ||
+
+    // OR project currently with writer (important for rework)
+    p.assigned_to_role === Role.WRITER
+  );
+};
+
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -60,16 +77,16 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             })
             .subscribe();
 
-        return () => { try { supabase.removeChannel(subscription); } catch (e) {} };
+        return () => { try { supabase.removeChannel(subscription); } catch (e) { } };
     }, [onRefresh]);
-console.table(
-  inboxProjects?.map(p => ({
-    title: p.title,
-    stage: p.current_stage,
-    status: p.status,
-    created_by: p.created_by
-  }))
-);
+    console.table(
+        inboxProjects?.map(p => ({
+            title: p.title,
+            stage: p.current_stage,
+            status: p.status,
+            created_by: p.created_by
+        }))
+    );
     // Use inboxProjects for dashboard view (role-based filtering)
     // Use historyProjects for MyWork view (participation-based filtering)
     const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
@@ -77,34 +94,37 @@ console.table(
     // regardless of current stage, not just inbox projects
     const allWriterProjects = [...new Set([...(inboxProjects || []), ...(historyProjects || [])].map(p => p.id))]
         .map(id => [...(inboxProjects || []), ...(historyProjects || [])].find(p => p.id === id)!);
-    
+
     const dashboardProjects = activeView === 'mywork' ? (historyProjects || []) : allWriterProjects;
-    
+
     // Categorize Projects - mutually exclusive categorization
- const inReview = dashboardProjects.filter(p =>
-  p.created_by === user.id &&
-  [
-    WorkflowStage.SCRIPT_REVIEW_L1,
-    WorkflowStage.SCRIPT_REVIEW_L2
-  ].includes(p.current_stage)
-);
+    const inReview = dashboardProjects.filter(p =>
+        p.created_by === user.id &&
+        [
+            WorkflowStage.SCRIPT_REVIEW_L1,
+            WorkflowStage.SCRIPT_REVIEW_L2
+        ].includes(p.current_stage)
+    );
 
-const inProduction = dashboardProjects.filter(p =>
-  p.created_by === user.id &&
-  [
-    WorkflowStage.CINEMATOGRAPHY,
-    WorkflowStage.VIDEO_EDITING,
-    WorkflowStage.THUMBNAIL_DESIGN,
-    WorkflowStage.CREATIVE_DESIGN,
-    WorkflowStage.FINAL_REVIEW_CMO,
-    WorkflowStage.FINAL_REVIEW_CEO,
-    WorkflowStage.OPS_SCHEDULING
-  ].includes(p.current_stage)
-);
+    const inProduction = dashboardProjects.filter(p =>
+        p.created_by === user.id &&
+        [
+            WorkflowStage.CINEMATOGRAPHY,
+            WorkflowStage.VIDEO_EDITING,
+            WorkflowStage.THUMBNAIL_DESIGN,
+            WorkflowStage.CREATIVE_DESIGN,
+            WorkflowStage.FINAL_REVIEW_CMO,
+            WorkflowStage.FINAL_REVIEW_CEO,
+            WorkflowStage.OPS_SCHEDULING
+        ].includes(p.current_stage)
+    );
 
 
-const drafts = dashboardProjects.filter(p =>
-  p.created_by === user.id &&
+   const drafts = dashboardProjects.filter(p =>
+  (
+    p.created_by === user.id ||     // created by this user
+    p.writer_id === user.id         // or explicitly assigned writer
+  ) &&
   (
     p.current_stage === WorkflowStage.SCRIPT ||
     p.current_stage === WorkflowStage.REWORK ||
@@ -113,29 +133,40 @@ const drafts = dashboardProjects.filter(p =>
 );
 
 
-const rejectedProjects = dashboardProjects.filter(p =>
-  p.created_by === user.id &&
-  p.status === TaskStatus.REJECTED &&
-  ![
-    WorkflowStage.SCRIPT_REVIEW_L1,
-    WorkflowStage.SCRIPT_REVIEW_L2
-  ].includes(p.current_stage)
+
+    const rejectedProjects = dashboardProjects.filter(p =>
+        p.created_by === user.id &&
+        p.status === TaskStatus.REJECTED &&
+        ![
+            WorkflowStage.SCRIPT_REVIEW_L1,
+            WorkflowStage.SCRIPT_REVIEW_L2
+        ].includes(p.current_stage)
+    );
+const approvedIdeas = dashboardProjects.filter(p =>
+  p.data?.source === 'IDEA_PROJECT' &&
+  p.current_stage === WorkflowStage.SCRIPT &&
+  p.assigned_to_role === Role.WRITER &&
+  p.status === TaskStatus.WAITING_APPROVAL &&
+  p.history?.some(
+    h =>
+      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+      h.action === 'APPROVED'
+  )
 );
 
-    
 
     const handleEdit = (project: Project) => {
-  setEditingProject(project);
-  setIsCreating(true);
-};
+        setEditingProject(project);
+        setIsCreating(true);
+    };
 
 
 
     const handleCloseCreate = async (action: 'draft_saved' | 'submitted' = 'submitted') => {
-        await onRefresh(); 
+        await onRefresh();
         setIsCreating(false);
         setEditingProject(null);
-        
+
         if (action === 'draft_saved') {
             // Show popup for draft saved
             setPopupMessage('Draft has been saved successfully.');
@@ -152,11 +183,26 @@ const rejectedProjects = dashboardProjects.filter(p =>
         // If action is undefined (close without action), don't show popup
     };
 
-    const handleCloseWithoutAction = async () => {
+   const handleCloseWithoutAction = async () => {
+  await onRefresh();
+
+  // Close all create/edit states
+  setIsCreating(false);
+  setEditingProject(null);
+  setScriptFromIdea(null);
+
+  // ✅ FORCE DASHBOARD VIEW
+  setActiveView('dashboard');
+  localStorage.setItem(viewStorageKey, 'dashboard');
+};
+
+    const handleCloseIdeaCreation = async () => {
         await onRefresh();
-        setIsCreating(false);
-        setEditingProject(null);
-        // Don't show any popup when just closing
+        setIsCreatingIdea(false);
+        // Show popup after successful idea submission
+        setPopupMessage('Idea has been submitted and is waiting for CMO review.');
+        setStageName('Final Review (CMO)');
+        setShowPopup(true);
     };
 
     // Helper function to get updated projects
@@ -167,14 +213,26 @@ const rejectedProjects = dashboardProjects.filter(p =>
     };
 
 
-    const handleViewProject = (project: Project) => {
-        setViewingProject(project);
-    };
+ const handleViewProject = (project: Project) => {
+  setViewingProject(project);
+};
 
-    const handleCloseDetail = async() => {
+    const handleCloseDetail = async () => {
         setViewingProject(null);
         await onRefresh();
     };
+    // ✅ FULL PAGE: Convert Approved Idea → Script
+if (scriptFromIdea) {
+  return (
+    <CreateScript
+      project={scriptFromIdea}
+      mode="SCRIPT_FROM_APPROVED_IDEA"
+      onClose={handleCloseWithoutAction}
+      onSuccess={handleCloseCreate}
+    />
+  );
+}
+
 
     if (viewingProject) {
         return <WriterProjectDetail project={viewingProject} onBack={handleCloseDetail} />;
@@ -183,6 +241,27 @@ const rejectedProjects = dashboardProjects.filter(p =>
     if (isCreating) {
         return <CreateScript project={editingProject || undefined} onClose={handleCloseWithoutAction} onSuccess={handleCloseCreate} />;
     }
+
+    if (isCreatingIdea) {
+        return <CreateIdeaProject onClose={() => setIsCreatingIdea(false)} onSuccess={handleCloseIdeaCreation} />;
+    }
+    
+    // Handle rework projects with review comments and previous script
+    if (reworkProject) {
+      return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
+    }
+    
+// ✅ FULL PAGE: Convert Approved Idea → Script
+if (scriptFromIdea) {
+  return (
+    <CreateScript
+      project={scriptFromIdea}
+      mode="SCRIPT_FROM_APPROVED_IDEA"
+      onClose={handleCloseWithoutAction}
+      onSuccess={handleCloseCreate}
+    />
+  );
+}
 
     return (
         <Layout
@@ -214,10 +293,17 @@ const rejectedProjects = dashboardProjects.filter(p =>
                             <Plus className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>New Script</span>
                         </button>
+                        <button
+                            onClick={() => setIsCreatingIdea(true)}
+                            className="w-full sm:w-auto bg-[#8B5CF6] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
+                        >
+                            <Lightbulb className="w-6 h-6 border-2 border-white rounded-full" />
+                            <span>New Idea</span>
+                        </button>
                     </div>
 
                     {/* Kanban Columns */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
                         {/* Column 1: Drafts & Rework */}
                         <div className="space-y-4">
@@ -230,7 +316,7 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                     const p = [...drafts, ...rejectedProjects].find(proj => proj.id === id);
                                     return p;
                                 }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(p => (
-                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : ''} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => p.status === TaskStatus.REWORK ? handleEdit(p) : p.status === TaskStatus.REJECTED ? handleViewProject(p) : {}}>
+                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : ''} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => p.status === TaskStatus.REWORK ? setReworkProject(p) : p.status === TaskStatus.REJECTED ? handleViewProject(p) : {}}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -240,11 +326,11 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                             </span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-600 text-white font-black'
-                                                        : p.priority === 'MEDIUM'
-                                                            ? 'bg-yellow-500 text-black'
-                                                            : 'bg-green-500 text-white'
-                                                }`}
+                                                    ? 'bg-red-600 text-white font-black'
+                                                    : p.priority === 'NORMAL'
+                                                        ? 'bg-yellow-500 text-black'
+                                                        : 'bg-green-500 text-white'
+                                                    }`}
                                             >
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
@@ -257,8 +343,11 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                         </div>
                                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
                                         <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
+                                        </div>
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                             <Clock className="w-3 h-3 mr-1" />
-                                            {formatDistanceToNow(new Date(p.created_at))} ago
+                                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                                         </div>
                                     </div>
                                 ))}
@@ -283,20 +372,29 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                             <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-600 text-white font-black'
-                                                        : p.priority === 'MEDIUM'
-                                                            ? 'bg-yellow-500 text-black'
-                                                            : 'bg-green-500 text-white'
-                                                }`}
+                                                    ? 'bg-red-600 text-white font-black'
+                                                    : p.priority === 'NORMAL'
+                                                        ? 'bg-yellow-500 text-black'
+                                                        : 'bg-green-500 text-white'
+                                                    }`}
                                             >
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
+                                            {/* Show Approved badge for idea projects that were returned to writer after CEO approval */}
+                                            {p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.SCRIPT && p.assigned_to_role === Role.WRITER && p.status === TaskStatus.WAITING_APPROVAL && (
+                                                <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
+                                                    Approved
+                                                </span>
+                                            )}
                                             <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
                                                 {p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
                                             </span>
                                         </div>
-                                        <h4 className="font-black text-lg text-slate-900 mb-4 uppercase">{p.title}</h4>
-                                        <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden">
+                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
+                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
                                         </div>
                                     </div>
@@ -322,11 +420,11 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                             </span>
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                        ? 'bg-red-600 text-white font-black'
-                                                        : p.priority === 'MEDIUM'
-                                                            ? 'bg-yellow-500 text-black'
-                                                            : 'bg-green-500 text-white'
-                                                }`}
+                                                    ? 'bg-red-600 text-white font-black'
+                                                    : p.priority === 'NORMAL'
+                                                        ? 'bg-yellow-500 text-black'
+                                                        : 'bg-green-500 text-white'
+                                                    }`}
                                             >
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
@@ -342,13 +440,68 @@ const rejectedProjects = dashboardProjects.filter(p =>
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                                        <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-4">
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
+                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
+                                        </div>
+                                        <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#4ADE80] h-full w-3/4"></div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
+                        {/* Column 4: CEO Approved Ideas */}
+<div className="space-y-4">
+  <div className="flex items-center justify-between p-4 bg-green-700 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+    <h3 className="font-black uppercase tracking-wide">
+      CEO Approved Ideas
+    </h3>
+    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">
+      {approvedIdeas.length}
+    </span>
+  </div>
+
+  <div className="space-y-4">
+    {approvedIdeas.map(p => (
+      <div
+        key={p.id}
+        onClick={() => {
+  setScriptFromIdea(p);
+}}
+        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+      >
+        <div className="flex justify-between items-start mb-3">
+          <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
+            Approved
+          </span>
+          <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">
+            Idea → Script
+          </span>
+        </div>
+
+        <h4 className="font-black text-lg uppercase mb-2">
+          {p.title}
+        </h4>
+
+        <p className="text-sm text-slate-600">
+          Approved by CEO. Click to convert into a full script.
+        </p>
+
+        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+          <Clock className="w-3 h-3 mr-1" />
+          {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+        </div>
+      </div>
+    ))}
+
+    {approvedIdeas.length === 0 && (
+      <div className="p-8 text-center font-bold text-slate-400 border-2 border-dashed border-slate-300 uppercase text-sm">
+        No approved ideas yet
+      </div>
+    )}
+  </div>
+</div>
+
 
                     </div>
                 </div>

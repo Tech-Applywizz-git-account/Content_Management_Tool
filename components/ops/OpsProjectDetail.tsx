@@ -188,8 +188,8 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                 {/* Right Column - Scheduling Actions */}
                 <div className="space-y-6">
-                    {/* Schedule Post */}
-                    {!isPosted && (
+                    {/* Schedule Post - Hide for CEO-approved projects (post-approval stages) */}
+                    {!isPosted && !([WorkflowStage.CINEMATOGRAPHY, WorkflowStage.VIDEO_EDITING, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(project.current_stage)) && (
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
                                 📅 Schedule Post
@@ -230,7 +230,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     )}
 
                     {/* Add Live URL (after posting) */}
-                    {project.post_scheduled_date && !isPosted && (
+                    {project.post_scheduled_date && !isPosted && !([WorkflowStage.CINEMATOGRAPHY, WorkflowStage.VIDEO_EDITING, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(project.current_stage)) && (
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
                                 🔗 Mark as Posted
