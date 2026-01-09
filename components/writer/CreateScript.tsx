@@ -887,8 +887,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       <button
                         onClick={() => setFormData({ ...formData, thumbnail_required: true })}
                         className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === true
-                          ? 'bg-black text-white'
-                          : 'bg-white hover:bg-slate-50'
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-slate-50'
                           }`}
                       >
                         Yes
