@@ -49,13 +49,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Calculate other derived values
   const isScriptFromApprovedIdea = mode === 'SCRIPT_FROM_APPROVED_IDEA';
   const isRework = workflowState?.isRework;
-  const isPureIdeaEdit =
-    project?.data?.source === 'IDEA_PROJECT' &&
-    !isScriptFromApprovedIdea;
-
   // Check if this script is being created from an approved idea
   const isFromIdea = project?.data?.source === 'IDEA_PROJECT' &&
     project.history?.some(h => h.action === 'APPROVED' && h.stage === 'FINAL_REVIEW_CEO');
+
+  const isPureIdeaEdit =
+    project?.data?.source === 'IDEA_PROJECT' &&
+    !isScriptFromApprovedIdea &&
+    !isFromIdea;
 
   // Load user effect
   useEffect(() => {
@@ -832,8 +833,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           setNewProjectDetails({ ...newProjectDetails, channel: c })
                         }
                         className={`p-2 text-[10px] font-black uppercase border-2 border-black ${newProjectDetails.channel === c
-                            ? 'bg-black text-white'
-                            : 'bg-white hover:bg-slate-50'
+                          ? 'bg-black text-white'
+                          : 'bg-white hover:bg-slate-50'
                           }`}
                       >
                         {c}
@@ -853,8 +854,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' })
                       }
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'VIDEO'
-                          ? 'bg-[#0085FF] text-white'
-                          : 'bg-white hover:bg-slate-50'
+                        ? 'bg-[#0085FF] text-white'
+                        : 'bg-white hover:bg-slate-50'
                         }`}
                     >
                       📹 Video
@@ -867,8 +868,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         })
                       }
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'CREATIVE_ONLY'
-                          ? 'bg-[#D946EF] text-white'
-                          : 'bg-white hover:bg-slate-50'
+                        ? 'bg-[#D946EF] text-white'
+                        : 'bg-white hover:bg-slate-50'
                         }`}
                     >
                       🎨 Creative Only
@@ -895,8 +896,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       <button
                         onClick={() => setFormData({ ...formData, thumbnail_required: false })}
                         className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === false
-                            ? 'bg-black text-white'
-                            : 'bg-white hover:bg-slate-50'
+                          ? 'bg-black text-white'
+                          : 'bg-white hover:bg-slate-50'
                           }`}
                       >
                         No
@@ -1019,8 +1020,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           setNewProjectDetails({ ...newProjectDetails, priority: p })
                         }
                         className={`p-2 text-xs font-black uppercase border-2 border-black ${newProjectDetails.priority === p
-                            ? 'bg-black text-white'
-                            : 'bg-white hover:bg-slate-50'
+                          ? 'bg-black text-white'
+                          : 'bg-white hover:bg-slate-50'
                           }`}
                       >
                         {p}
@@ -1031,17 +1032,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               </div>
             )}
 
-            {/* Idea Description (for idea projects in rework) */}
-            {project?.data?.source === 'IDEA_PROJECT' && isRework && (
+            {/* Idea Description (for idea projects) */}
+            {isPureIdeaEdit && (
               <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                 <h3 className="font-black uppercase text-lg text-slate-900 mb-4">
-                  Updated Idea Description
+                  {isRework ? 'Updated Idea Description' : 'Idea Description'}
                 </h3>
                 <textarea
                   value={formData.idea_description || ''}
                   onChange={e => setFormData({ ...formData, idea_description: e.target.value })}
                   className="w-full p-4 border-2 border-black min-h-[200px] focus:bg-yellow-50 focus:outline-none resize-none"
-                  placeholder="Update the idea description based on the review comments..."
+                  placeholder={isRework ? "Update the idea description based on the review comments..." : "Describe your idea..."}
                 />
               </div>
             )}
@@ -1102,8 +1103,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
                 <p className="text-sm text-blue-600 mt-3 font-medium">
                   {isRework
-                    ? 'This idea was sent back for rework. Please update the idea description and script below.'
-                    : 'This idea was approved by CEO. Please convert it into a detailed script below.'}
+                    ? 'This idea was sent back for rework. Please update the idea description (left) based on feedback.'
+                    : isPureIdeaEdit ? 'Original description reference.' : 'This idea was approved by CEO. Please convert it into a detailed script below.'}
                 </p>
               </div>
             )}
@@ -1125,23 +1126,25 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               </div>
             )}
 
-            {/* Script Editor */}
-            <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] min-h-[700px] flex flex-col">
-              <div className="border-b-2 border-black pb-4 mb-6 flex justify-between">
-                <span className="font-black uppercase text-xs text-slate-400">
-                  Rich Text Editor
-                </span>
-              </div>
+            {/* Script Editor - Only show if NOT a pure idea edit */}
+            {!isPureIdeaEdit && (
+              <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] min-h-[700px] flex flex-col">
+                <div className="border-b-2 border-black pb-4 mb-6 flex justify-between">
+                  <span className="font-black uppercase text-xs text-slate-400">
+                    Rich Text Editor
+                  </span>
+                </div>
 
-              <textarea
-                value={formData.script_content || ''}
-                onChange={e =>
-                  setFormData({ ...formData, script_content: e.target.value })
-                }
-                className="flex-1 w-full text-lg resize-none outline-none font-serif"
-                placeholder="Start writing your script here..."
-              />
-            </div>
+                <textarea
+                  value={formData.script_content || ''}
+                  onChange={e =>
+                    setFormData({ ...formData, script_content: e.target.value })
+                  }
+                  className="flex-1 w-full text-lg resize-none outline-none font-serif"
+                  placeholder="Start writing your script here..."
+                />
+              </div>
+            )}
           </div>
         </div>
         {/* Confirmation Popup */}
