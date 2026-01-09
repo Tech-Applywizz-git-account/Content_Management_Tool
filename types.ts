@@ -71,7 +71,9 @@ export interface Project {
   status: TaskStatus;
   priority: Priority;
   due_date: string;
-  created_by: string; // User ID of the creator
+  created_by: string; // User ID of the creator (deprecated, use created_by_user_id instead)
+  created_by_user_id?: string; // User ID of the creator
+  created_by_name?: string; // Name of the creator
   created_at: string;
   shoot_date?: string; // Cinematographer sets
   delivery_date?: string; // Editor/Designer sets
@@ -82,6 +84,8 @@ export interface Project {
   creative_link?: string; // Designer uploads (creative-only path)
   data: ProjectData; // Flexible JSON blob for form inputs
   history: HistoryEvent[];
+  first_review_opened_at?: string; // Timestamp when first reviewer opened the project
+  first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }
 
 export interface ProjectData {
@@ -107,7 +111,7 @@ export interface HistoryEvent {
   stage: WorkflowStage;
   actor_id: string;
   actor_name: string;
-  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED';
+  action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED' | 'DIRECT_UPLOAD';
   comment?: string;
   timestamp: string;
 }

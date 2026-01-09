@@ -4,6 +4,7 @@ import { Palette, Video, FileImage } from 'lucide-react';
 import DesignerMyWork from './DesignerMyWork';
 import DesignerCalendar from './DesignerCalendar';
 import DesignerProjectDetail from './DesignerProjectDetail';
+import CreateDesignerProject from './CreateDesignerProject';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
 
@@ -124,6 +125,17 @@ const filteredProjects = React.useMemo(() => {
             activeView={activeView}
             onChangeView={handleViewChange}
         >
+        {/* Add button to create direct creative projects */}
+        {activeView === 'dashboard' && (
+            <div className="mb-6 flex justify-end">
+                <button
+                    onClick={() => setActiveView('create-designer-project')}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                >
+                    + Create Designer Project
+                </button>
+            </div>
+        )}
             {selectedProject ? (
                 <DesignerProjectDetail
                     project={selectedProject}
@@ -131,6 +143,14 @@ const filteredProjects = React.useMemo(() => {
                     onBack={() => setSelectedProject(null)}
                     onUpdate={() => {
                         setSelectedProject(null);
+                        onRefresh();
+                    }}
+                />
+            ) : activeView === 'create-designer-project' ? (
+                <CreateDesignerProject
+                    onClose={() => setActiveView('dashboard')}
+                    onSuccess={() => {
+                        setActiveView('dashboard');
                         onRefresh();
                     }}
                 />

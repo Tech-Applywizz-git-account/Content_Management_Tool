@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Project, Role, TaskStatus, WorkflowStage } from '../../types';
 import { Clock, FileText, CheckCircle, Edit3, Trash2 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import CreateScript from './CreateScript';
 import { db } from '../../services/supabaseDb';
 
@@ -16,6 +16,56 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   const [reviewComments, setReviewComments] = useState<any[]>([]);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
+  // Check if we're editing an approved idea project
+  const ideaToConvert = editingProject && 
+                     editingProject.data?.source === 'IDEA_PROJECT' && 
+                     editingProject.current_stage === WorkflowStage.SCRIPT && 
+                     editingProject.assigned_to_role === Role.WRITER;
+
+  // 🔁 FULL PAGE: Create Script from Approved Idea
+  if (ideaToConvert && editingProject) {
+    return (
+      <CreateScript
+        project={editingProject}
+        onClose={() => setEditingProject(null)}
+        onSuccess={() => setEditingProject(null)}
+        creatorRole={Role.WRITER}
+      />
+    );
+  }
+  const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
+
+  // Function to check if a project has been opened by CMO or CEO
+  const isProjectOpenedByReviewers = (project: Project): boolean => {
+    // A project is considered "opened" by CMO or CEO when they have accessed it
+    // This is determined by checking if there are review-related actions in the history
+    // after the project entered the review stage
+    if (!project.history || project.history.length === 0) {
+      return false; // No history means not opened yet
+    }
+    
+    // Get all history entries for this project
+    const history = project.history;
+    
+    // Find when the project entered review stages
+    const reviewStages = [
+      WorkflowStage.SCRIPT_REVIEW_L1,    // CMO review
+      WorkflowStage.SCRIPT_REVIEW_L2,    // CEO review
+      WorkflowStage.FINAL_REVIEW_CMO,    // CMO final review
+      WorkflowStage.FINAL_REVIEW_CEO     // CEO final review
+    ];
+    
+    // Check if there are any actions taken during review stages
+    // This would indicate that the reviewer has accessed the project
+    const reviewActions = history.filter(h => 
+      reviewStages.includes(h.stage as WorkflowStage) &&
+      h.action !== 'CREATED' // Exclude creation actions
+    );
+    
+    // If there are review stage actions, it means the reviewer has accessed the project
+    return reviewActions.length > 0;
+  };
+
 
   // Remove duplicate projects based on ID
   const myTasks: Project[] = Array.from(
@@ -29,76 +79,32 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
       .map(project => [project.id, project])
   ).values()
 );
-
+const isIdeaApprovedByCEO = (project: Project) => {
+  return (
+    project.data?.source === 'IDEA_PROJECT' &&
+    project.history?.some(h =>
+      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+      h.action === 'APPROVED'
+    )
+  );
+};
 
   /* ===============================
-     DETAIL VIEW (SCRIPT VIEW)
+    MAIN VIEW - Show edit modal OR list view
   =============================== */
-  if (selectedProject) {
+  
+  // If converting approved idea to script, show the CreateScript component
+  if (scriptFromIdea) {
     return (
-      <div className="p-8 space-y-6 animate-fade-in">
-        <button
-          onClick={() => setSelectedProject(null)}
-          className="font-black underline text-sm"
-        >
-          ← Back to My Work
-        </button>
-
-        <h1 className="text-3xl font-black uppercase">
-          {selectedProject.title}
-        </h1>
-
-        {/* STATUS BAR */}
-        <div className="flex justify-between border-2 border-black p-4 bg-slate-50">
-          <span className="font-black uppercase">
-            Status: {selectedProject.status}
-          </span>
-          <span className="text-sm text-slate-500">
-            Updated{' '}
-            {formatDistanceToNow(
-              new Date(selectedProject.updated_at || selectedProject.created_at)
-            )}{' '}
-            ago
-          </span>
-        </div>
-
-        {/* SCRIPT CONTENT */}
-        <div className="border-2 border-black bg-white p-6 shadow">
-          <h3 className="font-black uppercase mb-3">Script Content</h3>
-          <pre className="whitespace-pre-wrap text-sm text-slate-900">
-            {selectedProject.data?.script_content || 'No script found'}
-          </pre>
-        </div>
-        {/* REVIEWER COMMENTS */}
-{reviewComments.length > 0 && (
-  <div className="border-2 border-black bg-red-50 p-6 shadow">
-    <h3 className="font-black uppercase mb-3 text-red-700">
-      Reviewer Comments
-    </h3>
-
-    {reviewComments.map((c, i) => (
-      <div key={i} className="mb-4">
-        <p className="font-black text-sm text-slate-900">
-          {c.actor_name} ({c.action})
-        </p>
-        <p className="text-sm text-slate-700 whitespace-pre-wrap">
-          {c.comment}
-        </p>
-        <p className="text-xs text-slate-500">
-          {formatDistanceToNow(new Date(c.timestamp))} ago
-        </p>
-      </div>
-    ))}
-  </div>
-)}
-
-      </div>
+      <CreateScript
+        project={scriptFromIdea}
+        mode="SCRIPT_FROM_APPROVED_IDEA"
+        onClose={() => setScriptFromIdea(null)}
+        onSuccess={() => setScriptFromIdea(null)}
+        creatorRole={Role.WRITER}
+      />
     );
   }
-
-  /* ===============================
-     MAIN VIEW - Show edit modal OR list view
-  =============================== */
   
   // If editing project, show the CreateScript component
   if (editingProject) {
@@ -117,6 +123,8 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   
   // If viewing project details
   if (selectedProject) {
+    const isReadOnly = isProjectOpenedByReviewers(selectedProject);
+    
     return (
       <div className="p-8 space-y-6 animate-fade-in">
         <button
@@ -125,10 +133,29 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
         >
           ← Back to My Work
         </button>
+         {selectedProject &&
+    isIdeaApprovedByCEO(selectedProject) &&
+    selectedProject.data?.brief && (
+      <div className="border-2 border-black bg-yellow-50 p-5 shadow">
+        <h3 className="font-black uppercase mb-2">
+          Approved Idea Description
+        </h3>
+        <p className="text-slate-800 whitespace-pre-wrap">
+          {selectedProject.data.brief}
+        </p>
+      </div>
+    )}
 
-        <h1 className="text-3xl font-black uppercase">
-          {selectedProject.title}
-        </h1>
+        <div className="flex justify-between items-start">
+          <h1 className="text-3xl font-black uppercase">
+            {selectedProject.title}
+          </h1>
+          {isReadOnly && (
+            <span className="bg-red-100 text-red-800 px-3 py-1 border-2 border-red-300 text-sm font-black uppercase">
+              Read Only
+            </span>
+          )}
+        </div>
 
         {/* STATUS BAR */}
         <div className="flex justify-between border-2 border-black p-4 bg-slate-50">
@@ -136,11 +163,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             Status: {selectedProject.status}
           </span>
           <span className="text-sm text-slate-500">
-            Updated{' '}
-            {formatDistanceToNow(
-              new Date(selectedProject.updated_at || selectedProject.created_at)
-            )}{' '}
-            ago
+            Updated: {format(new Date(selectedProject.updated_at || selectedProject.created_at), 'MMM dd, yyyy h:mm a')}
           </span>
         </div>
 
@@ -151,6 +174,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             {selectedProject.data?.script_content || 'No script found'}
           </pre>
         </div>
+        
         {/* REVIEWER COMMENTS */}
 {reviewComments.length > 0 && (
   <div className="border-2 border-black bg-red-50 p-6 shadow">
@@ -167,7 +191,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
           {c.comment}
         </p>
         <p className="text-xs text-slate-500">
-          {formatDistanceToNow(new Date(c.timestamp))} ago
+          {format(new Date(c.timestamp), 'MMM dd, yyyy h:mm a')}
         </p>
       </div>
     ))}
@@ -204,24 +228,28 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             <div
               key={task.id}
               onClick={async () => {
-  setSelectedProject(task);
-
-  const { data, error } = await import('../../src/integrations/supabase/client')
-    .then(m => m.supabase)
-    .then(supabase =>
-      supabase
-        .from('workflow_history')
-        .select('action, comment, actor_name, timestamp')
-        .eq('project_id', task.id)
-        .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-        .order('timestamp', { ascending: false })
-    );
-
-  if (!error) {
-    setReviewComments(data || []);
-  }
+ // Check if this is a CEO-approved idea project
+ if (isIdeaApprovedByCEO(task)) {
+   setScriptFromIdea(task);
+ } else {
+   setSelectedProject(task);
+   
+   const { data, error } = await import('../../src/integrations/supabase/client')
+     .then(m => m.supabase)
+     .then(supabase =>
+       supabase
+         .from('workflow_history')
+         .select('action, comment, actor_name, timestamp')
+         .eq('project_id', task.id)
+         .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+         .order('timestamp', { ascending: false })
+     );
+   
+   if (!error) {
+     setReviewComments(data || []);
+   }
+ }
 }}
-
               className={`bg-white p-6 border-2 border-black cursor-pointer shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${task.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
             >
               {/* HEADER */}
@@ -285,8 +313,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
               <div className="flex justify-between items-center border-t pt-3 text-sm">
                 <div className="flex items-center font-bold text-slate-500 uppercase">
                   <Clock className="w-4 h-4 mr-2" />
-                  Created{' '}
-                  {formatDistanceToNow(new Date(task.created_at))} ago
+                  Created: {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
                 </div>
 
                 <div className="flex items-center space-x-3">
@@ -302,7 +329,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   </button>
                   
                   {/* Show Edit button for scripts that can be edited */}
-                  {task.created_by === user.id && (
+                  {task.created_by === user.id && (!isProjectOpenedByReviewers(task) || (task.data?.source === 'IDEA_PROJECT' && task.current_stage === WorkflowStage.SCRIPT && task.assigned_to_role === Role.WRITER)) && (
                     <button 
                       className="flex items-center font-bold uppercase text-green-600 hover:text-green-800"
                       onClick={(e) => {
@@ -316,7 +343,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   )}
                   
                   {/* Show Delete button for scripts that can be deleted */}
-                  {task.created_by === user.id && (
+                  {task.created_by === user.id && (!isProjectOpenedByReviewers(task) || (task.data?.source === 'IDEA_PROJECT' && task.current_stage === WorkflowStage.SCRIPT && task.assigned_to_role === Role.WRITER)) && (
                     <button 
                       className="flex items-center font-bold uppercase text-red-600 hover:text-red-800"
                       onClick={async (e) => {
@@ -351,6 +378,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
       </div>
     </div>
   );
-};
+}
 
 export default WriterMyWork;

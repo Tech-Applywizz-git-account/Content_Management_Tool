@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, Role, TaskStatus } from '../../types';
 import { Clock, FileText, CheckCircle } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 
 interface Props {
   user: { full_name: string; role: Role };
@@ -56,7 +56,7 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                 <span
                   className={`text-xs font-black uppercase border-2 px-2 py-1 ${task.priority === 'HIGH'
                         ? 'bg-red-500 text-white'
-                        : task.priority === 'MEDIUM'
+                        : task.priority === 'NORMAL'
                             ? 'bg-yellow-500 text-black'
                             : 'bg-green-500 text-white'
                     }`}
@@ -81,7 +81,7 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
               <div className="flex justify-between pt-3 border-t">
                 <div className="flex items-center text-xs font-bold uppercase text-slate-500">
                   <Clock className="w-4 h-4 mr-2" />
-                  Submitted {formatDistanceToNow(new Date(task.created_at))} ago
+                  Submitted {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
                 </div>
 
                 <div className="flex items-center text-xs font-bold uppercase text-blue-600">

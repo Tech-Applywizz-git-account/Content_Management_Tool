@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, Role } from '../../types';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 
 interface HistoryEntry {
@@ -92,7 +92,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
           </p>
           <p>
             <strong>Updated:</strong>{' '}
-            {formatDistanceToNow(new Date(history.timestamp))} ago
+            {format(new Date(history.timestamp), 'MMM dd, yyyy h:mm a')}
           </p>
         </div>
       </div>

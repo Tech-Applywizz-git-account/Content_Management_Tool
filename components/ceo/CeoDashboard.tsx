@@ -282,7 +282,9 @@ React.useEffect(() => {
   (p.status === TaskStatus.WAITING_APPROVAL || p.status === TaskStatus.REJECTED) &&
   (
     p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
-    p.current_stage === WorkflowStage.FINAL_REVIEW_CEO
+    p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+    // Also include idea projects that reached CEO stage
+    (p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.FINAL_REVIEW_CEO)
   )
 );
 
@@ -697,7 +699,7 @@ if (activeView === 'calendar') {
                             <span
                                 className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                         ? 'bg-red-600 text-white font-black'
-                                        : project.priority === 'MEDIUM'
+                                        : project.priority === 'NORMAL'
                                             ? 'bg-yellow-500 text-black'
                                             : 'bg-green-500 text-white'
                                 }`}
@@ -731,7 +733,9 @@ if (activeView === 'calendar') {
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Stage</span>
-                                        <span className="font-bold text-slate-900 uppercase text-xs">{STAGE_LABELS[project.current_stage] || project.current_stage}</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">
+                                            {project.data?.source === 'IDEA_PROJECT' ? 'IDEA REVIEW' : STAGE_LABELS[project.current_stage] || project.current_stage}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Date</span>
@@ -742,7 +746,9 @@ if (activeView === 'calendar') {
                                 <>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Current Stage</span>
-                                        <span className="font-bold text-slate-900 uppercase text-xs">{STAGE_LABELS[project.current_stage]}</span>
+                                        <span className="font-bold text-slate-900 uppercase text-xs">
+                                            {project.data?.source === 'IDEA_PROJECT' ? 'IDEA REVIEW' : STAGE_LABELS[project.current_stage]}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Status</span>

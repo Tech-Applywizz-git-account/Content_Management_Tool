@@ -4,6 +4,7 @@ import { Calendar, Upload, Link as LinkIcon } from 'lucide-react';
 import OpsMyWork from './OpsMyWork';
 import OpsCalendar from './OpsCalendar';
 import OpsProjectDetail from './OpsProjectDetail';
+import OpsCeoApproved from './OpsCeoApproved';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
 
@@ -24,6 +25,17 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
+    const [filterCategory, setFilterCategory] = useState<string>('all'); // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
+    
+    // Debug: Log the stages of inbox projects
+    useEffect(() => {
+        console.log('Ops Dashboard - inboxProjects stages:', (inboxProjects || []).map(p => ({
+            id: p.id,
+            title: p.title,
+            current_stage: p.current_stage,
+            assigned_to_role: p.assigned_to_role
+        })));
+    }, [inboxProjects]);
 
     const handleInternalRefresh = async () => {
         await onRefresh(); // MUST refetch from Supabase
@@ -76,6 +88,17 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         const weekAgo = new Date(Date.now() - 7 * 86400000);
         return postedDate >= weekAgo;
     });
+    
+    // CEO-approved projects (projects that have moved forward after CEO approval)
+    const ceoApproved = (inboxProjects || []).filter(p =>
+  p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
+  p.current_stage === WorkflowStage.VIDEO_EDITING ||
+  p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+  p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+  p.current_stage === WorkflowStage.OPS_SCHEDULING ||
+  p.current_stage === WorkflowStage.POSTED
+);
+    
 
     return (
         <Layout
@@ -95,9 +118,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={setSelectedProject} />
+                <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={setSelectedProject} filterCategory={filterCategory} />
             ) : activeView === 'calendar' ? (
                 <OpsCalendar projects={inboxProjects || []} />
+            ) : activeView === 'ceoapproved' ? (
+                <OpsCeoApproved projects={inboxProjects || []} onSelectProject={setSelectedProject} />
             ) : (
                 <div key={refreshKey} className="space-y-8 animate-fade-in">
                     {/* Dashboard Content */}
@@ -117,28 +142,63 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                        <div 
+                            className="bg-[#8B5CF6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                                setActiveView('ceoapproved'); // Navigate to dedicated CEO approved view
+                            }}
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {ceoApproved.length}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">CEO Approved</div>
+                        </div>
+                        <div 
+                            className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                                setFilterCategory('readytoschedule');
+                                setActiveView('mywork');
+                            }}
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {readyToSchedule.length}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Ready to Schedule</div>
                         </div>
-                        <div className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div 
+                            className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                                setFilterCategory('scheduled');
+                                setActiveView('mywork');
+                            }}
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {scheduled.length}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Scheduled</div>
                         </div>
-                        <div className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div 
+                            className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                                setFilterCategory('postedthisweek');
+                                setActiveView('mywork');
+                            }}
+                        >
                             <div className="text-4xl font-black text-white mb-1">
                                 {postedThisWeek.length}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Posted This Week</div>
                         </div>
-                        <div className="bg-[#8B5CF6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div 
+                            className="bg-[#6B7280] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                                setFilterCategory('all');
+                                setActiveView('mywork');
+                            }}
+                        >
                             <div className="text-4xl font-black text-white mb-1">
-                                {(inboxProjects || []).length}
+                                {(inboxProjects || []).length - ceoApproved.length}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Total Managed</div>
                         </div>
@@ -150,7 +210,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             Quick Overview
                         </h2>
                         <p className="text-slate-600">
-                            You have {readyToSchedule.length} {readyToSchedule.length === 1 ? 'project' : 'projects'} ready to schedule and {scheduled.length} scheduled for publishing.
+                            You have {ceoApproved.length} CEO-approved {ceoApproved.length === 1 ? 'project' : 'projects'}, {readyToSchedule.length} ready to schedule, and {scheduled.length} scheduled for publishing. Total managed: {(inboxProjects || []).length - ceoApproved.length}.
                             Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
                         </p>
                     </div>
