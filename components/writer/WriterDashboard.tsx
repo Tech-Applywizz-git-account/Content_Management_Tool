@@ -40,16 +40,17 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         setRefreshKey(prev => prev + 1); // force UI re-render
     };
     const isWriterProject = (p: Project) => {
-  return (
-    // project explicitly assigned to this writer
+        return (
+            // project explicitly assigned to this writer
 
-    // OR project created by this writer
-    p.created_by === user.id ||
+            // OR project created by this writer
+            p.created_by === user.id ||
+            p.created_by_user_id === user.id ||
 
-    // OR project currently with writer (important for rework)
-    p.assigned_to_role === Role.WRITER
-  );
-};
+            // OR project currently with writer (important for rework)
+            p.assigned_to_role === Role.WRITER
+        );
+    };
 
 
     // Popup state
@@ -99,7 +100,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     // Categorize Projects - mutually exclusive categorization
     const inReview = dashboardProjects.filter(p =>
-        p.created_by === user.id &&
+        (p.created_by === user.id || p.created_by_user_id === user.id) &&
         [
             WorkflowStage.SCRIPT_REVIEW_L1,
             WorkflowStage.SCRIPT_REVIEW_L2
@@ -107,7 +108,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     );
 
     const inProduction = dashboardProjects.filter(p =>
-        p.created_by === user.id &&
+        (p.created_by === user.id || p.created_by_user_id === user.id) &&
         [
             WorkflowStage.CINEMATOGRAPHY,
             WorkflowStage.VIDEO_EDITING,
@@ -120,39 +121,40 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     );
 
 
-   const drafts = dashboardProjects.filter(p =>
-  (
-    p.created_by === user.id ||     // created by this user
-    p.writer_id === user.id         // or explicitly assigned writer
-  ) &&
-  (
-    p.current_stage === WorkflowStage.SCRIPT ||
-    p.current_stage === WorkflowStage.REWORK ||
-    p.status === TaskStatus.REWORK
-  )
-);
+    const drafts = dashboardProjects.filter(p =>
+        (
+            p.created_by === user.id ||     // created by this user
+            p.created_by_user_id === user.id || // created by this user (new field)
+            p.writer_id === user.id         // or explicitly assigned writer
+        ) &&
+        (
+            p.current_stage === WorkflowStage.SCRIPT ||
+            p.current_stage === WorkflowStage.REWORK ||
+            p.status === TaskStatus.REWORK
+        )
+    );
 
 
 
     const rejectedProjects = dashboardProjects.filter(p =>
-        p.created_by === user.id &&
+        (p.created_by === user.id || p.created_by_user_id === user.id) &&
         p.status === TaskStatus.REJECTED &&
         ![
             WorkflowStage.SCRIPT_REVIEW_L1,
             WorkflowStage.SCRIPT_REVIEW_L2
         ].includes(p.current_stage)
     );
-const approvedIdeas = dashboardProjects.filter(p =>
-  p.data?.source === 'IDEA_PROJECT' &&
-  p.current_stage === WorkflowStage.SCRIPT &&
-  p.assigned_to_role === Role.WRITER &&
-  p.status === TaskStatus.WAITING_APPROVAL &&
-  p.history?.some(
-    h =>
-      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
-      h.action === 'APPROVED'
-  )
-);
+    const approvedIdeas = dashboardProjects.filter(p =>
+        p.data?.source === 'IDEA_PROJECT' &&
+        p.current_stage === WorkflowStage.SCRIPT &&
+        p.assigned_to_role === Role.WRITER &&
+        p.status === TaskStatus.WAITING_APPROVAL &&
+        p.history?.some(
+            h =>
+                h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+                h.action === 'APPROVED'
+        )
+    );
 
 
     const handleEdit = (project: Project) => {
@@ -183,18 +185,18 @@ const approvedIdeas = dashboardProjects.filter(p =>
         // If action is undefined (close without action), don't show popup
     };
 
-   const handleCloseWithoutAction = async () => {
-  await onRefresh();
+    const handleCloseWithoutAction = async () => {
+        await onRefresh();
 
-  // Close all create/edit states
-  setIsCreating(false);
-  setEditingProject(null);
-  setScriptFromIdea(null);
+        // Close all create/edit states
+        setIsCreating(false);
+        setEditingProject(null);
+        setScriptFromIdea(null);
 
-  // ✅ FORCE DASHBOARD VIEW
-  setActiveView('dashboard');
-  localStorage.setItem(viewStorageKey, 'dashboard');
-};
+        // ✅ FORCE DASHBOARD VIEW
+        setActiveView('dashboard');
+        localStorage.setItem(viewStorageKey, 'dashboard');
+    };
 
     const handleCloseIdeaCreation = async () => {
         await onRefresh();
@@ -213,25 +215,25 @@ const approvedIdeas = dashboardProjects.filter(p =>
     };
 
 
- const handleViewProject = (project: Project) => {
-  setViewingProject(project);
-};
+    const handleViewProject = (project: Project) => {
+        setViewingProject(project);
+    };
 
     const handleCloseDetail = async () => {
         setViewingProject(null);
         await onRefresh();
     };
     // ✅ FULL PAGE: Convert Approved Idea → Script
-if (scriptFromIdea) {
-  return (
-    <CreateScript
-      project={scriptFromIdea}
-      mode="SCRIPT_FROM_APPROVED_IDEA"
-      onClose={handleCloseWithoutAction}
-      onSuccess={handleCloseCreate}
-    />
-  );
-}
+    if (scriptFromIdea) {
+        return (
+            <CreateScript
+                project={scriptFromIdea}
+                mode="SCRIPT_FROM_APPROVED_IDEA"
+                onClose={handleCloseWithoutAction}
+                onSuccess={handleCloseCreate}
+            />
+        );
+    }
 
 
     if (viewingProject) {
@@ -245,23 +247,23 @@ if (scriptFromIdea) {
     if (isCreatingIdea) {
         return <CreateIdeaProject onClose={() => setIsCreatingIdea(false)} onSuccess={handleCloseIdeaCreation} />;
     }
-    
+
     // Handle rework projects with review comments and previous script
     if (reworkProject) {
-      return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
+        return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
     }
-    
-// ✅ FULL PAGE: Convert Approved Idea → Script
-if (scriptFromIdea) {
-  return (
-    <CreateScript
-      project={scriptFromIdea}
-      mode="SCRIPT_FROM_APPROVED_IDEA"
-      onClose={handleCloseWithoutAction}
-      onSuccess={handleCloseCreate}
-    />
-  );
-}
+
+    // ✅ FULL PAGE: Convert Approved Idea → Script
+    if (scriptFromIdea) {
+        return (
+            <CreateScript
+                project={scriptFromIdea}
+                mode="SCRIPT_FROM_APPROVED_IDEA"
+                onClose={handleCloseWithoutAction}
+                onSuccess={handleCloseCreate}
+            />
+        );
+    }
 
     return (
         <Layout
@@ -316,7 +318,7 @@ if (scriptFromIdea) {
                                     const p = [...drafts, ...rejectedProjects].find(proj => proj.id === id);
                                     return p;
                                 }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(p => (
-                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : ''} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => p.status === TaskStatus.REWORK ? setReworkProject(p) : p.status === TaskStatus.REJECTED ? handleViewProject(p) : {}}>
+                                    <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleEdit(p)}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -342,9 +344,7 @@ if (scriptFromIdea) {
                                             )}
                                         </div>
                                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
-                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
-                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
-                                        </div>
+
                                         <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                             <Clock className="w-3 h-3 mr-1" />
                                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
@@ -391,9 +391,7 @@ if (scriptFromIdea) {
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
-                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
-                                        </div>
+
                                         <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
                                         </div>
@@ -440,9 +438,7 @@ if (scriptFromIdea) {
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
-                                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || user.full_name}
-                                        </div>
+
                                         <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#4ADE80] h-full w-3/4"></div>
                                         </div>
@@ -451,56 +447,56 @@ if (scriptFromIdea) {
                             </div>
                         </div>
                         {/* Column 4: CEO Approved Ideas */}
-<div className="space-y-4">
-  <div className="flex items-center justify-between p-4 bg-green-700 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-    <h3 className="font-black uppercase tracking-wide">
-      CEO Approved Ideas
-    </h3>
-    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">
-      {approvedIdeas.length}
-    </span>
-  </div>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-4 bg-green-700 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <h3 className="font-black uppercase tracking-wide">
+                                    CEO Approved Ideas
+                                </h3>
+                                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">
+                                    {approvedIdeas.length}
+                                </span>
+                            </div>
 
-  <div className="space-y-4">
-    {approvedIdeas.map(p => (
-      <div
-        key={p.id}
-        onClick={() => {
-  setScriptFromIdea(p);
-}}
-        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-      >
-        <div className="flex justify-between items-start mb-3">
-          <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
-            Approved
-          </span>
-          <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">
-            Idea → Script
-          </span>
-        </div>
+                            <div className="space-y-4">
+                                {approvedIdeas.map(p => (
+                                    <div
+                                        key={p.id}
+                                        onClick={() => {
+                                            setScriptFromIdea(p);
+                                        }}
+                                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <div className="flex justify-between items-start mb-3">
+                                            <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
+                                                Approved
+                                            </span>
+                                            <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">
+                                                Idea → Script
+                                            </span>
+                                        </div>
 
-        <h4 className="font-black text-lg uppercase mb-2">
-          {p.title}
-        </h4>
+                                        <h4 className="font-black text-lg uppercase mb-2">
+                                            {p.title}
+                                        </h4>
 
-        <p className="text-sm text-slate-600">
-          Approved by CEO. Click to convert into a full script.
-        </p>
+                                        <p className="text-sm text-slate-600">
+                                            Approved by CEO. Click to convert into a full script.
+                                        </p>
 
-        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
-          <Clock className="w-3 h-3 mr-1" />
-          {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-        </div>
-      </div>
-    ))}
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+                                            <Clock className="w-3 h-3 mr-1" />
+                                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                                        </div>
+                                    </div>
+                                ))}
 
-    {approvedIdeas.length === 0 && (
-      <div className="p-8 text-center font-bold text-slate-400 border-2 border-dashed border-slate-300 uppercase text-sm">
-        No approved ideas yet
-      </div>
-    )}
-  </div>
-</div>
+                                {approvedIdeas.length === 0 && (
+                                    <div className="p-8 text-center font-bold text-slate-400 border-2 border-dashed border-slate-300 uppercase text-sm">
+                                        No approved ideas yet
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
 
                     </div>

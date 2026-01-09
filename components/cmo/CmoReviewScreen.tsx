@@ -41,7 +41,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const isVideo = project.channel !== Channel.LINKEDIN;
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
-    
+
     // Effect to track when CMO opens the project for the first time
     useEffect(() => {
         const trackProjectOpen = async () => {
@@ -61,7 +61,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
         trackProjectOpen();
     }, [project.id, project.first_review_opened_at, project.first_review_opened_by_role]);
-    
+
     const getReworkRoleLabel = (stage: WorkflowStage) => {
         switch (stage) {
             case WorkflowStage.SCRIPT:
@@ -264,8 +264,16 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <ArrowLeft className="w-6 h-6 text-black" />
                     </button>
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Review: {project.title}</h1>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea Review: ' : 'Script Review: '}
+                            {project.title}
+                        </h1>
                         <div className="flex items-center space-x-2 mt-1">
+                            {project.data?.source === 'IDEA_PROJECT' && (
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                    IDEA PROJECT
+                                </span>
+                            )}
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
@@ -365,7 +373,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     {/* Script Viewer */}
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">Script & Message</h3>
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">
+                                {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script & Message'}
+                            </h3>
                             <button
                                 onClick={downloadPDF}
                                 className="text-sm font-bold uppercase flex items-center bg-white border-2 border-black px-4 py-2 hover:bg-slate-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all"
@@ -384,16 +394,20 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     {/* Previous Script */}
                                     <div className="bg-white border-2 border-slate-300 p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Previous Script</h4>
+                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                            {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
+                                        </h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                             {previousScript}
                                         </div>
                                     </div>
 
                                     {/* Current Script */}
-                                    <div className="bg-white border-2 border-slate-300 p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Current Script</h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                    <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
+                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                            {project.data?.source === 'IDEA_PROJECT' ? 'Current Idea' : 'Current Script'}
+                                        </h4>
+                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
                                             {project.data?.source === 'IDEA_PROJECT'
                                                 ? project.data.idea_description
                                                 : project.data?.script_content || 'No script content available.'}

@@ -796,6 +796,12 @@ export const projects = {
         priority?: Priority;
         due_date: string;
         data: any;
+
+        // ✅ Creator fields
+        created_by_user_id?: string | null;
+        created_by_name?: string | null;
+        writer_id?: string | null;
+        writer_name?: string | null;
     }) {
         console.log('Creating project with data:', projectData);
         const { data, error } = await supabase
@@ -808,6 +814,13 @@ export const projects = {
                 assigned_to_user_id: projectData.assigned_to_user_id ?? null,
                 due_date: projectData.due_date,
                 data: projectData.data,
+
+                // Creator info
+                created_by: projectData.created_by_user_id ?? null, // Populate legacy column
+                created_by_user_id: projectData.created_by_user_id ?? null,
+                created_by_name: projectData.created_by_name ?? null,
+                writer_id: projectData.writer_id ?? null,
+                writer_name: projectData.writer_name ?? null,
 
                 // Use provided values or defaults if not provided
                 current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
@@ -1197,8 +1210,8 @@ export const workflow = {
         // Use the updated data directly since we used .select()
         const data = updateData[0];
 
-        // Extract script content and asset links if available
-        const scriptContent = currentProject?.data?.script_content || null;
+        // Extract script content (or idea description) and asset links if available
+        const scriptContent = currentProject?.data?.script_content || currentProject?.data?.idea_description || null;
         const videoLink = currentProject?.video_link || null;
         const editedVideoLink = currentProject?.edited_video_link || null;
         const thumbnailLink = currentProject?.thumbnail_link || null;
@@ -1812,11 +1825,11 @@ export const db = {
     async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'NORMAL'): Promise<Project> {
         // Get current user information, either from cache or directly from auth
         const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.name || 
-                                  null;
-        
+        const currentUserFullName = currentUserCache?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.name ||
+            null;
+
         const projectData = {
             title,
             channel,
@@ -1840,11 +1853,11 @@ export const db = {
     async createDirectCreativeProject(title: string, channel: Channel, dueDate: string, priority: Priority = 'NORMAL'): Promise<Project> {
         // Get current user information, either from cache or directly from auth
         const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.name || 
-                                  null;
-        
+        const currentUserFullName = currentUserCache?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.name ||
+            null;
+
         // Create a project that starts at the FINAL_REVIEW_CMO stage for direct creative uploads
         const projectData = {
             title,
@@ -1884,11 +1897,11 @@ export const db = {
     async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL'): Promise<Project> {
         // Get current user information, either from cache or directly from auth
         const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.name || 
-                                  null;
-        
+        const currentUserFullName = currentUserCache?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.name ||
+            null;
+
         // Create a project that starts at the FINAL_REVIEW_CMO stage for designer-initiated projects
         const projectData = {
             title,
@@ -1934,11 +1947,11 @@ export const db = {
         // Create an idea project that starts at the FINAL_REVIEW_CMO stage
         // Get current user information, either from cache or directly from auth
         const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.full_name || 
-                                  (await auth.getCurrentUser())?.user_metadata?.name || 
-                                  null;
-        
+        const currentUserFullName = currentUserCache?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.full_name ||
+            (await auth.getCurrentUser())?.user_metadata?.name ||
+            null;
+
         const projectData = {
             title,
             channel,
