@@ -1049,6 +1049,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           ? 'bg-black text-white'
                           : 'bg-white hover:bg-slate-50'
                           } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-slate-50'
+                          }`}
                       >
                         Yes
                       </button>
