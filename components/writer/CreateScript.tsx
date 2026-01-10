@@ -1042,19 +1042,23 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       Thumbnail Required *
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: true }) : null}
-                        disabled={!canEdit}
-                        className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === true
-                          ? 'bg-black text-white'
-                          : 'bg-white hover:bg-slate-50'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            ? 'bg-black text-white'
-                            : 'bg-white hover:bg-slate-50'
-                          }`}
-                      >
-                        Yes
-                      </button>
+                     <button
+  onClick={() => {
+    if (canEdit) {
+      setFormData({ ...formData, thumbnail_required: true });
+    }
+  }}
+  disabled={!canEdit}
+  className={`p-3 text-xs font-black uppercase border-2 border-black
+    ${formData.thumbnail_required === true
+      ? 'bg-black text-white'
+      : 'bg-white hover:bg-slate-50'}
+    ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}
+  `}
+>
+  Yes
+</button>
+
                       <button
                         onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: false }) : null}
                         disabled={!canEdit}
