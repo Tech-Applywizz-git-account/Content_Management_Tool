@@ -1,27 +1,42 @@
-import React, { useState } from 'react';
-import { Channel } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Channel, Project, ContentType } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { ArrowLeft, Send } from 'lucide-react';
 import Popup from '../Popup';
 
-// Define ContentType as actual values since it's a type alias
-const ContentTypeValues = {
-  VIDEO: 'VIDEO' as const,
-  CREATIVE_ONLY: 'CREATIVE_ONLY' as const,
-};
-
-type ContentType = typeof ContentTypeValues[keyof typeof ContentTypeValues];
-
 interface Props {
   onClose: () => void;
   onSuccess: () => void;
+  project?: Project;
 }
 
-const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess }) => {
+const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => {
   const [title, setTitle] = useState('');
   const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
-  const [contentType, setContentType] = useState<ContentType>(ContentTypeValues.VIDEO);
+  const [contentType, setContentType] = useState<ContentType>('CREATIVE_ONLY');
   const [description, setDescription] = useState('');
+
+  // Initialize form state from project data when editing
+  useEffect(() => {
+    if (project) {
+      setTitle(project.title || '');
+      setChannel(project.channel || Channel.LINKEDIN);
+      setContentType(project.content_type || 'CREATIVE_ONLY');
+      
+      // Parse project data if it's a string
+      let parsedData = project.data;
+      if (typeof project.data === 'string') {
+        try {
+          parsedData = JSON.parse(project.data);
+        } catch {
+          parsedData = {};
+        }
+      }
+      
+      // Set description from idea_description or brief
+      setDescription(parsedData?.idea_description || parsedData?.brief || '');
+    }
+  }, [project]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
@@ -33,28 +48,56 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess }) => {
       alert('Title and Description are required');
       return;
     }
+    
+    // Validate channel and content type combination
+    if (channel === Channel.LINKEDIN && contentType === 'VIDEO') {
+      alert('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
-      // Create an idea project that starts at the FINAL_REVIEW_CMO stage
-      const createdProject = await db.createIdeaProject(
-        title,
-        channel,
-        contentType,
-        description
-      );
+      if (project) {
+        // Update existing project
+        await db.updateProjectData(project.id, {
+          idea_description: description,
+          brief: description,
+        });
+        
+        await db.projects.update(project.id, {
+          title,
+          channel,
+          content_type: contentType,
+        });
 
-      setPopupMessage(`Idea project "${title}" created successfully. Waiting for CMO review.`);
-      setStageName('Final Review (CMO)');
-      setShowPopup(true);
+        setPopupMessage(`Idea project "${title}" updated successfully.`);
+        setStageName('Idea Updated');
+        setShowPopup(true);
 
-      setTimeout(() => {
-        onSuccess();
-      }, 1500);
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+      } else {
+        // Create a new idea project that starts at the FINAL_REVIEW_CMO stage
+        const createdProject = await db.createIdeaProject(
+          title,
+          channel,
+          contentType,
+          description
+        );
+
+        setPopupMessage(`Idea project "${title}" created successfully. Waiting for CMO review.`);
+        setStageName('Final Review (CMO)');
+        setShowPopup(true);
+
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+      }
     } catch (error) {
-      console.error('Failed to create idea project:', error);
-      alert('Failed to create idea project');
+      console.error('Failed to process idea project:', error);
+      alert(project ? 'Failed to update idea project' : 'Failed to create idea project');
       setIsSubmitting(false);
     }
   };
@@ -118,7 +161,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess }) => {
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {Object.values(ContentTypeValues).map(ct => (
+                  {(['VIDEO', 'CREATIVE_ONLY'] as ContentType[]).map(ct => (
                     <button
                       key={ct}
                       onClick={() => setContentType(ct)}

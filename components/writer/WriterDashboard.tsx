@@ -121,18 +121,28 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     );
 
 
-    const drafts = dashboardProjects.filter(p =>
-        (
-            p.created_by === user.id ||     // created by this user
-            p.created_by_user_id === user.id || // created by this user (new field)
-            p.writer_id === user.id         // or explicitly assigned writer
-        ) &&
-        (
-            p.current_stage === WorkflowStage.SCRIPT ||
-            p.current_stage === WorkflowStage.REWORK ||
-            p.status === TaskStatus.REWORK
-        )
-    );
+   const drafts = dashboardProjects.filter(p =>
+  // 1️⃣ Belongs to this writer
+  (
+    p.created_by === user.id ||
+    p.created_by_user_id === user.id ||
+    p.writer_id === user.id
+  ) &&
+
+  // 2️⃣ Not yet opened by CMO / CEO
+  !(
+    p.first_review_opened_at &&
+    ['CMO', 'CEO'].includes(p.first_review_opened_by_role || '')
+  ) &&
+
+  // 3️⃣ Draft or Rework state
+  (
+    p.current_stage === WorkflowStage.SCRIPT ||
+    p.current_stage === WorkflowStage.REWORK ||
+    p.status === TaskStatus.REWORK
+  )
+);
+
 
 
 
@@ -158,8 +168,19 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
 
     const handleEdit = (project: Project) => {
-        setEditingProject(project);
-        setIsCreating(true);
+        // Check if this is an idea project (no script content)
+        const parsedData = typeof project.data === 'string' ? JSON.parse(project.data) : project.data;
+        const isIdeaProject = !parsedData?.script_content;
+        
+        if (isIdeaProject) {
+            // Open CreateIdeaProject for editing idea projects
+            setEditingProject(project);
+            setIsCreatingIdea(true);
+        } else {
+            // Open CreateScript for editing script projects
+            setEditingProject(project);
+            setIsCreating(true);
+        }
     };
 
 
@@ -245,7 +266,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     }
 
     if (isCreatingIdea) {
-        return <CreateIdeaProject onClose={() => setIsCreatingIdea(false)} onSuccess={handleCloseIdeaCreation} />;
+        return <CreateIdeaProject project={editingProject || undefined} onClose={() => setIsCreatingIdea(false)} onSuccess={handleCloseIdeaCreation} />;
     }
 
     // Handle rework projects with review comments and previous script
@@ -273,7 +294,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             activeView={activeView}
             onChangeView={handleViewChange}
         >
-            {activeView === 'mywork' && <WriterMyWork user={user} projects={historyProjects} />}
+            {activeView === 'mywork' && (
+  <WriterMyWork user={user} projects={allWriterProjects} />
+)}
             {activeView === 'calendar' && <WriterCalendar projects={inboxProjects} />}
             {activeView === 'dashboard' && (
                 <div key={refreshKey} className="space-y-8 animate-fade-in">
