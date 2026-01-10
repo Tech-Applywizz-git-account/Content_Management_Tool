@@ -3,10 +3,11 @@ import { Project, Role, TaskStatus, WorkflowStage } from '../../types';
 import { Clock, FileText, CheckCircle, Edit3, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import CreateScript from './CreateScript';
+import CreateIdeaProject from './CreateIdeaProject';
 import { db } from '../../services/supabaseDb';
 
 interface Props {
-  user: { full_name: string; role: Role };
+  user: { id: string; full_name: string; role: Role };
   projects: Project[];
 }
 
@@ -15,79 +16,112 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [reviewComments, setReviewComments] = useState<any[]>([]);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-
-  // Check if we're editing an approved idea project
-  const ideaToConvert = editingProject && 
-                     editingProject.data?.source === 'IDEA_PROJECT' && 
-                     editingProject.current_stage === WorkflowStage.SCRIPT && 
-                     editingProject.assigned_to_role === Role.WRITER;
-
-  // 🔁 FULL PAGE: Create Script from Approved Idea
-  if (ideaToConvert && editingProject) {
-    return (
-      <CreateScript
-        project={editingProject}
-        onClose={() => setEditingProject(null)}
-        onSuccess={() => setEditingProject(null)}
-        creatorRole={Role.WRITER}
-      />
-    );
-  }
   const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
-
-  // Function to check if a project has been opened by CMO or CEO
-  const isProjectOpenedByReviewers = (project: Project): boolean => {
-    // A project is considered "opened" by CMO or CEO when they have accessed it
-    // This is determined by checking if there are review-related actions in the history
-    // after the project entered the review stage
-    if (!project.history || project.history.length === 0) {
-      return false; // No history means not opened yet
+  const [activeTab, setActiveTab] = useState<'IDEA' | 'SCRIPT'>('IDEA');
+  // Helper function to safely parse project data
+  const parseProjectData = (data: any) => {
+    if (!data) return null;
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch {
+        return null;
+      }
     }
-    
-    // Get all history entries for this project
-    const history = project.history;
-    
-    // Find when the project entered review stages
-    const reviewStages = [
-      WorkflowStage.SCRIPT_REVIEW_L1,    // CMO review
-      WorkflowStage.SCRIPT_REVIEW_L2,    // CEO review
-      WorkflowStage.FINAL_REVIEW_CMO,    // CMO final review
-      WorkflowStage.FINAL_REVIEW_CEO     // CEO final review
-    ];
-    
-    // Check if there are any actions taken during review stages
-    // This would indicate that the reviewer has accessed the project
-    const reviewActions = history.filter(h => 
-      reviewStages.includes(h.stage as WorkflowStage) &&
-      h.action !== 'CREATED' // Exclude creation actions
-    );
-    
-    // If there are review stage actions, it means the reviewer has accessed the project
-    return reviewActions.length > 0;
+    return data;
   };
 
+  // Helper function to validate Project type
+  const isValidProject = (item: any): item is Project => {
+    return (
+      typeof item === 'object' &&
+      item !== null &&
+      typeof item.id === 'string' &&
+      typeof item.title === 'string' &&
+      typeof item.channel === 'string' &&
+      typeof item.content_type === 'string'
+    );
+  };
 
-  // Remove duplicate projects based on ID
-  const myTasks: Project[] = Array.from(
-  new Map<string, Project>(
-    (projects || [])
+  // Normalize projects ONCE at the top - parse all project data upfront AND filter valid projects
+  const fullyNormalizedProjects = (projects || []).filter(isValidProject).map(project => ({
+    ...project,
+    data: parseProjectData(project.data),
+  }));
+
+  // Function to check if a project has been opened by CMO or CEO
+ const isProjectOpenedByReviewers = (project: Project): boolean => {
+  if (!project.history || project.history.length === 0) {
+    return false;
+  }
+
+  return project.history.some(h =>
+    ['REVIEWED', 'APPROVED', 'REWORK', 'REJECTED'].includes(h.action)
+  );
+};
+
+
+
+  // Function to check if an idea was approved by CEO
+  const isIdeaApprovedByCEO = (project: Project) => {
+    const parsedData = parseProjectData(project.data);
+    return (
+      parsedData?.source === 'IDEA_PROJECT' &&
+      project.history?.some(h =>
+        h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+        h.action === 'APPROVED'
+      )
+    );
+  };
+
+  // Check if we're editing an approved idea project
+  const ideaToConvert =
+  editingProject &&
+  (() => {
+    const parsedData = parseProjectData(editingProject.data);
+    return (
+      parsedData?.source === 'IDEA_PROJECT' &&
+      !parsedData?.script_content && // 🔥 THIS IS THE KEY
+      isIdeaApprovedByCEO(editingProject)
+    );
+  })();
+
+  // 🔁 FULL PAGE: Create Script from Approved Idea
+  
+
+
+
+  // Separate idea and script projects
+ const ideaProjects: Project[] = Array.from(
+  new Map(
+    (fullyNormalizedProjects as Project[])
+      .filter(project => {
+        const isIdea = !project.data?.script_content;
+        return project.created_by_user_id === user.id && isIdea;
+      })
+      .map(project => [project.id, project])
+  ).values()
+);
+
+ const scriptProjects: Project[] = Array.from(
+  new Map(
+    (fullyNormalizedProjects as Project[])
       .filter(project =>
-        project.created_by === user.id ||  // Projects created by this user
-        project.history?.some(h => h.actor_id === user.id) || // Projects user worked on
-        project.assigned_to_user_id === user.id // Projects assigned to user
+        !!project.data?.script_content &&
+        project.created_by_user_id === user.id
       )
       .map(project => [project.id, project])
   ).values()
 );
-const isIdeaApprovedByCEO = (project: Project) => {
+const canModifyProject = (project: Project, userId: string) => {
   return (
-    project.data?.source === 'IDEA_PROJECT' &&
-    project.history?.some(h =>
-      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
-      h.action === 'APPROVED'
-    )
+    project.created_by_user_id === userId &&
+    !isProjectOpenedByReviewers(project)
   );
 };
+
+  // Determine which projects to display based on active tab
+  const displayProjects = activeTab === 'IDEA' ? ideaProjects : scriptProjects;
 
   /* ===============================
     MAIN VIEW - Show edit modal OR list view
@@ -106,25 +140,57 @@ const isIdeaApprovedByCEO = (project: Project) => {
     );
   }
   
-  // If editing project, show the CreateScript component
+  // If editing project, check if it's an idea or script and show appropriate component
   if (editingProject) {
+  const parsedData =
+    typeof editingProject.data === 'string'
+      ? JSON.parse(editingProject.data)
+      : editingProject.data;
+
+  const isIdeaProject = !parsedData?.script_content;
+  const isApprovedIdea =
+    isIdeaProject && isIdeaApprovedByCEO(editingProject);
+
+  // ✅ Approved idea → convert to script
+  if (isApprovedIdea) {
     return (
-      <CreateScript 
-        project={editingProject} 
-        onClose={() => setEditingProject(null)} 
-        onSuccess={() => {
-          setEditingProject(null);
-          // Optionally refresh data here if needed
-        }}
+      <CreateScript
+        project={editingProject}
+        mode="SCRIPT_FROM_APPROVED_IDEA"
+        onClose={() => setEditingProject(null)}
+        onSuccess={() => setEditingProject(null)}
         creatorRole={Role.WRITER}
       />
     );
   }
-  
+
+  // ✅ Normal idea edit
+  if (isIdeaProject) {
+    return (
+      <CreateIdeaProject
+        project={editingProject}
+        onClose={() => setEditingProject(null)}
+        onSuccess={() => setEditingProject(null)}
+      />
+    );
+  }
+
+  // ✅ Normal script edit
+  return (
+    <CreateScript
+      project={editingProject}
+      onClose={() => setEditingProject(null)}
+      onSuccess={() => setEditingProject(null)}
+      creatorRole={Role.WRITER}
+    />
+  );
+}
+
   // If viewing project details
   if (selectedProject) {
     const isReadOnly = isProjectOpenedByReviewers(selectedProject);
-    
+      const parsedData = selectedProject.data;
+  const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
     return (
       <div className="p-8 space-y-6 animate-fade-in">
         <button
@@ -168,12 +234,19 @@ const isIdeaApprovedByCEO = (project: Project) => {
         </div>
 
         {/* SCRIPT CONTENT */}
-        <div className="border-2 border-black bg-white p-6 shadow">
-          <h3 className="font-black uppercase mb-3">Script Content</h3>
-          <pre className="whitespace-pre-wrap text-sm text-slate-900">
-            {selectedProject.data?.script_content || 'No script found'}
-          </pre>
-        </div>
+        {/* CONTENT */}
+<div className="border-2 border-black bg-white p-6 shadow">
+  <h3 className="font-black uppercase mb-3">
+    {isIdeaProject ? 'Idea Description' : 'Script Content'}
+  </h3>
+
+  <pre className="whitespace-pre-wrap text-sm text-slate-900">
+    {isIdeaProject
+      ? parsedData?.idea_description || 'No idea description found'
+      : parsedData?.script_content || 'No script found'}
+  </pre>
+</div>
+
         
         {/* REVIEWER COMMENTS */}
 {reviewComments.length > 0 && (
@@ -214,8 +287,24 @@ const isIdeaApprovedByCEO = (project: Project) => {
         </p>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="flex space-x-2 mb-4">
+        <button
+          className={`px-4 py-2 font-bold uppercase border-2 ${activeTab === 'IDEA' ? 'bg-[#D946EF] text-white border-black' : 'bg-white text-black border-black'} shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}
+          onClick={() => setActiveTab('IDEA')}
+        >
+          Idea
+        </button>
+        <button
+          className={`px-4 py-2 font-bold uppercase border-2 ${activeTab === 'SCRIPT' ? 'bg-[#D946EF] text-white border-black' : 'bg-white text-black border-black'} shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}
+          onClick={() => setActiveTab('SCRIPT')}
+        >
+          Script
+        </button>
+      </div>
+
       <div className="grid gap-4">
-        {myTasks.length === 0 ? (
+        {displayProjects.length === 0 ? (
           <div className="bg-slate-50 border-2 border-dashed border-slate-300 p-12 text-center">
             <CheckCircle className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-xl font-black uppercase text-slate-400">
@@ -224,32 +313,29 @@ const isIdeaApprovedByCEO = (project: Project) => {
             <p className="text-slate-500">No projects yet</p>
           </div>
         ) : (
-          myTasks.map(task => (
+          displayProjects.map(task => (
             <div
               key={task.id}
-              onClick={async () => {
- // Check if this is a CEO-approved idea project
- if (isIdeaApprovedByCEO(task)) {
-   setScriptFromIdea(task);
- } else {
-   setSelectedProject(task);
-   
-   const { data, error } = await import('../../src/integrations/supabase/client')
-     .then(m => m.supabase)
-     .then(supabase =>
-       supabase
-         .from('workflow_history')
-         .select('action, comment, actor_name, timestamp')
-         .eq('project_id', task.id)
-         .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-         .order('timestamp', { ascending: false })
-     );
-   
-   if (!error) {
-     setReviewComments(data || []);
-   }
- }
-}}
+              onClick={async (e) => {
+                e.stopPropagation();
+                // Always set selected project to show details view
+                setSelectedProject(task);
+                
+                const { data, error } = await import('../../src/integrations/supabase/client')
+                  .then(m => m.supabase)
+                  .then(supabase =>
+                    supabase
+                      .from('workflow_history')
+                      .select('action, comment, actor_name, timestamp')
+                      .eq('project_id', task.id)
+                      .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+                      .order('timestamp', { ascending: false })
+                  );
+                
+                if (!error) {
+                  setReviewComments(data || []);
+                }
+              }}
               className={`bg-white p-6 border-2 border-black cursor-pointer shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${task.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
             >
               {/* HEADER */}
@@ -321,55 +407,52 @@ const isIdeaApprovedByCEO = (project: Project) => {
                     className="flex items-center font-bold uppercase text-blue-600 hover:text-blue-800"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedProject(task);
+                      // This will show the project details view
+                      // Comments are already fetched when clicking the main card
                     }}
                   >
                     <FileText className="w-4 h-4 mr-2" />
                     View
                   </button>
+   {canModifyProject(task, user.id) && (
+  <button
+    className="flex items-center font-bold uppercase text-green-600 hover:text-green-800"
+    onClick={(e) => {
+      e.stopPropagation();
+      setEditingProject(task);
+    }}
+  >
+    <Edit3 className="w-4 h-4 mr-2" />
+    Edit
+  </button>
+)}
+
+
                   
-                  {/* Show Edit button for scripts that can be edited */}
-                  {task.created_by === user.id && (!isProjectOpenedByReviewers(task) || (task.data?.source === 'IDEA_PROJECT' && task.current_stage === WorkflowStage.SCRIPT && task.assigned_to_role === Role.WRITER)) && (
-                    <button 
-                      className="flex items-center font-bold uppercase text-green-600 hover:text-green-800"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingProject(task);
-                      }}
-                    >
-                      <Edit3 className="w-4 h-4 mr-2" />
-                      Edit
-                    </button>
-                  )}
-                  
-                  {/* Show Delete button for scripts that can be deleted */}
-                  {task.created_by === user.id && (!isProjectOpenedByReviewers(task) || (task.data?.source === 'IDEA_PROJECT' && task.current_stage === WorkflowStage.SCRIPT && task.assigned_to_role === Role.WRITER)) && (
-                    <button 
-                      className="flex items-center font-bold uppercase text-red-600 hover:text-red-800"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        
-                        // Confirmation dialog
-                        if (!window.confirm(`Are you sure you want to delete the script "${task.title}"? This action cannot be undone.`)) {
-                          return;
-                        }
-                        
-                        try {
-                          // Delete the project from Supabase
-                          await db.projects.delete(task.id);
-                          
-                          // Force a page refresh to update the list
-                          window.location.reload();
-                        } catch (error) {
-                          console.error('Error deleting project:', error);
-                          alert('Failed to delete project. Please try again.');
-                        }
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
-                    </button>
-                  )}
+    {canModifyProject(task, user.id) && (
+  <button
+    className="flex items-center font-bold uppercase text-red-600 hover:text-red-800"
+    onClick={async (e) => {
+      e.stopPropagation();
+
+      if (!window.confirm(`Are you sure you want to delete the project "${task.title}"? This action cannot be undone.`)) {
+        return;
+      }
+
+      try {
+        await db.projects.delete(task.id);
+        window.location.reload();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Failed to delete project. Please try again.');
+      }
+    }}
+  >
+    <Trash2 className="w-4 h-4 mr-2" />
+    Delete
+  </button>
+)}
+
                 </div>
               </div>
             </div>

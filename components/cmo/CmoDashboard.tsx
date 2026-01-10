@@ -455,9 +455,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
                         <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
-                          <span className="mr-2">By:</span> {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                        </div>
-                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                           <Clock className="w-3 h-3 mr-1" />
                           {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                         </div>

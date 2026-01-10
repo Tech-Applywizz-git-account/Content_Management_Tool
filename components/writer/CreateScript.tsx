@@ -16,14 +16,57 @@ interface Props {
 }
 
 const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRole, mode }) => {
-  const [formData, setFormData] = useState<ProjectData>(project?.data || {});
+  const parsedProjectData: ProjectData | null = React.useMemo(() => {
+    if (!project?.data) return null;
+    if (typeof project.data === 'string') {
+      try {
+        return JSON.parse(project.data);
+      } catch {
+        return null;
+      }
+    }
+    return project.data;
+  }, [project]);
+  
+  // Helper to check if project has script content
+  const hasScript = React.useMemo(() => !!parsedProjectData?.script_content, [parsedProjectData]);
+  
+  // Helper function to check if a reviewer (CMO or CEO) has accessed the project
+  const hasReviewerAccessed = React.useMemo(async (): Promise<boolean> => {
+    if (!project?.id) return false;
+    
+    try {
+      const { data: historyData, error: historyError } = await supabase
+        .from('workflow_history')
+        .select('actor_id')
+        .eq('project_id', project.id)
+        .in('actor_role', ['CMO', 'CEO']) // Assuming there's an actor_role field in workflow_history
+        .limit(1);
+      
+      if (historyError) {
+        console.error('Error checking reviewer access:', historyError);
+        return false;
+      }
+      
+      // If we find any history entries by CMO or CEO, they've accessed the project
+      return historyData && historyData.length > 0;
+    } catch (error) {
+      console.error('Error checking reviewer access:', error);
+      return false;
+    }
+  }, [project?.id]);
+  
+  // State for edit permission
+  const [canEdit, setCanEdit] = useState(true);
+  
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [formData, setFormData] = useState<ProjectData>(parsedProjectData || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reviewComment, setReviewComment] = useState<any>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [previousScript, setPreviousScript] = useState<string | null>(null);
   const [previousIdeaDescription, setPreviousIdeaDescription] = useState<string | null>(null);
   const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null); // 'rework' or 'reject'
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +80,24 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   });
 
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Sync editor state when project changes
+  useEffect(() => {
+    if (project) {
+      // Update parsedProjectData and formData when project changes
+      const updatedParsedData = parsedProjectData;
+      setFormData(updatedParsedData || {});
+      
+      // Update newProjectDetails when project changes
+      setNewProjectDetails({
+        title: project.title || '',
+        channel: project.channel || '',
+        contentType: project.content_type || '',
+        dueDate: project.due_date || new Date().toISOString().split('T')[0],
+        priority: project.priority || 'NORMAL'
+      });
+    }
+  }, [project, parsedProjectData]);
 
   // Popup state for submit
   const [showPopup, setShowPopup] = useState(false);
@@ -53,10 +114,15 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const isFromIdea = project?.data?.source === 'IDEA_PROJECT' &&
     project.history?.some(h => h.action === 'APPROVED' && h.stage === 'FINAL_REVIEW_CEO');
 
-  const isPureIdeaEdit =
-    project?.data?.source === 'IDEA_PROJECT' &&
-    !isScriptFromApprovedIdea &&
-    !isFromIdea;
+  // A project is a pure idea ONLY if source is IDEA_PROJECT AND script_content does NOT exist
+  const isPureIdeaEdit = React.useMemo(() => {
+    const parsedData = parsedProjectData;
+    return parsedData?.source === 'IDEA_PROJECT' &&
+           !hasScript &&
+           !isScriptFromApprovedIdea &&
+           !isFromIdea;
+  }, [parsedProjectData, hasScript, isScriptFromApprovedIdea, isFromIdea]);
+    
 
   // Load user effect
   useEffect(() => {
@@ -77,6 +143,91 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     };
     loadUser();
   }, []);
+
+  useEffect(() => {
+  if (!project) return;
+
+  const parsed =
+    typeof project.data === 'string'
+      ? JSON.parse(project.data)
+      : project.data;
+
+  setFormData({
+    ...parsed,
+    script_content: parsed?.script_content || '',
+    brief: parsed?.brief || ''
+  });
+
+  setNewProjectDetails({
+    title: project.title || '',
+    channel: project.channel || '',
+    contentType: project.content_type || '',
+    dueDate: project.due_date || new Date().toISOString().split('T')[0],
+    priority: project.priority || 'NORMAL'
+  });
+}, [project]);
+
+  
+  // Check edit permissions after user is loaded
+  useEffect(() => {
+    if (project && currentUser) {
+      const checkEditPermission = async () => {
+        // Writer can edit/delete ONLY if:
+        // 1. The project was created by the writer
+        // 2. CMO or CEO has not opened the project
+        const isCreator = project.created_by_user_id === currentUser.id;
+        
+        if (!isCreator) {
+          setCanEdit(false);
+          return;
+        }
+        
+        // Check if reviewer has accessed by looking for review-related actions in history
+        if (project.id) {
+          try {
+            const { data: historyData, error: historyError } = await supabase
+              .from('workflow_history')
+              .select('actor_id, action, timestamp')
+              .eq('project_id', project.id)
+              .order('timestamp', { ascending: false });
+            
+            if (!historyError && historyData) {
+              // Check if any CMO or CEO has reviewed the project
+              for (const history of historyData) {
+                // Get the role of the actor who accessed the project
+                const { data: userData, error: userError } = await supabase
+                  .from('users')
+                  .select('role')
+                  .eq('id', history.actor_id)
+                  .single();
+                
+                if (!userError && userData && 
+                    (userData.role === 'CMO' || userData.role === 'CEO')) {
+                  // If a reviewer has accessed the project (not just viewed), set canEdit to false
+                  // Consider actions like 'REVIEWED', 'APPROVED', 'REJECTED', 'REWORK' as access
+                  if (['REVIEWED', 'APPROVED', 'REJECTED', 'REWORK', 'SUBMITTED'].includes(history.action)) {
+                    setCanEdit(false);
+                    return;
+                  }
+                }
+              }
+              // If no reviewer has accessed, the creator can still edit
+              setCanEdit(true);
+            } else {
+              setCanEdit(true);
+            }
+          } catch (error) {
+            console.error('Error checking reviewer access:', error);
+            setCanEdit(true);
+          }
+        } else {
+          setCanEdit(true);
+        }
+      };
+      
+      checkEditPermission();
+    }
+  }, [project, currentUser]);
 
   // Validation effect
   useEffect(() => {
@@ -396,8 +547,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
         console.log('✅ Successfully created new script project from approved idea:', newScript.id);
       } else {
-        // 1️⃣ CREATE PROJECT FIRST (if new)
+        // For existing projects (editing), use the existing project ID
         if (!realProjectId) {
+          // 1️⃣ CREATE PROJECT FIRST (if new)
           const createdProject = await db.createProject(
             newProjectDetails.title,
             newProjectDetails.channel,
@@ -423,6 +575,24 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
           realProjectId = createdProject.id;
           console.log('✅ Project created with ID:', realProjectId);
+        } else {
+          // 2️⃣ UPDATE EXISTING PROJECT DATA (for edits)
+          const updateData = {
+            ...formData,
+          };
+
+          if (creatorRole === Role.CMO) {
+            // Store CMO information
+            updateData.cmo_id = currentUser?.id;
+            updateData.cmo_name = currentUser?.full_name;
+          } else {
+            // Default to Writer information
+            updateData.writer_id = currentUser?.id;
+            updateData.writer_name = currentUser?.full_name;
+          }
+
+          await db.updateProjectData(realProjectId, updateData);
+          console.log('✅ Existing project data updated');
         }
 
         // 2️⃣ HARD SAFETY CHECK
@@ -440,39 +610,23 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           throw new Error('Title is required. Please enter a title for your script.');
         }
 
-        if (!newProjectDetails.channel) {
-          throw new Error('Channel is required. Please select a channel for your script.');
-        }
+        if (!realProjectId) {
+          if (!newProjectDetails.channel) {
+            throw new Error('Channel is required. Please select a channel for your script.');
+          }
 
-        if (!newProjectDetails.contentType) {
-          throw new Error('Content type is required. Please select a content type for your script.');
-        }
+          if (!newProjectDetails.contentType) {
+            throw new Error('Content type is required. Please select a content type for your script.');
+          }
 
-        // Validate thumbnail requirement for video content
-        if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
-          throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
+          // Validate thumbnail requirement for video content
+          if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
+            throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
+          }
         }
 
         // Small delay to ensure project is fully created before proceeding
         await new Promise(resolve => setTimeout(resolve, 100));
-
-        // 3️⃣ SAVE SCRIPT + CREATOR INFO (ONCE)
-        const creatorData = {
-          ...formData,
-        };
-
-        if (creatorRole === Role.CMO) {
-          // Store CMO information
-          creatorData.cmo_id = currentUser?.id;
-          creatorData.cmo_name = currentUser?.full_name;
-        } else {
-          // Default to Writer information
-          creatorData.writer_id = currentUser?.id;
-          creatorData.writer_name = currentUser?.full_name;
-        }
-
-        await db.updateProjectData(realProjectId, creatorData);
-        console.log('✅ Project data updated');
 
         // 4️⃣ SUBMIT WORKFLOW
         // Determine workflow based on latest action
@@ -774,16 +928,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         <div className="flex items-center space-x-4">
           <button
             onClick={handleSaveDraft}
-            disabled={!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
-            className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
+            className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <Save className="w-4 h-4 mr-2" />
             Draft
           </button>
           <button
             onClick={() => setShowConfirmation(true)}
-            disabled={isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))}
-            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))}
+            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
           >
             {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
             <Send className="w-4 h-4 ml-2" />
@@ -798,7 +952,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           <div className="lg:col-span-1 space-y-6">
 
             {/* Project Info */}
-            {(!project || isScriptFromApprovedIdea) && (
+            {!isPureIdeaEdit && (
               <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
                 <h3 className="font-black uppercase text-lg text-slate-900">
                   Project Info
@@ -813,8 +967,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     type="text"
                     value={newProjectDetails.title}
                     onChange={e =>
-                      setNewProjectDetails({ ...newProjectDetails, title: e.target.value })
+                      canEdit ? setNewProjectDetails({ ...newProjectDetails, title: e.target.value }) : null
                     }
+                    readOnly={!canEdit}
                     className="w-full p-4 border-2 border-black font-bold focus:bg-yellow-50 focus:outline-none"
                     placeholder="e.g. Q4 Updates"
                   />
@@ -830,12 +985,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       <button
                         key={c}
                         onClick={() =>
-                          setNewProjectDetails({ ...newProjectDetails, channel: c })
+                          canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
                         }
+                        disabled={!canEdit}
                         className={`p-2 text-[10px] font-black uppercase border-2 border-black ${newProjectDetails.channel === c
                           ? 'bg-black text-white'
                           : 'bg-white hover:bg-slate-50'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {c}
                       </button>
@@ -851,26 +1007,28 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() =>
-                        setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' })
+                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' }) : null
                       }
+                      disabled={!canEdit}
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'VIDEO'
                         ? 'bg-[#0085FF] text-white'
                         : 'bg-white hover:bg-slate-50'
-                        }`}
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       📹 Video
                     </button>
                     <button
                       onClick={() =>
-                        setNewProjectDetails({
+                        canEdit ? setNewProjectDetails({
                           ...newProjectDetails,
                           contentType: 'CREATIVE_ONLY',
-                        })
+                        }) : null
                       }
+                      disabled={!canEdit}
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'CREATIVE_ONLY'
                         ? 'bg-[#D946EF] text-white'
                         : 'bg-white hover:bg-slate-50'
-                        }`}
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       🎨 Creative Only
                     </button>
@@ -885,8 +1043,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => setFormData({ ...formData, thumbnail_required: true })}
+                        onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: true }) : null}
+                        disabled={!canEdit}
                         className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === true
+                          ? 'bg-black text-white'
+                          : 'bg-white hover:bg-slate-50'
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                             ? 'bg-black text-white'
                             : 'bg-white hover:bg-slate-50'
                           }`}
@@ -894,11 +1056,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         Yes
                       </button>
                       <button
-                        onClick={() => setFormData({ ...formData, thumbnail_required: false })}
+                        onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: false }) : null}
+                        disabled={!canEdit}
                         className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === false
                           ? 'bg-black text-white'
                           : 'bg-white hover:bg-slate-50'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         No
                       </button>
@@ -915,7 +1078,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                             <input
                               type="text"
                               value={formData.reference_thumbnail_link || ''}
-                              onChange={e => setFormData({ ...formData, reference_thumbnail_link: e.target.value })}
+                              onChange={e => canEdit ? setFormData({ ...formData, reference_thumbnail_link: e.target.value }) : null}
+                              readOnly={!canEdit}
                               className="flex-1 p-2 border-2 border-black focus:bg-yellow-50 focus:outline-none"
                               placeholder="Paste thumbnail link here"
                             />
@@ -928,7 +1092,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           </label>
                           <textarea
                             value={formData.thumbnail_notes || ''}
-                            onChange={e => setFormData({ ...formData, thumbnail_notes: e.target.value })}
+                            onChange={e => canEdit ? setFormData({ ...formData, thumbnail_notes: e.target.value }) : null}
+                            readOnly={!canEdit}
                             className="w-full p-2 border-2 border-black min-h-[100px] focus:bg-yellow-50 focus:outline-none resize-none"
                             placeholder="Describe your thumbnail concept, colors, composition, text overlay, etc."
                           />
@@ -954,8 +1119,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       type="text"
                       value={formData.actor || ''}
                       onChange={e =>
-                        setFormData({ ...formData, actor: e.target.value })
+                        canEdit ? setFormData({ ...formData, actor: e.target.value }) : null
                       }
+                      readOnly={!canEdit}
                       className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
                       placeholder="e.g. Female presenter, 30s, business attire"
                     />
@@ -969,8 +1135,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       type="text"
                       value={formData.location || ''}
                       onChange={e =>
-                        setFormData({ ...formData, location: e.target.value })
+                        canEdit ? setFormData({ ...formData, location: e.target.value }) : null
                       }
+                      readOnly={!canEdit}
                       className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
                       placeholder="e.g. Office, studio, outdoor street"
                     />
@@ -984,8 +1151,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       type="text"
                       value={formData.lighting || ''}
                       onChange={e =>
-                        setFormData({ ...formData, lighting: e.target.value })
+                        canEdit ? setFormData({ ...formData, lighting: e.target.value }) : null
                       }
+                      readOnly={!canEdit}
                       className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
                       placeholder="e.g. Soft daylight, cinematic, low-key"
                     />
@@ -999,8 +1167,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       type="text"
                       value={formData.angles || ''}
                       onChange={e =>
-                        setFormData({ ...formData, angles: e.target.value })
+                        canEdit ? setFormData({ ...formData, angles: e.target.value }) : null
                       }
+                      readOnly={!canEdit}
                       className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
                       placeholder="e.g. Medium shot, close-up, over-the-shoulder"
                     />
@@ -1017,12 +1186,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       <button
                         key={p}
                         onClick={() =>
-                          setNewProjectDetails({ ...newProjectDetails, priority: p })
+                          canEdit ? setNewProjectDetails({ ...newProjectDetails, priority: p }) : null
                         }
+                        disabled={!canEdit}
                         className={`p-2 text-xs font-black uppercase border-2 border-black ${newProjectDetails.priority === p
                           ? 'bg-black text-white'
                           : 'bg-white hover:bg-slate-50'
-                          }`}
+                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {p}
                       </button>
@@ -1040,7 +1210,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </h3>
                 <textarea
                   value={formData.idea_description || ''}
-                  onChange={e => setFormData({ ...formData, idea_description: e.target.value })}
+                  onChange={e => canEdit ? setFormData({ ...formData, idea_description: e.target.value }) : null}
+                  readOnly={!canEdit}
                   className="w-full p-4 border-2 border-black min-h-[200px] focus:bg-yellow-50 focus:outline-none resize-none"
                   placeholder={isRework ? "Update the idea description based on the review comments..." : "Describe your idea..."}
                 />
@@ -1054,7 +1225,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               </h3>
               <textarea
                 value={formData.brief || ''}
-                onChange={e => setFormData({ ...formData, brief: e.target.value })}
+                onChange={e => canEdit ? setFormData({ ...formData, brief: e.target.value }) : null}
+                readOnly={!canEdit}
                 className="w-full p-4 border-2 border-black min-h-[200px] focus:bg-yellow-50 focus:outline-none resize-none"
                 placeholder="What is the goal of this content?"
               />
@@ -1138,8 +1310,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 <textarea
                   value={formData.script_content || ''}
                   onChange={e =>
-                    setFormData({ ...formData, script_content: e.target.value })
+                    canEdit ? setFormData({ ...formData, script_content: e.target.value }) : null
                   }
+                  readOnly={!canEdit}
                   className="flex-1 w-full text-lg resize-none outline-none font-serif"
                   placeholder="Start writing your script here..."
                 />
