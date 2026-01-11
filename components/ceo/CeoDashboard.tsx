@@ -691,7 +691,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   <div className="flex flex-wrap gap-2 items-start mb-6 pr-8">
                     {project.data?.source === 'IDEA_PROJECT' && (
                       <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                        IDEA
+                        {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                       </span>
                     )}
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -738,7 +738,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Stage</span>
                           <span className="font-bold text-slate-900 uppercase text-xs">
-                            {project.data?.source === 'IDEA_PROJECT' ? 'IDEA REVIEW' : STAGE_LABELS[project.current_stage] || project.current_stage}
+                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'IDEA REVIEW' : project.data?.source === 'IDEA_PROJECT' && project.data?.script_content ? 'IDEA-TO-SCRIPT REVIEW' : STAGE_LABELS[project.current_stage] || project.current_stage}
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">
@@ -751,7 +751,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Current Stage</span>
                           <span className="font-bold text-slate-900 uppercase text-xs">
-                            {project.data?.source === 'IDEA_PROJECT' ? 'IDEA REVIEW' : STAGE_LABELS[project.current_stage]}
+                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'IDEA REVIEW' : project.data?.source === 'IDEA_PROJECT' && project.data?.script_content ? 'IDEA-TO-SCRIPT REVIEW' : STAGE_LABELS[project.current_stage]}
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">

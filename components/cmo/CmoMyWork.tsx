@@ -79,9 +79,14 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
               )}
 
               <div className="flex justify-between pt-3 border-t">
-                <div className="flex items-center text-xs font-bold uppercase text-slate-500">
-                  <Clock className="w-4 h-4 mr-2" />
-                  Submitted {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
+                <div className="flex flex-col">
+                  <div className="flex items-center text-xs font-bold uppercase text-slate-500">
+                    <Clock className="w-4 h-4 mr-2" />
+                    By: {task.writer_name || task.data?.writer_name || task.created_by_name || 'Unknown Writer'}
+                  </div>
+                  <div className="flex items-center text-xs font-bold uppercase text-slate-500 mt-1">
+                    Submitted {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
+                  </div>
                 </div>
 
                 <div className="flex items-center text-xs font-bold uppercase text-blue-600">

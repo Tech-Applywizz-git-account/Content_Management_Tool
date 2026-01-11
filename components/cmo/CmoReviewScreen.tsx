@@ -200,6 +200,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 );
 
                 setStageName(`Rework → ${roleLabel}`);
+                setPopupDuration(5000); // auto-close for rework
+                setTimeout(() => {
+                    setShowPopup(true);
+                }, 0);
 
             } else if (decision === 'REJECT') {
                 // Full Reject - don't send back to a specific role, just reject the project
@@ -223,8 +227,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
     const getReworkOptions = () => {
-        // For idea projects, always send back to Writer regardless of stage
-        if (project.data?.source === 'IDEA_PROJECT') {
+        // For pure idea projects (without script content), always send back to Writer regardless of stage
+        if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
         }
 
@@ -265,13 +269,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     </button>
                     <div>
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea Review: ' : 'Script Review: '}
+                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
                             {project.title}
                         </h1>
                         <div className="flex items-center space-x-2 mt-1">
                             {project.data?.source === 'IDEA_PROJECT' && (
                                 <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                    IDEA PROJECT
+                                    {'SCRIPT'}
                                 </span>
                             )}
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
@@ -331,7 +335,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'IDEA_PROJECT' ? 'Idea' : previousScript ? 'Rework' : 'New'}
+                                {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -374,7 +378,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">
-                                {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script & Message'}
+                                {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message'}
                             </h3>
                             <button
                                 onClick={downloadPDF}
@@ -395,7 +399,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     {/* Previous Script */}
                                     <div className="bg-white border-2 border-slate-300 p-6">
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
+                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
                                         </h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                             {previousScript}
@@ -405,10 +409,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     {/* Current Script */}
                                     <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            {project.data?.source === 'IDEA_PROJECT' ? 'Current Idea' : 'Current Script'}
+                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
                                         </h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
-                                            {project.data?.source === 'IDEA_PROJECT'
+                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                 ? project.data.idea_description
                                                 : project.data?.script_content || 'No script content available.'}
                                         </div>
@@ -419,7 +423,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div
                                     className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    {project.data?.source === 'IDEA_PROJECT'
+                                    {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                         ? project.data.idea_description
                                         : project.data?.script_content || 'No script content available.'}
                                 </div>

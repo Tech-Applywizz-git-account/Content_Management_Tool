@@ -381,7 +381,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           {STAGE_LABELS[p.current_stage]}
                         </div>
                         <div className="col-span-2">
-                          <div className="text-xs font-bold uppercase text-slate-700 mb-1">
+                          <div className="text-xs font-bold uppercase text-slate-700">
                             By: {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
                           <div className="text-xs font-bold text-slate-500 uppercase">
@@ -425,7 +425,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           {p.data?.source === 'IDEA_PROJECT' && (
                             <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              IDEA
+                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -454,9 +454,14 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
                         </div>
                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
-                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                          </div>
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -479,7 +484,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           {p.data?.source === 'IDEA_PROJECT' && (
                             <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              IDEA
+                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
                           <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
@@ -522,7 +527,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           {p.data?.source === 'IDEA_PROJECT' && (
                             <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              IDEA
+                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :

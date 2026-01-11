@@ -56,8 +56,46 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   }
 
   return project.history.some(h =>
-    ['REVIEWED', 'APPROVED', 'REWORK', 'REJECTED'].includes(h.action)
+    ['REVIEWED', 'APPROVED', 'REJECTED'].includes(h.action)
   );
+};
+
+// Function to check if a project is in rework state
+const isReworkProject = (project: Project): boolean => {
+  if (!project.history || project.history.length === 0) {
+    return false;
+  }
+
+  return project.history.some(h =>
+    h.action === 'REWORK'
+  );
+};
+
+// Function to check if a rework project has been opened by the next reviewer after rework
+const isReworkOpenedByNextReviewer = (project: Project): boolean => {
+  if (!project.history || project.history.length === 0) {
+    return false;
+  }
+
+  // Find the most recent rework action
+  const reworkActions = project.history
+    .filter(h => h.action === 'REWORK')
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  if (reworkActions.length === 0) {
+    return false;
+  }
+
+  const lastReworkTimestamp = new Date(reworkActions[0].timestamp);
+
+  // Check if there are any REVIEWED, APPROVED, or REJECTED actions after the last rework
+  return project.history.some(h => {
+    const actionTimestamp = new Date(h.timestamp);
+    return (
+      actionTimestamp > lastReworkTimestamp &&
+      ['REVIEWED', 'APPROVED', 'REJECTED'].includes(h.action)
+    );
+  });
 };
 
 
@@ -96,7 +134,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   new Map(
     (fullyNormalizedProjects as Project[])
       .filter(project => {
-        const isIdea = !project.data?.script_content;
+        const isIdea = !project.data?.script_content && project.data?.source === 'IDEA_PROJECT';
         return project.created_by_user_id === user.id && isIdea;
       })
       .map(project => [project.id, project])
@@ -108,15 +146,24 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
     (fullyNormalizedProjects as Project[])
       .filter(project =>
         !!project.data?.script_content &&
-        project.created_by_user_id === user.id
+        project.created_by_user_id === user.id &&
+        // Include projects that have script content, regardless of source
+        // This allows scripts that originated from IDEA projects to appear in SCRIPT tab
+        (!!project.data?.script_content)
       )
       .map(project => [project.id, project])
   ).values()
 );
 const canModifyProject = (project: Project, userId: string) => {
+  // Check if it's a rework project that hasn't been opened by next reviewer
+  const isReworkNotOpened = isReworkProject(project) && !isReworkOpenedByNextReviewer(project);
+  
+  // Check if it's an IDEA project in rework status
+  const isIdeaRework = project.data?.source === 'IDEA_PROJECT' && project.status === 'REWORK';
+  
   return (
     project.created_by_user_id === userId &&
-    !isProjectOpenedByReviewers(project)
+    (!isProjectOpenedByReviewers(project) || isReworkNotOpened || isIdeaRework)
   );
 };
 
@@ -147,7 +194,7 @@ const canModifyProject = (project: Project, userId: string) => {
       ? JSON.parse(editingProject.data)
       : editingProject.data;
 
-  const isIdeaProject = !parsedData?.script_content;
+  const isIdeaProject = !parsedData?.script_content || parsedData?.source === 'IDEA_PROJECT';
   const isApprovedIdea =
     isIdeaProject && isIdeaApprovedByCEO(editingProject);
 
@@ -248,11 +295,11 @@ const canModifyProject = (project: Project, userId: string) => {
 </div>
 
         
-        {/* REVIEWER COMMENTS */}
+        {/* COMMENTS SECTION */}
 {reviewComments.length > 0 && (
   <div className="border-2 border-black bg-red-50 p-6 shadow">
     <h3 className="font-black uppercase mb-3 text-red-700">
-      Reviewer Comments
+      {selectedProject.data?.source === 'IDEA_PROJECT' ? 'Rework Comments' : 'Reviewer Comments'}
     </h3>
 
     {reviewComments.map((c, i) => (
@@ -318,22 +365,31 @@ const canModifyProject = (project: Project, userId: string) => {
               key={task.id}
               onClick={async (e) => {
                 e.stopPropagation();
-                // Always set selected project to show details view
-                setSelectedProject(task);
                 
-                const { data, error } = await import('../../src/integrations/supabase/client')
-                  .then(m => m.supabase)
-                  .then(supabase =>
-                    supabase
-                      .from('workflow_history')
-                      .select('action, comment, actor_name, timestamp')
-                      .eq('project_id', task.id)
-                      .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-                      .order('timestamp', { ascending: false })
-                  );
+                // Check if this is a rework project that the writer can edit
+                const isReworkNotOpened = isReworkProject(task) && !isReworkOpenedByNextReviewer(task);
                 
-                if (!error) {
-                  setReviewComments(data || []);
+                if (canModifyProject(task, user.id) || isReworkNotOpened) {
+                  // For rework projects or projects that can be modified, go directly to edit mode
+                  setEditingProject(task);
+                } else {
+                  // Otherwise, show the details view
+                  setSelectedProject(task);
+                  
+                  const { data, error } = await import('../../src/integrations/supabase/client')
+                    .then(m => m.supabase)
+                    .then(supabase =>
+                      supabase
+                        .from('workflow_history')
+                        .select('action, comment, actor_name, timestamp')
+                        .eq('project_id', task.id)
+                        .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+                        .order('timestamp', { ascending: false })
+                    );
+                  
+                  if (!error) {
+                    setReviewComments(data || []);
+                  }
                 }
               }}
               className={`bg-white p-6 border-2 border-black cursor-pointer shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${task.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
@@ -351,6 +407,13 @@ const canModifyProject = (project: Project, userId: string) => {
                 >
                   {task.channel}
                 </span>
+                
+                {/* Show IDEA badge for idea projects */}
+                {(task.data?.source === 'IDEA_PROJECT' || !task.data?.script_content) && (
+                  <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                    IDEA
+                  </span>
+                )}
                 
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.priority === 'HIGH'
@@ -407,8 +470,27 @@ const canModifyProject = (project: Project, userId: string) => {
                     className="flex items-center font-bold uppercase text-blue-600 hover:text-blue-800"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // This will show the project details view
-                      // Comments are already fetched when clicking the main card
+                      setSelectedProject(task);
+                      
+                      // Fetch comments for the selected project
+                      const fetchComments = async () => {
+                        const { data, error } = await import('../../src/integrations/supabase/client')
+                          .then(m => m.supabase)
+                          .then(supabase =>
+                            supabase
+                              .from('workflow_history')
+                              .select('action, comment, actor_name, timestamp')
+                              .eq('project_id', task.id)
+                              .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+                              .order('timestamp', { ascending: false })
+                          );
+                        
+                        if (!error) {
+                          setReviewComments(data || []);
+                        }
+                      };
+                      
+                      fetchComments();
                     }}
                   >
                     <FileText className="w-4 h-4 mr-2" />

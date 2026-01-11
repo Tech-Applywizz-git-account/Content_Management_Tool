@@ -25,6 +25,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
     const [reworkProject, setReworkProject] = useState<Project | null>(null);
+    const [createScriptMode, setCreateScriptMode] = useState<'SCRIPT_FROM_APPROVED_IDEA' | undefined>(undefined);
     const [refreshKey, setRefreshKey] = useState(0);
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
@@ -101,10 +102,19 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     // Categorize Projects - mutually exclusive categorization
     const inReview = dashboardProjects.filter(p =>
         (p.created_by === user.id || p.created_by_user_id === user.id) &&
-        [
-            WorkflowStage.SCRIPT_REVIEW_L1,
-            WorkflowStage.SCRIPT_REVIEW_L2
-        ].includes(p.current_stage)
+        (
+            // Include script projects in review stages
+            [
+                WorkflowStage.SCRIPT_REVIEW_L1,
+                WorkflowStage.SCRIPT_REVIEW_L2
+            ].includes(p.current_stage) ||
+            // Include idea projects in review stages
+            (p.data?.source === 'IDEA_PROJECT' &&
+             [
+                WorkflowStage.FINAL_REVIEW_CMO,
+                WorkflowStage.FINAL_REVIEW_CEO
+             ].includes(p.current_stage))
+        )
     );
 
     const inProduction = dashboardProjects.filter(p =>
@@ -120,30 +130,31 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         ].includes(p.current_stage)
     );
 
-
-   const drafts = dashboardProjects.filter(p =>
-  // 1️⃣ Belongs to this writer
+const drafts = dashboardProjects.filter(p =>
   (
     p.created_by === user.id ||
     p.created_by_user_id === user.id ||
     p.writer_id === user.id
   ) &&
 
-  // 2️⃣ Not yet opened by CMO / CEO
-  !(
-    p.first_review_opened_at &&
-    ['CMO', 'CEO'].includes(p.first_review_opened_by_role || '')
-  ) &&
-
-  // 3️⃣ Draft or Rework state
   (
-    p.current_stage === WorkflowStage.SCRIPT ||
-    p.current_stage === WorkflowStage.REWORK ||
-    p.status === TaskStatus.REWORK
+    // ✅ ALWAYS allow REWORK projects
+    p.status === TaskStatus.REWORK ||
+
+    // ✅ Allow fresh drafts that are NOT opened by CMO/CEO
+    (
+      !(
+        p.first_review_opened_at &&
+        ['CMO', 'CEO'].includes(p.first_review_opened_by_role || '')
+      ) &&
+      (
+        p.current_stage === WorkflowStage.SCRIPT ||
+        (p.data?.source === 'IDEA_PROJECT' && 
+         ![WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(p.current_stage))
+      )
+    )
   )
 );
-
-
 
 
     const rejectedProjects = dashboardProjects.filter(p =>
@@ -166,22 +177,49 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         )
     );
 
+const handleEdit = (project: Project) => {
+  const parsedData =
+    typeof project.data === 'string'
+      ? JSON.parse(project.data)
+      : project.data;
 
-    const handleEdit = (project: Project) => {
-        // Check if this is an idea project (no script content)
-        const parsedData = typeof project.data === 'string' ? JSON.parse(project.data) : project.data;
-        const isIdeaProject = !parsedData?.script_content;
-        
-        if (isIdeaProject) {
-            // Open CreateIdeaProject for editing idea projects
-            setEditingProject(project);
-            setIsCreatingIdea(true);
-        } else {
-            // Open CreateScript for editing script projects
-            setEditingProject(project);
-            setIsCreating(true);
-        }
-    };
+  const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
+  const isRework = project.status === 'REWORK';
+
+  // ✅ IDEA + REWORK → editable idea form
+  // Only for projects that are truly ideas (no script content)
+  if (isIdeaProject && isRework && !parsedData?.script_content) {
+    setEditingProject(project);
+    setIsCreatingIdea(true);
+    return;
+  }
+
+  // ✅ IDEA + APPROVED BY CEO (needs to be converted to script) → editable script form
+  if (isIdeaProject && project.current_stage === 'SCRIPT' && project.assigned_to_role === 'WRITER') {
+    setScriptFromIdea(project); // Open the script editor for approved idea
+    return;
+  }
+
+  // ❌ IDEA + REJECTED → read-only (do nothing)
+  if (isIdeaProject && project.status === 'REJECTED') {
+    return;
+  }
+
+  // ✅ IDEA (not rework or rejected) → editable idea form
+  if (isIdeaProject && !isRework && project.status !== 'REJECTED') {
+    setEditingProject(project);
+    setIsCreatingIdea(true);
+    return;
+  }
+
+  // ✅ SCRIPT + REWORK → editable script form
+  if (!isIdeaProject && isRework) {
+    setEditingProject(project);
+    setIsCreating(true);
+    return;
+  }
+};
+
 
 
 
@@ -274,18 +312,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
     }
 
-    // ✅ FULL PAGE: Convert Approved Idea → Script
-    if (scriptFromIdea) {
-        return (
-            <CreateScript
-                project={scriptFromIdea}
-                mode="SCRIPT_FROM_APPROVED_IDEA"
-                onClose={handleCloseWithoutAction}
-                onSuccess={handleCloseCreate}
-            />
-        );
-    }
-
     return (
         <Layout
             user={user as any}
@@ -349,6 +375,12 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                 }`}>
                                                 {p.channel}
                                             </span>
+                                            {/* Show IDEA badge for idea projects */}
+                                            {p.data?.source === 'IDEA_PROJECT' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                                    {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                                </span>
+                                            )}
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                                     ? 'bg-red-600 text-white font-black'
@@ -393,6 +425,12 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                     >
                                         <div className="flex justify-between items-start mb-4">
                                             <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                                            {/* Show IDEA badge for idea projects */}
+                                            {p.data?.source === 'IDEA_PROJECT' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                                    {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                                </span>
+                                            )}
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                                     ? 'bg-red-600 text-white font-black'
@@ -414,6 +452,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
+                                            <Clock className="w-3 h-3 mr-1" />
+                                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                                        </div>
 
                                         <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
@@ -439,6 +482,12 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                 }`}>
                                                 {p.channel}
                                             </span>
+                                            {/* Show IDEA badge for idea projects */}
+                                            {p.data?.source === 'IDEA_PROJECT' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                                    {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                                </span>
+                                            )}
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                                                     ? 'bg-red-600 text-white font-black'
@@ -461,6 +510,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
+                                            <Clock className="w-3 h-3 mr-1" />
+                                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                                        </div>
 
                                         <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-2">
                                             <div className="bg-[#4ADE80] h-full w-3/4"></div>
@@ -506,7 +560,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             Approved by CEO. Click to convert into a full script.
                                         </p>
 
-                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-4 border-t-2 border-slate-100 pt-3">
+                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                             <Clock className="w-3 h-3 mr-1" />
                                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                                         </div>

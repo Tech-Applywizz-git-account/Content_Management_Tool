@@ -36,20 +36,45 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     if (!project?.id) return false;
     
     try {
+      // First, get workflow history entries for this project
       const { data: historyData, error: historyError } = await supabase
         .from('workflow_history')
         .select('actor_id')
         .eq('project_id', project.id)
-        .in('actor_role', ['CMO', 'CEO']) // Assuming there's an actor_role field in workflow_history
-        .limit(1);
+        .limit(10); // Get recent history entries
       
       if (historyError) {
         console.error('Error checking reviewer access:', historyError);
         return false;
       }
       
-      // If we find any history entries by CMO or CEO, they've accessed the project
-      return historyData && historyData.length > 0;
+      // If no history entries, no reviewer has accessed
+      if (!historyData || historyData.length === 0) {
+        return false;
+      }
+      
+      // Get unique actor IDs from history, filtering out null values
+      const actorIds = [...new Set(historyData.map(entry => entry.actor_id).filter(id => id !== null && id !== undefined))];
+      
+      // Only proceed if we have valid actor IDs
+      if (actorIds.length === 0) {
+        return false;
+      }
+      
+      // Check if any of these actors are CMO or CEO
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, role')
+        .in('id', actorIds)
+        .in('role', ['CMO', 'CEO']);
+      
+      if (userError) {
+        console.error('Error checking user roles:', userError);
+        return false;
+      }
+      
+      // Return true if any of the actors who accessed the project are CMO or CEO
+      return userData && userData.length > 0;
     } catch (error) {
       console.error('Error checking reviewer access:', error);
       return false;
@@ -84,10 +109,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Sync editor state when project changes
   useEffect(() => {
     if (project) {
-      // Update parsedProjectData and formData when project changes
-      const updatedParsedData = parsedProjectData;
-      setFormData(updatedParsedData || {});
-      
       // Update newProjectDetails when project changes
       setNewProjectDetails({
         title: project.title || '',
@@ -97,7 +118,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         priority: project.priority || 'NORMAL'
       });
     }
-  }, [project, parsedProjectData]);
+  }, [project]);
+  
+  // Initialize formData once when component mounts and project is available
+  useEffect(() => {
+    if (project && parsedProjectData) {
+      setFormData(prevFormData => ({
+        ...prevFormData,
+        ...parsedProjectData
+      }));
+    }
+  }, []); // Empty dependency array to run only once
 
   // Popup state for submit
   const [showPopup, setShowPopup] = useState(false);
@@ -114,7 +145,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const isFromIdea = project?.data?.source === 'IDEA_PROJECT' &&
     project.history?.some(h => h.action === 'APPROVED' && h.stage === 'FINAL_REVIEW_CEO');
 
-  // A project is a pure idea ONLY if source is IDEA_PROJECT AND script_content does NOT exist
+  // A project is a pure idea ONLY if source is IDEA_PROJECT AND script_content does NOT exist AND it's not being converted from an approved idea
   const isPureIdeaEdit = React.useMemo(() => {
     const parsedData = parsedProjectData;
     return parsedData?.source === 'IDEA_PROJECT' &&
@@ -122,6 +153,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
            !isScriptFromApprovedIdea &&
            !isFromIdea;
   }, [parsedProjectData, hasScript, isScriptFromApprovedIdea, isFromIdea]);
+  
+  // Show idea description as reference when converting an approved idea to script
+  const showIdeaAsReference = React.useMemo(() => {
+    return isScriptFromApprovedIdea && parsedProjectData?.source === 'IDEA_PROJECT';
+  }, [isScriptFromApprovedIdea, parsedProjectData]);
     
 
   // Load user effect
@@ -194,6 +230,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             if (!historyError && historyData) {
               // Check if any CMO or CEO has reviewed the project
               for (const history of historyData) {
+                // Skip if actor_id is null or undefined
+                if (!history.actor_id) {
+                  continue;
+                }
+                
                 // Get the role of the actor who accessed the project
                 const { data: userData, error: userError } = await supabase
                   .from('users')
@@ -204,8 +245,25 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 if (!userError && userData && 
                     (userData.role === 'CMO' || userData.role === 'CEO')) {
                   // If a reviewer has accessed the project (not just viewed), set canEdit to false
-                  // Consider actions like 'REVIEWED', 'APPROVED', 'REJECTED', 'REWORK' as access
-                  if (['REVIEWED', 'APPROVED', 'REJECTED', 'REWORK', 'SUBMITTED'].includes(history.action)) {
+                  // Consider actions like 'REVIEWED', 'REJECTED', 'REWORK', 'SUBMITTED' as access
+                  // But for SCRIPT_FROM_APPROVED_IDEA mode, we allow editing even after APPROVED action
+                  if (isScriptFromApprovedIdea) {
+  setCanEdit(true);
+  return;
+}
+                  if (project.status === TaskStatus.REWORK) {
+  setCanEdit(true);
+  return;
+}
+
+// ❌ Block editing for real review states
+if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) {
+  setCanEdit(false);
+  return;
+}
+                  
+                  // For APPROVED action, only disable editing if NOT in SCRIPT_FROM_APPROVED_IDEA mode
+                  if (history.action === 'APPROVED' && !isScriptFromApprovedIdea) {
                     setCanEdit(false);
                     return;
                   }
@@ -280,7 +338,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             setReviewComment(historyData[0]);
           }
 
-          // Fetch previous script version based on the latest action
+          // Fetch script version based on the latest action
           let scriptAction = workflowState?.isRework ? 'REWORK' : 'REJECTED';
           const { data: scriptData, error: scriptError } = await supabase
             .from('workflow_history')
@@ -295,6 +353,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           } else if (scriptData && scriptData.length > 0) {
             if (scriptData[0].script_content) {
               setPreviousScript(scriptData[0].script_content);
+              // Also update the current formData with the script content for editing
+              setFormData(prev => ({
+                ...prev,
+                script_content: scriptData[0].script_content
+              }));
             }
           }
 
@@ -304,6 +367,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             setFormData(prev => ({
               ...prev,
               idea_description: project.data?.idea_description
+            }));
+          }
+          
+          // For rework projects, also update formData with script content if available
+          if (workflowState?.isRework && project.data?.script_content) {
+            setFormData(prev => ({
+              ...prev,
+              script_content: project.data?.script_content
             }));
           }
         } catch (err) {
@@ -637,7 +708,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
         // Special handling for idea projects in rework
         const isIdeaInRework = project?.data?.source === 'IDEA_PROJECT' &&
-          project.current_stage === WorkflowStage.REWORK &&
+          project.status === TaskStatus.REWORK &&
           workflowState.isRework;
 
         if (isIdeaInRework) {
@@ -696,7 +767,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               // Add workflow history entry
               await supabase.from('workflow_history').insert([{
                 project_id: realProjectId,
-                from_stage: project?.current_stage || WorkflowStage.REWORK,
+                from_stage: WorkflowStage.REWORK,
                 to_stage: targetStage,
                 action: 'RESUBMITTED',
                 actor_id: currentUser.id,
@@ -810,6 +881,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               assigned_to_role: Role.CMO,
               status: TaskStatus.WAITING_APPROVAL
             });
+            
+            // Update project data to remove IDEA_PROJECT source since it's now a script
+            const currentProjectData = project?.data ? (typeof project.data === 'string' ? JSON.parse(project.data) : project.data) : {};
+            const updatedProjectData = { ...currentProjectData };
+            delete updatedProjectData.source; // Remove the IDEA_PROJECT source
+            
+            await db.updateProjectData(realProjectId, updatedProjectData);
 
             // Add workflow history entry
             await supabase.from('workflow_history').insert([{
@@ -867,10 +945,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       setShowPopup(true);
       console.log('Popup should be visible now');
 
-      // Call onSuccess after a short delay to ensure popup is visible
+      // Call onSuccess after a delay to ensure popup is visible
       setTimeout(() => {
-        onSuccess(); // refresh dashboard immediately
-      }, 1000);
+        onSuccess(); // refresh dashboard
+      }, 3000); // Increased to 3 seconds to ensure popup is visible
 
     } catch (err: any) {
       console.error('❌ Submit failed:', err);
@@ -1042,19 +1120,20 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       Thumbnail Required *
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: true }) : null}
-                        disabled={!canEdit}
-                        className={`p-3 text-xs font-black uppercase border-2 border-black ${formData.thumbnail_required === true
-                          ? 'bg-black text-white'
-                          : 'bg-white hover:bg-slate-50'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            ? 'bg-black text-white'
-                            : 'bg-white hover:bg-slate-50'
-                          }`}
-                      >
-                        Yes
-                      </button>
+                     <button
+  onClick={() => canEdit && setFormData({ ...formData, thumbnail_required: true })}
+  disabled={!canEdit}
+  className={[
+    'p-3 text-xs font-black uppercase border-2 border-black',
+    formData.thumbnail_required === true
+      ? 'bg-black text-white'
+      : 'bg-white hover:bg-slate-50',
+    !canEdit && 'opacity-50 cursor-not-allowed',
+  ].filter(Boolean).join(' ')}
+>
+  Yes
+</button>
+
                       <button
                         onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: false }) : null}
                         disabled={!canEdit}
@@ -1217,6 +1296,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 />
               </div>
             )}
+            
+
 
             {/* Brief / Notes */}
             <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">

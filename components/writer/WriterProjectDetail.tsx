@@ -183,34 +183,44 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         </div>
                     </div>
 
-                    {/* Script Content */}
+                    {/* Content */}
                     <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Script Content</h3>
+                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900">
+                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
+                        </h3>
                         
                         {isRejected && previousScript ? (
-                            // Show both old and new scripts side by side for rework projects
+                            // Show both old and new content side by side for rework projects
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Previous Script */}
+                                {/* Previous Content */}
                                 <div className="bg-white border-2 border-slate-300 p-6">
-                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Previous Script</h4>
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
+                                    </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                         {previousScript}
                                     </div>
                                 </div>
                                 
-                                {/* Current Script */}
+                                {/* Current Content */}
                                 <div className="bg-white border-2 border-slate-300 p-6">
-                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">Updated Script</h4>
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Updated Idea' : 'Updated Script'}
+                                    </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {project.data.script_content || 'No content available'}
+                                        {project.data?.source === 'IDEA_PROJECT' 
+                                            ? project.data.idea_description || 'No idea description available'
+                                            : project.data.script_content || 'No content available'}
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            // Show single script for non-rework projects
+                            // Show single content for non-rework projects
                             <div className="prose prose-slate max-w-none">
                                 <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
-                                    {project.data.script_content || 'No content available'}
+                                    {project.data?.source === 'IDEA_PROJECT' 
+                                        ? project.data.idea_description || 'No idea description available'
+                                        : project.data.script_content || 'No content available'}
                                 </div>
                             </div>
                         )}
@@ -236,23 +246,33 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                     </div>
 
                     {/* Comments Section */}
-                    {(comments.length > 0 || isRejected) && (
+                    {(comments.length > 0 || isRejected || rejectionReason) && (
                         <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex items-center space-x-2 mb-6">
                                 <MessageSquare className="w-6 h-6" />
-                                <h3 className="text-xl font-black uppercase text-slate-900">Reviewer Comments</h3>
+                                <h3 className="text-xl font-black uppercase text-slate-900">
+                                    {project.data?.source === 'IDEA_PROJECT' ? 'Rework Comments' : 'Reviewer Comments'}
+                                </h3>
                             </div>
-                            {isRejected && (
+                            
+                            {/* Show rejection reason prominently for rework projects */}
+                            {(isRejected || project.status === 'REWORK') && rejectionReason && (
                                 <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500">
-                                    <h4 className="font-bold text-red-800 mb-2">Project Rejected</h4>
-                                    <p className="text-red-700">
-                                        {rejectionReason || rejectionComment?.comment || 'No specific reason provided.'}
+                                    <h4 className="font-bold text-red-800 mb-2">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Idea Rework Comments' : 'Rework Comments'}
+                                    </h4>
+                                    <p className="text-red-700 whitespace-pre-wrap">
+                                        {rejectionReason}
                                     </p>
                                     <p className="text-sm text-red-600 mt-2">
-                                        Rejected by {rejectionComment?.actor_name || 'Reviewer'} {rejectionComment?.timestamp && format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}
+                                        {project.data?.source === 'IDEA_PROJECT' 
+                                            ? `Rework comments from ${rejectionComment?.actor_name || 'Reviewer'}` 
+                                            : `Rework comments from ${rejectionComment?.actor_name || 'Reviewer'}`}
+                                        {rejectionComment?.timestamp && ` ${format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}`}
                                     </p>
                                 </div>
                             )}
+                            
                             {comments.length > 0 && (
                                 <div className="space-y-6">
                                     {comments.map((comment, index) => (
@@ -334,13 +354,15 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                     </div>
 
                     {/* Info Note */}
-                    <div className={`p-6 ${isRejected ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
-                        <p className={`text-sm font-bold ${isRejected ? 'text-red-900' : 'text-yellow-900'}`}>
+                    <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
+                        <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong> 
-                            {isRejected 
+                            {isRejected || project.status === 'REWORK'
                                 ? returnType === 'reject'
                                     ? 'This project has been rejected. The rejection reason is displayed above. You can make changes and resubmit for review.'
-                                    : 'This project has been sent for rework. The reviewer comments are displayed above. You can make changes and resubmit for review.'
+                                    : project.data?.source === 'IDEA_PROJECT'
+                                        ? 'This idea has been sent for rework. The rework comments are displayed above. You can make changes and resubmit for review.'
+                                        : 'This project has been sent for rework. The reviewer comments are displayed above. You can make changes and resubmit for review.'
                                 : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>

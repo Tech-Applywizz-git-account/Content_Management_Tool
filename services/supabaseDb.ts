@@ -1180,6 +1180,33 @@ export const workflow = {
             console.error('Failed to fetch current project for reject:', fetchError);
             throw fetchError;
         }
+        
+        // Check if the project has script content and was originally an idea project
+        let updatedProjectData = currentProject?.data || {};
+        if (typeof updatedProjectData === 'string') {
+            try {
+                updatedProjectData = JSON.parse(updatedProjectData);
+            } catch {
+                updatedProjectData = {};
+            }
+        }
+        
+        // If the project has script content but still has IDEA_PROJECT source, remove the source
+        // This ensures that idea-to-script projects are treated as script projects even when in rework
+        if (updatedProjectData.script_content && updatedProjectData.source === 'IDEA_PROJECT') {
+            const updatedDataCopy = { ...updatedProjectData };
+            delete updatedDataCopy.source;
+            
+            // Update the project data to remove the IDEA_PROJECT source
+            const { error: dataUpdateError } = await supabase
+                .from('projects')
+                .update({ data: updatedDataCopy })
+                .eq('id', projectId);
+                
+            if (dataUpdateError) {
+                console.error('Failed to update project data during reject:', dataUpdateError);
+            }
+        }
 
         // Update project and get the updated data
         const { data: updateData, error: updateError } = await supabase
@@ -2120,7 +2147,12 @@ export const db = {
         // Determine the next stage based on current stage and whether it's from rework
         let nextStageInfo;
 
-        if (isFromRework) {
+        // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
+        // send it back to the writer to convert the idea into a script
+        // This check should happen regardless of whether the project is from rework or not
+        if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+            nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
+        } else if (isFromRework) {
             // If this project is coming back from rework, we may need to skip certain stages
             if (project.current_stage === WorkflowStage.SCRIPT) {
                 // If writer completed rework, and it was initiated by CEO, go directly to CEO
@@ -2195,18 +2227,12 @@ export const db = {
             }
         } else {
             // Not from rework, use normal flow
-            // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
-            // send it back to the writer to convert the idea into a script
-            if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
-                nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
-            } else {
-                nextStageInfo = helpers.getNextStage(
-                    project.current_stage,
-                    project.content_type,
-                    'APPROVED',
-                    project.data
-                );
-            }
+            nextStageInfo = helpers.getNextStage(
+                project.current_stage,
+                project.content_type,
+                'APPROVED',
+                project.data
+            );
         }
 
         console.log('Next stage info:', nextStageInfo);
