@@ -699,6 +699,12 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         DESIGNER
                       </span>
                     )}
+                    {/* Show REWORK badge if project is in rework status */}
+                    {(project.status === 'REWORK' || project.history?.some(h => h.action === 'REWORK' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED')) && (
+                      <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-red-100 text-red-800">
+                        REWORK
+                      </span>
+                    )}
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                         project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                           'bg-[#D946EF] text-white'
@@ -761,7 +767,9 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Status</span>
-                          <span className="font-bold text-slate-900 uppercase text-xs">{project.history && project.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'Rework' : project.status}</span>
+                          <span className={`font-bold text-slate-900 uppercase text-xs ${project.status === 'REWORK' ? 'text-red-600' : ''}`}>
+                            {project.status === 'REWORK' ? 'Rework Required' : project.status}
+                          </span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Submitted</span>

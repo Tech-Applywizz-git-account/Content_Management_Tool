@@ -982,6 +982,9 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
           <button
             onClick={() => {
               console.log('⬅ Back clicked');
+              // Reset popup states when going back to prevent any lingering popup
+              setShowPopup(false);
+              setShowConfirmation(false);
               onClose();
             }} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
             <ArrowLeft className="w-6 h-6 text-black" />
@@ -1415,9 +1418,12 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
                   No
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setShowConfirmation(false);
-                    handleSubmitForReview();
+                    // Small delay to ensure confirmation dialog closes before showing success popup
+                    setTimeout(() => {
+                      handleSubmitForReview();
+                    }, 100);
                   }}
                   className="flex-1 px-4 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                 >

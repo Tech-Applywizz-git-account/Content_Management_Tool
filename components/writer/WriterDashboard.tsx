@@ -132,27 +132,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
 const drafts = dashboardProjects.filter(p =>
   (
-    p.created_by === user.id ||
     p.created_by_user_id === user.id ||
     p.writer_id === user.id
   ) &&
-
   (
-    // ✅ ALWAYS allow REWORK projects
-    p.status === TaskStatus.REWORK ||
-
-    // ✅ Allow fresh drafts that are NOT opened by CMO/CEO
-    (
-      !(
-        p.first_review_opened_at &&
-        ['CMO', 'CEO'].includes(p.first_review_opened_by_role || '')
-      ) &&
-      (
-        p.current_stage === WorkflowStage.SCRIPT ||
-        (p.data?.source === 'IDEA_PROJECT' && 
-         ![WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(p.current_stage))
-      )
-    )
+    p.status === TaskStatus.TODO ||
+    p.status === TaskStatus.IN_PROGRESS ||
+    p.status === TaskStatus.REWORK
   )
 );
 
@@ -165,18 +151,25 @@ const drafts = dashboardProjects.filter(p =>
             WorkflowStage.SCRIPT_REVIEW_L2
         ].includes(p.current_stage)
     );
-    const approvedIdeas = dashboardProjects.filter(p =>
-        p.data?.source === 'IDEA_PROJECT' &&
-        p.current_stage === WorkflowStage.SCRIPT &&
-        p.assigned_to_role === Role.WRITER &&
-        p.status === TaskStatus.WAITING_APPROVAL &&
-        p.history?.some(
-            h =>
-                h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
-                h.action === 'APPROVED'
-        )
-    );
+   const convertedIdeaIds = new Set(
+  dashboardProjects
+    .filter(p => p.data?.parent_idea_id)
+    .map(p => p.data.parent_idea_id)
+);
 
+const approvedIdeas = dashboardProjects.filter(p =>
+  p.data?.source === 'IDEA_PROJECT' &&
+  p.current_stage === WorkflowStage.SCRIPT &&
+  p.assigned_to_role === Role.WRITER &&
+  p.status === TaskStatus.WAITING_APPROVAL &&
+  p.history?.some(
+    h =>
+      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+      h.action === 'APPROVED'
+  ) &&
+  // ✅ IMPORTANT: hide ideas that already became scripts
+  !convertedIdeaIds.has(p.id)
+);
 const handleEdit = (project: Project) => {
   const parsedData =
     typeof project.data === 'string'

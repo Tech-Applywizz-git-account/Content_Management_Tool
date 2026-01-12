@@ -66,6 +66,9 @@ function App() {
 
   // CMO State - State for CMO dashboard all projects
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+  
+  // Cine State - State for Cine dashboard script projects
+  const [cineScriptProjects, setCineScriptProjects] = useState<Project[]>([]);
 
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
@@ -299,6 +302,20 @@ function App() {
       };
       
       fetchAllProjects();
+    }
+    
+    // Only fetch for Cine users
+    if (user?.role === Role.CINE) {
+      const fetchCineScriptProjects = async () => {
+        try {
+          const projects = await db.projects.getScriptProjects();
+          setCineScriptProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch script projects for Cine:', error);
+        }
+      };
+      
+      fetchCineScriptProjects();
     }
   }, [user]);
 
@@ -569,6 +586,7 @@ function App() {
         user={user}
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
+        scriptProjects={cineScriptProjects}
         onRefresh={() => refreshData(user)}
         onLogout={handleLogout}
       />

@@ -12,9 +12,10 @@ interface Props {
     userRole: Role;
     onBack: () => void;
     onUpdate: () => void;
+    fromView?: 'MYWORK' | 'SCRIPTS';
 }
 
-const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate }) => {
+const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, fromView }) => {
      // For rework projects, keep existing data but track new inputs
      const processedProject = {...initialProject};
          
@@ -32,6 +33,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
      
      // Determine if current user can edit based on role and workflow state
      const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+         
+     // Check if this project is currently assigned to the Cine role
+     const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
 
      
   const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
@@ -381,7 +385,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 
                 {/* Cinematography Instructions */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <h2 className="text-xl font-black uppercase mb-4">Cinematography Instructions</h2>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-black uppercase">Cinematography Instructions</h2>
+                        {!isCurrentlyAssignedToCine && (
+                            <span className="px-3 py-1 text-xs font-black uppercase border-2 border-blue-500 bg-blue-100 text-blue-800">
+                                Preview Only
+                            </span>
+                        )}
+                    </div>
                     
                     {/* Writer Name */}
                     {localProject.data.writer_name && (
@@ -499,7 +510,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 
 
 
-                {/* Shoot Scheduling Section */}
+                {/* Shoot Scheduling Section - Only show if project is assigned to Cine */}
+                {isCurrentlyAssignedToCine && (
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <div className="flex items-center gap-2 mb-4">
                         <CalendarIcon className="w-5 h-5" />
@@ -553,9 +565,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         </div>
                     )}
                 </div>
+                )}
 
-                {/* Video Upload Section */}
-                {localProject.shoot_date && (
+                {/* Video Upload Section - Only show if project is assigned to Cine */}
+                {isCurrentlyAssignedToCine && localProject.shoot_date && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Upload className="w-5 h-5" />

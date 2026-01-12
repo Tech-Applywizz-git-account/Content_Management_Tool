@@ -13,11 +13,12 @@ interface Props {
     user: { full_name: string; role: Role };
     inboxProjects: Project[];
     historyProjects: Project[];
+    scriptProjects?: Project[];
     onRefresh: () => void;
     onLogout: () => void;
 }
 
-const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
         if (typeof window === 'undefined') return 'dashboard';
@@ -25,8 +26,9 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [projectSource, setProjectSource] = useState<'MYWORK' | 'SCRIPTS' | null>(null);
     const [activeFilter, setActiveFilter] = useState<
-  'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | null
+  'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | null
 >(null);
 
     const [shootDate, setShootDate] = useState<string>('');
@@ -117,11 +119,16 @@ const filteredProjects = React.useMemo(() => {
         setNeedsScheduleCount(activeProjects.filter(p => !p.shoot_date).length);
         setScheduledShootsCount(activeProjects.filter(p => p.shoot_date && !p.video_link).length);
 
-        // Footage uploaded: consider multiple possible fields
+        // Footage uploaded: consider multiple possible fields for active projects
         setFootageUploadedCount(
             activeProjects.filter(p => !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)).length
         );
-    }, [inboxProjects]);
+        
+        // Count all script projects passed from parent
+        setScriptCount((scriptProjects || []).length);
+    }, [inboxProjects, scriptProjects]);
+    
+    const [scriptCount, setScriptCount] = useState<number>(0);
 
     return (
         <Layout
@@ -135,13 +142,26 @@ const filteredProjects = React.useMemo(() => {
                 <CineProjectDetail
   project={selectedProject}
   userRole={user.role}
+  fromView={projectSource}
   onBack={() => {
     setSelectedProject(null);
-    setActiveFilter(null);
+    if (projectSource === 'SCRIPTS') {
+      setActiveFilter('SCRIPTS');
+      setActiveView('mywork');
+    } else {
+      setActiveFilter(null);
+    }
+    setProjectSource(null);
   }}
   onUpdate={() => {
     setSelectedProject(null);
-    setActiveFilter(null);
+    if (projectSource === 'SCRIPTS') {
+      setActiveFilter('SCRIPTS');
+      setActiveView('mywork');
+    } else {
+      setActiveFilter(null);
+    }
+    setProjectSource(null);
     onRefresh();
   }}
 />
@@ -150,7 +170,12 @@ const filteredProjects = React.useMemo(() => {
                 <CineMyWork
   user={user}
   projects={activeFilter ? filteredProjects : historyProjects}
-  onSelectProject={setSelectedProject}
+  scriptProjects={scriptProjects}
+  onSelectProject={(project) => {
+    setSelectedProject(project);
+    setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
+  }}
+  activeFilter={activeFilter}
 />
 
             ) : activeView === 'calendar' ? (
@@ -174,7 +199,7 @@ const filteredProjects = React.useMemo(() => {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
   {/* NEEDS SCHEDULE */}
   <div
     onClick={() => {
@@ -220,6 +245,22 @@ const filteredProjects = React.useMemo(() => {
     </div>
     <div className="text-sm font-bold uppercase text-white/80">
       Footage Uploaded
+    </div>
+  </div>
+  
+  {/* SCRIPTS */}
+  <div
+    onClick={() => {
+      setActiveFilter('SCRIPTS');
+      setActiveView('mywork');
+    }}
+    className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+  >
+    <div className="text-4xl font-black text-white mb-1">
+      {scriptCount}
+    </div>
+    <div className="text-sm font-bold uppercase text-white/80">
+      Scripts
     </div>
   </div>
 </div>

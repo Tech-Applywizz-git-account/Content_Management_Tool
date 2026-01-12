@@ -1,5 +1,5 @@
 import React from 'react';
-import { Project, Role } from '../../types';
+import { Project, Role, WorkflowStage, STAGE_LABELS } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
@@ -7,13 +7,21 @@ import { getWorkflowState } from '../../services/workflowUtils';
 interface Props {
     user: { full_name: string; role: Role };
     projects: Project[];
+    scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
+    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | null;
 }
 
-const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
+const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
     // Show all projects the cinematographer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
-    const myTasks = projects || [];
+    const myTasks = React.useMemo(() => {
+        if (activeFilter === 'SCRIPTS') {
+            // Use the script projects passed from parent when SCRIPTS filter is active
+            return scriptProjects || [];
+        }
+        return projects || [];
+    }, [projects, scriptProjects, activeFilter]);
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -91,6 +99,14 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                 {/* Title */}
                                 <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">{project.title}</h3>
 
+                                {/* Writer Name */}
+                                {project.data?.writer_name && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
+                                        <span className="font-bold text-slate-900">{project.data.writer_name}</span>
+                                    </div>
+                                )}
+                                
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">
                                     {isScheduled && (
@@ -111,12 +127,21 @@ const CineMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                             {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
+                                    {/* Show current stage for script preview */}
+                                    {activeFilter === 'SCRIPTS' && (
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
+                                            <span className="font-bold text-slate-900">
+                                                {STAGE_LABELS[project.current_stage] || project.current_stage.replace(/_/g, ' ')}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#D946EF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {!isScheduled ? 'Schedule Shoot' : !isUploaded ? 'Upload Video' : 'View Details'}
+                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !isScheduled ? 'Schedule Shoot' : !isUploaded ? 'Upload Video' : 'View Details'}
                                     </button>
                                 </div>
                             </div>

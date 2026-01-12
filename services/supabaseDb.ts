@@ -775,6 +775,18 @@ export const projects = {
             history: historyData || []
         };
     },
+    
+    // Get all projects with script content
+    async getScriptProjects() {
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .or('data->>script_content.not.is.null,data->>script_content.neq.') // Where script_content exists and is not empty
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data as Project[];
+    },
 
     // Get project by ID with history (alias for clarity)
     async getByIdWithHistory(id: string) {
