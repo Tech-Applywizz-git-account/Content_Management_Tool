@@ -69,6 +69,12 @@ function App() {
   
   // Cine State - State for Cine dashboard script projects
   const [cineScriptProjects, setCineScriptProjects] = useState<Project[]>([]);
+  
+  // Editor State - State for Editor dashboard script projects
+  const [editorScriptProjects, setEditorScriptProjects] = useState<Project[]>([]);
+  
+  // Designer State - State for Designer dashboard script projects
+  const [designerScriptProjects, setDesignerScriptProjects] = useState<Project[]>([]);
 
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
@@ -317,6 +323,34 @@ function App() {
       
       fetchCineScriptProjects();
     }
+    
+    // Only fetch for Editor users
+    if (user?.role === Role.EDITOR) {
+      const fetchEditorScriptProjects = async () => {
+        try {
+          const projects = await db.projects.getScriptProjects();
+          setEditorScriptProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch script projects for Editor:', error);
+        }
+      };
+      
+      fetchEditorScriptProjects();
+    }
+    
+    // Only fetch for Designer users
+    if (user?.role === Role.DESIGNER) {
+      const fetchDesignerScriptProjects = async () => {
+        try {
+          const projects = await db.projects.getScriptProjects();
+          setDesignerScriptProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch script projects for Designer:', error);
+        }
+      };
+      
+      fetchDesignerScriptProjects();
+    }
   }, [user]);
 
   const refreshData = async (u: User = user!) => {
@@ -347,6 +381,27 @@ function App() {
         console.log('🔄 App.tsx: Updating projects state');
         setProjects({ inbox: inboxProjects, history: myWorkProjects });
         console.log('✅ App.tsx: Projects state updated');
+        
+        // For Editor and Designer roles, also refresh script projects
+        if (u.role === Role.EDITOR) {
+          try {
+            console.log('🔄 App.tsx: Refreshing script projects for Editor');
+            const scriptProjects = await db.projects.getScriptProjects();
+            setEditorScriptProjects(scriptProjects);
+            console.log('✅ App.tsx: Editor script projects refreshed:', scriptProjects.length);
+          } catch (error) {
+            console.error('❌ App.tsx: Failed to refresh script projects for Editor:', error);
+          }
+        } else if (u.role === Role.DESIGNER) {
+          try {
+            console.log('🔄 App.tsx: Refreshing script projects for Designer');
+            const scriptProjects = await db.projects.getScriptProjects();
+            setDesignerScriptProjects(scriptProjects);
+            console.log('✅ App.tsx: Designer script projects refreshed:', scriptProjects.length);
+          } catch (error) {
+            console.error('❌ App.tsx: Failed to refresh script projects for Designer:', error);
+          }
+        }
       }
       console.log('✅ App.tsx: refreshData completed successfully');
     } catch (error) {
@@ -539,28 +594,7 @@ function App() {
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
         allProjects={allProjects}
-        onRefresh={async () => {
-          console.log('🔄 App.tsx: CMO Dashboard refresh triggered');
-          if (user) {
-            console.log('🔄 App.tsx: Calling refreshData for user:', user.full_name);
-            await refreshData(user);
-            console.log('✅ App.tsx: refreshData completed');
-            
-            // Also refresh all projects
-            try {
-              console.log('🔄 App.tsx: Refreshing all projects');
-              const allProj = await db.projects.getAll();
-              console.log('✅ App.tsx: All projects fetched:', allProj.length);
-              setAllProjects(allProj);
-              console.log('✅ App.tsx: All projects state updated');
-            } catch (error) {
-              console.error('❌ App.tsx: Failed to refresh all projects for CMO:', error);
-            }
-          } else {
-            console.log('⚠️ App.tsx: No user found during refresh');
-          }
-          console.log('✅ App.tsx: CMO Dashboard refresh completed');
-        }}
+        onRefresh={() => refreshData(user)}
         onLogout={handleLogout}
       />
     );
@@ -600,6 +634,7 @@ function App() {
         user={user}
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
+        scriptProjects={editorScriptProjects}
         onRefresh={() => refreshData(user)}
         onLogout={handleLogout}
       />
@@ -613,6 +648,7 @@ function App() {
         user={user}
         inboxProjects={projects.inbox}
         historyProjects={projects.history}
+        scriptProjects={designerScriptProjects}
         onRefresh={() => refreshData(user)}
         onLogout={handleLogout}
       />

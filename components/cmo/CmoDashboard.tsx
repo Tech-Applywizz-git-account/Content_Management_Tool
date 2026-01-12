@@ -456,8 +456,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               : p.priority === 'NORMAL'
                                 ? 'bg-yellow-500 text-black'
                                 : 'bg-green-500 text-white'
-                              }`}
-                          >
+                              }`}>
                             {p.priority}
                           </span>
                           <span
@@ -467,16 +466,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
-                          <span
-                            className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkProject(p) ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
-                              p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
-                                p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
-                                  'bg-slate-100 text-slate-800'
-                            }`}>
-                            {isReworkProject(p) ? 'Rework' : p.assigned_to_role === Role.CINE ? 'WITH CINE' :
-                              p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
-                                p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
-                                  STAGE_LABELS[p.current_stage]}</span>
+
 
                         </div>
                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
@@ -568,8 +558,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               : p.priority === 'NORMAL'
                                 ? 'bg-yellow-500 text-black'
                                 : 'bg-green-500 text-white'
-                              }`}
-                          >
+                              }`}>
                             {p.priority}
                           </span>
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
@@ -580,7 +569,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             {p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'Rework' : p.assigned_to_role === Role.CINE ? 'WITH CINE' :
                               p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
                                 p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
-                                  STAGE_LABELS[p.current_stage]}
+                                  p.assigned_to_role === Role.CMO ? 'WITH CMO' : 'WITH OTHER'}
                           </span>
                         </div>
                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>

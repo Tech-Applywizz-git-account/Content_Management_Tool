@@ -12,11 +12,12 @@ interface Props {
     user: { full_name: string; role: Role };
     inboxProjects: Project[];
     historyProjects: Project[];
+    scriptProjects?: Project[];
     onRefresh: () => void;
     onLogout: () => void;
 }
 
-const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
         if (typeof window === 'undefined') return 'dashboard';
@@ -24,7 +25,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'DELIVERED' | null>(null);
+    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'DELIVERED' | 'SCRIPTS' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleInternalRefresh = async () => {
@@ -64,35 +65,38 @@ useEffect(() => {
  * - If user came from dashboard cards → filtered
  * - If user clicked My Work manually → ALL projects
  */
-const filteredProjects = React.useMemo(() => {
+const filteredProjects = useMemo(() => {
   // No filter → show ALL designer projects
   if (!activeFilter) {
     return historyProjects || [];
   }
 
   // Filtered views (from dashboard cards)
-  return (historyProjects || []).filter(project => {
-    switch (activeFilter) {
-      case 'NEEDS_DELIVERY':
-        return !project.delivery_date;
-
-      case 'IN_PROGRESS':
-        if (project.content_type === 'CREATIVE_ONLY') return project.delivery_date && !project.creative_link;
-        return project.delivery_date && !project.thumbnail_link;
-
-      case 'DELIVERED':
-        return !!project.creative_link || !!project.thumbnail_link;
-
-      default:
-        return true;
-    }
-  });
+  switch (activeFilter) {
+    case 'SCRIPTS':
+      // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
+      return (historyProjects || []).filter(project => 
+        project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+      );
+    case 'NEEDS_DELIVERY':
+      return (historyProjects || []).filter(p => !p.delivery_date);
+    case 'IN_PROGRESS':
+      return (historyProjects || []).filter(p => {
+        if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
+        return p.delivery_date && !p.thumbnail_link;
+      });
+    case 'DELIVERED':
+      return (historyProjects || []).filter(p => p.creative_link || p.thumbnail_link);
+    default:
+      return historyProjects || [];
+  }
 }, [activeFilter, historyProjects]);
 
     // Counts derived directly from projects table (source of truth)
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState<number>(0);
     const [inProgressCount, setInProgressCount] = useState<number>(0);
     const [deliveredCount, setDeliveredCount] = useState<number>(0);
+    const [scriptsCount, setScriptsCount] = useState<number>(0);
     const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
 
     useEffect(() => {
@@ -106,16 +110,17 @@ const filteredProjects = React.useMemo(() => {
 
         setActiveProjectsCount(active.length);
         
-        setNeedsDeliveryCount(active.filter(p => !p.delivery_date).length);
-
-        const inProgress = active.filter(p => {
+        // Count all script projects passed from parent
+        setScriptsCount((scriptProjects || []).length);
+        
+        // Calculate other counts based on historyProjects
+        setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
+        setInProgressCount((historyProjects || []).filter(p => {
             if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
             return p.delivery_date && !p.thumbnail_link;
-        }).length;
-        setInProgressCount(inProgress);
-
-        setDeliveredCount(active.filter(p => !!p.creative_link || !!p.thumbnail_link).length);
-    }, [inboxProjects]);
+        }).length);
+        setDeliveredCount((historyProjects || []).filter(p => p.creative_link || p.thumbnail_link).length);
+    }, [inboxProjects, historyProjects, scriptProjects]);
 
     return (
         <Layout
@@ -155,7 +160,7 @@ const filteredProjects = React.useMemo(() => {
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <DesignerMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={setSelectedProject} />
+                <DesignerMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={setSelectedProject} scriptProjects={scriptProjects} />
             ) : activeView === 'calendar' ? (
                 <DesignerCalendar projects={inboxProjects} />
             ) : (
@@ -177,7 +182,7 @@ const filteredProjects = React.useMemo(() => {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div
                             onClick={() => {
                                 setActiveFilter('NEEDS_DELIVERY');
@@ -213,6 +218,18 @@ const filteredProjects = React.useMemo(() => {
                                 {deliveredCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Delivered Creatives</div>
+                        </div>
+                        <div
+                            onClick={() => {
+                                setActiveFilter('SCRIPTS');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {scriptsCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
                         </div>
                     </div>
 

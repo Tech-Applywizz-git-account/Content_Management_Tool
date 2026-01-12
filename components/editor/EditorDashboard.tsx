@@ -12,11 +12,12 @@ interface Props {
     user: { full_name: string; role: Role };
     inboxProjects: Project[];
     historyProjects: Project[];
+    scriptProjects?: Project[];
     onRefresh: () => void;
     onLogout: () => void;
 }
 
-const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const viewStorageKey = `activeView:${user.role}`;
     const getStoredView = () => {
         if (typeof window === 'undefined') return 'dashboard';
@@ -24,7 +25,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | null>(null);
+    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const handleInternalRefresh = async () => {
@@ -76,35 +77,37 @@ useEffect(() => {
             try { supabase.removeChannel(subscription); } catch (e) { }
         };
     }, [onRefresh]);
-
     /**
  * Projects shown in MyWork:
  * - If user came from dashboard cards → filtered
  * - If user clicked My Work manually → ALL projects
  */
-const filteredProjects = React.useMemo(() => {
+const filteredProjects = useMemo(() => {
   // No filter → show ALL editor projects
   if (!activeFilter) {
     return historyProjects || [];
   }
 
   // Filtered views (from dashboard cards)
-  return (historyProjects || []).filter(project => {
-    switch (activeFilter) {
-      case 'NEEDS_DELIVERY':
-        return !project.delivery_date;
-
-      case 'IN_PROGRESS':
-        return project.delivery_date && !project.edited_video_link;
-
-      case 'COMPLETED':
-        return !!project.edited_video_link;
-
-      default:
-        return true;
-    }
-  });
+  switch (activeFilter) {
+    case 'SCRIPTS':
+      // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
+      return (historyProjects || []).filter(project => 
+        project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+      );
+    case 'NEEDS_DELIVERY':
+      return (historyProjects || []).filter(p => !p.delivery_date);
+    case 'IN_PROGRESS':
+      return (historyProjects || []).filter(
+        p => p.delivery_date && !p.edited_video_link
+      );
+    case 'COMPLETED':
+      return (historyProjects || []).filter(p => !!p.edited_video_link);
+    default:
+      return historyProjects || [];
+  }
 }, [activeFilter, historyProjects]);
+
 
     // ✅ FIXED: Remove mock data and use real projects filtered by stage
     const allProjects = (inboxProjects || []).filter(p => p.current_stage === WorkflowStage.VIDEO_EDITING);
@@ -114,13 +117,18 @@ const filteredProjects = React.useMemo(() => {
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
     const [inProgressCount, setInProgressCount] = useState(0);
     const [completedEditsCount, setCompletedEditsCount] = useState(0);
+    const [scriptsCount, setScriptsCount] = useState(0);
 
     // Calculate counts when projects change
     useEffect(() => {
-        setNeedsDeliveryCount(activeProjects.filter(p => !p.delivery_date).length);
-        setInProgressCount(activeProjects.filter(p => p.delivery_date && !p.edited_video_link).length);
-        setCompletedEditsCount(activeProjects.filter(p => !!p.edited_video_link).length);
-    }, [inboxProjects, historyProjects]);
+        // Count all script projects passed from parent
+        setScriptsCount((scriptProjects || []).length);
+        
+        // Calculate other counts based on historyProjects
+        setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
+        setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
+        setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
+    }, [historyProjects, scriptProjects]);
 
     return (
         <Layout
@@ -141,7 +149,8 @@ const filteredProjects = React.useMemo(() => {
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={setSelectedProject} />
+                <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
+ onSelectProject={setSelectedProject} scriptProjects={scriptProjects} />
             ) : activeView === 'calendar' ? (
                 <EditorCalendar projects={inboxProjects} />
             ) : (
@@ -163,7 +172,7 @@ const filteredProjects = React.useMemo(() => {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         {/* NEEDS DELIVERY DATE */}
                         <div
                             onClick={() => {
@@ -204,6 +213,20 @@ const filteredProjects = React.useMemo(() => {
                                 {completedEditsCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
+                        </div>
+                        
+                        {/* SCRIPTS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('SCRIPTS');
+                                setActiveView('mywork');
+                            }}
+                            className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {scriptsCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
                         </div>
                     </div>
 
