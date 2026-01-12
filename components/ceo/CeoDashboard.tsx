@@ -694,6 +694,11 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                       </span>
                     )}
+                    {project.data?.source === 'DESIGNER_INITIATED' && (
+                      <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                        DESIGNER
+                      </span>
+                    )}
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                         project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                           'bg-[#D946EF] text-white'

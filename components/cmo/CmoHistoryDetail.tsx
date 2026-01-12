@@ -54,11 +54,15 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
         {project.title}
       </h1>
 
-      {/* ===================== 1️⃣ SCRIPT CONTENT ===================== */}
+      {/* ===================== 1️⃣ CONTENT ===================== */}
       <div className="border-2 border-black bg-slate-100 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-        <h3 className="font-black uppercase mb-3">Script Content</h3>
+        <h3 className="font-black uppercase mb-3">
+          {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' : 'Script Content'}
+        </h3>
         <pre className="whitespace-pre-wrap text-sm">
-          {project.data?.script_content || 'No script content available'}
+          {project.data?.source === 'DESIGNER_INITIATED'
+            ? project.data?.creative_link || 'No creative link available'
+            : project.data?.script_content || 'No script content available'}
         </pre>
       </div>
 

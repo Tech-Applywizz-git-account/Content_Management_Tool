@@ -30,7 +30,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
     const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
-    const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || '');
+    const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO';
     // Use the new workflow state logic
@@ -43,7 +43,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     
     const hasAsset = isVideo
   ? !!project.thumbnail_link
-  : !!project.creative_link;
+  : !!project.creative_link || !!project.data?.creative_link;
 
 
     // Reset form fields when project changes
@@ -394,16 +394,16 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                         </a>
                                     </div>
                                 )}
-                                {!isVideo && project.creative_link && (
+                                {!isVideo && (project.creative_link || project.data?.creative_link) && (
                                     <div>
                                         <span className="text-sm font-bold text-gray-600 block mb-1">Current Creative Link</span>
                                         <a 
-                                            href={project.creative_link} 
+                                            href={project.creative_link || project.data?.creative_link} 
                                             target="_blank" 
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all"
                                         >
-                                            {project.creative_link}
+                                            {project.creative_link || project.data?.creative_link}
                                         </a>
                                     </div>
                                 )}
@@ -579,12 +579,12 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
           Previous {isVideo ? 'Thumbnail' : 'Creative'}
         </p>
         <a
-          href={isVideo ? project.thumbnail_link : project.creative_link}
+          href={isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
           target="_blank"
           rel="noopener noreferrer"
           className="block break-all text-blue-600 underline"
         >
-          {isVideo ? project.thumbnail_link : project.creative_link}
+          {isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
         </a>
       </div>
     )}

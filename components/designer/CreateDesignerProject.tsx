@@ -14,7 +14,8 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [link, setLink] = useState('');
-  const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
+  const [channel, setChannel] = useState<Channel>(Channel.YOUTUBE);
+  const [contentType, setContentType] = useState<'CREATIVE_ONLY' | 'VIDEO'>('CREATIVE_ONLY');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
@@ -26,61 +27,21 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
     return;
   }
 
-  const currentUser = db.getCurrentUser();
-  if (!currentUser) {
-    alert('User not logged in');
-    return;
-  }
-
   setIsSubmitting(true);
 
   try {
-    // 1️⃣ CREATE PROJECT
-    const { data: project, error } = await supabase
-      .from('projects')
-      .insert({
-        title,
-        channel,
-        content_type: 'CREATIVE_ONLY',
-        priority: 'NORMAL',
+    // Use the proper db method to create designer project
+    const createdProject = await db.createDesignerProject(
+      title,
+      channel,
+      new Date().toISOString().split('T')[0], // due_date
+      description,
+      link,
+      'NORMAL', // priority
+      contentType
+    );
 
-        // 🔑 WORKFLOW
-        current_stage: 'FINAL_REVIEW_CMO',
-        assigned_to_role: 'CMO',
-        status: 'WAITING_APPROVAL',
-
-        // 🔑 CREATOR
-        created_by: currentUser.id,
-        created_by_user_id: currentUser.id,
-        created_by_name: currentUser.full_name,
-
-        // 🔑 DESIGN DATA
-        data: {
-          source: 'DESIGNER_PROJECT',
-          description,
-          creative_link: link
-        },
-
-        due_date: new Date().toISOString().split('T')[0]
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    // 2️⃣ INSERT WORKFLOW HISTORY
-    await supabase.from('workflow_history').insert({
-      project_id: project.id,
-      from_stage: 'DESIGNER',
-      to_stage: 'FINAL_REVIEW_CMO',
-      action: 'SUBMITTED',
-      actor_id: currentUser.id,
-      actor_name: currentUser.full_name,
-      actor_role: 'DESIGNER',
-      timestamp: new Date().toISOString()
-    });
-
-    // 3️⃣ SUCCESS UI
+    // Success UI
     setPopupMessage(
       `Designer project "${title}" submitted successfully. Waiting for CMO review.`
     );
@@ -173,6 +134,24 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
                     {c}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setContentType('VIDEO')}
+                  className={`p-2 text-xs font-black uppercase border-2 border-black ${contentType === 'VIDEO' ? 'bg-black text-white' : 'bg-white hover:bg-slate-50'}`}
+                >
+                  Video
+                </button>
+                <button
+                  onClick={() => setContentType('CREATIVE_ONLY')}
+                  className={`p-2 text-xs font-black uppercase border-2 border-black ${contentType === 'CREATIVE_ONLY' ? 'bg-black text-white' : 'bg-white hover:bg-slate-50'}`}
+                >
+                  Creative Only
+                </button>
               </div>
             </div>
           </div>

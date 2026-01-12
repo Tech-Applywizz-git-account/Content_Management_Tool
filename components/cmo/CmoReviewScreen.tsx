@@ -227,6 +227,11 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
     const getReworkOptions = () => {
+        // For designer-initiated projects, always send back to Designer
+        if (project.data?.source === 'DESIGNER_INITIATED') {
+            return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
+        }
+        
         // For pure idea projects (without script content), always send back to Writer regardless of stage
         if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
@@ -269,7 +274,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     </button>
                     <div>
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
+                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
                             {project.title}
                         </h1>
                         <div className="flex items-center space-x-2 mt-1">
@@ -335,7 +340,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -378,7 +383,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">
-                                {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message'}
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link & Message' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message'}
                             </h3>
                             <button
                                 onClick={downloadPDF}
@@ -409,12 +414,14 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     {/* Current Script */}
                                     <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
+                                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
                                         </h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
-                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                                ? project.data.idea_description
-                                                : project.data?.script_content || 'No script content available.'}
+                                            {project.data?.source === 'DESIGNER_INITIATED'
+                                                ? project.data?.creative_link || 'No creative link available.'
+                                                : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
+                                                    ? project.data.idea_description
+                                                    : project.data?.script_content || 'No script content available.'}
                                         </div>
                                     </div>
                                 </div>
@@ -423,9 +430,11 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div
                                     className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                        ? project.data.idea_description
-                                        : project.data?.script_content || 'No script content available.'}
+                                    {project.data?.source === 'DESIGNER_INITIATED'
+                                        ? project.data?.creative_link || 'No creative link available.'
+                                        : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
+                                            ? project.data.idea_description
+                                            : project.data?.script_content || 'No script content available.'}
                                 </div>
                             )}
                         </div>
@@ -528,10 +537,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     )}
 
                                     {/* Thumbnail/Creative Assets */}
-                                    {(project.thumbnail_link || previousAssets?.thumbnail_link) && (
+                                    {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || (previousScript && project.data?.creative_link)) && (
                                         <div className="grid grid-cols-2 gap-6">
                                             {/* Previous Thumbnail/Creative */}
-                                            {previousAssets?.thumbnail_link && (
+                                            {(previousAssets?.thumbnail_link || previousAssets?.creative_link) && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                                     <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
                                                         <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Creative</h4>
@@ -541,16 +550,22 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                     </div>
                                                     <div className="p-4 flex justify-between items-center bg-white">
                                                         <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
-                                                            <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
+                                                            <p className="font-black text-slate-900 text-sm uppercase">
+                                                                {previousAssets?.thumbnail_link ? 'Creative_Thumbnail.png' : 'Creative Link'}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 font-bold">
+                                                                {previousAssets?.thumbnail_link ? 'PNG • 2mb' : 'External Link'}
+                                                            </p>
                                                         </div>
-                                                        <a href={previousAssets.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                        <a href={previousAssets.thumbnail_link || previousAssets.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">
+                                                            {previousAssets?.thumbnail_link ? 'View File' : 'View Link'}
+                                                        </a>
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* Current Thumbnail/Creative */}
-                                            {project.thumbnail_link && (
+                                            {/* Current Thumbnail/Creative or Creative Link */}
+                                            {project.thumbnail_link ? (
                                                 <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                                     <div className="p-3 bg-slate-900 border-b-2 border-black">
                                                         <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
@@ -564,6 +579,22 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                             <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
                                                         </div>
                                                         <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                    </div>
+                                                </div>
+                                            ) : project.data?.creative_link && (
+                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
+                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
+                                                    </div>
+                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
+                                                        <ImageIcon className="w-16 h-16" />
+                                                    </div>
+                                                    <div className="p-4 flex justify-between items-center bg-white">
+                                                        <div>
+                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative Link</p>
+                                                            <p className="text-xs text-slate-500 font-bold">External Link</p>
+                                                        </div>
+                                                        <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View Link</a>
                                                     </div>
                                                 </div>
                                             )}
@@ -606,7 +637,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     )}
 
                                     {/* Thumbnail/Creative Asset */}
-                                    {project.thumbnail_link && (
+                                    {project.thumbnail_link ? (
                                         <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                             <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
                                                 <ImageIcon className="w-16 h-16" />
@@ -617,6 +648,19 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                     <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
                                                 </div>
                                                 <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                            </div>
+                                        </div>
+                                    ) : project.data?.creative_link && (
+                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
+                                                <ImageIcon className="w-16 h-16" />
+                                            </div>
+                                            <div className="p-4 flex justify-between items-center bg-white">
+                                                <div>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">Creative Link</p>
+                                                    <p className="text-xs text-slate-500 font-bold">External Link</p>
+                                                </div>
+                                                <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View Link</a>
                                             </div>
                                         </div>
                                     )}

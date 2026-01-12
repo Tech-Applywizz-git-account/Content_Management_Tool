@@ -428,6 +428,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
+                          {p.data?.source === 'DESIGNER_INITIATED' && (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                              DESIGNER
+                            </span>
+                          )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                               'bg-[#D946EF] text-white'

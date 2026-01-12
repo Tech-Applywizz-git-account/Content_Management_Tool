@@ -1921,7 +1921,7 @@ export const db = {
         return createdProject;
     },
 
-    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL'): Promise<Project> {
+    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL', contentType: ContentType = 'CREATIVE_ONLY'): Promise<Project> {
         // Get current user information, either from cache or directly from auth
         const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
         const currentUserFullName = currentUserCache?.full_name ||
@@ -1933,19 +1933,21 @@ export const db = {
         const projectData = {
             title,
             channel,
-            content_type: 'CREATIVE_ONLY' as ContentType, // Always CREATIVE_ONLY for designer projects
+            content_type: contentType, // Use the provided content type
             current_stage: WorkflowStage.FINAL_REVIEW_CMO, // Start at CMO review
             assigned_to_role: Role.CMO, // Assign to CMO first
             assigned_to_user_id: null, // No specific user assigned yet
             status: TaskStatus.WAITING_APPROVAL, // Waiting for approval
             due_date: dueDate,
             priority,
+            creative_link: link, // Store the creative link in the main project record
             data: {
                 brief: description, // Store description as brief
-                creative_link: link, // Store the creative link
+                creative_link: link, // Also store the creative link in the data object for consistency
                 source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
             },
             // Set creator information
+            created_by: currentUserId, // For backward compatibility
             created_by_user_id: currentUserId,
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
