@@ -163,11 +163,22 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
   console.log('CMO Dashboard - activeView:', activeView);
   console.log('CMO Dashboard - inboxProjects:', inboxProjects);
-  const isReworkProject = (p: Project) =>
-    p.history?.some(h =>
-      h.action === 'REJECTED' ||
-      h.action?.startsWith('REWORK_')
-    );
+  const isReworkProject = (p: Project) => {
+    // Check if this project has rework history caused by CMO
+    if (!p.history) return false;
+    
+    // Find rework/reject actions in the project history
+    // To determine if CMO initiated rework, we check if the action was taken when the project was assigned to CMO
+    return p.history.some(h => {
+      const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
+      
+      // For rework projects, we need to check the from_stage to see if CMO was reviewing
+      // CMO reviews at SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO stages
+      return isReworkAction && 
+             (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L1 || 
+              h.from_stage === WorkflowStage.FINAL_REVIEW_CMO);
+    });
+  };
   const isHighPriority = (p: Project) =>
     p.priority?.toUpperCase?.() === 'HIGH';
   const priorityCardClass = (p: Project) =>
@@ -456,6 +467,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
+                          <span
+                            className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkProject(p) ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
+                              p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
+                                p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
+                                  'bg-slate-100 text-slate-800'
+                            }`}>
+                            {isReworkProject(p) ? 'Rework' : p.assigned_to_role === Role.CINE ? 'WITH CINE' :
+                              p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
+                                p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
+                                  STAGE_LABELS[p.current_stage]}</span>
 
                         </div>
                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>

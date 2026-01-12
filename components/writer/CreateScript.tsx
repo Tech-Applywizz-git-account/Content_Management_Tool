@@ -591,7 +591,12 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
               source: 'SCRIPT_FROM_IDEA',
               parent_idea_id: project.id,
               script_content: formData.script_content,
-              ...formData
+              // Copy form data but exclude fields that belong to the original idea project
+              ...Object.fromEntries(
+                Object.entries(formData).filter(([key]) => 
+                  !['first_review_opened_by_role', 'first_review_opened_at'].includes(key)
+                )
+              )
             }
           })
           .select()
@@ -636,6 +641,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
 
           // Update project data with writer information
           await db.updateProjectData(createdProject.id, {
+            ...formData, 
             writer_id: currentUser.id,
             writer_name: currentUser.full_name
           });
@@ -702,6 +708,22 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
         // 4️⃣ SUBMIT WORKFLOW
         // Determine workflow based on latest action
         const workflowState = project ? getWorkflowState(project) : { isRejected: false, isRework: false, isInReview: false, isApproved: false, latestAction: null };
+        
+        // For script projects created from ideas, don't consider idea rework history as script rework
+        // This prevents script projects from being considered in rework due to rework in previous stages (like idea)
+        let isScriptInRework = false;
+        if (project?.history && project?.data?.source === 'SCRIPT_FROM_IDEA') {
+          // For scripts created from ideas, check if there have been rework actions since the script was created
+          // Only consider rework actions that happened when the project was in script-related stages
+          const scriptReworkActions = project.history.filter(h => 
+            h.action === 'REWORK' && 
+            (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L1 || h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2)
+          );
+          isScriptInRework = scriptReworkActions.length > 0 && workflowState.latestAction !== 'APPROVED';
+        } else {
+          // For other projects, use the standard rework logic
+          isScriptInRework = workflowState.isRework;
+        }
 
         // Check if project was sent back from CEO after CMO approval
         const wasSentBackFromCEO = await wasProjectSentBackFromCEO(project?.id);
@@ -788,7 +810,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
             await db.advanceWorkflow(realProjectId, 'Idea resubmitted after rework');
             console.log('✅ Successfully resubmitted idea rework project via advanceWorkflow');
           }
-        } else if (workflowState.isRework) {
+        } else if (isScriptInRework) {
           // Handle script rework - determine who sent it for rework
           const { data: history, error: historyError } = await supabase
             .from('workflow_history')
@@ -804,139 +826,141 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
           // Find the most recent REWORK action
           const reworkHistory = history?.find(h => h.action === 'REWORK');
 
-          if (reworkHistory) {
-            // Determine the next stage based on who sent for rework
-            let targetRole, targetStage;
+        if (reworkHistory) {
+          let targetRole: Role;
+          let targetStage: WorkflowStage;
 
-            // Get the actor's role to determine where to send it back
-            const { data: userData, error: userError } = await supabase
-              .from('users')
-              .select('role')
-              .eq('id', reworkHistory.actor_id)
-              .single();
+          // 🔍 Find who sent this project for rework
+          const { data: reviewer, error: reviewerError } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', reworkHistory.actor_id)
+            .single();
 
-            if (!userError && userData) {
-              if (userData.role === Role.CEO) {
-                targetRole = Role.CEO;
-                targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
-              } else {
-                // Default to CMO if not CEO (could be CMO or other roles)
-                targetRole = Role.CMO;
-                targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
-              }
-            } else {
-              // Default fallback if user role cannot be determined
-              targetRole = Role.CMO;
-              targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
-            }
-
-            // Update the project to send it back to the appropriate reviewer
-            await db.projects.update(realProjectId, {
-              current_stage: targetStage,
-              assigned_to_role: targetRole,
-              status: TaskStatus.WAITING_APPROVAL
-            });
-
-            // Add workflow history entry
-            await supabase.from('workflow_history').insert([{
-              project_id: realProjectId,
-              from_stage: project?.current_stage || WorkflowStage.REWORK,
-              to_stage: targetStage,
-              action: 'RESUBMITTED',
-              actor_id: currentUser.id,
-              actor_name: currentUser.full_name,
-              comment: 'Resubmitted after rework',
-              timestamp: new Date().toISOString()
-            }]);
-
-            console.log(`✅ Successfully resubmitted rework project back to ${targetRole}`);
+          // ✅ Route BACK to the same reviewer who sent rework
+          if (!reviewerError && reviewer?.role === Role.CEO) {
+            targetRole = Role.CEO;
+            targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
           } else {
-            // Default for rework if no rework history found - use advanceWorkflow
-            await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
-            console.log('✅ Successfully resubmitted rework project via advanceWorkflow');
+            // Default → CMO
+            targetRole = Role.CMO;
+            targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
           }
-        } else if (creatorRole === Role.CMO) {
-          // For CMO-created scripts, we need to bypass the normal workflow and go straight to CEO review
-          try {
-            const project = await db.getProjectById(realProjectId);
-            if (project) {
-              // Update the project directly to SCRIPT_REVIEW_L2 stage and assign to CEO
-              await db.projects.update(realProjectId, {
-                current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-                assigned_to_role: Role.CEO,
-                status: TaskStatus.WAITING_APPROVAL
-              });
-            }
-            console.log('✅ Successfully submitted directly to CEO');
-          } catch (updateError) {
-            console.error('❌ Failed to update project for CEO review:', updateError);
-            throw new Error(`Failed to submit directly to CEO: ${updateError.message || updateError}`);
-          }
+
+          await db.projects.update(realProjectId, {
+            current_stage: targetStage,
+            assigned_to_role: targetRole,
+            status: TaskStatus.WAITING_APPROVAL
+          });
+
+          await supabase.from('workflow_history').insert({
+            project_id: realProjectId,
+            from_stage: project?.current_stage ?? WorkflowStage.REWORK,
+            to_stage: targetStage,
+            action: 'RESUBMITTED',
+            actor_id: currentUser.id,
+            actor_name: currentUser.full_name,
+            comment: 'Resubmitted after rework',
+            timestamp: new Date().toISOString()
+          });
+
+          console.log(`✅ Rework resubmitted back to ${targetRole}`);
         } else {
-          // Special handling for idea projects that were approved by CEO
-          if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
-            // For idea projects converted to scripts, send to CMO script review stage (L1)
-            await db.projects.update(realProjectId, {
-              current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-              assigned_to_role: Role.CMO,
-              status: TaskStatus.WAITING_APPROVAL
-            });
-            
-            // Update project data to remove IDEA_PROJECT source since it's now a script
-            const currentProjectData = project?.data ? (typeof project.data === 'string' ? JSON.parse(project.data) : project.data) : {};
-            const updatedProjectData = { ...currentProjectData };
-            delete updatedProjectData.source; // Remove the IDEA_PROJECT source
-            
-            await db.updateProjectData(realProjectId, updatedProjectData);
-
-            // Add workflow history entry
-            await supabase.from('workflow_history').insert([{
-              project_id: realProjectId,
-              from_stage: project?.current_stage || WorkflowStage.SCRIPT,
-              to_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-              action: 'SUBMITTED',
-              actor_id: currentUser.id,
-              actor_name: currentUser.full_name,
-              comment: 'Script created from approved idea, sent to CMO for review',
-              timestamp: new Date().toISOString()
-            }]);
-
-            console.log('✅ Successfully submitted script from approved idea to CMO script review');
-          } else {
-            await db.submitToReview(realProjectId);
-            console.log('✅ Successfully submitted to CMO');
-          }
+          await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
+          console.log('⚠️ Rework history missing → used advanceWorkflow');
         }
-      }
-
-      // Show popup after successful DB operation
-      let nextStageLabel, creatorLabel, message;
-      // Use the local workflow state for this function
-      const localWorkflowState = project ? getWorkflowState(project) : { isRejected: false, isRework: false, isInReview: false, isApproved: false, latestAction: null };
-
-      if (isFromIdea) {
-        // For scripts created from approved ideas
-        nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
-        message = 'Script created from CEO-approved idea and submitted to CMO for review.';
-      } else if (localWorkflowState && (localWorkflowState.isRework)) {
-        // For rework projects being resubmitted
-        const projectDetails = await db.getProjectById(realProjectId);
-        nextStageLabel = STAGE_LABELS[projectDetails?.current_stage || WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
-        const actionType = localWorkflowState?.isRework ? 'Rework' : 'Rejected';
-        message = `${actionType} script resubmitted successfully. Waiting for ${nextStageLabel}.`;
-      } else if (creatorRole === Role.CMO) {
-        nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2] || 'Script Review (CEO)';
-        creatorLabel = 'CMO';
-        message = `${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`;
-      } else if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
-        // For idea projects converted to scripts
-        nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
-        message = 'Script created from approved idea submitted successfully. Waiting for Script Review (CMO).';
       } else {
-        nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1] || 'Script Review (CMO)';
-        creatorLabel = 'Writer';
-        message = `${creatorLabel} script submitted successfully. Waiting for ${nextStageLabel}.`;
-      }
+  // ✅ IMPORTANT: Decide routing based on ACTUAL REVIEW, not creator role
+  const cmoHasOpened =
+    project?.first_review_opened_by_role === Role.CMO &&
+    project?.first_review_opened_at;
+
+  /* -----------------------------------
+     SCRIPT FROM CEO-APPROVED IDEA
+     ----------------------------------- */
+  if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
+    await db.projects.update(realProjectId, {
+      current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+      assigned_to_role: Role.CMO,
+      status: TaskStatus.WAITING_APPROVAL
+    });
+
+    const currentData =
+      typeof project?.data === 'string'
+        ? JSON.parse(project.data)
+        : project?.data || {};
+
+    delete currentData.source; // remove IDEA_PROJECT flag
+
+    await db.updateProjectData(realProjectId, currentData);
+
+    await supabase.from('workflow_history').insert({
+      project_id: realProjectId,
+      from_stage: WorkflowStage.SCRIPT,
+      to_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+      action: 'SUBMITTED',
+      actor_id: currentUser.id,
+      actor_name: currentUser.full_name,
+      comment: 'Script created from CEO-approved idea',
+      timestamp: new Date().toISOString()
+    });
+
+    console.log('✅ Script from idea sent to CMO');
+  }
+
+  /* -----------------------------------
+     CMO HAS ALREADY REVIEWED → CEO
+     ----------------------------------- */
+  else if (cmoHasOpened) {
+    await db.projects.update(realProjectId, {
+      current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+      assigned_to_role: Role.CEO,
+      status: TaskStatus.WAITING_APPROVAL
+    });
+
+    console.log('✅ CMO already reviewed → sent to CEO');
+  }
+
+  /* -----------------------------------
+     DEFAULT → ALWAYS GO TO CMO
+     ----------------------------------- */
+  else {
+    await db.projects.update(realProjectId, {
+      current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+      assigned_to_role: Role.CMO,
+      status: TaskStatus.WAITING_APPROVAL
+    });
+
+    console.log('✅ Submitted to CMO');
+  }
+}
+
+/* =========================
+   POPUP MESSAGE LOGIC
+   ========================= */
+
+let nextStageLabel: string;
+let message: string;
+
+const latestProject = await db.getProjectById(realProjectId);
+
+if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
+  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
+  message = 'Script created from approved idea and sent to CMO for review.';
+}
+else if (workflowState?.isRework) {
+  nextStageLabel = STAGE_LABELS[latestProject.current_stage];
+  message = `Rework submitted successfully. Waiting for ${nextStageLabel}.`;
+}
+else if (latestProject.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
+  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2];
+  message = `Script submitted successfully. Waiting for CEO review.`;
+}
+else {
+  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
+  message = `Script submitted successfully. Waiting for CMO review.`;
+}
+
 
       setStageName(nextStageLabel);
       setPopupMessage(message);
@@ -949,7 +973,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
       setTimeout(() => {
         onSuccess(); // refresh dashboard
       }, 3000); // Increased to 3 seconds to ensure popup is visible
-
+      }
     } catch (err: any) {
       console.error('❌ Submit failed:', err);
       // Log more detailed error information

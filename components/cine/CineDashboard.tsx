@@ -128,6 +128,17 @@ const filteredProjects = React.useMemo(() => {
         setScriptCount((scriptProjects || []).length);
     }, [inboxProjects, scriptProjects]);
     
+    // Calculate counts based on historyProjects for consistency with the filtered view
+    useEffect(() => {
+        // Use historyProjects for "Footage Uploaded" count since that's what gets displayed when filtered
+        const historyFootageUploadedCount = (historyProjects || []).filter(p => 
+            !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)
+        ).length;
+        
+        // Update footage uploaded count to match what will be shown when filter is applied
+        setFootageUploadedCount(historyFootageUploadedCount);
+    }, [historyProjects]);
+    
     const [scriptCount, setScriptCount] = useState<number>(0);
 
     return (

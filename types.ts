@@ -109,6 +109,8 @@ export interface ProjectData {
 export interface HistoryEvent {
   id: string;
   stage: WorkflowStage;
+  from_stage?: WorkflowStage;
+  to_stage?: WorkflowStage;
   actor_id: string;
   actor_name: string;
   action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED' | 'DIRECT_UPLOAD';

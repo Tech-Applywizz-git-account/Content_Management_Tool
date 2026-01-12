@@ -49,6 +49,23 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
 
+  const isReworkProjectByCeo = (p: Project) => {
+    // Check if this project has rework history caused by CEO
+    if (!p.history) return false;
+    
+    // Find rework/reject actions in the project history
+    // To determine if CEO initiated rework, we check if the action was taken when the project was assigned to CEO
+    return p.history.some(h => {
+      const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
+      
+      // For rework projects, we need to check the from_stage to see if CEO was reviewing
+      // CEO reviews at SCRIPT_REVIEW_L2 and FINAL_REVIEW_CEO stages
+      return isReworkAction && 
+             (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2 || 
+              h.from_stage === WorkflowStage.FINAL_REVIEW_CEO);
+    });
+  };
+
   // Load counts from the workflow_history table and projects table (count by user actions)
   const loadCounts = async () => {
     try {
@@ -699,8 +716,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         DESIGNER
                       </span>
                     )}
-                    {/* Show REWORK badge if project is in rework status */}
-                    {(project.status === 'REWORK' || project.history?.some(h => h.action === 'REWORK' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED')) && (
+                    {/* Show REWORK badge if project is in rework status initiated by CEO */}
+                    {isReworkProjectByCeo(project) && (
                       <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-red-100 text-red-800">
                         REWORK
                       </span>
