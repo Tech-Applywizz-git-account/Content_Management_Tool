@@ -7,13 +7,21 @@ import { getWorkflowState } from '../../services/workflowUtils';
 interface Props {
     user: { full_name: string; role: Role };
     projects: Project[];
+    scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
+    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null;
 }
 
-const EditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
+const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
     // Show all projects the editor has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
-    const myTasks = projects || [];
+    const myTasks = React.useMemo(() => {
+        if (activeFilter === 'SCRIPTS') {
+            // Use the script projects passed from parent when SCRIPTS filter is active
+            return scriptProjects || [];
+        }
+        return projects || [];
+    }, [projects, scriptProjects, activeFilter]);
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -113,7 +121,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject }) => {
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {!project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
                                     </button>
                                 </div>
                             </div>

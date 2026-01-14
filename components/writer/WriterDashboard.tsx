@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
-import { Plus, Lightbulb, Clock } from 'lucide-react';
+import { Plus, Lightbulb, Clock, PlayCircle } from 'lucide-react';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import WriterProjectDetail from './WriterProjectDetail';
 import WriterMyWork from './WriterMyWork';
 import WriterCalendar from './WriterCalendar';
+import WriterVideoApproval from './WriterVideoApproval';
 import { format } from 'date-fns';
 import Layout from '../Layout';
 import Popup from '../Popup';
@@ -34,6 +35,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
+    const [videoApprovalView, setVideoApprovalView] = useState(false); // New state for video approval view
 
 
     const handleInternalRefresh = async () => {
@@ -150,6 +152,12 @@ const drafts = dashboardProjects.filter(p =>
             WorkflowStage.SCRIPT_REVIEW_L1,
             WorkflowStage.SCRIPT_REVIEW_L2
         ].includes(p.current_stage)
+    );
+    
+    // Projects that need video approval by the writer - visible to all writers
+    const videoApprovalProjects = dashboardProjects.filter(p =>
+        (p.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL || p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) &&
+        p.assigned_to_role === Role.WRITER
     );
    const convertedIdeaIds = new Set(
   dashboardProjects
@@ -304,6 +312,11 @@ const handleEdit = (project: Project) => {
     if (reworkProject) {
         return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
     }
+    
+    // Video Approval View
+    if (videoApprovalView) {
+        return <WriterVideoApproval projects={videoApprovalProjects} onBack={() => setVideoApprovalView(false)} refreshProjects={handleInternalRefresh} />;
+    }
 
     return (
         <Layout
@@ -343,6 +356,13 @@ const handleEdit = (project: Project) => {
                         >
                             <Lightbulb className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>New Idea</span>
+                        </button>
+                        <button
+                            onClick={() => setVideoApprovalView(true)}
+                            className="w-full sm:w-auto bg-[#F59E0B] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
+                        >
+                            <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
+                            <span>Video Approval</span>
                         </button>
                     </div>
 

@@ -188,8 +188,8 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                 {/* Right Column - Scheduling Actions */}
                 <div className="space-y-6">
-                    {/* Schedule Post - Hide for CEO-approved projects (post-approval stages) */}
-                    {!isPosted && !([WorkflowStage.CINEMATOGRAPHY, WorkflowStage.VIDEO_EDITING, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(project.current_stage)) && (
+                    {/* Schedule Post - Show only after CMO and CEO have approved */}
+                    {!isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
                                 📅 Schedule Post
@@ -230,7 +230,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     )}
 
                     {/* Add Live URL (after posting) */}
-                    {project.post_scheduled_date && !isPosted && !([WorkflowStage.CINEMATOGRAPHY, WorkflowStage.VIDEO_EDITING, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(project.current_stage)) && (
+                    {project.post_scheduled_date && !isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
                                 🔗 Mark as Posted
@@ -319,6 +319,19 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                     {isPosted ? 'POSTED' : project.post_scheduled_date ? 'SCHEDULED' : 'READY'}
                                 </span>
                             </div>
+                            {project.data?.niche && (
+                                <div className="flex justify-between mt-2">
+                                    <span className="text-slate-600">Niche:</span>
+                                    <span className="font-bold text-slate-900 uppercase">
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                        : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                        : project.data.niche === 'OTHER' && project.data.niche_other 
+                                            ? project.data.niche_other 
+                                            : project.data.niche}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

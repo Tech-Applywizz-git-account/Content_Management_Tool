@@ -120,6 +120,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             await db.projects.update(localProject.id, { 
                 shoot_date: shootDate
             });
+            
+            // Update project data to persist any changes made during this session
+            await db.updateProjectData(localProject.id, {
+                ...localProject.data,
+                cine_thumbnail_link: localProject.data.cine_thumbnail_link
+            });
+            
             setLocalProject(prev => ({
   ...prev,
   shoot_date: shootDate
@@ -197,8 +204,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             
             // Update the project with the video link and advance the workflow
             // This will properly route to the correct next stage
+    
+            
+            // Update project data to persist any changes made during this session
+            // Include video_link in the update so timestamp logic can detect the upload
             await db.projects.update(localProject.id, { 
-                video_link: videoLink
+                video_link: videoLink,
+                cine_uploaded_at: new Date().toISOString(),
+                status: TaskStatus.WAITING_APPROVAL
             });
             
             // Advance workflow to next stage based on project settings
@@ -388,11 +401,34 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-black uppercase">Cinematography Instructions</h2>
                         {!isCurrentlyAssignedToCine && (
-                            <span className="px-3 py-1 text-xs font-black uppercase border-2 border-blue-500 bg-blue-100 text-blue-800">
+                            <span className="px-3 py-1 text-xs font-bold uppercase border-2 border-blue-500 bg-blue-100 text-blue-800">
                                 Preview Only
                             </span>
                         )}
                     </div>
+                    
+                    {/* Thumbnail Reference from Writer */}
+                    {localProject.data?.thumbnail_reference_link && (
+                        <div className="mb-6 pt-6 border-t-2 border-gray-200">
+                            <h3 className="text-lg font-black uppercase mb-3">Writer's Thumbnail Reference</h3>
+                            <div className="bg-blue-50 border-2 border-blue-200 p-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold uppercase text-blue-800 mb-1">Reference Thumbnail Link</p>
+                                        <a 
+                                            href={localProject.data.thumbnail_reference_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all font-medium"
+                                        >
+                                            {localProject.data.thumbnail_reference_link}
+                                        </a>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-blue-600 mt-2 italic">This is the thumbnail provided by the writer for reference</p>
+                            </div>
+                        </div>
+                    )}
                     
                     {/* Writer Name */}
                     {localProject.data.writer_name && (
@@ -476,6 +512,31 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         </div>
                     </div>
                     
+                    {/* Thumbnail Upload Section - Only show if thumbnail_required is true */}
+                    {localProject.data.thumbnail_required && (
+                        <div className="mt-6 pt-6 border-t-2 border-gray-200">
+                            <h3 className="text-lg font-black uppercase mb-4">Thumbnail Assets</h3>
+                            <div>
+                                <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Thumbnail Drive Link</label>
+                                <input
+                                    type="text"
+                                    value={localProject.data.cine_thumbnail_link || ''}
+                                    onChange={(e) => setLocalProject(prev => ({
+                                        ...prev,
+                                        data: {
+                                            ...prev.data,
+                                            cine_thumbnail_link: e.target.value
+                                        }
+                                    }))}
+                                    disabled={!canEdit}
+                                    className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
+                                    placeholder="Paste Google Drive link for thumbnail assets"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">This link will be shared with the Designer for thumbnail creation</p>
+                            </div>
+                        </div>
+                    )}
+                    
                     {/* Save Button for Cinematography Fields */}
                     {canEdit && (
                         <div className="mt-4 flex justify-end">
@@ -487,7 +548,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             actor: localProject.data.actor,
                                             location: localProject.data.location,
                                             lighting: localProject.data.lighting,
-                                            angles: localProject.data.angles
+                                            angles: localProject.data.angles,
+                                            cine_thumbnail_link: localProject.data.cine_thumbnail_link
                                         });
                                         
                                         // Show success message
@@ -690,6 +752,19 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
                             <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
                         </div>
+                        {localProject.data?.niche && (
+                            <div className="col-span-2">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                    : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                    : localProject.data.niche === 'OTHER' && localProject.data.niche_other 
+                                        ? localProject.data.niche_other 
+                                        : localProject.data.niche}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

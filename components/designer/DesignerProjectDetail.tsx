@@ -149,6 +149,17 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             
             await db.projects.update(project.id, updates);
             
+            // Update project data to persist any changes made during this session
+            // Include the asset links in the update so timestamp logic can detect the upload
+            const projectDataUpdates: any = { ...project.data };
+            if (isVideo) {
+                projectDataUpdates.thumbnail_link = link;
+            } else {
+                projectDataUpdates.creative_link = link;
+            }
+            
+            await db.updateProjectData(project.id, projectDataUpdates);
+            
             // Advance workflow to next stage based on project settings
             await db.advanceWorkflow(project.id, comment);
             
@@ -501,7 +512,23 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 </div>
                             )}
                             
-                            {!project.data.thumbnail_reference_link && !project.data.thumbnail_notes && (
+                            {/* Thumbnail Link from Cinematographer */}
+                            {project.data.cine_thumbnail_link && (
+                                <div>
+                                    <p className="font-bold text-slate-500 uppercase text-xs mb-1">Cinematographer's Thumbnail Assets</p>
+                                    <a 
+                                        href={project.data.cine_thumbnail_link} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="block p-3 bg-white border-2 border-purple-400 text-purple-600 font-medium hover:bg-purple-50 transition-colors break-all"
+                                    >
+                                        {project.data.cine_thumbnail_link}
+                                    </a>
+                                    <p className="text-xs text-slate-500 mt-1">Assets provided by Cinematographer for thumbnail creation</p>
+                                </div>
+                            )}
+                            
+                            {!project.data.thumbnail_reference_link && !project.data.thumbnail_notes && !project.data.cine_thumbnail_link && (
                                 <p className="text-slate-500 italic">No specific thumbnail requirements provided.</p>
                             )}
                         </div>
@@ -667,6 +694,19 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
                             <p className="font-bold text-slate-900 mt-1">{project.content_type}</p>
                         </div>
+                        {project.data?.niche && (
+                            <div className="col-span-2">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                                    {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                    : project.data.niche === 'OTHER' && project.data.niche_other 
+                                        ? project.data.niche_other 
+                                        : project.data.niche}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

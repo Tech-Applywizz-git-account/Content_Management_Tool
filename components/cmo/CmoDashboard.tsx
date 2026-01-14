@@ -4,10 +4,12 @@ import { format } from 'date-fns';
 import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
+import CmoProjectDetails from './CmoProjectDetails';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoHistoryDetail from './CmoHistoryDetail';
 import CmoCalendar from './CmoCalendar';
+import CmoOverview from './CmoOverview';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
@@ -32,10 +34,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const viewStorageKey = `activeView:${user.role}`;
   // Use allProjects for dashboard view, fallback to inboxProjects
   const dashboardProjects = allProjects || inboxProjects || [];
-  const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
+  const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY' | 'PROJECT_DETAILS'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'SHOOT' | 'EDITOR'>('PENDING');
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
   const [isCreatingScript, setIsCreatingScript] = useState(false);
   // State for counts
@@ -190,18 +192,19 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // Categorize Projects for CMO Dashboard
   // Column 1: Pending Approval Projects (Projects in CMO review stages with WAITING_APPROVAL status)
 
+  // Scripts pending approval at CMO (only script projects, not idea projects)
   const pendingApprovalProjects = dashboardProjects.filter(
     p =>
       (
-        (p.assigned_to_role === Role.CMO &&
-          (
-            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-            p.current_stage === WorkflowStage.FINAL_REVIEW_CMO
-          )) ||
-        // Also show idea projects that originated as ideas
-        (p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.FINAL_REVIEW_CMO)
+        p.assigned_to_role === Role.CMO ||  // Traditional assignment
+        (p.visible_to_roles && p.visible_to_roles.includes('CMO'))  // Parallel visibility
       ) &&
-      p.status !== TaskStatus.DONE
+      p.data?.source !== 'IDEA_PROJECT' &&
+      p.status !== TaskStatus.DONE &&
+      // Include script review stages and new multi-writer approval stage
+      (p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
+       p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+       p.current_stage === WorkflowStage.POST_WRITER_REVIEW)
   );
 
 
@@ -212,18 +215,31 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       p.status === TaskStatus.WAITING_APPROVAL
   );
 
-  // Column 3: Projects in Production (Projects that have moved past CEO approval)
-  const inProduction = dashboardProjects.filter(
+
+
+  // Column 3: Projects for Shoot (Projects assigned to Cine role)
+  const inShoot = dashboardProjects.filter(
     p =>
-      (p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-        p.current_stage === WorkflowStage.VIDEO_EDITING ||
-        p.current_stage === WorkflowStage.THUMBNAIL_DESIGN ||
-        p.current_stage === WorkflowStage.CREATIVE_DESIGN ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-        p.current_stage === WorkflowStage.OPS_SCHEDULING) &&
+      p.assigned_to_role === Role.CINE &&
       p.status !== TaskStatus.DONE
   );
+
+  // Column 3: Projects for Editor (Projects assigned to Editor role)
+  const inEditor = dashboardProjects.filter(
+    p =>
+      p.assigned_to_role === Role.EDITOR &&
+      p.status !== TaskStatus.DONE
+  );
+
+  // Column 3: Ideas pending at CMO (Projects that originated as ideas and are assigned to CMO)
+  const ideasPendingAtCMO = dashboardProjects.filter(
+    p =>
+      p.data?.source === 'IDEA_PROJECT' &&
+      p.assigned_to_role === Role.CMO &&
+      p.status !== TaskStatus.DONE
+  );
+
+
 
   const handleReview = (project: Project) => {
     setViewMode('REVIEW');
@@ -242,6 +258,15 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         project={selectedProject}
         onBack={handleBack}
         onComplete={handleBack}
+      />
+    );
+  }
+
+  if (selectedProject && viewMode === 'PROJECT_DETAILS') {
+    return (
+      <CmoProjectDetails
+        project={selectedProject}
+        onBack={handleBack}
       />
     );
   }
@@ -272,13 +297,15 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         onChangeView={handleViewChange}
       >
         {activeView === 'mywork' ? (
-          <CmoMyWork
-            user={user}
-            projects={historyProjects}
-            onReview={handleReview}
-          />
-        ) : activeView === 'calendar' ? (
-          <CmoCalendar projects={inboxProjects} />
+  <CmoMyWork
+    user={user}
+    projects={historyProjects}
+    onReview={handleReview}
+  />
+) : activeView === 'overview' ? (
+  <CmoOverview user={user} />
+) : activeView === 'calendar' ? (
+  <CmoCalendar projects={inboxProjects} />
         ) : (
           <div key={refreshKey} className="space-y-8 animate-fade-in">
             {/* Header */}
@@ -292,7 +319,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </p>
               </div>
 
-              <div className="flex space-x-2">
+              <div className="flex space-x-2 flex-wrap gap-2">
                 <button
                   onClick={() => setIsCreatingScript(true)}
                   className="px-6 py-4 bg-[#D946EF] text-white border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2"
@@ -325,7 +352,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
                 <button
                   onClick={() => {
-                    console.log('🖱️ CMO Dashboard: Refresh button clicked');
+                    console.log('MouseClicked: CMO Dashboard: Refresh button clicked');
                     handleInternalRefresh();
                   }}
                   className="bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
@@ -393,7 +420,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                         <div className="col-span-2">
                           <div className="text-xs font-bold uppercase text-slate-700">
-                            By: {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
                           <div className="text-xs font-bold text-slate-500 uppercase">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
@@ -407,9 +434,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             }`}>
                             {history?.action}
                           </span>
-                          {history?.action === 'REJECTED' && p.rejected_reason && (
-                            <div className="text-xs text-red-700 mt-1 truncate" title={p.rejected_reason}>
-                              Reason: {p.rejected_reason}
+                          {history?.action === 'REJECTED' && history?.comment && (
+                            <div className="text-xs text-red-700 mt-1 truncate" title={history.comment}>
+                              Reason: {history.comment}
                             </div>
                           )}
                         </div>
@@ -419,12 +446,12 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 
-                {/* Column 1: Pending Approval Projects */}
+                {/* Column 1: Scripts Pending Approval at CMO */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <h3 className="font-black uppercase tracking-wide">Pending Approval</h3>
+                    <h3 className="font-black uppercase tracking-wide">Scripts Pending Approval</h3>
                     <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingApprovalProjects.length}</span>
                   </div>
                   <div className="space-y-4">
@@ -473,7 +500,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                             <Clock className="w-3 h-3 mr-1" />
-                            By: {p.writer_name || p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
@@ -481,64 +508,25 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                       </div>
                     ))}
-                    {pendingApprovalProjects.length === 0 && <div className="p-8"></div>}
+                    {pendingApprovalProjects.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending approval</div>}
                   </div>
                 </div>
 
-                {/* Column 2: Projects Pending at CEO */}
+                {/* Column 2: Idea Pending Approval */}
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>
-                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingAtCEO.length}</span>
+                  <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">Idea Pending Approval</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{ideasPendingAtCMO.length}</span>
                   </div>
                   <div className="space-y-4">
-                    {pendingAtCEO.map(p => (
+                    {ideasPendingAtCMO.map(p => (
                       <div
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      >
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {p.data?.source === 'IDEA_PROJECT' && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                            </span>
-                          )}
-                          <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                              ? 'bg-red-500 text-white'
-                              : p.priority === 'NORMAL'
-                                ? 'bg-yellow-500 text-black'
-                                : 'bg-green-500 text-white'
-                              }`}
-                          >
-                            {p.priority}
-                          </span>
-                          <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
-                            With CEO
-                          </span>
-                        </div>
-                        <h4 className="font-black text-lg text-slate-900 mb-4 uppercase">{p.title}</h4>
-                        <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden">
-                          <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
-                        </div>
-                      </div>
-                    ))}
-                    {pendingAtCEO.length === 0 && <div className="p-8"></div>}
-                  </div>
-                </div>
-
-                {/* Column 3: Projects in Production */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <h3 className="font-black uppercase tracking-wide">Production</h3>
-                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inProduction.length}</span>
-                  </div>
-                  <div className="space-y-4">
-                    {inProduction.map(p => (
-                      <div
-                        key={p.id}
-                        className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                        onClick={() => {
+                          setViewMode('REVIEW');
+                          setSelectedProject(p);
+                        }}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
                           {p.data?.source === 'IDEA_PROJECT' && (
@@ -561,25 +549,210 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {p.priority}
                           </span>
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'bg-orange-100 text-orange-800' : p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
-                            p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
-                              p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
-                                'bg-slate-100 text-slate-700'
-                            }`}>
-                            {p.history && p.history.some(h => h.action === 'REJECTED' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED') ? 'Rework' : p.assigned_to_role === Role.CINE ? 'WITH CINE' :
-                              p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
-                                p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
-                                  p.assigned_to_role === Role.CMO ? 'WITH CMO' : 'WITH OTHER'}
+                          <span className="bg-green-100 text-green-800 px-2 py-0.5 border border-green-200 text-[10px] font-bold uppercase">
+                            PENDING AT CMO
                           </span>
                         </div>
                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                        <div className="w-full bg-slate-200 h-2 border border-black overflow-hidden mt-4">
-                          <div className="bg-[#4ADE80] h-full w-3/4"></div>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                          </div>
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
                         </div>
                       </div>
                     ))}
-                    {inProduction.length === 0 && <div className="p-8"></div>}
+                    {ideasPendingAtCMO.length === 0 && <div className="p-8 text-center text-gray-500">No idea projects pending approval</div>}
                   </div>
+                </div>
+
+                {/* Column 3: Projects Pending at CEO */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingAtCEO.length}</span>
+                  </div>
+                  <div className="space-y-4">
+                    {pendingAtCEO.map(p => (
+                      <div
+                        key={p.id}
+                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => {
+                          setViewMode('REVIEW');
+                          setSelectedProject(p);
+                        }}
+                      >
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {p.data?.source === 'IDEA_PROJECT' && (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                            </span>
+                          )}
+                          <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                              ? 'bg-red-500 text-white'
+                              : p.priority === 'NORMAL'
+                                ? 'bg-yellow-500 text-black'
+                                : 'bg-green-500 text-white'
+                              }`}>
+                            {p.priority}
+                          </span>
+                          <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
+                            With CEO
+                          </span>
+                        </div>
+                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                          </div>
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {pendingAtCEO.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending at CEO</div>}
+                  </div>
+                </div>
+
+                {/* Column 4: Shoot and Editor Tabs */}
+                <div className="space-y-4">
+                  {/* Tabs for Shoot and Editor */}
+                  <div className="flex border-b border-gray-200">
+                    <button 
+                      className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'SHOOT' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500'}`}
+                      onClick={() => setActiveTab('SHOOT')}
+                    >
+                      Shoot ({inShoot.length})
+                    </button>
+                    <button 
+                      className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'EDITOR' ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-gray-500'}`}
+                      onClick={() => setActiveTab('EDITOR')}
+                    >
+                      Editor ({inEditor.length})
+                    </button>
+                  </div>
+                  
+                  {/* Content based on active tab */}
+                  {activeTab === 'SHOOT' ? (
+                    <>
+                      <div className="flex items-center justify-between p-4 bg-[#A78BFA] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="font-black uppercase tracking-wide">Shoot (With Cine)</h3>
+                        <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inShoot.length}</span>
+                      </div>
+                      <div className="space-y-4">
+                        {inShoot.map(p => (
+                          <div
+                            key={p.id}
+                            className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            onClick={() => {
+                              setViewMode('REVIEW');
+                              setSelectedProject(p);
+                            }}
+                          >
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {p.data?.source === 'IDEA_PROJECT' && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                  {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                  'bg-[#D946EF] text-white'
+                                }`}>
+                                {p.channel}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                  ? 'bg-red-500 text-white'
+                                  : p.priority === 'NORMAL'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                                  }`}>
+                                {p.priority}
+                              </span>
+                              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 border border-purple-200 text-[10px] font-bold uppercase">
+                                WITH CINE
+                              </span>
+                            </div>
+                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                                <Clock className="w-3 h-3 mr-1" />
+                                By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                              </div>
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {inShoot.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Cine</div>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between p-4 bg-[#FBBF24] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="font-black uppercase tracking-wide">Editor</h3>
+                        <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inEditor.length}</span>
+                      </div>
+                      <div className="space-y-4">
+                        {inEditor.map(p => (
+                          <div
+                            key={p.id}
+                            className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            onClick={() => {
+                              setViewMode('REVIEW');
+                              setSelectedProject(p);
+                            }}
+                          >
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {p.data?.source === 'IDEA_PROJECT' && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                  {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                  'bg-[#D946EF] text-white'
+                                }`}>
+                                {p.channel}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                  ? 'bg-red-500 text-white'
+                                  : p.priority === 'NORMAL'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                                  }`}>
+                                {p.priority}
+                              </span>
+                              <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 border border-yellow-200 text-[10px] font-bold uppercase">
+                                WITH EDITOR
+                              </span>
+                            </div>
+                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                                <Clock className="w-3 h-3 mr-1" />
+                                By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                              </div>
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {inEditor.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Editor</div>}
+                      </div>
+                    </>
+                  )}
                 </div>
 
 

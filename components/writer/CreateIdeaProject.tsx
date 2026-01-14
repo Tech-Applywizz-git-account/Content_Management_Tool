@@ -16,6 +16,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
   const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
   const [contentType, setContentType] = useState<ContentType>('CREATIVE_ONLY');
   const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<'HIGH' | 'NORMAL' | 'LOW'>('NORMAL');
+  const [thumbnailReferenceLink, setThumbnailReferenceLink] = useState('');
 
   const isRework = project?.status === 'REWORK';
 
@@ -39,6 +41,9 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       
       // Set description from idea_description or brief
       setDescription(parsedData?.idea_description || parsedData?.brief || '');
+      
+      // Set thumbnail reference link if it exists
+      setThumbnailReferenceLink(parsedData?.thumbnail_reference_link || '');
       
 
     }
@@ -71,6 +76,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
         await db.updateProjectData(project.id, {
           idea_description: description,
           brief: description,
+          thumbnail_reference_link: thumbnailReferenceLink,
         });
         
         // Update project metadata
@@ -176,8 +182,14 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
           title,
           channel,
           contentType,
-          description
+          description,
+          priority
         );
+        
+        // Update the project data to include the thumbnail reference link
+        await db.updateProjectData(createdProject.id, {
+          thumbnail_reference_link: thumbnailReferenceLink,
+        });
 
         setPopupMessage(`Idea project "${title}" created successfully. Waiting for CMO review.`);
         setStageName('Final Review (CMO)');
@@ -288,6 +300,35 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               />
             </div>
 
+            {/* Thumbnail Reference Link */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Reference Thumbnail (Optional)</label>
+              <input
+                type="text"
+                value={thumbnailReferenceLink}
+                onChange={(e) => setThumbnailReferenceLink(e.target.value)}
+                className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none"
+                placeholder="Paste thumbnail link here"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Priority</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['LOW', 'NORMAL', 'HIGH'] as const).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPriority(p)}
+                    className={`p-2 text-xs font-bold uppercase border-2 border-black ${priority === p
+                      ? 'bg-black text-white'
+                      : 'bg-white hover:bg-slate-50'
+                      }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
 
           </div>
         </div>

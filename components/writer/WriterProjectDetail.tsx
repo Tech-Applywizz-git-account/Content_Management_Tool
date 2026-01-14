@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Project, Role, STAGE_LABELS } from '../../types';
+import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage } from '../../types';
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
+import Popup from '../Popup';
 
 interface Props {
     project: Project;
@@ -15,6 +16,13 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
     const [previousScript, setPreviousScript] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
     const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
+    const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
+    
+    // Popup state
+    const [showPopup, setShowPopup] = useState(false);
+    const [popupMessage, setPopupMessage] = useState('');
+    const [stageName, setStageName] = useState('');
+    const [popupDuration, setPopupDuration] = useState(5000); // 5 seconds
 
     useEffect(() => {
         const fetchData = async () => {
@@ -35,6 +43,18 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                 console.error('Error fetching comments:', commentsError);
             } else {
                 setComments(commentsData || []);
+                
+                // Get current user session to check if this writer has already acted
+                const { data: { session } } = await supabase.auth.getSession();
+                const user = session?.user;
+                
+                // Check if current writer has already approved or rejected this project
+                const currentUserAction = commentsData?.find(comment => 
+                    comment.actor_id === user?.id && 
+                    (comment.action === 'APPROVED' || comment.action === 'REJECTED')
+                );
+                
+                setWriterAlreadyActed(!!currentUserAction);
             }
 
             // Use the new workflow state logic to determine the latest action
@@ -242,6 +262,19 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                     <p className="text-slate-700 font-medium">{project.data.keywords}</p>
                                 </div>
                             )}
+                            {project.data.niche && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
+                                    <p className="text-slate-700 font-medium uppercase">
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                        : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                        : project.data.niche === 'OTHER' && project.data.niche_other 
+                                            ? project.data.niche_other 
+                                            : project.data.niche}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -251,24 +284,24 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                             <div className="flex items-center space-x-2 mb-6">
                                 <MessageSquare className="w-6 h-6" />
                                 <h3 className="text-xl font-black uppercase text-slate-900">
-                                    {project.data?.source === 'IDEA_PROJECT' ? 'Rework Comments' : 'Reviewer Comments'}
+                                    {isRejected || project.status === 'REWORK' ? 'Rework Comments' : project.data?.source === 'IDEA_PROJECT' ? 'Reviewer Comments' : 'Reviewer Comments'}
                                 </h3>
                             </div>
                             
                             {/* Show rejection reason prominently for rework projects */}
                             {(isRejected || project.status === 'REWORK') && rejectionReason && (
-                                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500">
-                                    <h4 className="font-bold text-red-800 mb-2">
+                                <div className="mb-6 p-4 bg-red-50 border-2 border-red-500 shadow-sm">
+                                    <h4 className="font-black text-red-800 mb-2 text-lg uppercase">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Idea Rework Comments' : 'Rework Comments'}
                                     </h4>
-                                    <p className="text-red-700 whitespace-pre-wrap">
+                                    <p className="text-red-700 whitespace-pre-wrap text-base font-medium">
                                         {rejectionReason}
                                     </p>
-                                    <p className="text-sm text-red-600 mt-2">
+                                    <p className="text-sm text-red-600 mt-2 font-bold">
                                         {project.data?.source === 'IDEA_PROJECT' 
-                                            ? `Rework comments from ${rejectionComment?.actor_name || 'Reviewer'}` 
-                                            : `Rework comments from ${rejectionComment?.actor_name || 'Reviewer'}`}
-                                        {rejectionComment?.timestamp && ` ${format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}`}
+                                            ? `Rework requested by: ${rejectionComment?.actor_name || 'Reviewer'}` 
+                                            : `Rework requested by: ${rejectionComment?.actor_name || 'Reviewer'}`}
+                                        {rejectionComment?.timestamp && ` at ${format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}`}
                                     </p>
                                 </div>
                             )}
@@ -353,6 +386,155 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                         </div>
                     </div>
 
+                    {/* Multi-Writer Approval Section - Show if project is in multi-writer approval stage */}
+                    {(project.current_stage === 'MULTI_WRITER_APPROVAL' || project.current_stage === 'WRITER_VIDEO_APPROVAL') && (
+                        <div className="bg-orange-50 p-6 border-2 border-orange-400 mb-6">
+                            <h3 className="text-lg font-black uppercase text-orange-900 mb-4">
+                                {project.current_stage === 'MULTI_WRITER_APPROVAL' ? 'Multi-Writer Approval' : 'Video Approval'}
+                            </h3>
+                            <div className="space-y-4">
+                                {project.edited_video_link && (
+                                    <div className="bg-white p-4 border-2 border-orange-300">
+                                        <h4 className="font-bold text-orange-800 mb-2">Edited Video</h4>
+                                        <a 
+                                            href={project.edited_video_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all"
+                                        >
+                                            {project.edited_video_link}
+                                        </a>
+                                    </div>
+                                )}
+                                {project.thumbnail_link && (
+                                    <div className="bg-white p-4 border-2 border-orange-300">
+                                        <h4 className="font-bold text-orange-800 mb-2">Thumbnail</h4>
+                                        <a 
+                                            href={project.thumbnail_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all"
+                                        >
+                                            {project.thumbnail_link}
+                                        </a>
+                                    </div>
+                                )}
+                                {!writerAlreadyActed ? (
+                                    <div className="flex space-x-4 pt-4">
+                                        <button 
+                                            onClick={async () => {
+                                                try {
+                                                    // Get user session
+                                                    const { data: { session } } = await supabase.auth.getSession();
+                                                    const user = session?.user;
+                                                    
+                                                    if (!user) {
+                                                        alert('User not authenticated');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Use the centralized db service to approve the project
+                                                    const { db } = await import('../../services/supabaseDb');
+                                                    // Set the current user in the db service with proper User interface
+                                                    db.setCurrentUser({ 
+                                                        id: user.id, 
+                                                        email: user.email || '', 
+                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+                                                        role: Role.WRITER,
+                                                        status: UserStatus.ACTIVE
+                                                    });
+                                                    
+                                                    // Call the workflow advance function to move to next stage
+                                                    await db.advanceWorkflow(project.id, 'Writer approved the final video');
+                                                    
+                                                    // Show success popup
+                                                    setPopupMessage('Video approved successfully! The project has been sent to the ops team.');
+                                                    setStageName('Ops Scheduling');
+                                                    setPopupDuration(5000);
+                                                    setShowPopup(true);
+                                                    
+                                                    // Navigate back after popup duration + small buffer
+                                                    setTimeout(() => {
+                                                        onBack(); // Navigate back to previous page
+                                                    }, 5500); // 5 seconds popup + 500ms buffer
+                                                } catch (error) {
+                                                    console.error('Failed to approve video:', error);
+                                                    // Show error popup
+                                                    setPopupMessage('Failed to approve video. Please try again.');
+                                                    setStageName('Error');
+                                                    setPopupDuration(5000);
+                                                    setShowPopup(true);
+                                                }
+                                            }}
+                                            className="px-6 py-3 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all"
+                                        >
+                                            Approve Video
+                                        </button>
+                                        <button 
+                                            onClick={async () => {
+                                                try {
+                                                    // Get user session
+                                                    const { data: { session } } = await supabase.auth.getSession();
+                                                    const user = session?.user;
+                                                    
+                                                    if (!user) {
+                                                        alert('User not authenticated');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Use the centralized db service to reject the project
+                                                    const { db } = await import('../../services/supabaseDb');
+                                                    // Set the current user in the db service with proper User interface
+                                                    db.setCurrentUser({ 
+                                                        id: user.id, 
+                                                        email: user.email || '', 
+                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+                                                        role: Role.WRITER,
+                                                        status: UserStatus.ACTIVE
+                                                    });
+                                                    
+                                                    // Call the workflow reject function to send project back to editor
+                                                    await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, 'Writer rejected the video - needs rework');
+                                                    
+                                                    // Show rejection popup
+                                                    setPopupMessage('Video rejected. Sent back to editor for rework.');
+                                                    setStageName('Video Editing');
+                                                    setPopupDuration(5000);
+                                                    setShowPopup(true);
+                                                    
+                                                    // Navigate back after popup duration + small buffer
+                                                    setTimeout(() => {
+                                                        onBack(); // Navigate back to previous page
+                                                    }, 5500); // 5 seconds popup + 500ms buffer
+                                                } catch (error) {
+                                                    console.error('Failed to reject video:', error);
+                                                    // Show error popup
+                                                    setPopupMessage('Failed to reject video. Please try again.');
+                                                    setStageName('Error');
+                                                    setPopupDuration(5000);
+                                                    setShowPopup(true);
+                                                }
+                                            }}
+                                            className="px-6 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all"
+                                        >
+                                            Reject Video
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="pt-4">
+                                        <div className="bg-green-100 p-6 border-2 border-green-400 mb-4">
+                                            <h3 className="font-black text-green-800 mb-2">Action Already Taken</h3>
+                                            <p className="text-green-700">
+                                                You have already acted on this project.
+                                                No further action is required from you.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    
                     {/* Info Note */}
                     <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
@@ -363,12 +545,30 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                                     : project.data?.source === 'IDEA_PROJECT'
                                         ? 'This idea has been sent for rework. The rework comments are displayed above. You can make changes and resubmit for review.'
                                         : 'This project has been sent for rework. The reviewer comments are displayed above. You can make changes and resubmit for review.'
-                                : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
+                                : project.current_stage === 'MULTI_WRITER_APPROVAL'
+                                    ? 'This content requires approval from multiple writers. Your approval contributes to the multi-writer approval process.'
+                                    : project.current_stage === 'WRITER_VIDEO_APPROVAL'
+                                        ? 'This video has been completed by the editor/designer. Please review and approve or reject.'
+                                        : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>
 
                 </div>
             </div>
+            
+            {/* Popup */}
+            {showPopup && (
+                <Popup
+                    message={popupMessage}
+                    stageName={stageName}
+                    onClose={() => {
+                        setShowPopup(false);
+                        // Navigate back when popup is manually closed
+                        onBack();
+                    }}
+                    duration={popupDuration}
+                />
+            )}
         </div>
     );
 };

@@ -150,7 +150,7 @@ const filteredProjects = useMemo(() => {
                 />
             ) : activeView === 'mywork' ? (
                 <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
- onSelectProject={setSelectedProject} scriptProjects={scriptProjects} />
+ onSelectProject={setSelectedProject} scriptProjects={scriptProjects} activeFilter={activeFilter} />
             ) : activeView === 'calendar' ? (
                 <EditorCalendar projects={inboxProjects} />
             ) : (

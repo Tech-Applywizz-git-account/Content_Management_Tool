@@ -33,6 +33,9 @@ import CineDashboard from './components/cine/CineDashboard';
 // Editor Imports
 import EditorDashboard from './components/editor/EditorDashboard';
 
+// Sub-Editor Imports
+import SubEditorDashboard from './components/subeditor/SubEditorDashboard';
+
 // Designer Imports
 import DesignerDashboard from './components/designer/DesignerDashboard';
 
@@ -636,6 +639,17 @@ function App() {
         historyProjects={projects.history}
         scriptProjects={editorScriptProjects}
         onRefresh={() => refreshData(user)}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  // --- SUB-EDITOR FLOW ---
+  if (user?.role === Role.SUB_EDITOR) {
+    return (
+      <SubEditorDashboard
+        user={user}
+        onBack={() => {}}
         onLogout={handleLogout}
       />
     );

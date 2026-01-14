@@ -3,6 +3,7 @@ export enum Role {
   WRITER = 'WRITER',
   CINE = 'CINE',
   EDITOR = 'EDITOR',
+  SUB_EDITOR = 'SUB_EDITOR',
   DESIGNER = 'DESIGNER',
   CMO = 'CMO',
   CEO = 'CEO',
@@ -22,10 +23,16 @@ export enum WorkflowStage {
   SCRIPT_REVIEW_L2 = 'SCRIPT_REVIEW_L2', // CEO
   CINEMATOGRAPHY = 'CINEMATOGRAPHY', // Cinematographer schedules shoot
   VIDEO_EDITING = 'VIDEO_EDITING', // Editor edits video
+  SUB_EDITOR_ASSIGNMENT = 'SUB_EDITOR_ASSIGNMENT', // Main Editor assigns to sub-editor
+  SUB_EDITOR_PROCESSING = 'SUB_EDITOR_PROCESSING', // Sub-editor works on video
   THUMBNAIL_DESIGN = 'THUMBNAIL_DESIGN', // Designer creates thumbnail (video path)
   CREATIVE_DESIGN = 'CREATIVE_DESIGN', // Designer creates creative (creative-only path)
   FINAL_REVIEW_CMO = 'FINAL_REVIEW_CMO', // CMO Round 2
   FINAL_REVIEW_CEO = 'FINAL_REVIEW_CEO', // CEO Round 2
+  FINAL_REVIEW_CEO_POST_APPROVAL = 'FINAL_REVIEW_CEO_POST_APPROVAL', // CEO final approval before ops posting
+  WRITER_VIDEO_APPROVAL = 'WRITER_VIDEO_APPROVAL', // Writer approves final video before ops
+  MULTI_WRITER_APPROVAL = 'MULTI_WRITER_APPROVAL', // Multiple writers approve in parallel
+  POST_WRITER_REVIEW = 'POST_WRITER_REVIEW', // Post multi-writer approval - visible to OPS and CMO in parallel
   OPS_SCHEDULING = 'OPS_SCHEDULING', // Ops schedules post
   POSTED = 'POSTED', // Content posted/completed
   REWORK = 'REWORK', // Rework stage
@@ -75,6 +82,15 @@ export interface Project {
   created_by_user_id?: string; // User ID of the creator
   created_by_name?: string; // Name of the creator
   created_at: string;
+  writer_submitted_at?: string; // When writer submits the project
+  cmo_approved_at?: string; // When CMO approves the project
+  cmo_rework_at?: string; // When CMO requests rework
+  ceo_approved_at?: string; // When CEO approves the project
+  ceo_rework_at?: string; // When CEO requests rework
+  cine_uploaded_at?: string; // When Cine uploads video
+  editor_uploaded_at?: string; // When Editor uploads video
+  sub_editor_uploaded_at?: string; // When Sub-Editor uploads video
+  designer_uploaded_at?: string; // When Designer uploads assets
   shoot_date?: string; // Cinematographer sets
   delivery_date?: string; // Editor/Designer sets
   post_scheduled_date?: string; // Ops sets
@@ -103,6 +119,9 @@ export interface ProjectData {
   location?: string;
   lighting?: string;
   angles?: string;
+  niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'OTHER';
+  niche_other?: string;
+  cine_thumbnail_link?: string;
   [key: string]: any;
 }
 
@@ -133,6 +152,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   [Role.WRITER]: 'Content Writer',
   [Role.CINE]: 'Cinematographer',
   [Role.EDITOR]: 'Video Editor',
+  [Role.SUB_EDITOR]: 'Sub-Editor',
   [Role.DESIGNER]: 'Graphic Designer',
   [Role.CMO]: 'CMO (Approver)',
   [Role.CEO]: 'CEO (Approver)',
@@ -158,10 +178,16 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.SCRIPT_REVIEW_L2]: 'Script Review (CEO)',
   [WorkflowStage.CINEMATOGRAPHY]: 'Cinematography',
   [WorkflowStage.VIDEO_EDITING]: 'Video Editing',
+  [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: 'Sub-Editor Assignment',
+  [WorkflowStage.SUB_EDITOR_PROCESSING]: 'Sub-Editor Processing',
   [WorkflowStage.THUMBNAIL_DESIGN]: 'Thumbnail Design',
   [WorkflowStage.CREATIVE_DESIGN]: 'Creative Design',
   [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review (CMO)',
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
+  [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: 'Final Review (CEO) Post Approval',
+  [WorkflowStage.WRITER_VIDEO_APPROVAL]: 'Writer Video Approval',
+  [WorkflowStage.MULTI_WRITER_APPROVAL]: 'Multi-Writer Approval',
+  [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review (CMO)',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',

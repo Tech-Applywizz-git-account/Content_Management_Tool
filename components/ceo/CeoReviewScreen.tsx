@@ -373,6 +373,19 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.data?.thumbnail_required === undefined ? '—' : project.data.thumbnail_required ? 'Yes' : 'No'}
                             </div>
                         </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.data?.niche 
+                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                    : project.data.niche === 'OTHER' && project.data.niche_other 
+                                        ? project.data.niche_other 
+                                        : project.data.niche
+                                    : '—'}
+                            </div>
+                        </div>
                         {project.data?.thumbnail_notes && (
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>
@@ -382,6 +395,29 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             </div>
                         )}
                     </div>
+
+                    {/* Thumbnail Reference from Writer */}
+                    {project.data?.thumbnail_reference_link && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Writer's Thumbnail Reference</h3>
+                            <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Thumbnail Link</p>
+                                        <a 
+                                            href={project.data.thumbnail_reference_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all font-medium"
+                                        >
+                                            {project.data.thumbnail_reference_link}
+                                        </a>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2 italic">This is the thumbnail provided by the writer for reference</p>
+                            </div>
+                        </section>
+                    )}
 
                     {/* Script Viewer */}
                     <section className="space-y-4">

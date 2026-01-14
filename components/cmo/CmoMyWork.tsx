@@ -12,11 +12,15 @@ interface Props {
 const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
   // ✅ Filter projects based on the correct status and current stage for CMO
   const myTasks = (projects || []).filter(p =>
-    p.assigned_to_role === Role.CMO &&  // Make sure it’s assigned to the CMO
+    (
+      p.assigned_to_role === Role.CMO ||  // Traditional assignment
+      (p.visible_to_roles && p.visible_to_roles.includes('CMO'))  // Parallel visibility
+    ) &&
     p.status === "WAITING_APPROVAL" &&  // The correct status value for pending approval
     (
       p.current_stage === "SCRIPT_REVIEW_L1" ||  // Checking for the appropriate stage
-      p.current_stage === "FINAL_REVIEW_CMO"
+      p.current_stage === "FINAL_REVIEW_CMO" ||
+      p.current_stage === "POST_WRITER_REVIEW"  // New stage for multi-writer approval
     )
   );
 

@@ -109,3 +109,73 @@ export function getLatestReworkRejectComment(project: Project | undefined): { co
   
   return null;
 }
+
+/**
+ * Update role-specific timestamps based on the action
+ */
+export function getTimestampUpdate(action: string, role: Role): Partial<Record<
+  'writer_submitted_at' | 'cmo_approved_at' | 'cmo_rework_at' | 'ceo_approved_at' | 'ceo_rework_at' | 'cine_uploaded_at' | 'editor_uploaded_at' | 'sub_editor_uploaded_at' | 'designer_uploaded_at',
+  string
+>> {
+  const now = new Date().toISOString();
+  
+  switch (action) {
+    case 'SUBMITTED':
+      // For script submissions, consider this as writer submitting
+      // For editor uploads, this should also set editor_uploaded_at
+      if (role === Role.EDITOR) {
+        return { editor_uploaded_at: now };
+      }
+      return { writer_submitted_at: now };
+    case 'APPROVED':
+      if (role === Role.CMO) {
+        return { cmo_approved_at: now };
+      } else if (role === Role.CEO) {
+        return { ceo_approved_at: now };
+      }
+      break;
+    case 'REWORK':
+    case 'REJECTED':
+      if (role === Role.CMO) {
+        return { cmo_rework_at: now };
+      } else if (role === Role.CEO) {
+        return { ceo_rework_at: now };
+      }
+      break;
+    case 'DIRECT_UPLOAD':
+      // This could be used when cine/editor/sub-editor/designer uploads assets
+      if (role === Role.CINE) {
+        return { cine_uploaded_at: now };
+      } else if (role === Role.EDITOR) {
+        return { editor_uploaded_at: now };
+      } else if (role === Role.SUB_EDITOR) {
+        return { sub_editor_uploaded_at: now };
+      } else if (role === Role.DESIGNER) {
+        return { designer_uploaded_at: now };
+      }
+      break;
+    case 'ASSIGNED_TO_SUB_EDITOR':
+      // When editor assigns project to sub-editor
+      if (role === Role.EDITOR) {
+        return { editor_uploaded_at: now };
+      }
+      break;
+    case 'REWORK_VIDEO_SUBMITTED':
+      if (role === Role.CINE) {
+        return { cine_uploaded_at: now };
+      }
+      break;
+    case 'REWORK_EDIT_SUBMITTED':
+      if (role === Role.EDITOR) {
+        return { editor_uploaded_at: now };
+      }
+      break;
+    case 'REWORK_DESIGN_SUBMITTED':
+      if (role === Role.DESIGNER) {
+        return { designer_uploaded_at: now };
+      }
+      break;
+  }
+  
+  return {};
+}

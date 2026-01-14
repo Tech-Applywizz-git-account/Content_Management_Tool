@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, User } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
@@ -22,6 +22,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     // For rework projects, keep existing data but track new inputs
     const processedProject = {...project};
     
+    // Local state to manage project data updates
+    const [localProject, setLocalProject] = useState<Project>(project);
     const [deliveryDate, setDeliveryDate] = useState(processedProject.delivery_date || '');
     
     // Popup state
@@ -38,16 +40,37 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     // Determine if current user can edit based on role and workflow state
     const canEdit = canUserEdit(userRole, workflowState, project.assigned_to_role);
     
-    const hasEditedVideo = !!project.edited_video_link;
+    const hasEditedVideo = !!localProject.edited_video_link;
 
+    // State for sub-editors
+    const [subEditors, setSubEditors] = useState<User[]>([]);
+    const [selectedSubEditorId, setSelectedSubEditorId] = useState<string>('');
 
-    // Reset form fields when project changes
+    // Sync local state with prop when it changes
     useEffect(() => {
+        setLocalProject(project);
         // For rework projects, keep existing data
         const processedProject = {...project};
         setDeliveryDate(processedProject.delivery_date || '');
         setEditedVideoLink(processedProject.edited_video_link || '');
     }, [project]);
+    
+    // Fetch sub-editors when component mounts
+    useEffect(() => {
+        const fetchSubEditors = async () => {
+            try {
+                const subEditorList = await db.users.getSubEditors();
+                setSubEditors(subEditorList);
+                
+                // No more direct DOM manipulation - the options will be rendered in JSX
+                console.log('Fetched sub-editors:', subEditorList);  // Debug log to verify data flow
+            } catch (error) {
+                console.error('Failed to fetch sub-editors:', error);
+            }
+        };
+        
+        fetchSubEditors();
+    }, []);
 
     const handleSetDeliveryDate = async () => {
         if (!deliveryDate) {
@@ -133,16 +156,29 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             // Update the project with the edited video link and advance the workflow
             // This will properly check thumbnail_required and route to correct stage
             await db.projects.update(project.id, { 
-                edited_video_link: editedVideoLink
+                edited_video_link: editedVideoLink,
+                editor_uploaded_at: new Date().toISOString(), // ✅ REQUIRED
+                status: TaskStatus.WAITING_APPROVAL,
+                data: {
+                    ...project.data,
+                    needs_sub_editor: false,
+                    thumbnail_required: project.data?.thumbnail_required
+                }
             });
+            // Update project data to persist any changes made during this session
+            // Include edited_video_link in the update so timestamp logic can detect the upload
+            
             
             // Advance workflow to next stage based on project settings
             await db.advanceWorkflow(project.id, comment);
             
             console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
             
-            // Get updated project to determine who to notify
+            // Get updated project to determine who to notify and update local state
             const updatedProject = await db.getProjectById(project.id);
+            
+            // Update local state with fresh data
+            setLocalProject(updatedProject);
             
             // Find users to notify based on the next assigned role
             if (updatedProject?.assigned_to_role) {
@@ -341,7 +377,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
                 {/* Raw Video from Cinematographer */}
-                {project.video_link && (
+                {localProject.video_link && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Video className="w-5 h-5" />
@@ -349,15 +385,15 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         </div>
                         <div className="bg-blue-50 border-2 border-blue-400 p-4">
                             <p className="text-sm font-bold text-blue-800 mb-2">
-                                📹 Shoot Date: {project.shoot_date || 'Not specified'}
+                                📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                             </p>
                             <a
-                                href={project.video_link}
+                                href={localProject.video_link}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
                             >
-                                {project.video_link}
+                                {localProject.video_link}
                             </a>
                         </div>
                     </div>
@@ -370,20 +406,21 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         <h2 className="text-xl font-black uppercase">Script Reference</h2>
                     </div>
                     <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {project.data.script_content || 'No script content available'}
+                        {localProject.data?.script_content || 'No script content available'}
                     </div>
                 </div>
                 
 
 
-                {/* Delivery Date Section */}
+                {/* Delivery Date Section - Only show if project is not assigned to sub-editor */}
+                {localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <div className="flex items-center gap-2 mb-4">
                         <CalendarIcon className="w-5 h-5" />
                         <h2 className="text-xl font-black uppercase">Delivery Date</h2>
                     </div>
 
-                    {!project.delivery_date ? (
+                    {!localProject.delivery_date ? (
                         <div className="space-y-4">
                             <p className="text-slate-600 font-medium">Set when you'll deliver the edited video</p>
                             <div className="flex gap-3">
@@ -411,7 +448,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
-                                    <p className="text-2xl font-black text-orange-900">{project.delivery_date}</p>
+                                    <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
                                 </div>
                                 <button
                                     onClick={() => setDeliveryDate('')}
@@ -423,9 +460,134 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         </div>
                     )}
                 </div>
+                )}
+
+                {/* Status information when project is with sub-editor */}
+                {localProject.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT || localProject.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING ? (
+                    <div className="bg-blue-50 border-2 border-blue-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Film className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Project Status</h2>
+                        </div>
+                        <div className="space-y-4">
+                            <p className="text-slate-600 font-medium">
+                                This project has been assigned to a sub-editor for video editing.
+                            </p>
+                            
+                            <div className="bg-white border-2 border-blue-300 p-4">
+                                <p className="text-sm font-bold uppercase text-blue-800 mb-1">Current Stage</p>
+                                <p className="text-lg font-bold text-blue-900">{STAGE_LABELS[localProject.current_stage]}</p>
+                            </div>
+                            
+                            <div className="bg-white border-2 border-blue-300 p-4">
+                                <p className="text-sm font-bold uppercase text-blue-800 mb-1">Assigned To</p>
+                                <p className="text-lg font-bold text-blue-900">Sub-Editor</p>
+                            </div>
+                            
+                            <p className="text-sm text-slate-500 italic">
+                                The editor can monitor the project status but cannot set delivery date or make changes until the sub-editor completes their work.
+                            </p>
+                        </div>
+                    </div>
+                ) : localProject.assigned_to_role === Role.EDITOR && localProject.current_stage === WorkflowStage.VIDEO_EDITING ? (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Film className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Assign to Sub-Editor</h2>
+                        </div>
+                        <div className="space-y-4">
+                            <p className="text-slate-600 font-medium">
+                                Select and assign this project to a sub-editor for video editing
+                            </p>
+                            
+                            {/* Fetch and display sub-editors */}
+                            <div className="mb-4">
+                                <label className="block text-sm font-bold mb-2">Select Sub-Editor:</label>
+                                <select 
+                                    id="subEditorSelect"
+                                    className="w-full p-3 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+                                    value={selectedSubEditorId}
+                                    onChange={(e) => setSelectedSubEditorId(e.target.value)}
+                                >
+                                    <option value="" disabled>Select a sub-editor</option>
+                                    {subEditors.map((subEditor) => (
+                                        <option key={subEditor.id} value={subEditor.id}>
+                                            {subEditor.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        // Get user session
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const user = session?.user;
+                                        
+                                        if (!user) {
+                                            alert('User not authenticated');
+                                            return;
+                                        }
+                                        
+                                        // Use the selected sub-editor ID from React state
+                                        if (!selectedSubEditorId) {
+                                            alert('Please select a sub-editor');
+                                            return;
+                                        }
+                                        
+                                        // Fetch the selected sub-editor details
+                                        const selectedSubEditor = await db.users.getById(selectedSubEditorId);
+                                        
+                                        // Record the action in workflow history
+                                        await db.workflow.recordAction(
+                                            localProject.id,
+                                            localProject.current_stage, // stage
+                                            user.id,
+                                            user.email || user.id, // userName (using email or ID as fallback)
+                                            'SUBMITTED', // Use allowed action value
+                                            `Project assigned to sub-editor: ${selectedSubEditor.full_name}`
+                                        );
+                                        
+                                        // Update the project to assign to sub-editor
+                                        await db.projects.update(localProject.id, { 
+                                            assigned_to_role: Role.SUB_EDITOR,
+                                            assigned_to_user_id: selectedSubEditorId, // Assign to specific sub-editor
+                                            status: TaskStatus.WAITING_APPROVAL,
+                                            data: { ...localProject.data, needs_sub_editor: true } // Mark that sub-editor is needed
+                                        });
+                                        
+                                        // Advance workflow to next stage based on project settings
+                                        await db.advanceWorkflow(localProject.id, `Project assigned to sub-editor: ${selectedSubEditor.full_name}`);
+                                        
+                                        console.log(`Project assigned to sub-editor: ${selectedSubEditor.full_name}`);
+                                        
+                                        // Show popup notification
+                                        setPopupMessage(`Project ${localProject.title} assigned to sub-editor: ${selectedSubEditor.full_name}.`);
+                                        setStageName(STAGE_LABELS[WorkflowStage.SUB_EDITOR_ASSIGNMENT]);
+                                        setPopupDuration(5000);
+                                        setShowPopup(true);
+                                        
+                                        // Update the parent component
+                                        onUpdate();
+                                    } catch (error) {
+                                        console.error('Failed to assign project to sub-editor:', error);
+                                        alert('❌ Failed to assign project to sub-editor. Please try again.');
+                                    }
+                                }}
+                                className="px-8 py-4 bg-[#8B5CF6] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                Assign to Selected Sub-Editor
+                            </button>
+                            <p className="text-sm text-slate-500">
+                                📋 This will move the project to the sub-editor assignment stage
+                            </p>
+                        </div>
+                    </div>
+                ) : null}
 
               {/* Edited Video Upload Section */}
-{(project.delivery_date || isRework) && (
+{(localProject.delivery_date || isRework) && (
   <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
     <div className="flex items-center gap-2 mb-4">
       <Film className="w-5 h-5" />
@@ -445,12 +607,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           Previous Edited Video
         </p>
         <a
-          href={project.edited_video_link}
+          href={localProject.edited_video_link}
           target="_blank"
           rel="noopener noreferrer"
           className="block break-all text-blue-600 underline"
         >
-          {project.edited_video_link}
+          {localProject.edited_video_link}
         </a>
       </div>
     )}
@@ -494,6 +656,15 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         <p className="text-sm text-green-800 mt-1">
           → Project has been moved to Designer for thumbnail creation
         </p>
+        {/* Show upload timestamp */}
+        {localProject.editor_uploaded_at && (
+          <div className="mt-3 pt-3 border-t border-green-300">
+            <span className="text-xs font-bold uppercase text-green-700">Uploaded At</span>
+            <p className="text-sm font-medium text-green-800">
+              {format(new Date(localProject.editor_uploaded_at), 'MMM dd, yyyy h:mm a')}
+            </p>
+          </div>
+        )}
       </div>
     )}
   </div>
@@ -505,22 +676,35 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                            <p className="font-bold text-slate-900 mt-1">{project.status}</p>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
                         </div>
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                            <p className="font-bold text-slate-900 mt-1">{project.priority}</p>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
                         </div>
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
                             <p className="font-bold text-slate-900 mt-1">
-                                {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
                             </p>
                         </div>
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                            <p className="font-bold text-slate-900 mt-1">{project.content_type}</p>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
                         </div>
+                        {localProject.data?.niche && (
+                            <div className="col-span-2">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                    : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                    : localProject.data.niche === 'OTHER' && localProject.data.niche_other 
+                                        ? localProject.data.niche_other 
+                                        : localProject.data.niche}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

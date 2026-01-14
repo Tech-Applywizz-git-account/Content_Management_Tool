@@ -526,6 +526,15 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
           throw new Error('Content type is required. Please select a content type for your script.');
         }
 
+        // Validate niche field
+        if (!formData.niche) {
+          throw new Error('Niche is required. Please select a niche for your script.');
+        }
+        
+        if (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) {
+          throw new Error('Please specify the niche when "Other" is selected.');
+        }
+
         // Validate thumbnail requirement for video content
         if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
           throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
@@ -1033,16 +1042,16 @@ else {
         <div className="flex items-center space-x-4">
           <button
             onClick={handleSaveDraft}
-            disabled={!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
-            className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
+            className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <Save className="w-4 h-4 mr-2" />
             Draft
           </button>
           <button
             onClick={() => setShowConfirmation(true)}
-            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))}
-            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))}
+            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
           >
             {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
             <Send className="w-4 h-4 ml-2" />
@@ -1183,8 +1192,8 @@ else {
                           <div className="flex items-center space-x-4">
                             <input
                               type="text"
-                              value={formData.reference_thumbnail_link || ''}
-                              onChange={e => canEdit ? setFormData({ ...formData, reference_thumbnail_link: e.target.value }) : null}
+                              value={formData.thumbnail_reference_link || ''}
+                              onChange={e => canEdit ? setFormData({ ...formData, thumbnail_reference_link: e.target.value }) : null}
                               readOnly={!canEdit}
                               className="flex-1 p-2 border-2 border-black focus:bg-yellow-50 focus:outline-none"
                               placeholder="Paste thumbnail link here"
@@ -1208,6 +1217,60 @@ else {
                     )}
                   </div>
                 )}
+
+                {/* Niche Selection */}
+                <div className={`${!formData.niche && !formData.niche_other ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                    Niche *
+                  </label>
+                  <select
+                    value={formData.niche || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value) {
+                        setFormData({
+                          ...formData,
+                          niche: value,
+                          niche_other: value === 'OTHER' ? (formData.niche_other || '') : undefined
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          niche: undefined,
+                          niche_other: undefined
+                        });
+                      }
+                    }}
+                    className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                    disabled={!canEdit}
+                  >
+                    <option value="">Select a niche...</option>
+                    <option value="PROBLEM_SOLVING">Problem Solving</option>
+                    <option value="SOCIAL_PROOF">Social Proof</option>
+                    <option value="LEAD_MAGNET">Lead Magnet</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  
+                  {/* Show input field when 'Other' is selected */}
+                  {formData.niche === 'OTHER' && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                        Specify Other Niche
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.niche_other || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, niche_other: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                        placeholder="Enter the niche..."
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
 
                 {/* Cinematographer Instructions - Only for VIDEO content */}
                 {/* Cinematography Instructions (Optional) */}
@@ -1295,7 +1358,7 @@ else {
                           canEdit ? setNewProjectDetails({ ...newProjectDetails, priority: p }) : null
                         }
                         disabled={!canEdit}
-                        className={`p-2 text-xs font-black uppercase border-2 border-black ${newProjectDetails.priority === p
+                        className={`p-2 text-xs font-bold uppercase border-2 border-black ${newProjectDetails.priority === p
                           ? 'bg-black text-white'
                           : 'bg-white hover:bg-slate-50'
                           } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}

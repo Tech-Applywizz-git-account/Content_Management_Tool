@@ -12,7 +12,7 @@ import {
   X,
   Calendar
 } from 'lucide-react';
-
+import { BarChart3 } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -78,7 +78,21 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 <span>My Work</span>
               </button>
             )}
-
+            {/* Overview - Only for CMO */}
+{user.role === Role.CMO && (
+  <button
+    onClick={() => onChangeView?.('overview')}
+    className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${
+      activeView === 'overview'
+        ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+        : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+    }`}
+  >
+    <BarChart3 className="w-5 h-5" />
+    <span>Overview</span>
+  </button>
+)}
+  
             {/* Calendar - Visible for CMO, CEO, and other roles */}
             {(user.role === Role.CEO || user.role === Role.CMO || user.role !== Role.ADMIN) && (
               <button
