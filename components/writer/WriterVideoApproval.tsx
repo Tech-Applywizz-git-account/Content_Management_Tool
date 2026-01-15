@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, WorkflowStage, STAGE_LABELS, Role } from '../../types';
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -19,13 +19,13 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
 
     if (selectedProject) {
         return (
-            <VideoApprovalDetail 
-                project={selectedProject} 
-                onBack={() => setSelectedProject(null)} 
+            <VideoApprovalDetail
+                project={selectedProject}
+                onBack={() => setSelectedProject(null)}
                 onApprove={() => {
-    refreshProjects();   // Fetch latest data from Supabase
-    setSelectedProject(null);
-}}
+                    refreshProjects();   // Fetch latest data from Supabase
+                    setSelectedProject(null);
+                }}
             />
         );
     }
@@ -68,10 +68,10 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                         <div className="flex justify-between items-start mb-4">
                                             <span
                                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                        ? 'bg-[#FF4F4F] text-white'
-                                                        : project.channel === 'LINKEDIN'
-                                                            ? 'bg-[#0085FF] text-white'
-                                                            : 'bg-[#D946EF] text-white'
+                                                    ? 'bg-[#FF4F4F] text-white'
+                                                    : project.channel === 'LINKEDIN'
+                                                        ? 'bg-[#0085FF] text-white'
+                                                        : 'bg-[#D946EF] text-white'
                                                     }`}
                                             >
                                                 {project.channel}
@@ -80,9 +80,9 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                                 Needs Approval
                                             </span>
                                         </div>
-                                        
+
                                         <h3 className="font-black text-lg text-slate-900 uppercase mb-2">{project.title}</h3>
-                                        
+
                                         <div className="space-y-2 text-sm">
                                             <div className="flex justify-between">
                                                 <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
@@ -101,7 +101,7 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                                 </span>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="mt-4 pt-4 border-t-2 border-slate-100">
                                             <button className="w-full bg-orange-500 text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                                                 Review & Approve
@@ -134,7 +134,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
     const [selectedRoleForRework, setSelectedRoleForRework] = useState('');
     const [hasBeenRejected, setHasBeenRejected] = useState(false);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
-    
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -160,21 +160,21 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 console.error('Error fetching comments:', commentsError);
             } else {
                 setComments(commentsData || []);
-                
+
                 // Get current user session to check if this writer has already acted
                 const { data: { session } } = await supabase.auth.getSession();
                 const user = session?.user;
-                
+
                 // Check if current writer has already approved or rejected this project
-                const currentUserAction = commentsData?.find(comment => 
-                    comment.actor_id === user?.id && 
+                const currentUserAction = commentsData?.find(comment =>
+                    comment.actor_id === user?.id &&
                     (comment.action === 'APPROVED' || comment.action === 'REJECTED')
                 );
-                
+
                 setWriterAlreadyActed(!!currentUserAction);
-                
+
                 // Check if any writer has already rejected this project
-                const hasRejection = commentsData?.some(comment => 
+                const hasRejection = commentsData?.some(comment =>
                     comment.action === 'REJECTED'
                 );
                 setHasBeenRejected(!!hasRejection);
@@ -188,34 +188,74 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
         try {
             setLoading(true);
             setError(null);
-            
+
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 throw new Error('User not authenticated');
             }
-            
+
+            // Get the current approval status before approving
+            const { data: currentApprovals, error: approvalsError } = await supabase
+                .from('workflow_history')
+                .select('actor_id, actor_name')
+                .eq('project_id', project.id)
+                .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
+                .eq('action', 'APPROVED');
+
+            const currentApprovedCount = currentApprovals?.length || 0;
+
+            // Get total number of active writers
+            const { data: allWriters, error: writersError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', Role.WRITER)
+                .eq('status', 'ACTIVE');
+
+            const totalWriters = allWriters?.length || 0;
+            const newApprovedCount = currentApprovedCount + 1;
+
             // Use the centralized db service to approve the project
             // Set the current user in the db service with proper User interface
-            db.setCurrentUser({ 
-                id: user.id, 
-                email: user.email || '', 
-                full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+            db.setCurrentUser({
+                id: user.id,
+                email: user.email || '',
+                full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
                 role: 'WRITER' as any,
                 status: UserStatus.ACTIVE
             });
-            
-            // Call the workflow advance function to move to next stage
-            await db.advanceWorkflow(project.id, 'Writer approved the final video');
-            
+
+            // Call the workflow approve function instead of advanceWorkflow
+            await db.workflow.approve(
+                project.id,
+                user.id,
+                user.user_metadata?.full_name || user.email || 'Unknown User',
+                Role.WRITER,
+                WorkflowStage.MULTI_WRITER_APPROVAL, // ignored internally
+                Role.WRITER,
+                'Writer approved the final video'
+            );
+
+            // Determine popup message based on approval progress
+            let popupMsg, stageName;
+            if (newApprovedCount >= totalWriters) {
+                // All writers have approved, moving to next stage
+                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to the ops team.`;
+                stageName = 'Ops Scheduling';
+            } else {
+                // Still need more approvals
+                popupMsg = `You approved the video. ${newApprovedCount} of ${totalWriters} writers have approved so far.`;
+                stageName = 'Waiting for Other Writers';
+            }
+
             // Show success popup
-            setPopupMessage('Video approved successfully! The project has been sent to the ops team.');
-            setStageName('Ops Scheduling');
+            setPopupMessage(popupMsg);
+            setStageName(stageName);
             setPopupDuration(5000);
             setShowPopup(true);
-            
+
             // Navigate back after popup duration + small buffer
             setTimeout(() => {
                 onApprove(); // Navigate back to project list
@@ -236,25 +276,25 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
         try {
             setLoading(true);
             setError(null);
-            
+
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 throw new Error('User not authenticated');
             }
-            
+
             // Use the centralized db service to reject the project
             // Set the current user in the db service with proper User interface
-            db.setCurrentUser({ 
-                id: user.id, 
-                email: user.email || '', 
-                full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+            db.setCurrentUser({
+                id: user.id,
+                email: user.email || '',
+                full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
                 role: 'WRITER' as any,
                 status: UserStatus.ACTIVE
             });
-            
+
             // Determine the stage to return the project to based on the selected role
             let targetStage;
             if (roleForRework === 'CINE') {
@@ -267,16 +307,16 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 // Default to editor if no specific role is selected
                 targetStage = WorkflowStage.VIDEO_EDITING;
             }
-            
+
             // Call the workflow reject function to send project back to the selected role
             await db.rejectTask(project.id, targetStage, reworkComment || 'Writer rejected the video - needs rework');
-            
+
             // Show rejection popup
             setPopupMessage(`Video rejected. Sent back to ${roleForRework || 'Editor'} for rework.`);
             setStageName(STAGE_LABELS[targetStage] || 'Rework');
             setPopupDuration(5000);
             setShowPopup(true);
-            
+
             // Navigate back after popup duration + small buffer
             setTimeout(() => {
                 onApprove(); // Navigate back to project list
@@ -310,9 +350,9 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     </button>
                     <h1 className="text-xl font-black uppercase text-slate-900">{project.title}</h1>
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                            project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                'bg-[#D946EF] text-white'
-                            }`}>
+                        project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                            'bg-[#D946EF] text-white'
+                        }`}>
                         {project.channel}
                     </span>
                 </div>
@@ -363,15 +403,15 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     {/* Video Content */}
                     <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Video Content</h3>
-                        
+
                         <div className="space-y-6">
                             {/* Show all available asset links */}
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Raw Video (from Cinematographer)</h4>
-                                    <a 
-                                        href={project.video_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.video_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-600 underline break-all"
                                     >
@@ -379,13 +419,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </a>
                                 </div>
                             )}
-                                                
+
                             {project.edited_video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Edited Video (from Editor)</h4>
-                                    <a 
-                                        href={project.edited_video_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.edited_video_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-600 underline break-all"
                                     >
@@ -393,13 +433,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </a>
                                 </div>
                             )}
-                                                
+
                             {project.thumbnail_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Thumbnail (from Designer)</h4>
-                                    <a 
-                                        href={project.thumbnail_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.thumbnail_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-600 underline break-all"
                                     >
@@ -407,13 +447,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </a>
                                 </div>
                             )}
-                                                
+
                             {project.creative_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Creative Design (from Designer)</h4>
-                                    <a 
-                                        href={project.creative_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.creative_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-blue-600 underline break-all"
                                     >
@@ -421,7 +461,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </a>
                                 </div>
                             )}
-                                                
+
                             {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link) && (
                                 <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
                                     <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
@@ -450,14 +490,14 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             </div>
                         ) : (
                             <div className="flex flex-col sm:flex-row gap-4">
-                                <button 
+                                <button
                                     onClick={handleApprove}
                                     disabled={loading}
                                     className="flex-1 px-6 py-4 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {loading ? 'Processing...' : 'Approve Video'}
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => setShowRejectModal(true)}
                                     disabled={loading}
                                     className="flex-1 px-6 py-4 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -466,7 +506,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </button>
                             </div>
                         )}
-                        
+
                         {error && (
                             <div className="mt-4 p-4 bg-red-100 border-2 border-red-400 text-red-800">
                                 Error: {error}
@@ -481,7 +521,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <MessageSquare className="w-6 h-6" />
                                 <h3 className="text-xl font-black uppercase text-slate-900">Comments & Feedback</h3>
                             </div>
-                            
+
                             {comments.length > 0 ? (
                                 <div className="space-y-6">
                                     {comments.map((comment, index) => (
@@ -518,7 +558,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             <div className="bg-white border-2 border-black rounded shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] max-w-md w-full max-h-[90vh] overflow-y-auto">
                                 <div className="p-6">
                                     <h3 className="text-xl font-black uppercase mb-4 text-slate-900">Send Back for Rework</h3>
-                                    
+
                                     <div className="mb-4">
                                         <label className="block text-sm font-bold mb-2 text-slate-700">
                                             Select role for rework:
@@ -534,7 +574,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                             <option value="DESIGNER">Designer</option>
                                         </select>
                                     </div>
-                                    
+
                                     <div className="mb-4">
                                         <label className="block text-sm font-bold mb-2 text-slate-700">
                                             Reason for rejection (required):
@@ -546,7 +586,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                             className="w-full p-3 border-2 border-black text-sm focus:bg-yellow-50 focus:outline-none h-32 resize-none"
                                         />
                                     </div>
-                                    
+
                                     <div className="flex justify-end space-x-3 pt-4">
                                         <button
                                             onClick={() => {
@@ -579,7 +619,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     )}
                 </div>
             </div>
-            
+
             {/* Popup */}
             {showPopup && (
                 <Popup

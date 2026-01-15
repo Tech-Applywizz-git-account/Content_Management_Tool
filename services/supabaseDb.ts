@@ -792,7 +792,7 @@ export const projects = {
             history: historyData || []
         };
     },
-    
+
     // Get all projects with script content
     async getScriptProjects() {
         const { data, error } = await supabase
@@ -875,24 +875,24 @@ export const projects = {
             .from('projects')
             .update(updates)
             .eq('id', id);
-        
+
         if (error) {
             console.error('Failed to update project:', error);
             throw error;
         }
-        
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data, error: fetchDataError } = await supabase
             .from('projects')
             .select('*')
             .eq('id', id)
             .single();
-        
+
         if (fetchDataError) {
             console.error('Failed to fetch updated project:', fetchDataError);
             throw fetchDataError;
         }
-        
+
         console.log('Project updated successfully:', data);
         return data as Project;
     },
@@ -1043,7 +1043,7 @@ export const workflow = {
                 status: TaskStatus.WAITING_APPROVAL
             })
             .eq('id', projectId);
-        
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data: updateData, error: fetchDataError } = await supabase
             .from('projects')
@@ -1142,15 +1142,38 @@ export const workflow = {
             return 0;
         }
 
-        // Return the count of unique approving writers
-        const approvedWriterIds = new Set(approvals.map(approval => approval.actor_id));
+        // Get all active writers to filter the approvals
+        const { data: writerUsers, error: writerError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('role', Role.WRITER)
+            .eq('status', 'ACTIVE');
+
+        if (writerError) {
+            console.error('Error fetching writer users:', writerError);
+            // If we can't fetch writers, return 0 to be safe
+            return 0;
+        }
+
+        if (!writerUsers) {
+            return 0;
+        }
+
+        // Get the IDs of active writers
+        const writerIds = new Set(writerUsers.map(writer => writer.id));
+
+        // Filter approvals to only include those from active writers
+        const approvedWriterIds = new Set(approvals.filter(approval =>
+            writerIds.has(approval.actor_id)
+        ).map(approval => approval.actor_id));
+
         return approvedWriterIds.size;
     },
 
     // Check if all required writers have approved
     async checkAllWritersApproved(projectId: string): Promise<boolean> {
         console.log('🔍 DEBUG: Checking if all writers approved for project:', projectId);
-        
+
         // Get all users with the writer role
         const { data: writerUsers, error: writerError } = await supabase
             .from('users')
@@ -1210,13 +1233,18 @@ export const workflow = {
             return false;
         }
 
-        // Get the IDs of writers who have approved
-        const approvedWriterIds = new Set(approvals.map(approval => approval.actor_id));
-        
+        // Get the IDs of active writers
+        const writerIds = new Set(writerUsers.map(writer => writer.id));
+
+        // Filter approvals to only include those from active writers
+        const approvedWriterIds = new Set(approvals.filter(approval =>
+            writerIds.has(approval.actor_id)
+        ).map(approval => approval.actor_id));
+
         console.log('✅ Approved writer IDs:', Array.from(approvedWriterIds));
 
         // Check if all writers have approved
-        const allWritersHaveApproved = writerUsers.every(writer => 
+        const allWritersHaveApproved = writerUsers.every(writer =>
             approvedWriterIds.has(writer.id)
         );
 
@@ -1242,16 +1270,56 @@ export const workflow = {
         comment?: string
     ) {
         // First get the current project to preserve important fields
-        const { data: currentProject, error: fetchError } = await supabase
-            .from('projects')
-            .select('current_stage, created_by_user_id, created_by_name, writer_id, writer_name, assigned_to_user_id')
-            .eq('id', projectId)
-            .single();
-
-        if (fetchError) {
-            console.error('Failed to fetch current project for approval:', fetchError);
-            throw fetchError;
+// First get the current project to preserve important fields
+        let rawProject;
+        try {
+            rawProject = await projects.getById(projectId);
+        } catch (error) {
+            console.error('Failed to fetch current project for approval:', error);
+            throw error;
         }
+        
+        // Create a partial project object with only the properties we need
+        const currentProject = {
+            id: rawProject.id,
+            current_stage: rawProject.current_stage,
+            created_by_user_id: rawProject.created_by_user_id,
+            created_by_name: rawProject.created_by_name,
+            writer_id: rawProject.writer_id,
+            writer_name: rawProject.writer_name,
+            assigned_to_user_id: rawProject.assigned_to_user_id,
+            // Fill in other required fields with defaults to satisfy Project type
+            title: rawProject.title,
+            channel: rawProject.channel,
+            content_type: rawProject.content_type,
+            assigned_to_role: rawProject.assigned_to_role,
+            status: rawProject.status,
+            priority: rawProject.priority,
+            due_date: rawProject.due_date,
+            created_by: rawProject.created_by,
+            created_at: rawProject.created_at,
+            data: rawProject.data,
+            history: [], // We don't need history here
+            // Optional fields - set to undefined or appropriate defaults
+            writer_submitted_at: rawProject.writer_submitted_at,
+            cmo_approved_at: rawProject.cmo_approved_at,
+            cmo_rework_at: rawProject.cmo_rework_at,
+            ceo_approved_at: rawProject.ceo_approved_at,
+            ceo_rework_at: rawProject.ceo_rework_at,
+            cine_uploaded_at: rawProject.cine_uploaded_at,
+            editor_uploaded_at: rawProject.editor_uploaded_at,
+            sub_editor_uploaded_at: rawProject.sub_editor_uploaded_at,
+            designer_uploaded_at: rawProject.designer_uploaded_at,
+            shoot_date: rawProject.shoot_date,
+            delivery_date: rawProject.delivery_date,
+            post_scheduled_date: rawProject.post_scheduled_date,
+            video_link: rawProject.video_link,
+            edited_video_link: rawProject.edited_video_link,
+            thumbnail_link: rawProject.thumbnail_link,
+            creative_link: rawProject.creative_link,
+            first_review_opened_at: rawProject.first_review_opened_at,
+            first_review_opened_by_role: rawProject.first_review_opened_by_role,
+        } as Project;
 
         // Special handling for MULTI_WRITER_APPROVAL stage
         if (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
@@ -1259,7 +1327,58 @@ export const workflow = {
             console.log('📊 Current project stage:', currentProject.current_stage);
             console.log('👤 Current user ID:', userId);
             console.log('🎯 Next stage/role parameters:', { nextStage, nextRole });
-            
+
+            // Validate that only writers can approve in MULTI_WRITER_APPROVAL stage
+            if (userRole !== Role.WRITER) {
+                console.log(`⚠️ User with role ${userRole} attempted to approve in MULTI_WRITER_APPROVAL stage. Only writers can approve here.`);
+                // Instead of recording as APPROVED, we should record the actual action that was taken
+                // This handles cases where non-writers (like editors uploading videos) trigger advanceWorkflow
+
+                // Determine the appropriate action type based on the comment
+                let actionType = 'SUBMITTED'; // Default action
+                if (comment.toLowerCase().includes('uploaded')) {
+                    if (comment.toLowerCase().includes('video')) {
+                        actionType = 'REWORK_VIDEO_SUBMITTED';
+                    } else if (comment.toLowerCase().includes('edit')) {
+                        actionType = 'REWORK_EDIT_SUBMITTED';
+                    } else {
+                        actionType = 'SUBMITTED';
+                    }
+                }
+
+                // Record the actual action taken by the non-writer
+                const { error: historyError } = await supabase
+                    .from('workflow_history')
+                    .insert({
+                        project_id: projectId,
+                        stage: currentProject.current_stage,
+                        actor_id: userId,
+                        actor_name: userName,
+                        action: actionType,
+                        comment: comment || `${userName} performed action in ${currentProject.current_stage}`
+                    });
+
+                if (historyError) {
+                    console.error('❌ Failed to record non-writer action:', historyError);
+                    throw historyError;
+                }
+
+                // Update project timestamp
+                const { error: updateError } = await supabase
+                    .from('projects')
+                    .update({
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', projectId);
+
+                if (updateError) {
+                    console.error('❌ Failed to update project timestamp:', updateError);
+                    throw updateError;
+                }
+
+                return await projects.getById(projectId);
+            }
+
             // First, check if this writer has already approved this project in the MULTI_WRITER_APPROVAL stage
             const { data: existingApproval, error: existingError } = await supabase
                 .from('workflow_history')
@@ -1291,56 +1410,70 @@ export const workflow = {
                 console.error('❌ Failed to record approval:', historyError);
                 throw historyError;
             }
-            
+
             console.log('✅ Successfully recorded approval for writer:', userId);
 
             // Check if all writers have approved
             const allWritersApproved = await this.checkAllWritersApproved(projectId);
-            
+
             console.log('🎯 All writers approved (workflow.approve check):', allWritersApproved);
 
             if (allWritersApproved) {
-                console.log('🚀 All writers have approved, advancing to next stage:', nextStage);
-                // All writers have approved, so advance to next stage
-                
-                // Update project to move to next stage
+                console.log('🚀 All writers have approved, advancing to POST_WRITER_REVIEW stage');
+                // All writers have approved, so advance to POST_WRITER_REVIEW stage
+                // Always use POST_WRITER_REVIEW when all writers approve, regardless of nextStage parameter
+
+                // Update project to move to FINAL_REVIEW_CMO stage
                 const updateData: any = {
-                    current_stage: nextStage,
+                    current_stage: WorkflowStage.FINAL_REVIEW_CMO,
                     // Preserve creator information
                     created_by_user_id: currentProject?.created_by_user_id || null,
                     created_by_name: currentProject?.created_by_name || null,
                     writer_id: currentProject?.writer_id || null,
                     writer_name: currentProject?.writer_name || null,
                     // Preserve assigned user ID if it exists
-                    assigned_to_user_id: currentProject?.assigned_to_user_id || null
+                    assigned_to_user_id: null, // Clear assigned user ID
+                    assigned_to_role: Role.CMO, // Assign to CMO
+                    status: TaskStatus.WAITING_APPROVAL, // Set to WAITING_APPROVAL status
+                    visible_to_roles: ['CMO', 'OPS'] // Make visible to CMO and OPS
                 };
-
-                // Special handling for POST_WRITER_REVIEW stage
-                if (nextStage === WorkflowStage.POST_WRITER_REVIEW) {
-                    updateData.assigned_to_role = null; // No specific role assignment
-                    updateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
-                    updateData.visible_to_roles = ['OPS', 'CMO']; // Make visible to both OPS and CMO
-                } else {
-                    updateData.assigned_to_role = nextRole;
-                    updateData.status = TaskStatus.WAITING_APPROVAL;
-                }
 
                 const { error: updateError } = await supabase
                     .from('projects')
                     .update(updateData)
-                    .eq('id', projectId);
-                
+                    .eq('id', projectId)
+                    .eq('current_stage', WorkflowStage.MULTI_WRITER_APPROVAL); // atomic safety
+
                 if (updateError) {
                     console.error('❌ Failed to update project:', updateError);
                     throw updateError;
                 }
+
+                console.log('✅ Project successfully updated to stage: FINAL_REVIEW_CMO');
                 
-                console.log('✅ Project successfully updated to stage:', nextStage);
+                // Record the transition in workflow history
+                const { error: historyError } = await supabase
+                    .from('workflow_history')
+                    .insert({
+                        project_id: projectId,
+                        stage: WorkflowStage.MULTI_WRITER_APPROVAL, // The stage where the action occurred
+                        actor_id: userId,
+                        actor_name: userName,
+                        action: 'SYSTEM_ADVANCED',
+                        comment: 'All writers approved - advanced to FINAL_REVIEW_CMO'
+                    });
+                
+                if (historyError) {
+                    console.error('❌ Failed to record system advancement in workflow history:', historyError);
+                }
+                
+                // Return the updated project to prevent falling through to normal approval flow
+                return await projects.getById(projectId);
             } else {
                 console.log('⏳ Not all writers have approved yet, staying in MULTI_WRITER_APPROVAL stage');
-                
+
                 // Not all writers have approved yet, keep in MULTI_WRITER_APPROVAL stage
-                
+
                 // Update the project timestamp but don't change stage or role
                 const { error: updateError } = await supabase
                     .from('projects')
@@ -1348,20 +1481,24 @@ export const workflow = {
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', projectId);
-                
+
                 if (updateError) {
                     console.error('❌ Failed to update project timestamp:', updateError);
                     throw updateError;
                 }
-                
+
                 // Find users with the writer role to notify
                 const { data: nextRoleUsers } = await supabase
                     .from('users')
-                    .select('id')
+                    .select('id, full_name')
                     .eq('role', Role.WRITER)
                     .eq('status', 'ACTIVE');
 
                 if (nextRoleUsers && nextRoleUsers.length > 0) {
+                    // Calculate approval progress
+                    const approvedCount = await this.getApprovedWritersCount(projectId);
+                    const totalWriters = nextRoleUsers.length;
+
                     // Send notification to all writers except the one who just approved
                     for (const nextRoleUser of nextRoleUsers) {
                         if (nextRoleUser.id !== userId) { // Don't notify the user who just approved
@@ -1372,7 +1509,7 @@ export const workflow = {
                                     projectId,
                                     'APPROVAL_RECEIVED',
                                     'Multi-Writer Approval Progress',
-                                    `${userName} has approved the project. ${(await this.getApprovedWritersCount(projectId))}/${nextRoleUsers.length} writers have approved so far.`
+                                    `${userName} has approved the project. ${approvedCount}/${totalWriters} writers have approved so far.`
                                 );
                             } catch (notificationError) {
                                 console.error('Failed to send notification:', notificationError);
@@ -1380,8 +1517,45 @@ export const workflow = {
                             }
                         }
                     }
+
+                    // Check if all writers have approved and send special notification
+                    if (approvedCount >= totalWriters) {
+                        console.log(`🎉 All ${totalWriters} writers have approved project ${projectId}, moving to next stage`);
+
+                        // Get project title for notification
+                        const { data: projectData, error: projectError } = await supabase
+                            .from('projects')
+                            .select('title')
+                            .eq('id', projectId)
+                            .single();
+
+                        // Notify all users that the multi-writer approval is complete
+                        try {
+                            const dbWithNotifications = db as any;
+                            // Notify CMO and OPS about the completion of multi-writer approval
+                            const opsUsers = await supabase
+                                .from('users')
+                                .select('id')
+                                .eq('role', Role.OPS)
+                                .eq('status', 'ACTIVE');
+
+                            if (opsUsers && opsUsers.data) {
+                                for (const opsUser of opsUsers.data) {
+                                    await dbWithNotifications.notifications.create(
+                                        opsUser.id,
+                                        projectId,
+                                        'PROJECT_READY',
+                                        'Project Ready for Scheduling',
+                                        `All writers have approved the project "${projectData?.title || 'Untitled Project'}". It is now ready for scheduling.`
+                                    );
+                                }
+                            }
+                        } catch (finalNotificationError) {
+                            console.error('Failed to send final approval notification:', finalNotificationError);
+                        }
+                    }
                 }
-                
+
                 // Return the current project since we're not advancing the stage
                 return await projects.getById(projectId);
             }
@@ -1398,11 +1572,21 @@ export const workflow = {
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
             };
 
-            // Special handling for POST_WRITER_REVIEW stage
-            if (nextStage === WorkflowStage.POST_WRITER_REVIEW) {
-                projectUpdateData.assigned_to_role = null; // No specific role assignment
+            // Special handling for FINAL_REVIEW_CMO stage
+            if (nextStage === WorkflowStage.FINAL_REVIEW_CMO) {
+                projectUpdateData.assigned_to_role = Role.CMO; // Assign to CMO
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
-                projectUpdateData.visible_to_roles = ['OPS', 'CMO']; // Make visible to both OPS and CMO
+                projectUpdateData.visible_to_roles = ['CMO', 'OPS']; // Make visible to CMO and OPS
+            } else if (nextStage === WorkflowStage.WRITER_VIDEO_APPROVAL) {
+                // When sending to writer video approval, make visible to writer and ops
+                projectUpdateData.assigned_to_role = Role.WRITER; // Assign to writer
+                projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
+                projectUpdateData.visible_to_roles = ['WRITER', 'OPS']; // Make visible to writer and ops
+            } else if (nextStage === WorkflowStage.POST_WRITER_REVIEW) {
+                // When sending to post-writer review, make visible to CMO and OPS in parallel
+                projectUpdateData.assigned_to_role = Role.CMO; // Primary assignee is CMO
+                projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
+                projectUpdateData.visible_to_roles = ['CMO', 'OPS']; // Make visible to both CMO and OPS
             } else {
                 projectUpdateData.assigned_to_role = nextRole;
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL;
@@ -1412,7 +1596,7 @@ export const workflow = {
                 .from('projects')
                 .update(projectUpdateData)
                 .eq('id', projectId);
-        
+
             // Fetch the updated project separately to avoid conflicting select parameters
             const { data: updateData, error: fetchDataError } = await supabase
                 .from('projects')
@@ -1437,10 +1621,14 @@ export const workflow = {
             // Use the updated data
             const data = updateData;
 
+            // Use the current project stage as the stage for workflow history
+            // This represents the stage where the action occurred, not where the project is going
+            const historyStage = currentProject.current_stage;
+
             // Add workflow history
             console.log('Inserting workflow history:', {
                 project_id: projectId,
-                stage: nextStage,
+                stage: historyStage,
                 actor_id: userId,
                 actor_name: userName,
                 action: 'APPROVED',
@@ -1451,7 +1639,7 @@ export const workflow = {
                 .from('workflow_history')
                 .insert({
                     project_id: projectId,
-                    stage: nextStage,
+                    stage: historyStage,
                     actor_id: userId,
                     actor_name: userName,
                     action: 'APPROVED',
@@ -1524,7 +1712,7 @@ export const workflow = {
             console.error('Failed to fetch current project for reject:', fetchError);
             throw fetchError;
         }
-        
+
         // Check if the project has script content and was originally an idea project
         let updatedProjectData = currentProject?.data || {};
         if (typeof updatedProjectData === 'string') {
@@ -1534,19 +1722,19 @@ export const workflow = {
                 updatedProjectData = {};
             }
         }
-        
+
         // If the project has script content but still has IDEA_PROJECT source, remove the source
         // This ensures that idea-to-script projects are treated as script projects even when in rework
         if (updatedProjectData.script_content && updatedProjectData.source === 'IDEA_PROJECT') {
             const updatedDataCopy = { ...updatedProjectData };
             delete updatedDataCopy.source;
-            
+
             // Update the project data to remove the IDEA_PROJECT source
             const { error: dataUpdateError } = await supabase
                 .from('projects')
                 .update({ data: updatedDataCopy })
                 .eq('id', projectId);
-                
+
             if (dataUpdateError) {
                 console.error('Failed to update project data during reject:', dataUpdateError);
             }
@@ -1568,7 +1756,7 @@ export const workflow = {
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
             })
             .eq('id', projectId);
-        
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data: updateData, error: fetchDataError } = await supabase
             .from('projects')
@@ -1676,7 +1864,7 @@ export const workflow = {
                 status: TaskStatus.DONE
             })
             .eq('id', projectId);
-        
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data: updateData, error: fetchDataError } = await supabase
             .from('projects')
@@ -1808,9 +1996,9 @@ export const workflowHistory = {
         const { error } = await supabase
             .from('workflow_history')
             .insert([dbEntry]);
-        
+
         if (error) throw error;
-        
+
         // Fetch the inserted record separately to avoid conflicting select parameters
         const { data, error: fetchDataError } = await supabase
             .from('workflow_history')
@@ -1822,9 +2010,9 @@ export const workflowHistory = {
             .order('timestamp', { ascending: false })
             .limit(1)
             .single();
-        
+
         if (fetchDataError) throw fetchDataError;
-        
+
         return data;
     }
 };
@@ -1878,9 +2066,9 @@ export const systemLogs = {
                 details: logEntry.details,
                 metadata: logEntry.metadata || {}
             }]);
-        
+
         if (error) throw error;
-        
+
         // Fetch the inserted record separately to avoid conflicting select parameters
         const { data, error: fetchDataError } = await supabase
             .from('system_logs')
@@ -1891,9 +2079,9 @@ export const systemLogs = {
             .order('timestamp', { ascending: false })
             .limit(1)
             .single();
-        
+
         if (fetchDataError) throw fetchDataError;
-        
+
         return data;
     }
 };
@@ -2019,7 +2207,7 @@ export const helpers = {
         }
 
         // Approval flow
-        const approvalMap: Record<WorkflowStage, { stage: WorkflowStage; role: Role }> = {
+        const approvalMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
             [WorkflowStage.SCRIPT_REVIEW_L2]: {
@@ -2031,12 +2219,12 @@ export const helpers = {
                 // When editor uploads video, check routing based on needs_sub_editor flag
                 // If needs_sub_editor is true -> route to SUB_EDITOR_ASSIGNMENT
                 // If needs_sub_editor is false or undefined -> route to DESIGNER or WRITER based on thumbnail requirement
-                stage: projectData?.needs_sub_editor === true 
+                stage: projectData?.needs_sub_editor === true
                     ? WorkflowStage.SUB_EDITOR_ASSIGNMENT  // Route to sub-editor assignment
                     : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
                         ? WorkflowStage.MULTI_WRITER_APPROVAL  // Go to multi-writer approval if no thumbnail needed
                         : WorkflowStage.THUMBNAIL_DESIGN),  // Go to designer if thumbnail needed
-                role: projectData?.needs_sub_editor === true 
+                role: projectData?.needs_sub_editor === true
                     ? Role.EDITOR  // Editor handles sub-editor assignment
                     : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
                         ? Role.WRITER  // Writers handle approval if no thumbnail needed
@@ -2057,15 +2245,21 @@ export const helpers = {
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },  // After CEO final approval, send to ops for scheduling
-            [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },  // After writer approves, send to CMO for final review
-            [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.POST_WRITER_REVIEW, role: null }, // After all writers approve, move to parallel review stage
-            [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS }, // After CMO and CEO approvals, send to ops for scheduling
+            [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },  // After writer approves, send to post-writer review stage for parallel visibility to CMO and OPS
+            // ❌ MULTI_WRITER_APPROVAL removed from here as per instructions
+            [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO }, // After post-writer review, send to CEO for final approval before ops scheduling
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO }
         };
-        return approvalMap[currentStage];
+
+        const nextStage = approvalMap[currentStage];
+        if (!nextStage) {
+            console.error(`❌ No next stage mapping found for: ${currentStage}`);
+            throw new Error(`Use workflow.approve() for multi-writer approvals stage ${currentStage}`);
+        }
+        return nextStage;
     },
 
     // Get current session
@@ -2310,7 +2504,7 @@ export const db = {
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
-        
+
         // Record the creation in workflow history
         if (currentUserId && currentUserFullName) {
             await workflow.recordAction(
@@ -2322,7 +2516,7 @@ export const db = {
                 'Project created by writer'
             );
         }
-        
+
         return createdProject;
     },
 
@@ -2472,20 +2666,20 @@ export const db = {
         try {
             // First get the current project to determine role for potential timestamp updates
             const currentProject = await projects.getById(projectId);
-            
+
             await projects.updateData(projectId, newData);
-            
+
             // Check if this update involves asset uploads that need timestamp updates
             if (currentProject) {
                 let actionForTimestamp: string | null = null;
                 let roleForTimestamp: Role | null = null;
-                
+
                 // Check for asset uploads - more robust detection
                 // We need to check both the newData and the actual project data after update
-                
+
                 // Get the updated project data to check what actually changed
                 const updatedProject = await projects.getById(projectId);
-                
+
                 if (updatedProject) {
                     // Check if video_link was added (Cinematographer upload)
                     if (updatedProject.video_link && !currentProject.video_link) {
@@ -2500,8 +2694,8 @@ export const db = {
                         console.log('Detected Editor video upload - setting editor_uploaded_at timestamp');
                     }
                     // Check if thumbnail_link or creative_link was added (Designer upload)
-                    else if ((updatedProject.thumbnail_link && !currentProject.thumbnail_link) || 
-                            (updatedProject.creative_link && !currentProject.creative_link)) {
+                    else if ((updatedProject.thumbnail_link && !currentProject.thumbnail_link) ||
+                        (updatedProject.creative_link && !currentProject.creative_link)) {
                         actionForTimestamp = 'DIRECT_UPLOAD';
                         roleForTimestamp = Role.DESIGNER;
                         console.log('Detected Designer asset upload - setting designer_uploaded_at timestamp');
@@ -2520,7 +2714,7 @@ export const db = {
                         }
                     }
                 }
-                
+
                 if (actionForTimestamp && roleForTimestamp) {
                     const timestampUpdates = getTimestampUpdate(actionForTimestamp, roleForTimestamp);
                     if (Object.keys(timestampUpdates).length > 0) {
@@ -2530,7 +2724,7 @@ export const db = {
                             .update(timestampUpdates)
                             .eq('id', projectId)
                             .select();
-                        
+
                         if (error) {
                             console.error('Failed to update timestamps:', error);
                         } else {
@@ -2639,6 +2833,17 @@ export const db = {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
 
+        // 1️⃣ Block advanceWorkflow for MULTI_WRITER_APPROVAL and POST_WRITER_REVIEW
+        if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
+            console.log('⛔ advanceWorkflow blocked for MULTI_WRITER_APPROVAL');
+            throw new Error('Use workflow.approve() for multi-writer approvals');
+        }
+        
+        if (project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
+            console.log('⛔ advanceWorkflow blocked for POST_WRITER_REVIEW');
+            throw new Error('Use workflow.approve() for post-writer review approvals');
+        }
+
         console.log('Advancing workflow for project:', project);
         console.log('Current stage:', project.current_stage);
         console.log('Content type:', project.content_type);
@@ -2700,79 +2905,14 @@ export const db = {
             nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
         } else if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && project.assigned_to_role === Role.WRITER) {
             console.log('🔍 DEBUG: Processing MULTI_WRITER_APPROVAL stage for project:', projectId);
-            
-            // For MULTI_WRITER_APPROVAL stage, we need to check if all writers have approved
-            // The actual advancement will happen after recording the action, but only if all have approved
-            
-            // First, get all writers from the system
-            const allWriters = await db.users.getAll();
-            const writers = allWriters.filter(user => user.role === Role.WRITER && user.status === 'ACTIVE');
-            
-            console.log('📋 All active writers:', writers.map(w => ({id: w.id, name: w.full_name})));
-            
-            // Get all actions (both approvals and rejections) for this project in MULTI_WRITER_APPROVAL stage
-            const { data: actions, error: actionsError } = await supabase
-                .from('workflow_history')
-                .select('actor_id, action')
-                .eq('project_id', projectId)
-                .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
-                .in('action', ['APPROVED', 'REJECTED']);
 
-            if (actionsError) {
-                console.error('❌ Error fetching actions:', actionsError);
-                // Default to keeping in same stage if we can't check
-                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-            } else {
-                console.log('✅ Actions found:', actions || 'None');
-                
-                // Get the IDs of writers who have taken action (approved or rejected)
-                const actionWriterIds = new Set(actions.map(action => action.actor_id));
-                const rejectedActions = actions.filter(action => action.action === 'REJECTED');
-                
-                console.log('📊 Action writer IDs:', Array.from(actionWriterIds));
-                console.log('📊 Rejected actions count:', rejectedActions.length);
-                
-                // Check if any writer has rejected
-                if (rejectedActions.length > 0) {
-                    console.log('🚫 Some writers rejected, sending back to editor');
-                    // If any writer has rejected, send back to the appropriate stage
-                    // For now, send back to editor (can be customized based on rejection reason)
-                    nextStageInfo = { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR };
-                } else {
-                    // Count how many writers have approved
-                    const approvedActions = actions.filter(action => action.action === 'APPROVED');
-                    const approvedWriterIds = new Set(approvedActions.map(action => action.actor_id));
-                    
-                    console.log('✅ Approved actions count:', approvedActions.length);
-                    console.log('✅ Approved writer IDs:', Array.from(approvedWriterIds));
-                    
-                    // Check if all writers have approved
-                    const allWritersHaveApproved = writers.every(writer => 
-                        approvedWriterIds.has(writer.id)
-                    );
+            // For MULTI_WRITER_APPROVAL stage, advanceWorkflow does NOT decide the next stage
+            // The actual advancement will happen in workflow.approve() after checking all approvals
+            // This prevents the race condition where we check approvals before the current approval is recorded
 
-                    console.log('🎯 All writers approved (advanceWorkflow check):', allWritersHaveApproved);
-                    console.log('📊 AdvanceWorkflow comparison:', {
-                        totalWriters: writers.length,
-                        approvedWriters: approvedWriterIds.size,
-                        writerIds: writers.map(w => w.id),
-                        approvedIds: Array.from(approvedWriterIds)
-                    });
-
-                    if (allWritersHaveApproved) {
-                        console.log('🚀 All writers have approved, moving to POST_WRITER_REVIEW stage');
-                        // All writers have approved, move to POST_WRITER_REVIEW stage
-                        // This stage makes the project visible to both OPS and CMO in parallel
-                        // No assignment to specific role, no notifications
-                        nextStageInfo = { stage: WorkflowStage.POST_WRITER_REVIEW, role: null }; // No specific role assignment
-                    } else {
-                        console.log('⏳ Still waiting for approvals, staying in MULTI_WRITER_APPROVAL');
-                        // Still waiting for approvals from all writers
-                        // Stay in MULTI_WRITER_APPROVAL stage
-                        nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-                    }
-                }
-            }
+            // Always return to MULTI_WRITER_APPROVAL stage
+            // The final decision on advancement happens in workflow.approve() after the approval is recorded
+            nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
         } else if (project.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL && project.assigned_to_role === Role.WRITER) {
             // After writer approves video, go to ops for scheduling
             nextStageInfo = { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS };
@@ -2933,7 +3073,7 @@ export const db = {
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.OPS,
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
-            [WorkflowStage.POST_WRITER_REVIEW]: null, // No specific role assignment for parallel review
+            [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO, // Assign to CMO for approval
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
             [WorkflowStage.REWORK]: Role.WRITER
