@@ -14,16 +14,16 @@ interface Props {
     onUpdate: () => void;
 }
 const isReworkProject = (project: Project) =>
-  project.history?.some(h =>
-    h.action?.startsWith('REWORK_')
-  );
+    project.history?.some(h =>
+        h.action?.startsWith('REWORK_')
+    );
 
 const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate }) => {
     // For rework projects, keep existing data but track new inputs
-    const processedProject = {...project};
-    
+    const processedProject = { ...project };
+
     const [deliveryDate, setDeliveryDate] = useState(processedProject.delivery_date || '');
-    
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -37,19 +37,19 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const workflowState = getWorkflowState(project);
     const isRework = workflowState.isRework;
     const isRejected = workflowState.isRejected;
-    
+
     // Determine if current user can edit based on role and workflow state
     const canEdit = canUserEdit(userRole, workflowState, project.assigned_to_role);
-    
+
     const hasAsset = isVideo
-  ? !!project.thumbnail_link
-  : !!project.creative_link || !!project.data?.creative_link;
+        ? !!project.thumbnail_link
+        : !!project.creative_link || !!project.data?.creative_link;
 
 
     // Reset form fields when project changes
     useEffect(() => {
         // For rework projects, keep existing data
-        const processedProject = {...project};
+        const processedProject = { ...project };
         setDeliveryDate(processedProject.delivery_date || '');
         setThumbnailLink(processedProject.thumbnail_link || '');
         setCreativeLink(processedProject.creative_link || '');
@@ -60,32 +60,32 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             alert('Please select a delivery date');
             return;
         }
-        
+
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 alert('User not authenticated');
                 return;
             }
-            
+
             // Record the action in workflow history
             await db.workflow.recordAction(
                 project.id,
                 project.current_stage, // stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
-                'SUBMITTED', // Use allowed action value
+                'SET_DELIVERY_DATE', // specific action
                 `Delivery date set to ${deliveryDate}`
             );
-            
+
             // Update the project with the delivery date but keep it in current stage
             // The stage only changes when the file is uploaded
             await db.projects.update(project.id, { delivery_date: deliveryDate });
             console.log(`Delivery date set: ${deliveryDate}`);
-            
+
             // Show popup notification (include calendar visibility and derive stage label)
             const stageLabel = isVideo ? STAGE_LABELS[WorkflowStage.THUMBNAIL_DESIGN] : STAGE_LABELS[WorkflowStage.CREATIVE_DESIGN];
             setPopupMessage(`Delivery date set for ${project.title} on ${deliveryDate}. This date will be visible on calendars for all team members.`);
@@ -105,29 +105,29 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             alert(`Please enter the ${isVideo ? 'thumbnail' : 'creative'} link`);
             return;
         }
-        
+
         // Check if user has permission to edit
         if (!canEdit) {
             alert('You do not have permission to edit this project');
             return;
         }
-        
+
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 alert('User not authenticated');
                 return;
             }
-            
+
             // Record the action in workflow history with appropriate action type
-            const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'SUBMITTED';
-            const comment = isRework 
-                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded: ${link}` 
+            const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'DESIGNER_ASSET_UPLOADED';
+            const comment = isRework
+                ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded: ${link}`
                 : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`;
-            
+
             await db.workflow.recordAction(
                 project.id,
                 project.current_stage, // Record action at current stage
@@ -136,19 +136,19 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 actionType, // Use appropriate action value
                 comment
             );
-            
+
             // Update the project with the file link and advance the workflow
             // This will properly route to the correct next stage
             const updates: Partial<Project> = {};
-            
+
             if (isVideo) {
                 updates.thumbnail_link = link;
             } else {
                 updates.creative_link = link;
             }
-            
+
             await db.projects.update(project.id, updates);
-            
+
             // Update project data to persist any changes made during this session
             // Include the asset links in the update so timestamp logic can detect the upload
             const projectDataUpdates: any = { ...project.data };
@@ -157,17 +157,17 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             } else {
                 projectDataUpdates.creative_link = link;
             }
-            
+
             await db.updateProjectData(project.id, projectDataUpdates);
-            
+
             // Advance workflow to next stage based on project settings
             await db.advanceWorkflow(project.id, comment);
-            
+
             console.log(`${isRework ? 'Rework ' : ''}${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
-            
+
             // Get updated project to determine who to notify
             const updatedProject = await db.getProjectById(project.id);
-            
+
             // Find users to notify based on the next assigned role
             if (updatedProject?.assigned_to_role) {
                 const { data: nextUsers } = await supabase
@@ -175,7 +175,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     .select('id')
                     .eq('role', updatedProject.assigned_to_role)
                     .eq('status', 'ACTIVE');
-                
+
                 if (nextUsers && nextUsers.length > 0) {
                     // Send notification to all users of the assigned role
                     for (const nextUser of nextUsers) {
@@ -196,13 +196,13 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     }
                 }
             }
-            
+
             // Show popup notification using STAGE_LABELS for the actual next stage
             const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.FINAL_REVIEW_CMO] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
                 ? `Rework ${isVideo ? 'thumbnail' : 'creative'} uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`
                 : `${isVideo ? 'Thumbnail' : 'Creative'} uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`;
-            
+
             setPopupMessage(popupMessageText);
             setStageName(actualNextStageLabel);
             // For rework scenarios, use longer duration to ensure visibility
@@ -220,17 +220,17 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             alert(`Please enter the ${isVideo ? 'thumbnail' : 'creative'} link`);
             return;
         }
-        
+
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 alert('User not authenticated');
                 return;
             }
-            
+
             // Record the action in workflow history
             await db.workflow.recordAction(
                 project.id,
@@ -240,18 +240,18 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 'DIRECT_UPLOAD', // Use direct upload action
                 `Direct ${isVideo ? 'thumbnail' : 'creative'} upload: ${link}`
             );
-            
+
             // Update the project with the file link
             const updates: Partial<Project> = {};
-            
+
             if (isVideo) {
                 updates.thumbnail_link = link;
             } else {
                 updates.creative_link = link;
             }
-            
+
             await db.projects.update(project.id, updates);
-            
+
             // Skip to CMO review stage directly
             await db.workflow.approve(
                 project.id,
@@ -262,19 +262,19 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 Role.CMO,
                 `Direct upload to CMO review: ${link}`
             );
-            
+
             console.log(`Direct ${isVideo ? 'thumbnail' : 'creative'} uploaded: ${link}`);
-            
+
             // Get updated project to determine who to notify
             const updatedProject = await db.getProjectById(project.id);
-            
+
             // Notify CMO users
             const { data: cmoUsers } = await supabase
                 .from('users')
                 .select('id')
                 .eq('role', Role.CMO)
                 .eq('status', 'ACTIVE');
-            
+
             if (cmoUsers && cmoUsers.length > 0) {
                 // Send notification to all CMO users
                 for (const cmoUser of cmoUsers) {
@@ -294,7 +294,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     }
                 }
             }
-            
+
             // Show popup notification
             const nextStageLabel = STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'Final Review CMO';
             setPopupMessage(`${isVideo ? 'Thumbnail' : 'Creative'} uploaded directly for ${project.title}. Sent to ${nextStageLabel}.`);
@@ -323,10 +323,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         <div className="flex items-center gap-3 mt-1">
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                        ? 'bg-[#FF4F4F] text-white'
-                                        : project.channel === 'LINKEDIN'
-                                            ? 'bg-[#0085FF] text-white'
-                                            : 'bg-[#D946EF] text-white'
+                                    ? 'bg-[#FF4F4F] text-white'
+                                    : project.channel === 'LINKEDIN'
+                                        ? 'bg-[#0085FF] text-white'
+                                        : 'bg-[#D946EF] text-white'
                                     }`}
                             >
                                 {project.channel}
@@ -342,10 +342,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             </span>
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                        ? 'bg-red-500 text-white'
-                                        : project.priority === 'NORMAL'
-                                            ? 'bg-yellow-500 text-black'
-                                            : 'bg-green-500 text-white'
+                                    ? 'bg-red-500 text-white'
+                                    : project.priority === 'NORMAL'
+                                        ? 'bg-yellow-500 text-black'
+                                        : 'bg-green-500 text-white'
                                     }`}
                             >
                                 {project.priority}
@@ -381,7 +381,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
-                        
+
                         {/* Existing Data Display */}
                         <div className="bg-white border-2 border-gray-300 p-4">
                             <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
@@ -395,9 +395,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 {isVideo && project.thumbnail_link && (
                                     <div>
                                         <span className="text-sm font-bold text-gray-600 block mb-1">Current Thumbnail Link</span>
-                                        <a 
-                                            href={project.thumbnail_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.thumbnail_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all"
                                         >
@@ -408,9 +408,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 {!isVideo && (project.creative_link || project.data?.creative_link) && (
                                     <div>
                                         <span className="text-sm font-bold text-gray-600 block mb-1">Current Creative Link</span>
-                                        <a 
-                                            href={project.creative_link || project.data?.creative_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.creative_link || project.data?.creative_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all"
                                         >
@@ -421,9 +421,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 {isVideo && project.edited_video_link && (
                                     <div>
                                         <span className="text-sm font-bold text-gray-600 block mb-1">Edited Video Link</span>
-                                        <a 
-                                            href={project.edited_video_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.edited_video_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all"
                                         >
@@ -433,7 +433,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 )}
                             </div>
                         </div>
-                        
+
                         <div className="bg-red-100 border-2 border-red-200 p-3">
                             <p className="text-sm text-red-800 font-bold">
                                 Please update the delivery date and/or creative/thumbnail link below. Both old and new data will be visible for comparison.
@@ -480,7 +480,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         {project.data.script_content || 'No content available'}
                     </div>
                 </div>
-                
+
                 {/* Thumbnail Requirements - Show if video and thumbnail required */}
                 {isVideo && project.data.thumbnail_required && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -492,9 +492,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             {project.data.thumbnail_reference_link && (
                                 <div>
                                     <p className="font-bold text-slate-500 uppercase text-xs mb-1">Reference Thumbnail</p>
-                                    <a 
-                                        href={project.data.thumbnail_reference_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.data.thumbnail_reference_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
                                     >
@@ -502,7 +502,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                     </a>
                                 </div>
                             )}
-                            
+
                             {project.data.thumbnail_notes && (
                                 <div>
                                     <p className="font-bold text-slate-500 uppercase text-xs mb-1">Thumbnail Notes</p>
@@ -511,14 +511,14 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                     </div>
                                 </div>
                             )}
-                            
+
                             {/* Thumbnail Link from Cinematographer */}
                             {project.data.cine_thumbnail_link && (
                                 <div>
                                     <p className="font-bold text-slate-500 uppercase text-xs mb-1">Cinematographer's Thumbnail Assets</p>
-                                    <a 
-                                        href={project.data.cine_thumbnail_link} 
-                                        target="_blank" 
+                                    <a
+                                        href={project.data.cine_thumbnail_link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
                                         className="block p-3 bg-white border-2 border-purple-400 text-purple-600 font-medium hover:bg-purple-50 transition-colors break-all"
                                     >
@@ -527,7 +527,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                     <p className="text-xs text-slate-500 mt-1">Assets provided by Cinematographer for thumbnail creation</p>
                                 </div>
                             )}
-                            
+
                             {!project.data.thumbnail_reference_link && !project.data.thumbnail_notes && !project.data.cine_thumbnail_link && (
                                 <p className="text-slate-500 italic">No specific thumbnail requirements provided.</p>
                             )}
@@ -585,91 +585,91 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     )}
                 </div>
 
-             {/* Upload Section */}
-{project.delivery_date && (
-  <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-    <div className="flex items-center gap-2 mb-4">
-      {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
-      <h2 className="text-xl font-black uppercase">
-        {isRejected
-          ? `Rejected ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
-          : isRework
-          ? `Rework ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
-          : `${isVideo ? 'Thumbnail' : 'Creative'} Upload`}
-      </h2>
-    </div>
+                {/* Upload Section */}
+                {project.delivery_date && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
+                            <h2 className="text-xl font-black uppercase">
+                                {isRejected
+                                    ? `Rejected ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
+                                    : isRework
+                                        ? `Rework ${isVideo ? 'Thumbnail' : 'Creative'} Upload`
+                                        : `${isVideo ? 'Thumbnail' : 'Creative'} Upload`}
+                            </h2>
+                        </div>
 
-    {/* SHOW OLD ASSET IF EXISTS */}
-    {hasAsset && (
-      <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
-        <p className="text-sm font-bold uppercase text-gray-700 mb-2">
-          Previous {isVideo ? 'Thumbnail' : 'Creative'}
-        </p>
-        <a
-          href={isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block break-all text-blue-600 underline"
-        >
-          {isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
-        </a>
-      </div>
-    )}
+                        {/* SHOW OLD ASSET IF EXISTS */}
+                        {hasAsset && (
+                            <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
+                                <p className="text-sm font-bold uppercase text-gray-700 mb-2">
+                                    Previous {isVideo ? 'Thumbnail' : 'Creative'}
+                                </p>
+                                <a
+                                    href={isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block break-all text-blue-600 underline"
+                                >
+                                    {isVideo ? project.thumbnail_link : (project.creative_link || project.data?.creative_link)}
+                                </a>
+                            </div>
+                        )}
 
-    {/* Show input if user has edit permissions */}
-    {(canEdit || !hasAsset) && (
-      <div className="space-y-4">
-        <p className="text-slate-600 font-medium">
-          {isRejected
-            ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rejected project`
-            : isRework
-            ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rework`
-            : `Upload ${isVideo ? 'thumbnail' : 'creative'} link`}
-        </p>
+                        {/* Show input if user has edit permissions */}
+                        {(canEdit || !hasAsset) && (
+                            <div className="space-y-4">
+                                <p className="text-slate-600 font-medium">
+                                    {isRejected
+                                        ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rejected project`
+                                        : isRework
+                                            ? `Upload new ${isVideo ? 'thumbnail' : 'creative'} link for rework`
+                                            : `Upload ${isVideo ? 'thumbnail' : 'creative'} link`}
+                                </p>
 
-        <div className="flex gap-3">
-          <input
-            type="url"
-            value={isVideo ? thumbnailLink : creativeLink}
-            onChange={(e) =>
-              isVideo
-                ? setThumbnailLink(e.target.value)
-                : setCreativeLink(e.target.value)
-            }
-            placeholder="https://drive.google.com/file/d/..."
-            className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
-          />
-          <button
-            onClick={handleUploadFile}
-            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-          >
-            <Upload className="w-5 h-5 inline mr-2" />
-            {isRejected ? 'Submit Rejected Design' : isRework ? 'Submit Rework Design' : 'Upload'}
-          </button>
-        </div>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="url"
+                                        value={isVideo ? thumbnailLink : creativeLink}
+                                        onChange={(e) =>
+                                            isVideo
+                                                ? setThumbnailLink(e.target.value)
+                                                : setCreativeLink(e.target.value)
+                                        }
+                                        placeholder="https://drive.google.com/file/d/..."
+                                        className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+                                    />
+                                    <button
+                                        onClick={handleUploadFile}
+                                        className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                    >
+                                        <Upload className="w-5 h-5 inline mr-2" />
+                                        {isRejected ? 'Submit Rejected Design' : isRework ? 'Submit Rework Design' : 'Upload'}
+                                    </button>
+                                </div>
 
-        <p className="text-sm text-slate-500">
-          ✨ Once uploaded, CMO will be notified for final review
-        </p>
-      </div>
-    )}
+                                <p className="text-sm text-slate-500">
+                                    ✨ Once uploaded, CMO will be notified for final review
+                                </p>
+                            </div>
+                        )}
 
-    {/* FINAL STATE — ONLY IF NOT REWORK */}
-    {hasAsset && !isRework && (
-      <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
-        <p className="text-sm font-bold uppercase text-green-800">
-          ✓ {isVideo ? 'Thumbnail' : 'Creative'} Delivered
-        </p>
-        <p className="text-sm text-green-800 mt-1">
-          → Project has been moved to CMO for final review
-        </p>
-      </div>
-    )}
-  </div>
-)}
+                        {/* FINAL STATE — ONLY IF NOT REWORK */}
+                        {hasAsset && !isRework && (
+                            <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
+                                <p className="text-sm font-bold uppercase text-green-800">
+                                    ✓ {isVideo ? 'Thumbnail' : 'Creative'} Delivered
+                                </p>
+                                <p className="text-sm text-green-800 mt-1">
+                                    → Project has been moved to CMO for final review
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
 
-            {/* New Direct Upload Section - For Designer to upload assets directly */}
-           
+                {/* New Direct Upload Section - For Designer to upload assets directly */}
+
 
 
                 {/* Project Info */}
@@ -698,12 +698,12 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             <div className="col-span-2">
                                 <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                                 <p className="font-bold text-slate-900 mt-1 uppercase">
-                                    {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                    : project.data.niche === 'OTHER' && project.data.niche_other 
-                                        ? project.data.niche_other 
-                                        : project.data.niche}
+                                    {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche}
                                 </p>
                             </div>
                         )}

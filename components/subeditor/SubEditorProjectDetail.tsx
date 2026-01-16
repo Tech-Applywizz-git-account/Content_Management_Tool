@@ -59,12 +59,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         localProject.current_stage!,
         user.id,
         user.email || user.id,
-        'SUBMITTED',
+        'SUB_EDITOR_DELIVERY_DATE',
         `Delivery date set to ${deliveryDate}`
       );
 
       // Update the project with the delivery date
-      await db.projects.update(localProject.id, { 
+      await db.projects.update(localProject.id, {
         delivery_date: deliveryDate,
         current_stage: WorkflowStage.SUB_EDITOR_PROCESSING,
         assigned_to_role: Role.SUB_EDITOR,
@@ -116,9 +116,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       }
 
       // Record the action in workflow history with appropriate action type
-      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
-      const comment = isRework 
-        ? `Rework edited video uploaded: ${editedVideoLink}` 
+      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUB_EDITOR_VIDEO_UPLOADED';
+      const comment = isRework
+        ? `Rework edited video uploaded: ${editedVideoLink}`
         : `Edited video uploaded: ${editedVideoLink}`;
 
       await db.workflow.recordAction(
@@ -131,7 +131,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       );
 
       // Update the project with the edited video link and advance the workflow
-      await db.projects.update(localProject.id, { 
+      await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
         status: TaskStatus.DONE,
         data: { ...localProject.data, needs_sub_editor: false, thumbnail_required: localProject.data?.thumbnail_required } // Mark that sub-editor work is complete
@@ -142,7 +142,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       await db.updateProjectData(localProject.id, {
         ...localProject.data,
         edited_video_link: editedVideoLink,
-        needs_sub_editor: false, 
+        needs_sub_editor: false,
         thumbnail_required: localProject.data?.thumbnail_required
       });
 
@@ -182,13 +182,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
             <div className="flex items-center gap-3 mt-1">
               <span
-                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${
-                  localProject.channel === 'YOUTUBE'
+                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
                     ? 'bg-[#FF4F4F] text-white'
                     : localProject.channel === 'LINKEDIN'
                       ? 'bg-[#0085FF] text-white'
                       : 'bg-[#D946EF] text-white'
-                }`}
+                  }`}
               >
                 {localProject.channel}
               </span>
@@ -196,13 +195,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 Due: {format(new Date(localProject.due_date), 'MMM dd, yyyy h:mm a')}
               </span>
               <span
-                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${
-                  localProject.priority === 'HIGH'
+                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
                     ? 'bg-red-500 text-white'
                     : localProject.priority === 'NORMAL'
                       ? 'bg-yellow-500 text-black'
                       : 'bg-green-500 text-white'
-                }`}
+                  }`}
               >
                 {localProject.priority}
               </span>
@@ -366,9 +364,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 {/* Input for new video link */}
                 <div className="space-y-4">
                   <p className="text-slate-600 font-medium">
-                    {isRejected ? 'Upload the new video link for rejected project' : 
-                     isRework ? 'Upload the new video link for rework' : 
-                     'Upload the edited video link after editing'}
+                    {isRejected ? 'Upload the new video link for rejected project' :
+                      isRework ? 'Upload the new video link for rework' :
+                        'Upload the edited video link after editing'}
                   </p>
                   <div className="flex gap-3">
                     <input

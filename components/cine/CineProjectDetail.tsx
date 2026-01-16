@@ -16,34 +16,34 @@ interface Props {
 }
 
 const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, fromView }) => {
-     // For rework projects, keep existing data but track new inputs
-     const processedProject = {...initialProject};
-         
-     const [localProject, setLocalProject] = useState<Project>(processedProject);
-         
-     const isReworkProject = (project: Project) =>
-       project.history?.some(h =>
-         h.action?.startsWith('REWORK_')
-       );
-         
-     // Use the new workflow state logic
-     const workflowState = getWorkflowState(localProject);
-     const isRework = workflowState.isRework;
-     const isRejected = workflowState.isRejected;
-     
-     // Determine if current user can edit based on role and workflow state
-     const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
-         
-     // Check if this project is currently assigned to the Cine role
-     const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
+    // For rework projects, keep existing data but track new inputs
+    const processedProject = { ...initialProject };
 
-     
-  const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
+    const [localProject, setLocalProject] = useState<Project>(processedProject);
 
-  const [videoLink, setVideoLink] = useState(processedProject.video_link || '');
-    
+    const isReworkProject = (project: Project) =>
+        project.history?.some(h =>
+            h.action?.startsWith('REWORK_')
+        );
 
-    
+    // Use the new workflow state logic
+    const workflowState = getWorkflowState(localProject);
+    const isRework = workflowState.isRework;
+    const isRejected = workflowState.isRejected;
+
+    // Determine if current user can edit based on role and workflow state
+    const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+
+    // Check if this project is currently assigned to the Cine role
+    const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
+
+
+    const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
+
+    const [videoLink, setVideoLink] = useState(processedProject.video_link || '');
+
+
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -52,7 +52,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
     // Reset form fields when project changes
     useEffect(() => {
-        const processedProject = {...initialProject};
+        const processedProject = { ...initialProject };
         setShootDate(processedProject.shoot_date || '');
         setVideoLink(processedProject.video_link || '');
         setLocalProject(processedProject);
@@ -63,32 +63,32 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             alert('Please select a date');
             return;
         }
-        
+
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             console.log('User session data:', session);
-            
+
             if (!user) {
                 alert('User not authenticated');
                 return;
             }
-            
+
             // Validate project data
             if (!localProject.id) {
                 alert('Invalid project data: Missing project ID');
                 return;
             }
-            
+
             if (!localProject.current_stage) {
                 alert('Invalid project data: Missing current stage');
                 return;
             }
-            
+
             console.log('Project data:', localProject);
-            
+
             // Record the action in workflow history before updating the project
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
@@ -98,41 +98,41 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 action: 'SUBMITTED',
                 comment: `Shoot date set to ${shootDate}`
             });
-            
+
             // Log the actual values being passed
             console.log('Actual values:');
             console.log('  project.id:', localProject.id);
             console.log('  project.current_stage:', localProject.current_stage);
             console.log('  user.id:', user.id);
             console.log('  shootDate:', shootDate);
-            
+
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // stage
                 user.id,
                 user.email || user.id, // userName (using email or ID as fallback)
-                'SUBMITTED', // Use allowed action value
+                'SET_SHOOT_DATE', // specific action
                 `Shoot date set to ${shootDate}`
             );
-            
+
             // Update the project with the shoot date but keep it in CINEMATOGRAPHY stage
             // The stage only changes when the video is uploaded
-            await db.projects.update(localProject.id, { 
+            await db.projects.update(localProject.id, {
                 shoot_date: shootDate
             });
-            
+
             // Update project data to persist any changes made during this session
             await db.updateProjectData(localProject.id, {
                 ...localProject.data,
                 cine_thumbnail_link: localProject.data.cine_thumbnail_link
             });
-            
+
             setLocalProject(prev => ({
-  ...prev,
-  shoot_date: shootDate
-}));
+                ...prev,
+                shoot_date: shootDate
+            }));
             console.log(`Shoot date set: ${shootDate}`);
-            
+
             // Show popup notification (use STAGE_LABELS and include calendar visibility)
             const stageLabel = STAGE_LABELS[WorkflowStage.CINEMATOGRAPHY] || 'Cinematography';
             setPopupMessage(`Shoot scheduled for ${localProject.title} on ${shootDate}.`);
@@ -156,34 +156,34 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             alert('Please enter a video link');
             return;
         }
-        
+
         // Check if user has permission to edit
         if (!canEdit) {
             alert('You do not have permission to edit this project');
             return;
         }
-        
+
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
-            
+
             if (!user) {
                 alert('User not authenticated');
                 return;
             }
-            
+
             // Determine if this is a rework submission based on the new workflow state logic
             const workflowState = getWorkflowState(localProject);
             const isRework = workflowState.isRework;
             const isRejected = workflowState.isRejected;
-            
+
             // Record the action in workflow history before updating the project
-            const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'SUBMITTED';
-            const comment = isRework 
-                ? `Rework video uploaded: ${videoLink}` 
+            const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'CINE_VIDEO_UPLOADED';
+            const comment = isRework
+                ? `Rework video uploaded: ${videoLink}`
                 : `Raw video uploaded: ${videoLink}`;
-            
+
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
                 fromStage: localProject.current_stage,
@@ -192,7 +192,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 action: actionType,
                 comment: comment
             });
-            
+
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // Record action at current stage
@@ -201,19 +201,19 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 actionType, // Use appropriate action value
                 comment
             );
-            
+
             // Update the project with the video link and advance the workflow
             // This will properly route to the correct next stage
-    
-            
+
+
             // Update project data to persist any changes made during this session
             // Include video_link in the update so timestamp logic can detect the upload
-            await db.projects.update(localProject.id, { 
+            await db.projects.update(localProject.id, {
                 video_link: videoLink,
                 cine_uploaded_at: new Date().toISOString(),
                 status: TaskStatus.WAITING_APPROVAL
             });
-            
+
             // Advance workflow to next stage based on project settings
             await db.advanceWorkflow(localProject.id, comment);
 
@@ -222,10 +222,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 ...prev,
                 video_link: videoLink
             }));
-            
+
             // Get updated project to determine who to notify
             const updatedProject = await db.getProjectById(localProject.id);
-            
+
             // Find users to notify based on the next assigned role
             if (updatedProject?.assigned_to_role) {
                 const { data: nextUsers } = await supabase
@@ -233,7 +233,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     .select('id')
                     .eq('role', updatedProject.assigned_to_role)
                     .eq('status', 'ACTIVE');
-                
+
                 if (nextUsers && nextUsers.length > 0) {
                     // Send notification to all users of the assigned role
                     for (const nextUser of nextUsers) {
@@ -254,13 +254,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     }
                 }
             }
-            
+
             // Show popup notification using STAGE_LABELS for the actual next stage
             const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.VIDEO_EDITING] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
                 ? `Rework video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`
                 : `Raw video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`;
-            
+
             setPopupMessage(popupMessageText);
 
             setStageName(actualNextStageLabel);
@@ -295,10 +295,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         <div className="flex items-center gap-3 mt-1">
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
-                                        ? 'bg-[#FF4F4F] text-white'
-                                        : localProject.channel === 'LINKEDIN'
-                                            ? 'bg-[#0085FF] text-white'
-                                            : 'bg-[#D946EF] text-white'
+                                    ? 'bg-[#FF4F4F] text-white'
+                                    : localProject.channel === 'LINKEDIN'
+                                        ? 'bg-[#0085FF] text-white'
+                                        : 'bg-[#D946EF] text-white'
                                     }`}
                             >
                                 {localProject.channel}
@@ -308,10 +308,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </span>
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
-                                        ? 'bg-red-500 text-white'
-                                        : localProject.priority === 'NORMAL'
-                                            ? 'bg-yellow-500 text-black'
-                                            : 'bg-green-500 text-white'
+                                    ? 'bg-red-500 text-white'
+                                    : localProject.priority === 'NORMAL'
+                                        ? 'bg-yellow-500 text-black'
+                                        : 'bg-green-500 text-white'
                                     }`}
                             >
                                 {localProject.priority}
@@ -347,7 +347,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
-                        
+
                         {/* Existing Data Display */}
                         <div className="bg-white border-2 border-gray-300 p-4">
                             <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
@@ -361,9 +361,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 {localProject.video_link && (
                                     <div>
                                         <span className="text-sm font-bold text-gray-600 block mb-1">Current Video Link</span>
-                                        <a 
-                                            href={localProject.video_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={localProject.video_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all"
                                         >
@@ -373,7 +373,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 )}
                             </div>
                         </div>
-                        
+
                         <div className="bg-red-100 border-2 border-red-200 p-3">
                             <p className="text-sm text-red-800 font-bold">
                                 Please update the shoot date and/or video link below. Both old and new data will be visible for comparison.
@@ -395,7 +395,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         {localProject.data.script_content || 'No script content available'}
                     </div>
                 </div>
-                
+
                 {/* Cinematography Instructions */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <div className="flex justify-between items-center mb-4">
@@ -406,7 +406,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </span>
                         )}
                     </div>
-                    
+
                     {/* Thumbnail Reference from Writer */}
                     {localProject.data?.thumbnail_reference_link && (
                         <div className="mb-6 pt-6 border-t-2 border-gray-200">
@@ -415,9 +415,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-blue-800 mb-1">Reference Thumbnail Link</p>
-                                        <a 
-                                            href={localProject.data.thumbnail_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={localProject.data.thumbnail_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -429,7 +429,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </div>
                         </div>
                     )}
-                    
+
                     {/* Writer Name */}
                     {localProject.data.writer_name && (
                         <div className="mb-4">
@@ -437,7 +437,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <p className="font-medium text-slate-900">{localProject.data.writer_name}</p>
                         </div>
                     )}
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Actor</label>
@@ -456,7 +456,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 placeholder="e.g. Female presenter, 30s, business attire"
                             />
                         </div>
-                        
+
                         <div>
                             <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Location</label>
                             <input
@@ -474,7 +474,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 placeholder="e.g. Office, studio, outdoor street"
                             />
                         </div>
-                        
+
                         <div>
                             <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Lighting</label>
                             <input
@@ -492,7 +492,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 placeholder="e.g. Soft daylight, cinematic, low-key"
                             />
                         </div>
-                        
+
                         <div>
                             <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Angles</label>
                             <input
@@ -511,7 +511,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             />
                         </div>
                     </div>
-                    
+
                     {/* Thumbnail Upload Section - Only show if thumbnail_required is true */}
                     {localProject.data.thumbnail_required && (
                         <div className="mt-6 pt-6 border-t-2 border-gray-200">
@@ -536,7 +536,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </div>
                         </div>
                     )}
-                    
+
                     {/* Save Button for Cinematography Fields */}
                     {canEdit && (
                         <div className="mt-4 flex justify-end">
@@ -551,7 +551,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             angles: localProject.data.angles,
                                             cine_thumbnail_link: localProject.data.cine_thumbnail_link
                                         });
-                                        
+
                                         // Show success message
                                         setPopupMessage('Cinematography instructions updated successfully');
                                         setStageName('Updated');
@@ -569,64 +569,64 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         </div>
                     )}
                 </div>
-                
+
 
 
                 {/* Shoot Scheduling Section - Only show if project is assigned to Cine */}
                 {isCurrentlyAssignedToCine && (
-                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                        <CalendarIcon className="w-5 h-5" />
-                        <h2 className="text-xl font-black uppercase">Shoot Schedule</h2>
-                    </div>
-
-                    {!localProject.shoot_date ? (
-                        <div className="space-y-4">
-                            <p className="text-slate-600 font-medium">Schedule a shoot date for this project</p>
-                            <div className="flex gap-3">
-                                <input
-                                    type="date"
-                                    value={shootDate}
-                                    onChange={(e) => setShootDate(e.target.value)}
-                                    min={new Date().toISOString().split('T')[0]}
-                                    className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
-                                />
-                                <button
-                                    onClick={handleSetShootDate}
-                                    className="px-8 py-4 bg-[#4ADE80] border-2 border-black text-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                >
-                                    <CalendarIcon className="w-5 h-5 inline mr-2" />
-                                    Set Shoot Date
-                                </button>
-                            </div>
-                            <p className="text-sm text-slate-500">
-                                📅 This date will be visible on calendars for Writer, CEO, CMO, and Operations
-                            </p>
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <CalendarIcon className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Shoot Schedule</h2>
                         </div>
-                    ) : (
-                        <div className="bg-green-50 border-2 border-green-600 p-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-bold uppercase text-green-800 mb-1">✓ Shoot Scheduled</p>
-                                    <p className="text-2xl font-black text-green-900">{localProject.shoot_date}</p>
+
+                        {!localProject.shoot_date ? (
+                            <div className="space-y-4">
+                                <p className="text-slate-600 font-medium">Schedule a shoot date for this project</p>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="date"
+                                        value={shootDate}
+                                        onChange={(e) => setShootDate(e.target.value)}
+                                        min={new Date().toISOString().split('T')[0]}
+                                        className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
+                                    />
+                                    <button
+                                        onClick={handleSetShootDate}
+                                        className="px-8 py-4 bg-[#4ADE80] border-2 border-black text-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <CalendarIcon className="w-5 h-5 inline mr-2" />
+                                        Set Shoot Date
+                                    </button>
                                 </div>
-                               <button
-  onClick={() => {
-    setShootDate('');
-    setLocalProject(prev => ({
-      ...prev,
-      shoot_date: null
-    }));
-  }}
-  className="px-4 py-2 border-2 border-green-700 text-green-800 font-bold text-sm uppercase hover:bg-green-100 transition-colors"
->
-  Reschedule
-</button>
-
+                                <p className="text-sm text-slate-500">
+                                    📅 This date will be visible on calendars for Writer, CEO, CMO, and Operations
+                                </p>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        ) : (
+                            <div className="bg-green-50 border-2 border-green-600 p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-bold uppercase text-green-800 mb-1">✓ Shoot Scheduled</p>
+                                        <p className="text-2xl font-black text-green-900">{localProject.shoot_date}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setShootDate('');
+                                            setLocalProject(prev => ({
+                                                ...prev,
+                                                shoot_date: null
+                                            }));
+                                        }}
+                                        className="px-4 py-2 border-2 border-green-700 text-green-800 font-bold text-sm uppercase hover:bg-green-100 transition-colors"
+                                    >
+                                        Reschedule
+                                    </button>
+
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Video Upload Section - Show if project has shoot date and either assigned to Cine or has a video link */}
@@ -658,7 +658,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         </div>
                                     </div>
                                 )}
-                                
+
                                 {/* Input for new video link */}
                                 <div className="space-y-4">
                                     <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
@@ -756,12 +756,12 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <div className="col-span-2">
                                 <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                                 <p className="font-bold text-slate-900 mt-1 uppercase">
-                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                    : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                    : localProject.data.niche === 'OTHER' && localProject.data.niche_other 
-                                        ? localProject.data.niche_other 
-                                        : localProject.data.niche}
+                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                                    ? localProject.data.niche_other
+                                                    : localProject.data.niche}
                                 </p>
                             </div>
                         )}

@@ -3,6 +3,7 @@ import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../ty
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
+import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import Timeline from '../Timeline';
 import ApprovalStatusIndicator from '../ApprovalStatusIndicator';
@@ -18,7 +19,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
     const [liveUrl, setLiveUrl] = useState(project.data?.live_url || '');
     const [caption, setCaption] = useState(project.data?.captions || '');
     const [users, setUsers] = useState<any[]>([]);
-    
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -34,7 +35,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                 console.error('Failed to fetch users:', error);
             }
         };
-        
+
         fetchUsers();
     }, []);
 
@@ -57,8 +58,21 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
             alert('Please select a post date');
             return;
         }
-        
+
         try {
+            // Record action in history
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                await db.workflow.recordAction(
+                    project.id,
+                    project.current_stage,
+                    session.user.id,
+                    session.user.user_metadata?.full_name || session.user.email || 'OPS',
+                    'OPS_SCHEDULED',
+                    `Post scheduled for ${postDate}`
+                );
+            }
+
             // Update the project with the post scheduled date in Supabase
             await db.projects.update(project.id, { post_scheduled_date: postDate });
             console.log(`Post scheduled date set: ${postDate}`);
@@ -79,10 +93,23 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
             alert('Please enter a live URL');
             return;
         }
-        
+
         try {
+            // Record action in history
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                await db.workflow.recordAction(
+                    project.id,
+                    project.current_stage,
+                    session.user.id,
+                    session.user.user_metadata?.full_name || session.user.email || 'OPS',
+                    'OPS_POSTED',
+                    `Project posted with live URL: ${liveUrl}`
+                );
+            }
+
             // Update the project with the live URL and mark as POSTED
-            await db.projects.updateData(project.id, { 
+            await db.projects.updateData(project.id, {
                 live_url: liveUrl,
                 captions: caption  // Save the caption along with the live URL
             });
@@ -117,8 +144,8 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                 <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                         <span className={`px-2 py-0.5 text-xs font-bold border-2 border-black ${project.channel === 'LINKEDIN' ? 'bg-blue-100 text-blue-800' :
-                                project.channel === 'YOUTUBE' ? 'bg-red-100 text-red-800' :
-                                    'bg-purple-100 text-purple-800'
+                            project.channel === 'YOUTUBE' ? 'bg-red-100 text-red-800' :
+                                'bg-purple-100 text-purple-800'
                             }`}>
                             {project.channel}
                         </span>
@@ -211,7 +238,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                 <div className="space-y-6">
                     {/* Approval Status Indicator */}
                     <ApprovalStatusIndicator project={project} />
-                    
+
 
                 </div>
 
@@ -363,12 +390,12 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 <div className="flex justify-between mt-2">
                                     <span className="text-slate-600">Niche:</span>
                                     <span className="font-bold text-slate-900 uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                        : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                        : project.data.niche === 'OTHER' && project.data.niche_other 
-                                            ? project.data.niche_other 
-                                            : project.data.niche}
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                    : project.data.niche === 'OTHER' && project.data.niche_other
+                                                        ? project.data.niche_other
+                                                        : project.data.niche}
                                     </span>
                                 </div>
                             )}

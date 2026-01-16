@@ -69,13 +69,13 @@ function App() {
 
   // CMO State - State for CMO dashboard all projects
   const [allProjects, setAllProjects] = useState<Project[]>([]);
-  
+
   // Cine State - State for Cine dashboard script projects
   const [cineScriptProjects, setCineScriptProjects] = useState<Project[]>([]);
-  
+
   // Editor State - State for Editor dashboard script projects
   const [editorScriptProjects, setEditorScriptProjects] = useState<Project[]>([]);
-  
+
   // Designer State - State for Designer dashboard script projects
   const [designerScriptProjects, setDesignerScriptProjects] = useState<Project[]>([]);
 
@@ -159,7 +159,7 @@ function App() {
       const isRecoveryFlow = location.pathname === '/set-password' ||
         (location.hash && location.hash.includes('type=recovery')) ||
         (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
-      
+
       console.log('App: Checking recovery flow in initializeAuth', { pathname: location.pathname, hash: location.hash, href: window.location.href, isRecoveryFlow });
 
       if (isRecoveryFlow) {
@@ -180,7 +180,7 @@ function App() {
         } catch (error) {
           console.error('Error populating user state from recovery session:', error);
         }
-        
+
         if (mounted) {
           setLoading(false);
           setIsRestoringSession(false);
@@ -309,10 +309,10 @@ function App() {
           console.error('Failed to fetch all projects for CMO:', error);
         }
       };
-      
+
       fetchAllProjects();
     }
-    
+
     // Only fetch for Cine users
     if (user?.role === Role.CINE) {
       const fetchCineScriptProjects = async () => {
@@ -323,10 +323,10 @@ function App() {
           console.error('Failed to fetch script projects for Cine:', error);
         }
       };
-      
+
       fetchCineScriptProjects();
     }
-    
+
     // Only fetch for Editor users
     if (user?.role === Role.EDITOR) {
       const fetchEditorScriptProjects = async () => {
@@ -337,10 +337,10 @@ function App() {
           console.error('Failed to fetch script projects for Editor:', error);
         }
       };
-      
+
       fetchEditorScriptProjects();
     }
-    
+
     // Only fetch for Designer users
     if (user?.role === Role.DESIGNER) {
       const fetchDesignerScriptProjects = async () => {
@@ -351,7 +351,7 @@ function App() {
           console.error('Failed to fetch script projects for Designer:', error);
         }
       };
-      
+
       fetchDesignerScriptProjects();
     }
   }, [user]);
@@ -379,12 +379,24 @@ function App() {
         console.log('✅ App.tsx: Inbox projects fetched:', inboxProjects.length);
         const myWorkProjects = await db.getMyWork(u);
         console.log('✅ App.tsx: MyWork projects fetched:', myWorkProjects.length);
-        
+
         // Set both datasets - dashboards will use appropriate one based on view
         console.log('🔄 App.tsx: Updating projects state');
         setProjects({ inbox: inboxProjects, history: myWorkProjects });
         console.log('✅ App.tsx: Projects state updated');
-        
+
+        // For CMO role, also refresh all projects (for calendar)
+        if (u.role === Role.CMO) {
+          try {
+            console.log('🔄 App.tsx: Refreshing all projects for CMO');
+            const allProjectsData = await db.projects.getAll();
+            setAllProjects(allProjectsData);
+            console.log('✅ App.tsx: CMO all projects refreshed:', allProjectsData.length);
+          } catch (error) {
+            console.error('❌ App.tsx: Failed to refresh all projects for CMO:', error);
+          }
+        }
+
         // For Editor and Designer roles, also refresh script projects
         if (u.role === Role.EDITOR) {
           try {
@@ -529,12 +541,12 @@ function App() {
     (location.hash && location.hash.includes('type=recovery')) ||
     // Also check if we're in a recovery flow based on URL parameters
     (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
-  
-  console.log('App: Checking if on password reset flow', { 
-    pathname: location.pathname, 
-    hash: location.hash, 
+
+  console.log('App: Checking if on password reset flow', {
+    pathname: location.pathname,
+    hash: location.hash,
     href: window.location.href,
-    isPasswordResetFlow 
+    isPasswordResetFlow
   });
 
   if (isPasswordResetFlow) {
@@ -649,7 +661,7 @@ function App() {
     return (
       <SubEditorDashboard
         user={user}
-        onBack={() => {}}
+        onBack={() => { }}
         onLogout={handleLogout}
       />
     );

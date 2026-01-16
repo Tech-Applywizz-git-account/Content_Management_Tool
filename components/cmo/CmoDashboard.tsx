@@ -189,8 +189,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       p.status !== TaskStatus.DONE &&
       // Include script review stages and new multi-writer approval stage
       (p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-       p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-       p.current_stage === WorkflowStage.POST_WRITER_REVIEW)
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+        p.current_stage === WorkflowStage.POST_WRITER_REVIEW)
   );
 
 
@@ -283,15 +283,15 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         onChangeView={handleViewChange}
       >
         {activeView === 'mywork' ? (
-  <CmoMyWork
-    user={user}
-    projects={historyProjects}
-    onReview={handleReview}
-  />
-) : activeView === 'overview' ? (
-  <CmoOverview user={user} />
-) : activeView === 'calendar' ? (
-  <CmoCalendar projects={inboxProjects} />
+          <CmoMyWork
+            user={user}
+            projects={historyProjects}
+            onReview={handleReview}
+          />
+        ) : activeView === 'overview' ? (
+          <CmoOverview user={user} />
+        ) : activeView === 'calendar' ? (
+          <CmoCalendar projects={allProjects || []} />
         ) : (
           <div key={refreshKey} className="space-y-8 animate-fade-in">
             {/* Header */}
@@ -621,20 +621,20 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 <div className="space-y-4">
                   {/* Tabs for Shoot and Editor */}
                   <div className="flex border-b border-gray-200">
-                    <button 
+                    <button
                       className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'SHOOT' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500'}`}
                       onClick={() => setActiveTab('SHOOT')}
                     >
                       Shoot ({inShoot.length})
                     </button>
-                    <button 
+                    <button
                       className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'EDITOR' ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-gray-500'}`}
                       onClick={() => setActiveTab('EDITOR')}
                     >
                       Editor ({inEditor.length})
                     </button>
                   </div>
-                  
+
                   {/* Content based on active tab */}
                   {activeTab === 'SHOOT' ? (
                     <>
