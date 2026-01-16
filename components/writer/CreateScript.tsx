@@ -931,16 +931,16 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
   }
 
   /* -----------------------------------
-     DEFAULT → ALWAYS GO TO CMO
+     DEFAULT → ALWAYS GO TO CEO (DIRECT)
      ----------------------------------- */
   else {
     await db.projects.update(realProjectId, {
-      current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-      assigned_to_role: Role.CMO,
+      current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
+      assigned_to_role: Role.CEO,
       status: TaskStatus.WAITING_APPROVAL
     });
 
-    console.log('✅ Submitted to CMO');
+    console.log('✅ Submitted directly to CEO');
   }
 }
 
@@ -966,8 +966,8 @@ else if (latestProject.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
   message = `Script submitted successfully. Waiting for CEO review.`;
 }
 else {
-  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
-  message = `Script submitted successfully. Waiting for CMO review.`;
+  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2];
+  message = `Script submitted successfully. Waiting for CEO review.`;
 }
 
 

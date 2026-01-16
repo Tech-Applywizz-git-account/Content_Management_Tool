@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
 import { isReworkProject } from '../../services/workflowUtils';
 import { format } from 'date-fns';
@@ -34,7 +34,53 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [refreshKey, setRefreshKey] = useState(0);
   const viewStorageKey = `activeView:${user.role}`;
   // Use allProjects for dashboard view, fallback to inboxProjects
-  const dashboardProjects = allProjects || inboxProjects || [];
+  // Deduplicate projects by ID to prevent duplicates
+  const dashboardProjects = useMemo(() => {
+    const projectsArray = allProjects || inboxProjects || [];
+    
+    // Create a Map to deduplicate by project ID
+    const uniqueProjects = new Map();
+    projectsArray.forEach(project => {
+      if (project && project.id) {
+        // If project already exists, keep the one with more recent data
+        if (!uniqueProjects.has(project.id) || 
+            new Date(project.updated_at || project.created_at) > 
+            new Date(uniqueProjects.get(project.id).updated_at || uniqueProjects.get(project.id).created_at)) {
+          uniqueProjects.set(project.id, project);
+        }
+      }
+    });
+    
+    console.log('CMO Dashboard - Raw data sources:');
+    console.log('  allProjects count:', allProjects?.length || 0);
+    console.log('  inboxProjects count:', inboxProjects?.length || 0);
+    console.log('  Deduplicated dashboardProjects count:', uniqueProjects.size);
+    
+    // Log duplicate projects if found
+    const projectIdCounts = new Map();
+    projectsArray.forEach(p => {
+      if (p && p.id) {
+        projectIdCounts.set(p.id, (projectIdCounts.get(p.id) || 0) + 1);
+      }
+    });
+    
+    const duplicates = Array.from(projectIdCounts.entries())
+      .filter(([_, count]) => count > 1)
+      .map(([id, count]) => ({ id, count }));
+    
+    if (duplicates.length > 0) {
+      console.log('⚠️ Found duplicate projects:', duplicates);
+      duplicates.forEach(({ id, count }) => {
+        const duplicateProjects = projectsArray.filter(p => p?.id === id);
+        console.log(`  Project ${id} appears ${count} times:`);
+        duplicateProjects.forEach((p, index) => {
+          console.log(`    ${index + 1}. Source: ${allProjects?.some(ap => ap?.id === id) ? 'allProjects' : 'inboxProjects'}, Title: ${p?.title}`);
+        });
+      });
+    }
+    
+    return Array.from(uniqueProjects.values());
+  }, [allProjects, inboxProjects]);
   const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY' | 'PROJECT_DETAILS'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());

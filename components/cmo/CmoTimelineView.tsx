@@ -220,30 +220,75 @@ const CmoTimelineView: React.FC<TimelineViewProps> = ({ project }) => {
   }
 
   return (
-    <div className="border-2 border-black p-4 bg-white">
-      <h3 className="text-lg font-black uppercase mb-4 border-b-2 border-black pb-2">Project Timeline</h3>
+    <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+      <h3 className="text-xl font-black uppercase mb-6 border-b-2 border-black pb-3 text-slate-900">
+        Project Timeline
+      </h3>
       
       {timelineItems.length === 0 ? (
-        <p className="text-gray-500 italic">No timeline events recorded yet.</p>
+        <div className="text-center py-8">
+          <div className="text-gray-400 mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-gray-500 italic font-medium">No timeline events recorded yet</p>
+          <p className="text-sm text-gray-400 mt-1">Workflow events will appear here as they occur</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {timelineItems.map((item, index) => (
-            <div key={item.id} className="flex items-start gap-3">
-              <div className={`w-3 h-3 rounded-full mt-1.5 ${
-                item.status === 'completed' ? 'bg-green-500' : 
-                item.status === 'rework' ? 'bg-red-500' : 'bg-gray-300'
-              }`}></div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <span className="font-bold text-sm">{item.label}</span>
-                  <span className="text-xs text-gray-500 ml-2 whitespace-nowrap">
-                    {formatTimestamp(item.timestamp)}
-                  </span>
+        <div className="relative">
+          {/* Vertical line */}
+          <div className="absolute left-2 top-3 bottom-3 w-0.5 bg-gray-200"></div>
+          
+          <div className="space-y-6 pl-8">
+            {timelineItems.map((item, index) => (
+              <div key={item.id} className="relative">
+                {/* Timeline dot */}
+                <div className={`absolute -left-9 w-4 h-4 rounded-full border-4 border-white ${{
+                  'completed': 'bg-green-500',
+                  'rework': 'bg-red-500',
+                  'pending': 'bg-yellow-500'
+                }[item.status] || 'bg-gray-300'}`}></div>
+                
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                    <h4 className={`font-black text-base ${
+                      item.status === 'completed' ? 'text-green-800' :
+                      item.status === 'rework' ? 'text-red-800' :
+                      item.status === 'pending' ? 'text-yellow-800' :
+                      'text-gray-800'
+                    }`}>
+                      {item.label}
+                    </h4>
+                    <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded whitespace-nowrap">
+                      {formatTimestamp(item.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    {item.description}
+                  </p>
+                  
+                  {/* Status badge */}
+                  <div className="mt-3 flex items-center">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black uppercase ${
+                      item.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      item.status === 'rework' ? 'bg-red-100 text-red-800' :
+                      item.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                        item.status === 'completed' ? 'bg-green-500' :
+                        item.status === 'rework' ? 'bg-red-500' :
+                        item.status === 'pending' ? 'bg-yellow-500' :
+                        'bg-gray-500'
+                      }`}></span>
+                      {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-600 mt-1">{item.description}</p>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>

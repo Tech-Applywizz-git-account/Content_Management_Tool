@@ -301,10 +301,8 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                         </div>
                     </section>
 
-                    {/* Timeline Section */}
-                    <section className="space-y-4 pt-6 border-t-4 border-black">
-                        <Timeline project={fullProject} users={users} forRole={Role.CMO} />
-                    </section>
+                    {/* Timeline intentionally omitted for main dashboard projects */}
+                    {/* Timeline only appears in CMO Overview page as per requirements */}
 
                     {/* Assets Section */}
                     {(fullProject.current_stage === WorkflowStage.FINAL_REVIEW_CMO || 
