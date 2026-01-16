@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
+import { isReworkProject } from '../../services/workflowUtils';
 import { format } from 'date-fns';
 import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
@@ -165,22 +166,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
   console.log('CMO Dashboard - activeView:', activeView);
   console.log('CMO Dashboard - inboxProjects:', inboxProjects);
-  const isReworkProject = (p: Project) => {
-    // Check if this project has rework history caused by CMO
-    if (!p.history) return false;
-    
-    // Find rework/reject actions in the project history
-    // To determine if CMO initiated rework, we check if the action was taken when the project was assigned to CMO
-    return p.history.some(h => {
-      const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
-      
-      // For rework projects, we need to check the from_stage to see if CMO was reviewing
-      // CMO reviews at SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO stages
-      return isReworkAction && 
-             (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L1 || 
-              h.from_stage === WorkflowStage.FINAL_REVIEW_CMO);
-    });
-  };
+
   const isHighPriority = (p: Project) =>
     p.priority?.toUpperCase?.() === 'HIGH';
   const priorityCardClass = (p: Project) =>
@@ -549,6 +535,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {p.priority}
                           </span>
+                          {isReworkProject(p) && (
+                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                              REWORK
+                            </span>
+                          )}
                           <span className="bg-green-100 text-green-800 px-2 py-0.5 border border-green-200 text-[10px] font-bold uppercase">
                             PENDING AT CMO
                           </span>
@@ -581,7 +572,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
                         onClick={() => {
-                          setViewMode('REVIEW');
+                          setViewMode('PROJECT_DETAILS');
                           setSelectedProject(p);
                         }}
                       >
@@ -601,6 +592,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {p.priority}
                           </span>
+                          {isReworkProject(p) && (
+                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                              REWORK
+                            </span>
+                          )}
                           <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
                             With CEO
                           </span>
@@ -652,7 +648,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                             onClick={() => {
-                              setViewMode('REVIEW');
+                              setViewMode('PROJECT_DETAILS');
                               setSelectedProject(p);
                             }}
                           >
@@ -677,6 +673,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   }`}>
                                 {p.priority}
                               </span>
+                              {isReworkProject(p) && (
+                                <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                                  REWORK
+                                </span>
+                              )}
                               <span className="bg-purple-100 text-purple-800 px-2 py-0.5 border border-purple-200 text-[10px] font-bold uppercase">
                                 WITH CINE
                               </span>
@@ -708,7 +709,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                             onClick={() => {
-                              setViewMode('REVIEW');
+                              setViewMode('PROJECT_DETAILS');
                               setSelectedProject(p);
                             }}
                           >
@@ -733,6 +734,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   }`}>
                                 {p.priority}
                               </span>
+                              {isReworkProject(p) && (
+                                <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                                  REWORK
+                                </span>
+                              )}
                               <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 border border-yellow-200 text-[10px] font-bold uppercase">
                                 WITH EDITOR
                               </span>

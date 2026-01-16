@@ -36,6 +36,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [activeView, setActiveView] = useState<string>(getStoredView);
     const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
     const [videoApprovalView, setVideoApprovalView] = useState(false); // New state for video approval view
+    const [inReviewFilter, setInReviewFilter] = useState<'all' | 'ideas' | 'scripts'>('all'); // Filter for In Review column
 
 
     const handleInternalRefresh = async () => {
@@ -102,7 +103,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const dashboardProjects = activeView === 'mywork' ? (historyProjects || []) : allWriterProjects;
 
     // Categorize Projects - mutually exclusive categorization
-    const inReview = dashboardProjects.filter(p =>
+    const allInReview = dashboardProjects.filter(p =>
         (p.created_by === user.id || p.created_by_user_id === user.id) &&
         (
             // Include script projects in review stages
@@ -110,14 +111,20 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                 WorkflowStage.SCRIPT_REVIEW_L1,
                 WorkflowStage.SCRIPT_REVIEW_L2
             ].includes(p.current_stage) ||
-            // Include idea projects in review stages
-            (p.data?.source === 'IDEA_PROJECT' &&
-             [
+            // Include final review stages for CMO and CEO
+            [
                 WorkflowStage.FINAL_REVIEW_CMO,
                 WorkflowStage.FINAL_REVIEW_CEO
-             ].includes(p.current_stage))
+            ].includes(p.current_stage)
         )
     );
+    
+    const inReviewIdeas = allInReview.filter(p => p.data?.source === 'IDEA_PROJECT');
+    const inReviewScripts = allInReview.filter(p => !p.data?.source || p.data?.source !== 'IDEA_PROJECT');
+    
+    const inReview = inReviewFilter === 'ideas' ? inReviewIdeas : 
+                     inReviewFilter === 'scripts' ? inReviewScripts : 
+                     allInReview;
 
     const inProduction = dashboardProjects.filter(p =>
         (p.created_by === user.id || p.created_by_user_id === user.id) &&
@@ -125,10 +132,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             WorkflowStage.CINEMATOGRAPHY,
             WorkflowStage.VIDEO_EDITING,
             WorkflowStage.THUMBNAIL_DESIGN,
-            WorkflowStage.CREATIVE_DESIGN,
-            WorkflowStage.FINAL_REVIEW_CMO,
-            WorkflowStage.FINAL_REVIEW_CEO,
-            WorkflowStage.OPS_SCHEDULING
+            WorkflowStage.CREATIVE_DESIGN
         ].includes(p.current_stage)
     );
 
@@ -359,10 +363,15 @@ const handleEdit = (project: Project) => {
                         </button>
                         <button
                             onClick={() => setVideoApprovalView(true)}
-                            className="w-full sm:w-auto bg-[#F59E0B] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
+                            className="w-full sm:w-auto bg-[#F59E0B] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
                         >
                             <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>Video Approval</span>
+                            {videoApprovalProjects.length > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
+                                    {videoApprovalProjects.length}
+                                </span>
+                            )}
                         </button>
                     </div>
 
@@ -425,12 +434,42 @@ const handleEdit = (project: Project) => {
 
                         {/* Column 2: In Review (CMO/CEO) */}
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                <h3 className="font-black uppercase tracking-wide">In Review</h3>
-                                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inReview.length}</span>
+                            {/* Header with title and count */}
+                            <div className="p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-black uppercase tracking-wide">In Review</h3>
+                                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{
+                                      inReviewFilter === 'ideas' ? inReviewIdeas.length :
+                                      inReviewFilter === 'scripts' ? inReviewScripts.length :
+                                      allInReview.length
+                                    }</span>
+                                </div>
+                            </div>
+                            {/* Tabs for Ideas and Scripts - outside the main box */}
+                            <div className="flex border-b border-gray-300 bg-white border-2 border-t-0 border-black">
+                                <button 
+                                    className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'all' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
+                                    onClick={() => setInReviewFilter('all')}
+                                >
+                                    All ({allInReview.length})
+                                </button>
+                                <button 
+                                    className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'ideas' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
+                                    onClick={() => setInReviewFilter('ideas')}
+                                >
+                                    Ideas ({inReviewIdeas.length})
+                                </button>
+                                <button 
+                                    className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'scripts' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
+                                    onClick={() => setInReviewFilter('scripts')}
+                                >
+                                    Scripts ({inReviewScripts.length})
+                                </button>
                             </div>
                             <div className="space-y-4">
-                                {inReview.map(p => (
+                                {(inReviewFilter === 'ideas' ? inReviewIdeas : 
+                                  inReviewFilter === 'scripts' ? inReviewScripts : 
+                                  allInReview).map(p => (
                                     <div
                                         key={p.id}
                                         onClick={() => handleViewProject(p)}
@@ -461,7 +500,11 @@ const handleEdit = (project: Project) => {
                                                 </span>
                                             )}
                                             <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
-                                                {p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
+                                                {p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Script Review (CMO)' :
+                                                 p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ? 'Script Review (CEO)' :
+                                                 p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' :
+                                                 p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? 'Final Review (CEO)' :
+                                                 p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
@@ -479,10 +522,10 @@ const handleEdit = (project: Project) => {
                             </div>
                         </div>
 
-                        {/* Column 3: In Production */}
+                        {/* Column 3: In Production (Cine, Editor, Designer) */}
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                <h3 className="font-black uppercase tracking-wide">Production</h3>
+                                <h3 className="font-black uppercase tracking-wide">Production (Cine/Ed/Des)</h3>
                                 <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inProduction.length}</span>
                             </div>
                             <div className="space-y-4">
@@ -536,6 +579,7 @@ const handleEdit = (project: Project) => {
                                 ))}
                             </div>
                         </div>
+
                         {/* Column 4: CEO Approved Ideas */}
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-green-700 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">

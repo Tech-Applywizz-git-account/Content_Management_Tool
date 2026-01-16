@@ -412,56 +412,6 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 
 
 
-                {/* Delivery Date Section - Only show if project is not assigned to sub-editor */}
-                {localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
-                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                        <CalendarIcon className="w-5 h-5" />
-                        <h2 className="text-xl font-black uppercase">Delivery Date</h2>
-                    </div>
-
-                    {!localProject.delivery_date ? (
-                        <div className="space-y-4">
-                            <p className="text-slate-600 font-medium">Set when you'll deliver the edited video</p>
-                            <div className="flex gap-3">
-                                <input
-                                    type="date"
-                                    value={deliveryDate}
-                                    onChange={(e) => setDeliveryDate(e.target.value)}
-                                    min={new Date().toISOString().split('T')[0]}
-                                    className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
-                                />
-                                <button
-                                    onClick={handleSetDeliveryDate}
-                                    className="px-8 py-4 bg-[#FF4F4F] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                >
-                                    <CalendarIcon className="w-5 h-5 inline mr-2" />
-                                    Set Delivery Date
-                                </button>
-                            </div>
-                            <p className="text-sm text-slate-500">
-                                📅 This date will be visible on calendars for all team members
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="bg-orange-50 border-2 border-orange-600 p-4">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
-                                    <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
-                                </div>
-                                <button
-                                    onClick={() => setDeliveryDate('')}
-                                    className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase hover:bg-orange-100 transition-colors"
-                                >
-                                    Reschedule
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-                )}
-
                 {/* Status information when project is with sub-editor */}
                 {localProject.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT || localProject.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING ? (
                     <div className="bg-blue-50 border-2 border-blue-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
@@ -585,6 +535,56 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         </div>
                     </div>
                 ) : null}
+
+                {/* Delivery Date Section - Only show if project is not assigned to sub-editor */}
+                {localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
+                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <CalendarIcon className="w-5 h-5" />
+                        <h2 className="text-xl font-black uppercase">Delivery Date</h2>
+                    </div>
+
+                    {!localProject.delivery_date ? (
+                        <div className="space-y-4">
+                            <p className="text-slate-600 font-medium">Set when you'll deliver the edited video</p>
+                            <div className="flex gap-3">
+                                <input
+                                    type="date"
+                                    value={deliveryDate}
+                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                    min={new Date().toISOString().split('T')[0]}
+                                    className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
+                                />
+                                <button
+                                    onClick={handleSetDeliveryDate}
+                                    className="px-8 py-4 bg-[#FF4F4F] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                >
+                                    <CalendarIcon className="w-5 h-5 inline mr-2" />
+                                    Set Delivery Date
+                                </button>
+                            </div>
+                            <p className="text-sm text-slate-500">
+                                📅 This date will be visible on calendars for all team members
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="bg-orange-50 border-2 border-orange-600 p-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
+                                    <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
+                                </div>
+                                <button
+                                    onClick={() => setDeliveryDate('')}
+                                    className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase hover:bg-orange-100 transition-colors"
+                                >
+                                    Reschedule
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                )}
 
               {/* Edited Video Upload Section */}
 {(localProject.delivery_date || isRework) && (

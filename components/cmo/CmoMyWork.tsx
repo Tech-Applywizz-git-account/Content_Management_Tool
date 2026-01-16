@@ -2,6 +2,7 @@ import React from 'react';
 import { Project, Role, TaskStatus } from '../../types';
 import { Clock, FileText, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { isReworkProject } from '../../services/workflowUtils';
 
 interface Props {
   user: { full_name: string; role: Role };
@@ -68,7 +69,7 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                   {task.priority}
                 </span>
                 <span className="text-xs font-black uppercase bg-blue-100 border-2 px-2 py-1">
-                  {task.history && task.history.some(h => h.action === 'REJECTED') ? 'Rework' : 'Pending Approval'}
+                  {isReworkProject(task) ? 'Rework' : 'Pending Approval'}
                 </span>
               </div>
 

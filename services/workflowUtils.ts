@@ -179,3 +179,28 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
   
   return {};
 }
+
+/**
+ * Determine if a project is a rework project based on history
+ * A project is considered a rework project if it has any rework-related actions in its history
+ */
+export function isReworkProject(project: Project): boolean {
+  if (!project.history) return false;
+
+  // Check if the project has any rework actions in its history
+  const hasAnyRework = project.history.some(h => {
+    const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
+    return isReworkAction;
+  });
+
+  // Check if the project has been resubmitted by writer after being sent for rework
+  // Look for the pattern: REWORK action followed by SUBMITTED action
+  const hasResubmittedAfterRework = project.history.some(h => h.action === 'SUBMITTED') && 
+                                   project.history.some(h => h.action === 'REWORK' || h.action?.startsWith('REWORK_'));
+
+  // Also check if the project status is REWORK
+  const hasReworkStatus = project.status === 'REWORK';
+
+  // Return true if any of these conditions are met
+  return hasAnyRework || hasResubmittedAfterRework || hasReworkStatus;
+}

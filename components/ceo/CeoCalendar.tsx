@@ -3,6 +3,11 @@ import { Project } from '../../types';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 
+const parseLocalDate = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  return new Date(`${dateStr}T00:00:00`);
+};
+
 interface Props {
     projects: Project[];
 }
@@ -15,7 +20,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     // Get all projects with any dates
-    const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date) : [];
+    const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date || p.designer_uploaded_at || p.created_at) : [];
 
     const getProjectsForDay = (day: Date) => {
         const dayProjects = [];
@@ -23,7 +28,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
         datedProjects.forEach(project => {
             // Check shoot date
             if (project.shoot_date) {
-                const shootDate = new Date(project.shoot_date);
+                const shootDate = parseLocalDate(project.shoot_date);
                 if (isSameDay(shootDate, day)) {
                     dayProjects.push({
                         ...project,
@@ -35,7 +40,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             
             // Check delivery date
             if (project.delivery_date) {
-                const deliveryDate = new Date(project.delivery_date);
+                const deliveryDate = parseLocalDate(project.delivery_date);
                 if (isSameDay(deliveryDate, day)) {
                     dayProjects.push({
                         ...project,
@@ -47,12 +52,36 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             
             // Check post scheduled date
             if (project.post_scheduled_date) {
-                const postDate = new Date(project.post_scheduled_date);
+                const postDate = parseLocalDate(project.post_scheduled_date);
                 if (isSameDay(postDate, day)) {
                     dayProjects.push({
                         ...project,
                         dateType: 'post',
                         displayDate: project.post_scheduled_date
+                    });
+                }
+            }
+            
+            // Check designer delivery date
+            if (project.designer_uploaded_at) {
+                const designerDate = parseLocalDate(project.designer_uploaded_at);
+                if (isSameDay(designerDate, day)) {
+                    dayProjects.push({
+                        ...project,
+                        dateType: 'designer',
+                        displayDate: project.designer_uploaded_at
+                    });
+                }
+            }
+            
+            // Check created date (when writer submits)
+            if (project.created_at) {
+                const createdDate = parseLocalDate(project.created_at);
+                if (isSameDay(createdDate, day)) {
+                    dayProjects.push({
+                        ...project,
+                        dateType: 'created',
+                        displayDate: project.created_at
                     });
                 }
             }
@@ -67,6 +96,8 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             case 'shoot': return 'Shoot';
             case 'delivery': return 'Delivery';
             case 'post': return 'Post';
+            case 'designer': return 'Designer';
+            case 'created': return 'Submitted';
             default: return 'Scheduled';
         }
     };
@@ -77,6 +108,8 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             case 'shoot': return 'bg-blue-500';
             case 'delivery': return 'bg-green-500';
             case 'post': return 'bg-purple-500';
+            case 'designer': return 'bg-pink-500';
+            case 'created': return 'bg-yellow-500';
             default: return 'bg-gray-500';
         }
     };
@@ -109,6 +142,24 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                 ...project,
                 dateType: 'post',
                 displayDate: project.post_scheduled_date
+            });
+        }
+        
+        // Add designer delivery date
+        if (project.designer_uploaded_at) {
+            allDatedProjects.push({
+                ...project,
+                dateType: 'designer',
+                displayDate: project.designer_uploaded_at
+            });
+        }
+        
+        // Add created date (when writer submits)
+        if (project.created_at) {
+            allDatedProjects.push({
+                ...project,
+                dateType: 'created',
+                displayDate: project.created_at
             });
         }
     });
@@ -191,11 +242,21 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                                         <div
                                             key={`${project.id}-${project.dateType}`}
                                             className={`text-xs p-1 ${getDateTypeColor(project.dateType)} text-white font-bold truncate ${project.priority === 'HIGH' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
-                                            title={`${project.title} (${project.priority}) - ${getDateTypeLabel(project.dateType)} Date`}
+                                            title={`${project.title} (${project.priority}) - ${getDateTypeLabel(project.dateType)} Date${project.data?.niche ? ` - Niche: ${project.data.niche}` : ''}`}
                                         >
                                             {project.title} ({getDateTypeLabel(project.dateType)})
                                             {project.priority === 'HIGH' && (
                                                 <span className="ml-1 text-[8px] font-black text-red-200">★</span>
+                                            )}
+                                            {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery' || project.dateType === 'designer' || project.dateType === 'created') && project.data?.niche && (
+                                                <div className="text-[8px] font-normal mt-0.5 truncate" title={project.data.niche}>
+                                                    [{project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                                      : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                                      : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                                      : project.data.niche === 'OTHER' && project.data.niche_other 
+                                                        ? project.data.niche_other 
+                                                        : project.data.niche}]
+                                                </div>
                                             )}
                                         </div>
                                     ))}
@@ -220,6 +281,16 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                                     <div>
                                         <p className="font-bold text-slate-900">{project.title}</p>
                                         <p className="text-sm text-slate-600">{project.channel} - {getDateTypeLabel(project.dateType)}</p>
+                                        {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery' || project.dateType === 'designer' || project.dateType === 'created') && project.data?.niche && (
+                                            <p className="text-xs text-slate-500 font-bold">
+                                                Niche: {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
+                                                       : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
+                                                       : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
+                                                       : project.data.niche === 'OTHER' && project.data.niche_other 
+                                                         ? project.data.niche_other 
+                                                         : project.data.niche}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right">

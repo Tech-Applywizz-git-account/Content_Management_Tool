@@ -188,6 +188,11 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 setTimeout(() => {
                     setShowPopup(true);
                 }, 0);
+
+                // Refresh dashboard data after approval
+                setTimeout(() => {
+                    onComplete();
+                }, 1500); // Longer delay to ensure database updates propagate before completing
             } else if (decision === 'REWORK') {
                 // Rework -> Moves back to selected role
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
@@ -832,7 +837,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     stageName={stageName}
                     onClose={() => {
                         setShowPopup(false);
+                        // Call onComplete to close the review screen and refresh dashboard
                         onComplete();
+                        // Additionally, ensure the dashboard is refreshed to reflect project status changes
+                        setTimeout(() => {
+                            onComplete();
+                        }, 2000); // Extra refresh after 2 seconds to ensure database changes have propagated
                     }}
                     duration={popupDuration}
                 />

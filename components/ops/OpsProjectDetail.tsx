@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Project, TaskStatus, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../types';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import Popup from '../Popup';
+import Timeline from '../Timeline';
+import ApprovalStatusIndicator from '../ApprovalStatusIndicator';
 
 interface Props {
     project: Project;
@@ -14,11 +16,27 @@ interface Props {
 const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
     const [postDate, setPostDate] = useState(project.post_scheduled_date || '');
     const [liveUrl, setLiveUrl] = useState(project.data?.live_url || '');
+    const [caption, setCaption] = useState(project.data?.captions || '');
+    const [users, setUsers] = useState<any[]>([]);
     
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
+
+    // Fetch users for timeline
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                const usersData = await db.getUsers();
+                setUsers(usersData);
+            } catch (error) {
+                console.error('Failed to fetch users:', error);
+            }
+        };
+        
+        fetchUsers();
+    }, []);
 
     // Listen for beforeLogout event to close detail view automatically
     useEffect(() => {
@@ -64,7 +82,10 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         
         try {
             // Update the project with the live URL and mark as POSTED
-            await db.projects.updateData(project.id, { live_url: liveUrl });
+            await db.projects.updateData(project.id, { 
+                live_url: liveUrl,
+                captions: caption  // Save the caption along with the live URL
+            });
             await db.projects.update(project.id, { status: TaskStatus.DONE });
             console.log(`Live URL added: ${liveUrl}`);
 
@@ -109,7 +130,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Content Preview */}
                 <div className="space-y-6">
                     {/* Final Content */}
@@ -186,9 +207,17 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     )}
                 </div>
 
+                {/* Middle Column - Approval Status and Timeline */}
+                <div className="space-y-6">
+                    {/* Approval Status Indicator */}
+                    <ApprovalStatusIndicator project={project} />
+                    
+
+                </div>
+
                 {/* Right Column - Scheduling Actions */}
                 <div className="space-y-6">
-                    {/* Schedule Post - Show only after CMO and CEO have approved */}
+                    {/* Schedule Post - Show only after CMO and CEO final review have approved */}
                     {!isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
@@ -247,6 +276,17 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                         onChange={(e) => setLiveUrl(e.target.value)}
                                         placeholder="https://linkedin.com/posts/..."
                                         className="w-full px-4 py-3 border-2 border-black font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-2">
+                                        Caption / Description:
+                                    </label>
+                                    <textarea
+                                        value={caption}
+                                        onChange={(e) => setCaption(e.target.value)}
+                                        placeholder="Enter caption or description for the post..."
+                                        className="w-full px-4 py-3 border-2 border-black font-mono h-24"
                                     />
                                 </div>
 

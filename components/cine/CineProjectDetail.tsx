@@ -629,8 +629,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 </div>
                 )}
 
-                {/* Video Upload Section - Only show if project is assigned to Cine */}
-                {isCurrentlyAssignedToCine && localProject.shoot_date && (
+                {/* Video Upload Section - Show if project has shoot date and either assigned to Cine or has a video link */}
+                {(isCurrentlyAssignedToCine || localProject.video_link) && localProject.shoot_date && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Upload className="w-5 h-5" />

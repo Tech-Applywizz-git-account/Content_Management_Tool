@@ -902,9 +902,94 @@ export const projects = {
         console.log('Updating project data for', id, 'with updates:', dataUpdates);
         const project = await this.getById(id);
         const newData = { ...project.data, ...dataUpdates };
-
+    
         const result = await this.update(id, { data: newData });
         console.log('Project data updated successfully:', result);
+        return result;
+    },
+    
+    // Update project with proper timestamp handling for editor/sub-editor
+    async updateWithTimestamp(id: string, updates: Partial<Project>, action: string, role: Role) {
+        console.log('Updating project with timestamp for', id, 'with updates:', updates, 'action:', action, 'role:', role);
+                    
+        // Update the project
+        const result = await this.update(id, updates);
+                    
+        // Check if this update involves asset uploads that need timestamp updates
+        const currentProject = await this.getById(id);
+                    
+        if (currentProject) {
+            let actionForTimestamp: string | null = null;
+            let roleForTimestamp: Role | null = null;
+    
+            // Get the updated project data to check what actually changed
+            const updatedProject = await this.getById(id);
+    
+            if (updatedProject) {
+                // Check if edited_video_link was added (Editor or Sub-Editor upload)
+                if (updatedProject.edited_video_link && currentProject.edited_video_link !== updatedProject.edited_video_link) {
+                    actionForTimestamp = 'DIRECT_UPLOAD';
+                    // Determine if this was uploaded by editor or sub-editor based on the assigned role
+                    if (updatedProject.assigned_to_role === Role.SUB_EDITOR) {
+                        roleForTimestamp = Role.SUB_EDITOR;
+                        console.log('Detected Sub-Editor video upload - setting sub_editor_uploaded_at timestamp');
+                    } else {
+                        roleForTimestamp = Role.EDITOR;
+                        console.log('Detected Editor video upload - setting editor_uploaded_at timestamp');
+                    }
+                }
+                // Check if video_link was added (Cinematographer upload)
+                else if (updatedProject.video_link && currentProject.video_link !== updatedProject.video_link) {
+                    actionForTimestamp = 'DIRECT_UPLOAD';
+                    roleForTimestamp = Role.CINE;
+                    console.log('Detected Cine video upload - setting cine_uploaded_at timestamp');
+                }
+                // Check if thumbnail_link or creative_link was added (Designer upload)
+                else if ((updatedProject.thumbnail_link && currentProject.thumbnail_link !== updatedProject.thumbnail_link) ||
+                    (updatedProject.creative_link && currentProject.creative_link !== updatedProject.creative_link)) {
+                    actionForTimestamp = 'DIRECT_UPLOAD';
+                    roleForTimestamp = Role.DESIGNER;
+                    console.log('Detected Designer asset upload - setting designer_uploaded_at timestamp');
+                }
+                // Check if delivery_date was set (Editor setting delivery date)
+                else if (updatedProject.delivery_date && currentProject.delivery_date !== updatedProject.delivery_date) {
+                    actionForTimestamp = 'SUBMITTED';
+                    // Determine if delivery date was set by editor or sub-editor
+                    if (updatedProject.assigned_to_role === Role.SUB_EDITOR) {
+                        roleForTimestamp = Role.SUB_EDITOR;
+                        console.log('Detected Sub-Editor set delivery date - setting sub_editor_upload timestamp');
+                    } else {
+                        roleForTimestamp = Role.EDITOR;
+                        console.log('Detected Editor set delivery date - setting editor_upload timestamp');
+                    }
+                }
+                // Check if shoot_date was set (Cinematographer setting shoot date)
+                else if (updatedProject.shoot_date && currentProject.shoot_date !== updatedProject.shoot_date) {
+                    actionForTimestamp = 'SUBMITTED';
+                    roleForTimestamp = Role.CINE;
+                    console.log('Detected Cine set shoot date - setting cine timestamp');
+                }
+            }
+    
+            if (actionForTimestamp && roleForTimestamp) {
+                const timestampUpdates = getTimestampUpdate(actionForTimestamp, roleForTimestamp);
+                if (Object.keys(timestampUpdates).length > 0) {
+                    console.log('Updating timestamps:', timestampUpdates);
+                    const { data, error } = await supabase
+                        .from('projects')
+                        .update(timestampUpdates)
+                        .eq('id', id)
+                        .select();
+    
+                    if (error) {
+                        console.error('Failed to update timestamps:', error);
+                    } else {
+                        console.log('Successfully updated timestamps:', data);
+                    }
+                }
+            }
+        }
+                    
         return result;
     },
 
