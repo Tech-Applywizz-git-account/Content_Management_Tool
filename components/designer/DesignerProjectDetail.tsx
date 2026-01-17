@@ -356,7 +356,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             </div>
 
             {/* Rework Information Box (Only shown for rejected projects assigned to Designer) */}
-            {(isRework || isRejected) && project.history && project.history.length > 0 && (
+            {(isRework || isRejected) && project.assigned_to_role === Role.DESIGNER && project.history && project.history.length > 0 && (
                 <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center space-x-2 mb-4">
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">

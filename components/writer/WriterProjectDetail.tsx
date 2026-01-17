@@ -118,7 +118,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
     const workflowState = getWorkflowState(project);
     const isRework = workflowState.isRework;
     const isRejected = workflowState.isRejected;
-    const rejectionComment = comments.find(comment => comment.action === 'REJECTED');
+    const rejectionComment = comments.find(comment => comment.action === 'REJECTED' || comment.action === 'REWORK');
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">

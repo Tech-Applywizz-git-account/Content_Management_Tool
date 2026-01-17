@@ -27,14 +27,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     }
     return project.data;
   }, [project]);
-  
+
   // Helper to check if project has script content
   const hasScript = React.useMemo(() => !!parsedProjectData?.script_content, [parsedProjectData]);
-  
+
   // Helper function to check if a reviewer (CMO or CEO) has accessed the project
   const hasReviewerAccessed = React.useMemo(async (): Promise<boolean> => {
     if (!project?.id) return false;
-    
+
     try {
       // First, get workflow history entries for this project
       const { data: historyData, error: historyError } = await supabase
@@ -42,37 +42,37 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         .select('actor_id')
         .eq('project_id', project.id)
         .limit(10); // Get recent history entries
-      
+
       if (historyError) {
         console.error('Error checking reviewer access:', historyError);
         return false;
       }
-      
+
       // If no history entries, no reviewer has accessed
       if (!historyData || historyData.length === 0) {
         return false;
       }
-      
+
       // Get unique actor IDs from history, filtering out null values
       const actorIds = [...new Set(historyData.map(entry => entry.actor_id).filter(id => id !== null && id !== undefined))];
-      
+
       // Only proceed if we have valid actor IDs
       if (actorIds.length === 0) {
         return false;
       }
-      
+
       // Check if any of these actors are CMO or CEO
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('id, role')
         .in('id', actorIds)
         .in('role', ['CMO', 'CEO']);
-      
+
       if (userError) {
         console.error('Error checking user roles:', userError);
         return false;
       }
-      
+
       // Return true if any of the actors who accessed the project are CMO or CEO
       return userData && userData.length > 0;
     } catch (error) {
@@ -80,10 +80,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       return false;
     }
   }, [project?.id]);
-  
+
   // State for edit permission
   const [canEdit, setCanEdit] = useState(true);
-  
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [formData, setFormData] = useState<ProjectData>(parsedProjectData || {});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,7 +119,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       });
     }
   }, [project]);
-  
+
   // Initialize formData once when component mounts and project is available
   useEffect(() => {
     if (project && parsedProjectData) {
@@ -149,16 +149,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const isPureIdeaEdit = React.useMemo(() => {
     const parsedData = parsedProjectData;
     return parsedData?.source === 'IDEA_PROJECT' &&
-           !hasScript &&
-           !isScriptFromApprovedIdea &&
-           !isFromIdea;
+      !hasScript &&
+      !isScriptFromApprovedIdea &&
+      !isFromIdea;
   }, [parsedProjectData, hasScript, isScriptFromApprovedIdea, isFromIdea]);
-  
+
   // Show idea description as reference when converting an approved idea to script
   const showIdeaAsReference = React.useMemo(() => {
     return isScriptFromApprovedIdea && parsedProjectData?.source === 'IDEA_PROJECT';
   }, [isScriptFromApprovedIdea, parsedProjectData]);
-    
+
 
   // Load user effect
   useEffect(() => {
@@ -181,29 +181,29 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   }, []);
 
   useEffect(() => {
-  if (!project) return;
+    if (!project) return;
 
-  const parsed =
-    typeof project.data === 'string'
-      ? JSON.parse(project.data)
-      : project.data;
+    const parsed =
+      typeof project.data === 'string'
+        ? JSON.parse(project.data)
+        : project.data;
 
-  setFormData({
-    ...parsed,
-    script_content: parsed?.script_content || '',
-    brief: parsed?.brief || ''
-  });
+    setFormData({
+      ...parsed,
+      script_content: parsed?.script_content || '',
+      brief: parsed?.brief || ''
+    });
 
-  setNewProjectDetails({
-    title: project.title || '',
-    channel: project.channel || '',
-    contentType: project.content_type || '',
-    dueDate: project.due_date || new Date().toISOString().split('T')[0],
-    priority: project.priority || 'NORMAL'
-  });
-}, [project]);
+    setNewProjectDetails({
+      title: project.title || '',
+      channel: project.channel || '',
+      contentType: project.content_type || '',
+      dueDate: project.due_date || new Date().toISOString().split('T')[0],
+      priority: project.priority || 'NORMAL'
+    });
+  }, [project]);
 
-  
+
   // Check edit permissions after user is loaded
   useEffect(() => {
     if (project && currentUser) {
@@ -212,12 +212,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         // 1. The project was created by the writer
         // 2. CMO or CEO has not opened the project
         const isCreator = project.created_by_user_id === currentUser.id;
-        
+
         if (!isCreator) {
           setCanEdit(false);
           return;
         }
-        
+
         // Check if reviewer has accessed by looking for review-related actions in history
         if (project.id) {
           try {
@@ -226,7 +226,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               .select('actor_id, action, timestamp')
               .eq('project_id', project.id)
               .order('timestamp', { ascending: false });
-            
+
             if (!historyError && historyData) {
               // Check if any CMO or CEO has reviewed the project
               for (const history of historyData) {
@@ -234,34 +234,34 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 if (!history.actor_id) {
                   continue;
                 }
-                
+
                 // Get the role of the actor who accessed the project
                 const { data: userData, error: userError } = await supabase
                   .from('users')
                   .select('role')
                   .eq('id', history.actor_id)
                   .single();
-                
-                if (!userError && userData && 
-                    (userData.role === 'CMO' || userData.role === 'CEO')) {
+
+                if (!userError && userData &&
+                  (userData.role === 'CMO' || userData.role === 'CEO')) {
                   // If a reviewer has accessed the project (not just viewed), set canEdit to false
                   // Consider actions like 'REVIEWED', 'REJECTED', 'REWORK', 'SUBMITTED' as access
                   // But for SCRIPT_FROM_APPROVED_IDEA mode, we allow editing even after APPROVED action
                   if (isScriptFromApprovedIdea) {
-  setCanEdit(true);
-  return;
-}
+                    setCanEdit(true);
+                    return;
+                  }
                   if (project.status === TaskStatus.REWORK) {
-  setCanEdit(true);
-  return;
-}
+                    setCanEdit(true);
+                    return;
+                  }
 
-// ❌ Block editing for real review states
-if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) {
-  setCanEdit(false);
-  return;
-}
-                  
+                  // ❌ Block editing for real review states
+                  if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) {
+                    setCanEdit(false);
+                    return;
+                  }
+
                   // For APPROVED action, only disable editing if NOT in SCRIPT_FROM_APPROVED_IDEA mode
                   if (history.action === 'APPROVED' && !isScriptFromApprovedIdea) {
                     setCanEdit(false);
@@ -282,7 +282,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
           setCanEdit(true);
         }
       };
-      
+
       checkEditPermission();
     }
   }, [project, currentUser]);
@@ -369,7 +369,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
               idea_description: project.data?.idea_description
             }));
           }
-          
+
           // For rework projects, also update formData with script content if available
           if (workflowState?.isRework && project.data?.script_content) {
             setFormData(prev => ({
@@ -472,17 +472,18 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
       });
 
       // Add workflow history entry
-      const project = await db.getProjectById(projectId);
-      await supabase.from('workflow_history').insert([{
-        project_id: projectId,
-        from_stage: project?.current_stage || WorkflowStage.SCRIPT,
-        to_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-        action: 'SUBMITTED',
-        actor_id: currentUser.id,
-        actor_name: currentUser.full_name,
-        comment: 'Resubmitted after CEO rework',
-        timestamp: new Date().toISOString()
-      }]);
+      await db.workflow.recordAction(
+        projectId,
+        WorkflowStage.SCRIPT_REVIEW_L2,
+        currentUser.id,
+        currentUser.full_name,
+        'SUBMITTED',
+        'Resubmitted after CEO rework',
+        undefined,
+        Role.WRITER, // fromRole
+        Role.CEO, // toRole
+        currentUser.role as Role // actorRole
+      );
     } catch (error) {
       console.error('Error submitting directly to CEO:', error);
       throw error;
@@ -530,7 +531,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
         if (!formData.niche) {
           throw new Error('Niche is required. Please select a niche for your script.');
         }
-        
+
         if (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) {
           throw new Error('Please specify the niche when "Other" is selected.');
         }
@@ -602,7 +603,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
               script_content: formData.script_content,
               // Copy form data but exclude fields that belong to the original idea project
               ...Object.fromEntries(
-                Object.entries(formData).filter(([key]) => 
+                Object.entries(formData).filter(([key]) =>
                   !['first_review_opened_by_role', 'first_review_opened_at'].includes(key)
                 )
               )
@@ -619,16 +620,18 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
         realProjectId = newScript.id;
 
         // Add workflow history entry for the new script
-        await supabase.from('workflow_history').insert({
-          project_id: newScript.id,
-          from_stage: WorkflowStage.SCRIPT,
-          to_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-          action: 'SUBMITTED',
-          actor_id: currentUser.id,
-          actor_name: currentUser.full_name,
-          comment: 'Script created from CEO-approved idea',
-          timestamp: new Date().toISOString()
-        });
+        await db.workflow.recordAction(
+          newScript.id,
+          WorkflowStage.SCRIPT_REVIEW_L1,
+          currentUser.id,
+          currentUser.full_name,
+          'SUBMITTED',
+          'Script created from CEO-approved idea',
+          undefined,
+          Role.WRITER, // fromRole
+          Role.CMO, // toRole
+          currentUser.role as Role // actorRole
+        );
 
         console.log('✅ Successfully created new script project from approved idea:', newScript.id);
       } else {
@@ -650,7 +653,7 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
 
           // Update project data with writer information
           await db.updateProjectData(createdProject.id, {
-            ...formData, 
+            ...formData,
             writer_id: currentUser.id,
             writer_name: currentUser.full_name
           });
@@ -717,15 +720,15 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
         // 4️⃣ SUBMIT WORKFLOW
         // Determine workflow based on latest action
         const workflowState = project ? getWorkflowState(project) : { isRejected: false, isRework: false, isInReview: false, isApproved: false, latestAction: null };
-        
+
         // For script projects created from ideas, don't consider idea rework history as script rework
         // This prevents script projects from being considered in rework due to rework in previous stages (like idea)
         let isScriptInRework = false;
         if (project?.history && project?.data?.source === 'SCRIPT_FROM_IDEA') {
           // For scripts created from ideas, check if there have been rework actions since the script was created
           // Only consider rework actions that happened when the project was in script-related stages
-          const scriptReworkActions = project.history.filter(h => 
-            h.action === 'REWORK' && 
+          const scriptReworkActions = project.history.filter(h =>
+            h.action === 'REWORK' &&
             (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L1 || h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2)
           );
           isScriptInRework = scriptReworkActions.length > 0 && workflowState.latestAction !== 'APPROVED';
@@ -796,16 +799,18 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
               });
 
               // Add workflow history entry
-              await supabase.from('workflow_history').insert([{
-                project_id: realProjectId,
-                from_stage: WorkflowStage.REWORK,
-                to_stage: targetStage,
-                action: 'RESUBMITTED',
-                actor_id: currentUser.id,
-                actor_name: currentUser.full_name,
-                comment: 'Idea resubmitted after rework',
-                timestamp: new Date().toISOString()
-              }]);
+              await db.workflow.recordAction(
+                realProjectId,
+                targetStage as WorkflowStage,
+                currentUser.id,
+                currentUser.full_name,
+                'SUBMITTED',
+                'Idea resubmitted after rework',
+                undefined,
+                Role.WRITER, // fromRole
+                targetRole as Role, // toRole
+                currentUser.role as Role // actorRole
+              );
 
               console.log(`✅ Successfully resubmitted idea rework project back to ${targetRole}`);
             } else {
@@ -835,153 +840,165 @@ if (['REVIEWED', 'REJECTED', 'SUBMITTED', 'APPROVED'].includes(history.action)) 
           // Find the most recent REWORK action
           const reworkHistory = history?.find(h => h.action === 'REWORK');
 
-        if (reworkHistory) {
-          let targetRole: Role;
-          let targetStage: WorkflowStage;
+          if (reworkHistory) {
+            let targetRole: Role;
+            let targetStage: WorkflowStage;
 
-          // 🔍 Find who sent this project for rework
-          const { data: reviewer, error: reviewerError } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', reworkHistory.actor_id)
-            .single();
+            // 🔍 Find who sent this project for rework
+            const { data: reviewer, error: reviewerError } = await supabase
+              .from('users')
+              .select('role')
+              .eq('id', reworkHistory.actor_id)
+              .single();
 
-          // ✅ Route BACK to the same reviewer who sent rework
-          if (!reviewerError && reviewer?.role === Role.CEO) {
-            targetRole = Role.CEO;
-            targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
+            // ✅ Route based on WHO sent for rework, not current user role
+            if (reviewer && reviewer.role === Role.CEO) {
+              // If CEO sent for rework, go directly back to CEO
+              targetRole = Role.CEO;
+              targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
+            } else {
+              // Otherwise (CMO or others), go to CMO
+              targetRole = Role.CMO;
+              targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
+            }
+
+            await db.projects.update(realProjectId, {
+              current_stage: targetStage,
+              assigned_to_role: targetRole,
+              status: TaskStatus.WAITING_APPROVAL
+            });
+
+            await db.workflow.recordAction(
+              realProjectId,
+              targetStage as WorkflowStage,
+              currentUser.id,
+              currentUser.full_name,
+              'SUBMITTED',
+              'Resubmitted after rework',
+              undefined,
+              Role.WRITER, // fromRole
+              targetRole as Role, // toRole
+              currentUser.role as Role // actorRole
+            );
+
+            console.log(`✅ Rework resubmitted back to ${targetRole}`);
           } else {
-            // Default → CMO
-            targetRole = Role.CMO;
-            targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
+            await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
+            console.log('⚠️ Rework history missing → used advanceWorkflow');
+          }
+        } else {
+          // ✅ IMPORTANT: Decide routing based on ACTUAL REVIEW, not creator role
+          const cmoHasOpened =
+            project?.first_review_opened_by_role === Role.CMO &&
+            project?.first_review_opened_at;
+
+          /* -----------------------------------
+             SCRIPT FROM CEO-APPROVED IDEA
+             ----------------------------------- */
+          if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
+            await db.projects.update(realProjectId, {
+              current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+              assigned_to_role: Role.CMO,
+              status: TaskStatus.WAITING_APPROVAL
+            });
+
+            const currentData =
+              typeof project?.data === 'string'
+                ? JSON.parse(project.data)
+                : project?.data || {};
+
+            delete currentData.source; // remove IDEA_PROJECT flag
+
+            await db.updateProjectData(realProjectId, currentData);
+
+            await db.workflow.recordAction(
+              realProjectId,
+              WorkflowStage.SCRIPT_REVIEW_L1,
+              currentUser.id,
+              currentUser.full_name,
+              'SUBMITTED',
+              'Script created from CEO-approved idea',
+              undefined,
+              Role.WRITER, // fromRole
+              Role.CMO, // toRole
+              currentUser.role as Role // actorRole
+            );
+
+            console.log('✅ Script from idea sent to CMO');
           }
 
-          await db.projects.update(realProjectId, {
-            current_stage: targetStage,
-            assigned_to_role: targetRole,
-            status: TaskStatus.WAITING_APPROVAL
-          });
+          /* -----------------------------------
+             DEFAULT → SEND TO CMO (Standard Flow)
+             ----------------------------------- */
+          else {
+            const targetRole = currentUser.role === Role.CMO ? Role.CEO : Role.CMO;
+            const targetStage = currentUser.role === Role.CMO ? WorkflowStage.SCRIPT_REVIEW_L2 : WorkflowStage.SCRIPT_REVIEW_L1;
 
-          await supabase.from('workflow_history').insert({
-            project_id: realProjectId,
-            from_stage: project?.current_stage ?? WorkflowStage.REWORK,
-            to_stage: targetStage,
-            action: 'RESUBMITTED',
-            actor_id: currentUser.id,
-            actor_name: currentUser.full_name,
-            comment: 'Resubmitted after rework',
-            timestamp: new Date().toISOString()
-          });
+            await db.projects.update(realProjectId, {
+              current_stage: targetStage,
+              assigned_to_role: targetRole,
+              status: TaskStatus.WAITING_APPROVAL
+            });
 
-          console.log(`✅ Rework resubmitted back to ${targetRole}`);
-        } else {
-          await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
-          console.log('⚠️ Rework history missing → used advanceWorkflow');
+            await db.workflow.recordAction(
+              realProjectId,
+              targetStage,
+              currentUser.id,
+              currentUser.full_name,
+              'SUBMITTED',
+              'Script submitted for review',
+              undefined,
+              currentUser.role as Role, // fromRole
+              targetRole, // toRole
+              currentUser.role as Role // actorRole
+            );
+
+            console.log(`✅ Script submitted for review -> sent to ${targetRole}`);
+          }
         }
-      } else {
-  // ✅ IMPORTANT: Decide routing based on ACTUAL REVIEW, not creator role
-  const cmoHasOpened =
-    project?.first_review_opened_by_role === Role.CMO &&
-    project?.first_review_opened_at;
 
-  /* -----------------------------------
-     SCRIPT FROM CEO-APPROVED IDEA
-     ----------------------------------- */
-  if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
-    await db.projects.update(realProjectId, {
-      current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-      assigned_to_role: Role.CMO,
-      status: TaskStatus.WAITING_APPROVAL
-    });
+        /* =========================
+           POPUP MESSAGE LOGIC
+           ========================= */
 
-    const currentData =
-      typeof project?.data === 'string'
-        ? JSON.parse(project.data)
-        : project?.data || {};
+        let nextStageLabel: string;
+        let message: string;
 
-    delete currentData.source; // remove IDEA_PROJECT flag
+        const latestProject = await db.getProjectById(realProjectId);
 
-    await db.updateProjectData(realProjectId, currentData);
-
-    await supabase.from('workflow_history').insert({
-      project_id: realProjectId,
-      from_stage: WorkflowStage.SCRIPT,
-      to_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-      action: 'SUBMITTED',
-      actor_id: currentUser.id,
-      actor_name: currentUser.full_name,
-      comment: 'Script created from CEO-approved idea',
-      timestamp: new Date().toISOString()
-    });
-
-    console.log('✅ Script from idea sent to CMO');
-  }
-
-  /* -----------------------------------
-     CMO HAS ALREADY REVIEWED → CEO
-     ----------------------------------- */
-  else if (cmoHasOpened) {
-    await db.projects.update(realProjectId, {
-      current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-      assigned_to_role: Role.CEO,
-      status: TaskStatus.WAITING_APPROVAL
-    });
-
-    console.log('✅ CMO already reviewed → sent to CEO');
-  }
-
-  /* -----------------------------------
-     DEFAULT → ALWAYS GO TO CEO (DIRECT)
-     ----------------------------------- */
-  else {
-    await db.projects.update(realProjectId, {
-      current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-      assigned_to_role: Role.CEO,
-      status: TaskStatus.WAITING_APPROVAL
-    });
-
-    console.log('✅ Submitted directly to CEO');
-  }
-}
-
-/* =========================
-   POPUP MESSAGE LOGIC
-   ========================= */
-
-let nextStageLabel: string;
-let message: string;
-
-const latestProject = await db.getProjectById(realProjectId);
-
-if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
-  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
-  message = 'Script created from approved idea and sent to CMO for review.';
-}
-else if (workflowState?.isRework) {
-  nextStageLabel = STAGE_LABELS[latestProject.current_stage];
-  message = `Rework submitted successfully. Waiting for ${nextStageLabel}.`;
-}
-else if (latestProject.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
-  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2];
-  message = `Script submitted successfully. Waiting for CEO review.`;
-}
-else {
-  nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2];
-  message = `Script submitted successfully. Waiting for CEO review.`;
-}
+        if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
+          nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
+          message = 'Script created from approved idea and sent to CMO for review.';
+        }
+        else if (workflowState?.isRework) {
+          nextStageLabel = STAGE_LABELS[latestProject.current_stage];
+          // More descriptive message indicating where it's going
+          const reviewer = (latestProject.current_stage as string) === WorkflowStage.SCRIPT_REVIEW_L2 ? 'CEO' : 'CMO';
+          message = `Script resubmitted after rework. Waiting for ${reviewer} review.`;
+        }
+        else if (latestProject.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
+          nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L2];
+          message = `Script submitted successfully. Waiting for CEO review.`;
+        }
+        else {
+          nextStageLabel = STAGE_LABELS[latestProject.current_stage] || STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
+          // More descriptive message indicating where it's going
+          const reviewer = (latestProject.current_stage as string) === WorkflowStage.SCRIPT_REVIEW_L2 ? 'CEO' : 'CMO';
+          message = `Script submitted successfully. Waiting for ${reviewer} review.`;
+        }
 
 
-      setStageName(nextStageLabel);
-      setPopupMessage(message);
-      console.log('Showing popup with message:', message);
-      console.log('Stage name:', nextStageLabel);
-      setShowPopup(true);
-      console.log('Popup should be visible now');
+        setStageName(nextStageLabel);
+        setPopupMessage(message);
+        console.log('Showing popup with message:', message);
+        console.log('Stage name:', nextStageLabel);
+        setShowPopup(true);
+        console.log('Popup should be visible now');
 
-      // Call onSuccess after a delay to ensure popup is visible
-      setTimeout(() => {
-        onSuccess(); // refresh dashboard
-      }, 3000); // Increased to 3 seconds to ensure popup is visible
+        // Call onSuccess after a delay to ensure popup is visible
+        setTimeout(() => {
+          onSuccess(); // refresh dashboard
+        }, 3000); // Increased to 3 seconds to ensure popup is visible
       }
     } catch (err: any) {
       console.error('❌ Submit failed:', err);
@@ -1156,19 +1173,19 @@ else {
                       Thumbnail Required *
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                     <button
-  onClick={() => canEdit && setFormData({ ...formData, thumbnail_required: true })}
-  disabled={!canEdit}
-  className={[
-    'p-3 text-xs font-black uppercase border-2 border-black',
-    formData.thumbnail_required === true
-      ? 'bg-black text-white'
-      : 'bg-white hover:bg-slate-50',
-    !canEdit && 'opacity-50 cursor-not-allowed',
-  ].filter(Boolean).join(' ')}
->
-  Yes
-</button>
+                      <button
+                        onClick={() => canEdit && setFormData({ ...formData, thumbnail_required: true })}
+                        disabled={!canEdit}
+                        className={[
+                          'p-3 text-xs font-black uppercase border-2 border-black',
+                          formData.thumbnail_required === true
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-slate-50',
+                          !canEdit && 'opacity-50 cursor-not-allowed',
+                        ].filter(Boolean).join(' ')}
+                      >
+                        Yes
+                      </button>
 
                       <button
                         onClick={() => canEdit ? setFormData({ ...formData, thumbnail_required: false }) : null}
@@ -1250,7 +1267,7 @@ else {
                     <option value="LEAD_MAGNET">Lead Magnet</option>
                     <option value="OTHER">Other</option>
                   </select>
-                  
+
                   {/* Show input field when 'Other' is selected */}
                   {formData.niche === 'OTHER' && (
                     <div className="mt-3">
@@ -1386,7 +1403,7 @@ else {
                 />
               </div>
             )}
-            
+
 
 
             {/* Brief / Notes */}

@@ -28,7 +28,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       setTitle(project.title || '');
       setChannel(project.channel || Channel.LINKEDIN);
       setContentType(project.content_type || 'CREATIVE_ONLY');
-      
+
       // Parse project data if it's a string
       let parsedData = project.data;
       if (typeof project.data === 'string') {
@@ -38,13 +38,13 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
           parsedData = {};
         }
       }
-      
+
       // Set description from idea_description or brief
       setDescription(parsedData?.idea_description || parsedData?.brief || '');
-      
+
       // Set thumbnail reference link if it exists
       setThumbnailReferenceLink(parsedData?.thumbnail_reference_link || '');
-      
+
 
     }
   }, [project]);
@@ -59,13 +59,13 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       alert('Title and Description are required');
       return;
     }
-    
+
     // Validate channel and content type combination
     if (channel === Channel.LINKEDIN && contentType === 'VIDEO') {
       alert('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
       return;
     }
-    
+
 
 
     setIsSubmitting(true);
@@ -78,14 +78,14 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
           brief: description,
           thumbnail_reference_link: thumbnailReferenceLink,
         });
-        
+
         // Update project metadata
         await db.projects.update(project.id, {
           title,
           channel,
           content_type: contentType,
         });
-        
+
         // If this is a rework project, route it back to the reviewer who requested rework
         if (project.status === 'REWORK') {
           // Fetch workflow history to determine who sent for rework
@@ -94,11 +94,11 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
             .select('actor_id, action, comment, timestamp')
             .eq('project_id', project.id)
             .order('timestamp', { ascending: false });
-          
+
           if (!historyError && history && history.length > 0) {
             // Find the most recent REWORK action
             const reworkHistory = history.find(h => h.action === 'REWORK');
-            
+
             if (reworkHistory) {
               // Get the actor's role to determine where to send it back
               const { data: reworkUser, error: userError } = await supabase
@@ -106,56 +106,56 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                 .select('role')
                 .eq('id', reworkHistory.actor_id)
                 .single();
-              
+
               if (!userError && reworkUser) {
                 let targetStage: WorkflowStage, targetRole: Role;
-                
-                // Determine where to send the rework based on who sent it
-                if (reworkUser.role === 'CEO') {
+
+                // Get current user and their details for routing
+                const { data: { user }, error: authUserError } = await supabase.auth.getUser();
+                if (authUserError || !user) throw new Error('Could not get current user');
+
+                const { data: currentUserData, error: userDataError } = await supabase
+                  .from('users')
+                  .select('id, full_name, role')
+                  .eq('id', user.id)
+                  .single();
+
+                if (userDataError || !currentUserData) {
+                  throw new Error('Could not get user details');
+                }
+
+                // ✅ Route based on WHO sent for rework, not current user role
+                if (reworkUser && reworkUser.role === 'CEO') {
+                  // If CEO sent for rework, go directly back to CEO
                   targetStage = WorkflowStage.FINAL_REVIEW_CEO;
                   targetRole = 'CEO' as Role;
                 } else {
-                  // Default to CMO if not CEO (could be CMO or other roles)
+                  // Otherwise (CMO or others), go to CMO
                   targetStage = WorkflowStage.FINAL_REVIEW_CMO;
                   targetRole = 'CMO' as Role;
                 }
-                
+
                 // Update the project to send it back to the appropriate reviewer
                 await db.projects.update(project.id, {
                   current_stage: targetStage as WorkflowStage,
                   assigned_to_role: targetRole as Role,
                   status: TaskStatus.WAITING_APPROVAL
                 });
-                
-                // Get current user
-                const { data: { user }, error: userError } = await supabase.auth.getUser();
-                if (userError || !user) {
-                  throw new Error('Could not get current user');
-                }
-                
-                // Get user details
-                const { data: currentUserData, error: userDataError } = await supabase
-                  .from('users')
-                  .select('id, full_name, role')
-                  .eq('id', user.id)
-                  .single();
-                
-                if (userDataError || !currentUserData) {
-                  throw new Error('Could not get user details');
-                }
-                
+
                 // Add workflow history entry for resubmission
-                await supabase.from('workflow_history').insert([{
-                  project_id: project.id,
-                  from_stage: project.current_stage,
-                  to_stage: targetStage as WorkflowStage,
-                  action: 'RESUBMITTED',
-                  actor_id: currentUserData.id,
-                  actor_name: currentUserData.full_name,
-                  comment: 'Idea resubmitted after rework',
-                  timestamp: new Date().toISOString()
-                }]);
-                
+                await db.workflow.recordAction(
+                  project.id,
+                  targetStage as WorkflowStage,
+                  currentUserData.id,
+                  currentUserData.full_name,
+                  'SUBMITTED',
+                  'Idea resubmitted after rework',
+                  undefined,
+                  Role.WRITER, // fromRole
+                  targetRole as Role, // toRole
+                  currentUserData.role as Role // actorRole
+                );
+
                 setPopupMessage(`Idea project "${title}" resubmitted successfully. Waiting for ${(targetStage as string).includes('CEO') ? 'CEO' : 'CMO'} review.`);
                 setStageName((targetStage as string).includes('CEO') ? 'Final Review (CEO)' : 'Final Review (CMO)');
               }
@@ -185,7 +185,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
           description,
           priority
         );
-        
+
         // Update the project data to include the thumbnail reference link
         await db.updateProjectData(createdProject.id, {
           thumbnail_reference_link: thumbnailReferenceLink,
@@ -205,7 +205,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       setIsSubmitting(false);
     }
   };
- 
+
 
 
   return (
@@ -235,15 +235,15 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-10">
         <div className="max-w-4xl mx-auto space-y-6">
           {isRework && project?.rejected_reason && (
-    <div className="p-4 bg-red-50 border-l-4 border-red-500">
-      <h4 className="font-black text-red-800 uppercase mb-2">
-        Rework Comments from Reviewer
-      </h4>
-      <p className="text-red-700 whitespace-pre-wrap">
-        {project.rejected_reason}
-      </p>
-    </div>
-  )}
+            <div className="p-4 bg-red-50 border-l-4 border-red-500">
+              <h4 className="font-black text-red-800 uppercase mb-2">
+                Rework Comments from Reviewer
+              </h4>
+              <p className="text-red-700 whitespace-pre-wrap">
+                {project.rejected_reason}
+              </p>
+            </div>
+          )}
           <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
             <h3 className="font-black uppercase text-lg text-slate-900">Idea Details</h3>
 

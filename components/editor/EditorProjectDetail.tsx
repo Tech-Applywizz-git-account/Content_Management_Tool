@@ -269,7 +269,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       </div>
 
       {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
-      {(isRework || isRejected) && project.history?.length > 0 && (
+      {(isRework || isRejected) && project.assigned_to_role === Role.EDITOR && project.history?.length > 0 && (
         <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
 
           {/* Header */}

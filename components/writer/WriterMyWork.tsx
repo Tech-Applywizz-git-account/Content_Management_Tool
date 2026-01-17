@@ -378,14 +378,55 @@ const canModifyProject = (project: Project, userId: string) => {
                   
                   const { data, error } = await import('../../src/integrations/supabase/client')
                     .then(m => m.supabase)
-                    .then(supabase =>
-                      supabase
+                    .then(async (supabase) => {
+                      // First, get the current user's ID
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const currentUserId = session?.user?.id;
+                      
+                      // Fetch all workflow history
+                      const { data: historyData, error: historyError } = await supabase
                         .from('workflow_history')
-                        .select('action, comment, actor_name, timestamp')
+                        .select('action, comment, actor_name, timestamp, actor_id')
                         .eq('project_id', task.id)
                         .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-                        .order('timestamp', { ascending: false })
-                    );
+                        .order('timestamp', { ascending: false });
+                      
+                      if (historyError) {
+                        throw historyError;
+                      }
+                      
+                      // Filter comments to show only relevant ones for the current user:
+                      const filteredComments = historyData?.filter(comment => {
+                        // For REWORK/REJECTED actions, only show if:
+                        // 1. The comment is assigned to the current user specifically
+                        // 2. OR the project is assigned to the current user's role and user
+                        if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
+                          // Check if this rework was specifically for the current user
+                          const isForCurrentUser = task.assigned_to_user_id === currentUserId && 
+                                                  task.assigned_to_role === user.role;
+                          
+                          // Check if the comment mentions the current user
+                          const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
+                          
+                          // Show if either condition is met
+                          return isForCurrentUser || mentionsCurrentUser;
+                        }
+                        
+                        // Always show APPROVED comments (informative for everyone)
+                        if (comment.action === 'APPROVED') {
+                          return true;
+                        }
+                        
+                        // Show comments from the project creator
+                        if (comment.actor_id === task.created_by_user_id) {
+                          return true;
+                        }
+                        
+                        return false;
+                      }) || [];
+                      
+                      return { data: filteredComments, error: null };
+                    });
                   
                   if (!error) {
                     setReviewComments(data || []);
@@ -476,14 +517,55 @@ const canModifyProject = (project: Project, userId: string) => {
                       const fetchComments = async () => {
                         const { data, error } = await import('../../src/integrations/supabase/client')
                           .then(m => m.supabase)
-                          .then(supabase =>
-                            supabase
+                          .then(async (supabase) => {
+                            // First, get the current user's ID
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const currentUserId = session?.user?.id;
+                            
+                            // Fetch all workflow history
+                            const { data: historyData, error: historyError } = await supabase
                               .from('workflow_history')
-                              .select('action, comment, actor_name, timestamp')
+                              .select('action, comment, actor_name, timestamp, actor_id')
                               .eq('project_id', task.id)
                               .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-                              .order('timestamp', { ascending: false })
-                          );
+                              .order('timestamp', { ascending: false });
+                            
+                            if (historyError) {
+                              throw historyError;
+                            }
+                            
+                            // Filter comments to show only relevant ones for the current user:
+                            const filteredComments = historyData?.filter(comment => {
+                              // For REWORK/REJECTED actions, only show if:
+                              // 1. The comment is assigned to the current user specifically
+                              // 2. OR the project is assigned to the current user's role and user
+                              if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
+                                // Check if this rework was specifically for the current user
+                                const isForCurrentUser = task.assigned_to_user_id === currentUserId && 
+                                                        task.assigned_to_role === user.role;
+                                
+                                // Check if the comment mentions the current user
+                                const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
+                                
+                                // Show if either condition is met
+                                return isForCurrentUser || mentionsCurrentUser;
+                              }
+                              
+                              // Always show APPROVED comments (informative for everyone)
+                              if (comment.action === 'APPROVED') {
+                                return true;
+                              }
+                              
+                              // Show comments from the project creator
+                              if (comment.actor_id === task.created_by_user_id) {
+                                return true;
+                              }
+                              
+                              return false;
+                            }) || [];
+                            
+                            return { data: filteredComments, error: null };
+                          });
                         
                         if (!error) {
                           setReviewComments(data || []);

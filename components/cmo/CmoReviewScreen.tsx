@@ -194,8 +194,75 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     onComplete();
                 }, 1500); // Longer delay to ensure database updates propagate before completing
             } else if (decision === 'REWORK') {
-                // Rework -> Moves back to selected role
-                await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
+                // Rework -> Smart routing based on who sent for rework
+                
+                // Check workflow history to determine who sent this project for rework
+                const { data: history, error: historyError } = await supabase
+                    .from('workflow_history')
+                    .select('actor_id, action, comment, timestamp')
+                    .eq('project_id', project.id)
+                    .order('timestamp', { ascending: false });
+
+                if (historyError) {
+                    console.error('Error fetching workflow history:', historyError);
+                    // Fallback to standard rejectTask if history fetch fails
+                    await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
+                } else {
+                    // Find the most recent REWORK action
+                    const reworkHistory = history?.find(h => h.action === 'REWORK');
+                    
+                    if (reworkHistory) {
+                        // Get the actor's role to determine where to send it back
+                        const { data: reviewer, error: reviewerError } = await supabase
+                            .from('users')
+                            .select('role')
+                            .eq('id', reworkHistory.actor_id)
+                            .single();
+                        
+                        if (!reviewerError && reviewer) {
+                            // ✅ Route based on WHO sent for rework, not current user role
+                            let targetRole: Role;
+                            let targetStage: WorkflowStage;
+                            
+                            if (reviewer.role === Role.CEO) {
+                                // If CEO sent for rework, go directly back to CEO
+                                targetRole = Role.CEO;
+                                targetStage = WorkflowStage.FINAL_REVIEW_CEO;
+                            } else {
+                                // Otherwise (Writer or others), go to Writer
+                                targetRole = Role.WRITER;
+                                targetStage = WorkflowStage.SCRIPT;
+                            }
+                            
+                            // Update the project with the routed destination
+                            await db.projects.update(project.id, {
+                                current_stage: targetStage,
+                                assigned_to_role: targetRole,
+                                status: TaskStatus.WAITING_APPROVAL
+                            });
+                            
+                            // Add workflow history entry
+                            await db.workflow.recordAction(
+                                project.id,
+                                targetStage as WorkflowStage,
+                                db.getCurrentUser()?.id || '',
+                                db.getCurrentUser()?.full_name || 'CMO',
+                                'REWORK',
+                                comment || 'CMO requested rework',
+                                undefined,
+                                Role.CMO, // fromRole
+                                targetRole as Role, // toRole
+                                Role.CMO // actorRole
+                            );
+                        } else {
+                            // Fallback if reviewer role cannot be determined
+                            await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
+                        }
+                    } else {
+                        // Fallback if no rework history found
+                        await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
+                    }
+                }
 
                 // Show popup for rework
                 const roleLabel = getReworkRoleLabel(reworkStage as WorkflowStage);
