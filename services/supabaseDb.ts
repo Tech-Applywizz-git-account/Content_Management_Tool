@@ -493,7 +493,7 @@ export const users = {
         const { data, error } = await supabase
             .from('users')
             .select('*')
-            .eq('role', 'SUBEDITOR')
+            .eq('role', 'SUB_EDITOR')
             .eq('status', UserStatus.ACTIVE);
 
         if (error) {
@@ -606,6 +606,13 @@ export const projects = {
                 // Designer inbox: THUMBNAIL, CREATIVE only
                 query = query.or(
                     `current_stage.eq.${WorkflowStage.THUMBNAIL_DESIGN},current_stage.eq.${WorkflowStage.CREATIVE_DESIGN}`
+                );
+                break;
+
+            case Role.SUB_EDITOR:
+                // Sub-editor inbox: SUB_EDITOR_ASSIGNMENT and SUB_EDITOR_PROCESSING
+                query = query.or(
+                    `current_stage.eq.${WorkflowStage.SUB_EDITOR_ASSIGNMENT},current_stage.eq.${WorkflowStage.SUB_EDITOR_PROCESSING}`
                 );
                 break;
 

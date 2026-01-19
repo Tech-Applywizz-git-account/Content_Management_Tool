@@ -5,6 +5,7 @@ import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
 import { getWorkflowState, canUserEdit } from '../../services/workflowUtils';
+import Popup from '../Popup';
 
 interface Props {
   project: Project;
@@ -19,6 +20,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const [deliveryDate, setDeliveryDate] = useState(initialProject.delivery_date || '');
   const [editedVideoLink, setEditedVideoLink] = useState(initialProject.edited_video_link || '');
   const [loading, setLoading] = useState(false);
+
+  // Popup state
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupMessage, setPopupMessage] = useState('');
+  const [stageName, setStageName] = useState('');
+  const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
   // Use the new workflow state logic
   const workflowState = getWorkflowState(localProject);
@@ -81,7 +88,13 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       }));
 
       console.log(`Delivery date set: ${deliveryDate}`);
-      alert('Delivery date updated successfully');
+      
+      // Show popup notification
+      setPopupMessage(`Delivery date set for ${localProject.title} on ${deliveryDate}.`);
+      setStageName('Sub-Editor Processing');
+      setPopupDuration(5000); // 5 seconds
+      setShowPopup(true);
+      
       onUpdate();
     } catch (error) {
       console.error('Failed to set delivery date:', error);
@@ -157,7 +170,13 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       }));
 
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
-      alert('Video uploaded successfully!');
+      
+      // Show popup notification
+      setPopupMessage(`${isRework ? 'Rework edited' : 'Edited'} video uploaded successfully!`);
+      setStageName('Sub-Editor Upload');
+      setPopupDuration(5000); // 5 seconds
+      setShowPopup(true);
+      
       onUpdate();
     } catch (error) {
       console.error('Failed to upload edited video:', error);
@@ -438,6 +457,17 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           </div>
         )}
       </div>
+      {showPopup && (
+        <Popup
+          message={popupMessage}
+          stageName={stageName}
+          duration={popupDuration}
+          onClose={() => {
+            setShowPopup(false);
+            onUpdate();
+          }}
+        />
+      )}
     </div>
   );
 };

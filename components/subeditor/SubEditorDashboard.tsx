@@ -4,19 +4,40 @@ import { db } from '../../services/supabaseDb';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
 import SubEditorProjectDetail from './SubEditorProjectDetail';
+import SubEditorMyWork from './SubEditorMyWork';
+import Layout from '../Layout';
 
 interface Props {
   user: any;
-  onBack: () => void;
+  inboxProjects: Project[];
+  historyProjects: Project[];
+  onRefresh: () => void;
   onLogout: () => void;
 }
 
-const SubEditorDashboard: React.FC<Props> = ({ user, onBack, onLogout }) => {
+const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+  const viewStorageKey = `activeView:${user.role}`;
+  const getStoredView = () => {
+    if (typeof window === 'undefined') return 'dashboard';
+    return localStorage.getItem(viewStorageKey) || 'dashboard';
+  };
+  
+  const [activeView, setActiveView] = useState<string>(getStoredView());
   const [activeTab, setActiveTab] = useState<'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED'>('ASSIGNED');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [viewMode, setViewMode] = useState<'DASHBOARD' | 'DETAILS'>('DASHBOARD');
+  const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | null>(null);
+
+  const handleViewChange = (view: string) => {
+    setActiveView(view);
+    if (view === 'mywork') {
+      setActiveFilter(null);
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(viewStorageKey, view);
+    }
+  };
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -25,11 +46,10 @@ const SubEditorDashboard: React.FC<Props> = ({ user, onBack, onLogout }) => {
         // Get projects assigned to this sub-editor
         const allProjects = await db.getProjects(user);
         
-        // Filter for sub-editor specific projects
+        // Filter for projects assigned to this specific sub-editor
         const subEditorProjects = allProjects.filter(p => 
-          p.assigned_to_role === Role.SUB_EDITOR ||
-          p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT ||
-          p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING
+          p.assigned_to_role === Role.SUB_EDITOR &&
+          p.assigned_to_user_id === user.id
         );
 
         setProjects(subEditorProjects);
@@ -45,18 +65,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, onBack, onLogout }) => {
 
   // Filter projects based on active tab
   const filteredProjects = projects.filter(project => {
-    switch (activeTab) {
-      case 'ASSIGNED':
-        return project.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && 
-               project.status === TaskStatus.WAITING_APPROVAL;
-      case 'IN_PROGRESS':
-        return project.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && 
-               project.status === TaskStatus.IN_PROGRESS;
-      case 'COMPLETED':
-        return project.status === TaskStatus.DONE;
-      default:
-        return true;
-    }
+   
   });
 
   const getStatusColor = (status: TaskStatus) => {
@@ -80,216 +89,234 @@ const SubEditorDashboard: React.FC<Props> = ({ user, onBack, onLogout }) => {
     }
   };
 
-  const renderProjectCard = (project: Project) => (
-    <div 
-      key={project.id} 
-      className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] h-full flex flex-col cursor-pointer hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-      onClick={() => {
-        setSelectedProject(project);
-        setViewMode('DETAILS');
-      }}
-    >
-      <div className="p-4 flex-grow">
-        <div className="flex flex-wrap gap-2 mb-3">
-          <span className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${getStatusColor(project.status)}`}>
-            {project.status}
-          </span>
-          <span className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${getStageColor(project.current_stage!)}`}>
-            {project.current_stage?.replace(/_/g, ' ') || 'Unknown Stage'}
-          </span>
-          <span className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${
-            project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-            project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-            'bg-[#D946EF] text-white'
-          }`}>
-            {project.channel}
-          </span>
-          <span
-            className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${
-              project.priority === 'HIGH' ? 'bg-red-500 text-white' :
-              project.priority === 'NORMAL' ? 'bg-yellow-500 text-black' :
-              'bg-green-500 text-white'
-            }`}
-          >
-            {project.priority}
-          </span>
-        </div>
-        <h4 className="font-black text-base text-slate-900 mb-2 uppercase leading-tight">{project.title}</h4>
-        <div className="space-y-1 text-xs">
-          <div className="flex items-center text-slate-500 uppercase">
-            <span className="font-bold">By:</span> {project.data?.writer_name || project.created_by_name || 'Unknown Writer'}
+  const renderProjectCard = (project: Project) => {
+    const isDelivered = !!project.edited_video_link;
+    
+    return (
+      <div
+        key={project.id}
+        onClick={() => {
+          setSelectedProject(project);
+        }}
+        className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
+      >
+        <div className="p-6 space-y-4">
+          {/* Channel and Priority Badges */}
+          <div className="flex justify-between items-start">
+            <span
+              className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
+                ? 'bg-[#FF4F4F] text-white'
+                : project.channel === 'LINKEDIN'
+                  ? 'bg-[#0085FF] text-white'
+                  : 'bg-[#D946EF] text-white'
+              }`}
+            >
+              {project.channel}
+            </span>
+            <span
+              className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                ? 'bg-red-500 text-white'
+                : project.priority === 'NORMAL'
+                  ? 'bg-yellow-500 text-black'
+                  : 'bg-green-500 text-white'
+              }`}
+            >
+              {project.priority}
+            </span>
+            {isDelivered ? (
+              <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
+                ✓ Delivered
+              </span>
+            ) : project.delivery_date ? (
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 border-2 border-blue-600 text-[10px] font-black uppercase">
+                In Progress
+              </span>
+            ) : (
+              <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
+                Needs Delivery
+              </span>
+            )}
           </div>
-          <div className="flex items-center text-slate-500 uppercase">
-            <Clock className="w-3 h-3 mr-1" />
-            <span className="font-bold">Due:</span> {format(new Date(project.due_date), 'MMM dd, yyyy')}
-          </div>
-          {project.delivery_date && (
-            <div className="flex items-center text-slate-500 uppercase">
-              <Calendar className="w-3 h-3 mr-1" />
-              <span className="font-bold">Delivery:</span> {format(new Date(project.delivery_date), 'MMM dd, yyyy')}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="px-4 pb-4">
-        <button className="w-full bg-[#0085FF] text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all">
-          View Details
-        </button>
-      </div>
-    </div>
-  );
 
-  if (viewMode === 'DETAILS' && selectedProject) {
+          {/* Title */}
+          <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">{project.title}</h3>
+
+          {/* Status */}
+          <div className="space-y-2 text-sm">
+            {project.video_link && (
+              <div className="bg-blue-50 border-2 border-blue-400 p-2">
+                <p className="text-[10px] font-bold text-blue-800">
+                  <Video className="w-3 h-3 inline mr-1" />
+                  Raw Video Ready
+                </p>
+              </div>
+            )}
+            {project.delivery_date && (
+              <div className="flex justify-between">
+                <span className="font-bold text-slate-400 uppercase text-xs">Delivery</span>
+                <span className="font-bold text-slate-900">{project.delivery_date}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
+              <span className="font-bold text-slate-900">
+                {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
+              </span>
+            </div>
+          </div>
+
+          {/* Action Hint */}
+          <div className="border-t-2 border-slate-100 pt-3">
+            <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
+              {!project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (selectedProject) {
     return (
       <SubEditorProjectDetail
         project={selectedProject}
         userRole={Role.SUB_EDITOR}
-        onBack={() => setViewMode('DASHBOARD')}
+        onBack={() => setSelectedProject(null)}
         onUpdate={() => {
-          // Refresh projects when updated
-          const fetchProjects = async () => {
-            try {
-              setLoading(true);
-              const allProjects = await db.getProjects(user);
-              
-              const subEditorProjects = allProjects.filter(p => 
-                p.assigned_to_role === Role.SUB_EDITOR ||
-                p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT ||
-                p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING
-              );
-
-              setProjects(subEditorProjects);
-            } catch (error) {
-              console.error('Error fetching projects:', error);
-            } finally {
-              setLoading(false);
-            }
-          };
-          
-          fetchProjects();
+          setSelectedProject(null);
+          onRefresh();
         }}
+        onLogout={onLogout}
       />
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b-2 border-black sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-2xl font-black uppercase text-slate-900">Sub-Editor Dashboard</h1>
-            <p className="text-sm text-slate-500">Manage video editing projects assigned to you</p>
-          </div>
-          <button
-            onClick={onLogout}
-            className="px-4 py-2 bg-red-500 text-white font-black uppercase border-2 border-black hover:bg-red-600 transition-colors"
-          >
-            Logout
-          </button>
+    <Layout
+      user={user}
+      onLogout={onLogout}
+      onOpenCreate={() => {}}
+      activeView={activeView}
+      onChangeView={handleViewChange}
+    >
+      {activeView === 'mywork' ? (
+        <SubEditorMyWork 
+          user={user}
+          projects={historyProjects || []}
+          onSelectProject={setSelectedProject}
+          activeFilter={activeFilter}
+        />
+      ) : activeView === 'calendar' ? (
+        <div className="p-8">
+          <h2 className="text-2xl font-black uppercase text-slate-900 mb-4">Calendar View</h2>
+          <p className="text-slate-600">Calendar functionality coming soon for sub-editors.</p>
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-blue-100 border-2 border-black">
-                <FileText className="w-6 h-6 text-blue-800" />
-              </div>
-              <div>
-                <p className="text-sm font-bold uppercase text-slate-500">Assigned Projects</p>
-                <p className="text-2xl font-black">
-                  {projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT).length}
-                </p>
-              </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Dashboard Content */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+                Sub-Editor Suite
+              </h1>
+              <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
           </div>
 
-          <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-purple-100 border-2 border-black">
-                <Video className="w-6 h-6 text-purple-800" />
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* NEEDS DELIVERY DATE */}
+            <div
+              onClick={() => {
+                setActiveFilter(null);
+                setActiveView('mywork');
+              }}
+              className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {projects.filter(p => !p.delivery_date).length}
               </div>
-              <div>
-                <p className="text-sm font-bold uppercase text-slate-500">In Progress</p>
-                <p className="text-2xl font-black">
-                  {projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING).length}
-                </p>
+              <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
+            </div>
+
+            {/* IN PROGRESS */}
+            <div
+              onClick={() => {
+                setActiveFilter(null);
+                setActiveView('mywork');
+              }}
+              className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {projects.filter(p => p.delivery_date && !p.edited_video_link).length}
               </div>
+              <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
+            </div>
+
+            {/* COMPLETED FOOTAGE */}
+            <div
+              onClick={() => {
+                setActiveFilter(null);
+                setActiveView('mywork');
+              }}
+              className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {projects.filter(p => !!p.edited_video_link).length}
+              </div>
+              <div className="text-sm font-bold uppercase text-white/80">Completed Footage</div>
             </div>
           </div>
 
-          <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-green-100 border-2 border-black">
-                <Upload className="w-6 h-6 text-green-800" />
-              </div>
-              <div>
-                <p className="text-sm font-bold uppercase text-slate-500">Completed</p>
-                <p className="text-2xl font-black">
-                  {projects.filter(p => p.status === TaskStatus.DONE).length}
-                </p>
-              </div>
+          {/* Tabs */}
+          <div className="flex space-x-4 border-b border-gray-200 mb-6">
+            <button
+              onClick={() => setActiveTab('ASSIGNED')}
+              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                activeTab === 'ASSIGNED'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Assigned ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && p.status === TaskStatus.WAITING_APPROVAL).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('IN_PROGRESS')}
+              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                activeTab === 'IN_PROGRESS'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-white text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              In Progress ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && p.status === TaskStatus.IN_PROGRESS).length})
+            </button>
+            <button
+              onClick={() => setActiveTab('COMPLETED')}
+              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                activeTab === 'COMPLETED'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-white text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Completed ({projects.filter(p => p.status === TaskStatus.DONE).length})
+            </button>
+          </div>
+
+          {/* Projects Grid */}
+          {loading ? (
+            <div className="p-12 text-center text-gray-500">Loading projects...</div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              No {activeTab.toLowerCase()} projects found
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredProjects.map(renderProjectCard)}
+            </div>
+          )}
         </div>
-
-        {/* Tabs */}
-        <div className="flex space-x-4 border-b border-gray-200 mb-6">
-          <button
-            onClick={() => setActiveTab('ASSIGNED')}
-            className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-              activeTab === 'ASSIGNED'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            Assigned ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT).length})
-          </button>
-          <button
-            onClick={() => setActiveTab('IN_PROGRESS')}
-            className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-              activeTab === 'IN_PROGRESS'
-                ? 'bg-purple-600 text-white'
-                : 'bg-white text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            In Progress ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING).length})
-          </button>
-          <button
-            onClick={() => setActiveTab('COMPLETED')}
-            className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-              activeTab === 'COMPLETED'
-                ? 'bg-green-600 text-white'
-                : 'bg-white text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            Completed ({projects.filter(p => p.status === TaskStatus.DONE).length})
-          </button>
-        </div>
-
-        {/* Projects Grid */}
-        {loading ? (
-          <div className="p-12 text-center text-gray-500">Loading projects...</div>
-        ) : filteredProjects.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            No {activeTab.toLowerCase()} projects found
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProjects.map(renderProjectCard)}
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    </Layout>
   );
 };
 

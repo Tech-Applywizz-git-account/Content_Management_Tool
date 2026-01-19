@@ -59,7 +59,16 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   useEffect(() => {
     const fetchSubEditors = async () => {
       try {
+        console.log('Fetching sub-editors...');
         const subEditorList = await db.users.getSubEditors();
+        console.log('Raw sub-editors data:', subEditorList);
+        console.log('Number of sub-editors fetched:', subEditorList.length);
+        
+        // Check for duplicates or filtering issues
+        const uniqueIds = [...new Set(subEditorList.map(se => se.id))];
+        console.log('Unique sub-editor IDs:', uniqueIds);
+        console.log('Duplicate check - original length:', subEditorList.length, 'unique length:', uniqueIds.length);
+        
         setSubEditors(subEditorList);
 
         // No more direct DOM manipulation - the options will be rendered in JSX
@@ -503,6 +512,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     await db.projects.update(localProject.id, {
                       assigned_to_role: Role.SUB_EDITOR,
                       assigned_to_user_id: selectedSubEditorId, // Assign to specific sub-editor
+                      current_stage: WorkflowStage.SUB_EDITOR_ASSIGNMENT,
                       status: TaskStatus.WAITING_APPROVAL,
                       data: { ...localProject.data, needs_sub_editor: true } // Mark that sub-editor is needed
                     });
