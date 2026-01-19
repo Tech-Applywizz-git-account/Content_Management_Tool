@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
 import SubEditorProjectDetail from './SubEditorProjectDetail';
 import SubEditorMyWork from './SubEditorMyWork';
+import SubEditorCalendar from './SubEditorCalendar';
 import Layout from '../Layout';
 
 interface Props {
@@ -23,7 +24,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   };
   
   const [activeView, setActiveView] = useState<string>(getStoredView());
-  const [activeTab, setActiveTab] = useState<'ASSIGNED' | 'IN_PROGRESS' | 'COMPLETED'>('ASSIGNED');
+  const [activeTab, setActiveTab] = useState<'ALL'>('ALL');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -63,10 +64,8 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     fetchProjects();
   }, [user]);
 
-  // Filter projects based on active tab
-  const filteredProjects = projects.filter(project => {
-   
-  });
+  // Show all projects (no tab-based filtering)
+  const filteredProjects = projects;
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
@@ -207,10 +206,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
           activeFilter={activeFilter}
         />
       ) : activeView === 'calendar' ? (
-        <div className="p-8">
-          <h2 className="text-2xl font-black uppercase text-slate-900 mb-4">Calendar View</h2>
-          <p className="text-slate-600">Calendar functionality coming soon for sub-editors.</p>
-        </div>
+        <SubEditorCalendar user={user} />
       ) : (
         <div className="space-y-8">
           {/* Dashboard Content */}
@@ -268,38 +264,14 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex space-x-4 border-b border-gray-200 mb-6">
-            <button
-              onClick={() => setActiveTab('ASSIGNED')}
-              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                activeTab === 'ASSIGNED'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Assigned ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && p.status === TaskStatus.WAITING_APPROVAL).length})
-            </button>
-            <button
-              onClick={() => setActiveTab('IN_PROGRESS')}
-              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                activeTab === 'IN_PROGRESS'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-white text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              In Progress ({projects.filter(p => p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && p.status === TaskStatus.IN_PROGRESS).length})
-            </button>
-            <button
-              onClick={() => setActiveTab('COMPLETED')}
-              className={`px-6 py-3 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                activeTab === 'COMPLETED'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-white text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Completed ({projects.filter(p => p.status === TaskStatus.DONE).length})
-            </button>
+          {/* Quick Overview */}
+          <div className="space-y-4">
+            <h2 className="text-2xl font-black uppercase text-slate-900 border-b-4 border-black inline-block pb-1">
+              Quick Overview
+            </h2>
+            <p className="text-slate-600">
+              You have {projects.length} {projects.length === 1 ? 'project' : 'projects'} assigned. Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+            </p>
           </div>
 
           {/* Projects Grid */}
@@ -307,7 +279,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             <div className="p-12 text-center text-gray-500">Loading projects...</div>
           ) : filteredProjects.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              No {activeTab.toLowerCase()} projects found
+              No projects found
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

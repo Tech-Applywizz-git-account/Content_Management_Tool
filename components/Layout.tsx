@@ -94,7 +94,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
 )}
   
             {/* Calendar - Visible for CMO, CEO, and other roles */}
-            {(user.role === Role.CEO || user.role === Role.CMO || user.role !== Role.ADMIN) && (
+            {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS) && (
               <button
                 onClick={() => onChangeView?.('calendar')}
                 className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'calendar'
