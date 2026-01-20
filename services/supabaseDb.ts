@@ -624,6 +624,7 @@ export const projects = {
                     WorkflowStage.VIDEO_EDITING,
                     WorkflowStage.FINAL_REVIEW_CMO,
                     WorkflowStage.FINAL_REVIEW_CEO,
+                    WorkflowStage.POST_WRITER_REVIEW, // Include post-writer review for parallel visibility
                     WorkflowStage.OPS_SCHEDULING,
                     WorkflowStage.POSTED
                 ]);
@@ -680,6 +681,14 @@ export const projects = {
 
             if (assignedByRoleError) throw assignedByRoleError;
 
+            // 4. Projects where user's role is in visible_to_roles
+            const { data: visibleToRoleData, error: visibleToRoleError } = await supabase
+                .from('projects')
+                .select('*')
+                .overlaps('visible_to_roles', [user.role]);
+
+            if (visibleToRoleError) throw visibleToRoleError;
+
             // ✅ Merge all results and remove duplicates
             const projectMap = new Map<string, Project & { latest_activity?: Date }>();
 
@@ -713,6 +722,18 @@ export const projects = {
 
             // Add projects assigned to user's role (may overwrite previous entries if more recent)
             assignedByRoleData.forEach((project: any) => {
+                if (!projectMap.has(project.id) ||
+                    !projectMap.get(project.id)?.latest_activity ||
+                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                    projectMap.set(project.id, {
+                        ...project,
+                        latest_activity: new Date(project.updated_at)
+                    });
+                }
+            });
+
+            // Add projects where user's role is in visible_to_roles (may overwrite previous entries if more recent)
+            visibleToRoleData.forEach((project: any) => {
                 if (!projectMap.has(project.id) ||
                     !projectMap.get(project.id)?.latest_activity ||
                     new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
@@ -1528,11 +1549,11 @@ export const workflow = {
             console.log(`🎯 Approval Progress: ${approvedCount}/${totalWritersRequired}`);
 
             if (totalWritersRequired > 0 && approvedCount >= totalWritersRequired) {
-                console.log('🚀 All writers have approved, advancing to FINAL_REVIEW_CMO stage');
+                console.log('🚀 All writers have approved, advancing to POST_WRITER_REVIEW stage');
 
-                // Update project to move to FINAL_REVIEW_CMO stage
+                // Update project to move to POST_WRITER_REVIEW stage
                 const updateData: any = {
-                    current_stage: WorkflowStage.FINAL_REVIEW_CMO,
+                    current_stage: WorkflowStage.POST_WRITER_REVIEW,
                     assigned_to_role: Role.CMO,
                     assigned_to_user_id: null,
                     status: TaskStatus.WAITING_APPROVAL,
@@ -1557,7 +1578,7 @@ export const workflow = {
                     userId,
                     userName,
                     'SUBMITTED', // Using SUBMITTED for the arrival notification
-                    'All writers have approved - Project advanced to CMO for final review.',
+                    'All writers have approved - Project advanced to post-writer review stage.',
                     undefined,
                     Role.WRITER, // fromRole
                     Role.CMO,    // toRole
@@ -1571,14 +1592,14 @@ export const workflow = {
                     userId,
                     userName,
                     'SUBMITTED', // Using SUBMITTED for the arrival notification
-                    'All writers have approved - Project advanced to CMO for final review.',
+                    'All writers have approved - Project advanced to post-writer review stage.',
                     undefined,
                     Role.WRITER, // fromRole
                     Role.OPS,    // toRole
                     Role.WRITER  // actorRole
                 );
 
-                console.log('✅ Workflow successfully transitioned to CMO stage.');
+                console.log('✅ Workflow successfully transitioned to POST_WRITER_REVIEW stage.');
                 return await projects.getById(projectId);
             } else {
                 console.log('⏳ Approval incomplete. Staying in MULTI_WRITER_APPROVAL.');
@@ -3098,17 +3119,7 @@ export const db = {
             isRework
         );
 
-        // Also store the rejection reason in the rejected_reason field
-        const { error: updateError } = await supabase
-            .from('projects')
-            .update({
-                rejected_reason: comment
-            })
-            .eq('id', projectId);
-
-        if (updateError) {
-            console.error('Failed to update rejected_reason field:', updateError);
-        }
+        // The rejected_reason field is deprecated. All rework/reject comments should be read from workflow_history.
 
         // Refresh the project data to ensure UI is up to date
         const updatedProject = await projects.getById(projectId);

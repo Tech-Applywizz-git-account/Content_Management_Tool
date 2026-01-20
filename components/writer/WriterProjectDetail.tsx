@@ -3,15 +3,16 @@ import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage } from '../../ty
 import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
 import Popup from '../Popup';
 
 interface Props {
     project: Project;
+    userRole: Role;
     onBack: () => void;
 }
 
-const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
+const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => {
     const [comments, setComments] = useState<any[]>([]);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
@@ -70,7 +71,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
             // Fetch the most recent workflow history entry to get script content
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, action, comment, timestamp, actor_name')
+                .select('script_content, action, comment, timestamp, actor_name, to_role')
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false })
                 .limit(1);
@@ -82,7 +83,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                 let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
                 const { data: scriptData, error: scriptError } = await supabase
                     .from('workflow_history')
-                    .select('script_content')
+                    .select('script_content, comment, actor_name, to_role')
                     .eq('project_id', project.id)
                     .eq('action', scriptAction)
                     .order('timestamp', { ascending: false })
@@ -95,28 +96,35 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack }) => {
                     } else {
                         console.error('Error fetching previous script:', scriptError);
                     }
-                } else if (scriptData && scriptData.length > 0 && scriptData[0].script_content) {
-                    setPreviousScript(scriptData[0].script_content);
+                } else if (scriptData && scriptData.length > 0) {
+                    // Check if the rework/reject action is targeted to the current user's role
+                    const reworkEntry = scriptData[0];
+                    if (reworkEntry.to_role === userRole) {
+                        // Only set previous script and rejection reason if it's targeted to current user
+                        if (reworkEntry.script_content) {
+                            setPreviousScript(reworkEntry.script_content);
+                        }
+                        // Use the comment from workflow history instead of project.rejected_reason
+                        if (reworkEntry.comment) {
+                            setRejectionReason(reworkEntry.comment);
+                        }
+                    }
                 } else {
                     // Fallback to the script content from the latest history entry
                     if (historyData && historyData.length > 0 && historyData[0].script_content) {
                         setPreviousScript(historyData[0].script_content);
                     }
                 }
-
-                // Fetch rejection reason from project
-                if (project.rejected_reason) {
-                    setRejectionReason(project.rejected_reason);
-                }
             }
         };
 
         fetchData();
-    }, [project.id, project.status, project.rejected_reason]);
+    }, [project.id, project.status]);
 
-    // Use the new workflow state logic
-    const workflowState = getWorkflowState(project);
+    // Use the new workflow state logic with role context
+    const workflowState = getWorkflowStateForRole(project, userRole);
     const isRework = workflowState.isRework;
+    const isTargetedRework = workflowState.isTargetedRework;
     const isRejected = workflowState.isRejected;
     const rejectionComment = comments.find(comment => comment.action === 'REJECTED' || comment.action === 'REWORK');
 

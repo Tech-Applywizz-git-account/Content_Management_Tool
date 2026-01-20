@@ -462,35 +462,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     }
   };
 
-  // Helper function to submit project directly to CEO
-  const submitDirectlyToCEO = async (projectId: string) => {
-    try {
-      await db.projects.update(projectId, {
-        current_stage: WorkflowStage.SCRIPT_REVIEW_L2,
-        assigned_to_role: Role.CEO,
-        status: TaskStatus.WAITING_APPROVAL
-      });
-
-      // Add workflow history entry
-      await db.workflow.recordAction(
-        projectId,
-        WorkflowStage.SCRIPT_REVIEW_L2,
-        currentUser.id,
-        currentUser.full_name,
-        'SUBMITTED',
-        'Resubmitted after CEO rework',
-        undefined,
-        Role.WRITER, // fromRole
-        Role.CEO, // toRole
-        currentUser.role as Role // actorRole
-      );
-    } catch (error) {
-      console.error('Error submitting directly to CEO:', error);
-      throw error;
-    }
-  };
-
-
 
   const handleSaveDraft = async () => {
     console.log('🚀 Starting save draft process');
@@ -851,13 +822,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               .eq('id', reworkHistory.actor_id)
               .single();
 
-            // ✅ Route based on WHO sent for rework, not current user role
+            // ✅ Route based on WHO originally sent for rework
             if (reviewer && reviewer.role === Role.CEO) {
               // If CEO sent for rework, go directly back to CEO
               targetRole = Role.CEO;
               targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
             } else {
-              // Otherwise (CMO or others), go to CMO
+              // If CMO or others sent for rework, go back to CMO
               targetRole = Role.CMO;
               targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
             }
@@ -928,11 +899,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           }
 
           /* -----------------------------------
-             DEFAULT → SEND TO CMO (Standard Flow)
+             DEFAULT → FOLLOW PROPER WORKFLOW (Writer → CMO → CEO)
              ----------------------------------- */
           else {
-            const targetRole = currentUser.role === Role.CMO ? Role.CEO : Role.CMO;
-            const targetStage = currentUser.role === Role.CMO ? WorkflowStage.SCRIPT_REVIEW_L2 : WorkflowStage.SCRIPT_REVIEW_L1;
+            // Follow standard workflow: Writer → CMO → CEO
+            const targetRole = Role.CMO;
+            const targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
 
             await db.projects.update(realProjectId, {
               current_stage: targetStage,
@@ -946,14 +918,48 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               currentUser.id,
               currentUser.full_name,
               'SUBMITTED',
-              'Script submitted for review',
+              'Script submitted for CMO review',
               undefined,
-              currentUser.role as Role, // fromRole
+              Role.WRITER, // fromRole
               targetRole, // toRole
-              currentUser.role as Role // actorRole
+              Role.WRITER // actorRole
             );
 
             console.log(`✅ Script submitted for review -> sent to ${targetRole}`);
+          }
+        }
+
+        /* =========================
+           DETERMINE REWORK REVIEWER IF NEEDED
+           ========================= */
+        
+        // For rework cases, we need to determine who originally sent for rework
+        let reworkReviewer: string | null = null;
+        if (workflowState?.isRework) {
+          const { data: fullHistory, error: historyError } = await supabase
+            .from('workflow_history')
+            .select('actor_id, action, comment, timestamp')
+            .eq('project_id', realProjectId)
+            .order('timestamp', { ascending: false });
+
+          if (fullHistory && fullHistory.length > 0) {
+            const originalReworkHistory = fullHistory
+  .filter(h => h.action === 'REWORK')
+  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+
+            if (originalReworkHistory) {
+              const { data: reviewerData, error: reviewerError } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', originalReworkHistory.actor_id)
+                .single();
+              
+              if (reviewerData && reviewerData.role === Role.CEO) {
+                reworkReviewer = 'CEO';
+              } else {
+                reworkReviewer = 'CMO';
+              }
+            }
           }
         }
 
@@ -972,8 +978,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         }
         else if (workflowState?.isRework) {
           nextStageLabel = STAGE_LABELS[latestProject.current_stage];
-          // More descriptive message indicating where it's going
-          const reviewer = (latestProject.current_stage as string) === WorkflowStage.SCRIPT_REVIEW_L2 ? 'CEO' : 'CMO';
+
+          const reviewer = reworkReviewer === 'CEO' ? 'CEO' : 'CMO';
+
           message = `Script resubmitted after rework. Waiting for ${reviewer} review.`;
         }
         else if (latestProject.current_stage === WorkflowStage.SCRIPT_REVIEW_L2) {
@@ -981,10 +988,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           message = `Script submitted successfully. Waiting for CEO review.`;
         }
         else {
-          nextStageLabel = STAGE_LABELS[latestProject.current_stage] || STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
-          // More descriptive message indicating where it's going
-          const reviewer = (latestProject.current_stage as string) === WorkflowStage.SCRIPT_REVIEW_L2 ? 'CEO' : 'CMO';
-          message = `Script submitted successfully. Waiting for ${reviewer} review.`;
+          // Now following proper workflow: Writer → CMO → CEO
+          nextStageLabel = STAGE_LABELS[WorkflowStage.SCRIPT_REVIEW_L1];
+          message = `Script submitted successfully. Waiting for CMO review.`;
         }
 
 

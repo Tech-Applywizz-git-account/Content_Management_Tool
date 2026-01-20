@@ -4,6 +4,7 @@ import { Calendar, Upload, Link as LinkIcon } from 'lucide-react';
 import OpsMyWork from './OpsMyWork';
 import OpsCalendar from './OpsCalendar';
 import OpsProjectDetail from './OpsProjectDetail';
+import OpsProjectDetailDetailed from './OpsProjectDetailDetailed';
 import OpsCeoApproved from './OpsCeoApproved';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -23,7 +24,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         return localStorage.getItem(viewStorageKey) || 'dashboard';
     };
     const [activeView, setActiveView] = useState<string>(getStoredView);
-    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+    const [selectedProject, setSelectedProject] = useState<{project: Project, source: 'ceoapproved' | 'mywork' | null} | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const [filterCategory, setFilterCategory] = useState<string>('all'); // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
     
@@ -109,14 +110,25 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             onChangeView={handleViewChange}
         >
             {selectedProject ? (
-                <OpsProjectDetail
-                    project={selectedProject}
-                    onBack={() => setSelectedProject(null)}
-                    onUpdate={() => {
-                        setSelectedProject(null);
-                        onRefresh();
-                    }}
-                />
+                selectedProject.source === 'ceoapproved' ? (
+                    <OpsProjectDetailDetailed
+                        project={selectedProject.project}
+                        onBack={() => setSelectedProject(null)}
+                        onUpdate={() => {
+                            setSelectedProject(null);
+                            onRefresh();
+                        }}
+                    />
+                ) : (
+                    <OpsProjectDetail
+                        project={selectedProject.project}
+                        onBack={() => setSelectedProject(null)}
+                        onUpdate={() => {
+                            setSelectedProject(null);
+                            onRefresh();
+                        }}
+                    />
+                )
             ) : activeView === 'mywork' ? (
                 <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={setSelectedProject} filterCategory={filterCategory} />
             ) : activeView === 'calendar' ? (

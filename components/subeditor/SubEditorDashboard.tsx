@@ -201,7 +201,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
       {activeView === 'mywork' ? (
         <SubEditorMyWork 
           user={user}
-          projects={historyProjects || []}
+          projects={projects}
           onSelectProject={setSelectedProject}
           activeFilter={activeFilter}
         />

@@ -4,7 +4,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
-import { getWorkflowState, canUserEdit } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit } from '../../services/workflowUtils';
 import Popup from '../Popup';
 
 interface Props {
@@ -27,9 +27,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const [stageName, setStageName] = useState('');
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
-  // Use the new workflow state logic
-  const workflowState = getWorkflowState(localProject);
-  const isRework = workflowState.isRework;
+  // Use the new workflow state logic with role context
+  const workflowState = getWorkflowStateForRole(localProject, userRole);
+  const isRework = workflowState.isTargetedRework || workflowState.isRework;
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
@@ -66,12 +66,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         localProject.current_stage!,
         user.id,
         user.email || user.id,
-        'SUB_EDITOR_DELIVERY_DATE',
+        'SUBMITTED',
         `Delivery date set to ${deliveryDate}`
       );
 
       // Update the project with the delivery date
-      await db.projects.update(localProject.id, {
+      const updatedProject = await db.projects.update(localProject.id, {
         delivery_date: deliveryDate,
         current_stage: WorkflowStage.SUB_EDITOR_PROCESSING,
         assigned_to_role: Role.SUB_EDITOR,
@@ -79,13 +79,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       });
 
       // Update local state
-      setLocalProject(prev => ({
-        ...prev,
-        delivery_date: deliveryDate,
-        current_stage: WorkflowStage.SUB_EDITOR_PROCESSING,
-        assigned_to_role: Role.SUB_EDITOR,
-        status: TaskStatus.IN_PROGRESS
-      }));
+      setLocalProject(updatedProject);
 
       console.log(`Delivery date set: ${deliveryDate}`);
       
@@ -129,7 +123,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       }
 
       // Record the action in workflow history with appropriate action type
-      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUB_EDITOR_VIDEO_UPLOADED';
+      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
       const comment = isRework
         ? `Rework edited video uploaded: ${editedVideoLink}`
         : `Edited video uploaded: ${editedVideoLink}`;
@@ -163,11 +157,8 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       await db.advanceWorkflow(localProject.id, comment);
 
       // Update local state
-      setLocalProject(prev => ({
-        ...prev,
-        edited_video_link: editedVideoLink,
-        status: TaskStatus.DONE
-      }));
+      const updatedProject = await db.getProjectById(localProject.id);
+      setLocalProject(updatedProject);
 
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
       

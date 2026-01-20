@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
+import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, User } from '../../types';
 import { isReworkProject } from '../../services/workflowUtils';
 import { format } from 'date-fns';
 import { Clock, Plus } from 'lucide-react';
@@ -32,6 +32,7 @@ const STORAGE_KEY_PREFIX = 'cmo_dashboard_view_';
 const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout, allProjects }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [users, setUsers] = useState<User[]>([]);
   const viewStorageKey = `activeView:${user.role}`;
   // Use allProjects for dashboard view, fallback to inboxProjects
   // Deduplicate projects by ID to prevent duplicates
@@ -203,6 +204,20 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     loadCounts();
   }, [user.id]);
 
+  // Fetch users for displaying editor names
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const usersData = await db.getUsers();
+        setUsers(usersData);
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+      }
+    };
+    
+    fetchUsers();
+  }, []);
+
   // Use inboxProjects for dashboard view (role-based filtering)
   // Use historyProjects for MyWork view (participation-based filtering)
   // Use filtered history projects for History tab
@@ -237,7 +252,17 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       (p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
         p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
         p.current_stage === WorkflowStage.POST_WRITER_REVIEW)
-  );
+  ).sort((a, b) => {
+    // Prioritize POST_WRITER_REVIEW (final review) projects at the top
+    const isAFinalReview = a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
+    const isBFinalReview = b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
+    
+    if (isAFinalReview && !isBFinalReview) return -1;
+    if (!isAFinalReview && isBFinalReview) return 1;
+    
+    // For projects in the same category, sort by creation date (newest first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
 
   // Column 2: Projects Pending at CEO (Projects that CMO has approved and sent to CEO)
@@ -454,6 +479,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div className="text-xs font-bold uppercase text-slate-700">
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
+                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                            <div className="text-xs font-bold text-slate-500 uppercase">
+                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                            </div>
+                          )}
                           <div className="text-xs font-bold text-slate-500 uppercase">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                           </div>
@@ -534,6 +564,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
+                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                            </div>
+                          )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                           </div>
@@ -596,6 +631,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
+                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                            </div>
+                          )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                           </div>
@@ -653,6 +693,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
+                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                            </div>
+                          )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                             {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                           </div>
@@ -734,6 +779,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                  Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                                </div>
+                              )}
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                                 {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                               </div>
@@ -795,6 +845,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                  Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                                </div>
+                              )}
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                                 {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                               </div>

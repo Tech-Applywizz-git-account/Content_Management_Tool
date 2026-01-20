@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -26,9 +26,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             h.action?.startsWith('REWORK_')
         );
 
-    // Use the new workflow state logic
-    const workflowState = getWorkflowState(localProject);
-    const isRework = workflowState.isRework;
+    // Use the new workflow state logic with role context
+    const workflowState = getWorkflowStateForRole(localProject, userRole);
+    const isRework = workflowState.isTargetedRework || workflowState.isRework;
     const isRejected = workflowState.isRejected;
 
     // Determine if current user can edit based on role and workflow state
@@ -174,8 +174,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             }
 
             // Determine if this is a rework submission based on the new workflow state logic
-            const workflowState = getWorkflowState(localProject);
-            const isRework = workflowState.isRework;
+            const workflowState = getWorkflowStateForRole(localProject, userRole);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
             const isRejected = workflowState.isRejected;
 
             // Record the action in workflow history before updating the project
@@ -341,10 +341,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         <div className="p-4 bg-white border-l-4 border-red-500">
                             <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
                             <p className="text-red-700">
-                                {getLatestReworkRejectComment(localProject)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                {getLatestReworkRejectComment(localProject, userRole)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
                             </p>
                             <p className="text-sm text-red-600 mt-2">
-                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject)?.actor_name || 'Reviewer'}
+                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
 

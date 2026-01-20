@@ -137,6 +137,10 @@ export interface HistoryEvent {
   action: 'CREATED' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'REWORK' | 'REWORK_VIDEO_SUBMITTED' | 'REWORK_EDIT_SUBMITTED' | 'REWORK_DESIGN_SUBMITTED' | 'DIRECT_UPLOAD';
   comment?: string;
   timestamp: string;
+  actor_role?: string;
+  from_role?: string;
+  to_role?: string;
+  metadata?: any;
 }
 
 export interface SystemLog {

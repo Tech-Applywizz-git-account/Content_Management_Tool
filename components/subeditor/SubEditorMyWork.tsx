@@ -2,7 +2,7 @@ import React from 'react';
 import { Project, Role } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video, Film } from 'lucide-react';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
 
 interface Props {
     user: { full_name: string; role: Role };
@@ -39,9 +39,9 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, act
                 {filteredProjects.map(project => {
                     const isDelivered = !!project.edited_video_link;
                     
-                    // Use the centralized workflow state detection
-                    const workflowState = getWorkflowState(project);
-                    const isRework = workflowState.isRework;
+                    // Use the centralized workflow state detection with role context
+                    const workflowState = getWorkflowStateForRole(project, user.role);
+                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
                     const isRejected = workflowState.isRejected;
                     
                     return (

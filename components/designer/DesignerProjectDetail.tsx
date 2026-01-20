@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -33,9 +33,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO';
-    // Use the new workflow state logic
-    const workflowState = getWorkflowState(project);
-    const isRework = workflowState.isRework;
+    // Use the new workflow state logic with role context
+    const workflowState = getWorkflowStateForRole(project, userRole);
+    const isRework = workflowState.isTargetedRework || workflowState.isRework;
     const isRejected = workflowState.isRejected;
 
     // Determine if current user can edit based on role and workflow state
@@ -375,10 +375,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         <div className="p-4 bg-white border-l-4 border-red-500">
                             <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
                             <p className="text-red-700">
-                                {getLatestReworkRejectComment(project)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                {getLatestReworkRejectComment(project, userRole)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
                             </p>
                             <p className="text-sm text-red-600 mt-2">
-                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project)?.actor_name || 'Reviewer'}
+                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project, userRole)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
 

@@ -165,11 +165,35 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
         try {
             if (decision === 'APPROVE') {
                 // CMO Approval -> Moves to next stage based on current stage
-                await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
+                
+                // Use workflow.approve() for MULTI_WRITER_APPROVAL or POST_WRITER_REVIEW stages
+                // as these require special handling for multi-writer approval processes
+                if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL || 
+                    project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
+                    // For these stages, determine the next stage according to the helpers.getNextStage function
+                    const nextStageInfo = db.helpers.getNextStage(
+                        project.current_stage,
+                        project.content_type,
+                        'APPROVED',
+                        project.data
+                    );
+                    
+                    await db.workflow.approve(
+                        project.id,
+                        db.getCurrentUser()?.id || '',
+                        db.getCurrentUser()?.full_name || 'CMO',
+                        Role.CMO,
+                        nextStageInfo.stage,
+                        nextStageInfo.role,
+                        comment || 'Approved by CMO'
+                    );
+                } else {
+                    await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
+                }
 
                 // Show popup for approval
                 let stageLabel, message;
-                if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+                if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
                     const nextStage = WorkflowStage.FINAL_REVIEW_CEO;
 
                     stageLabel = STAGE_LABELS[nextStage] || 'FINAL_REVIEW_CEO';
@@ -185,14 +209,20 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 setPopupMessage(message);
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
-                setTimeout(() => {
+                
+                // Ensure database updates propagate, then show the popup
+                // First, fetch the updated project to confirm the stage has changed
+                const updatedProject = await db.getProjectById(project.id);
+                if (updatedProject && updatedProject.current_stage !== project.current_stage) {
+                    // Project has moved to the next stage, show the popup immediately
                     setShowPopup(true);
-                }, 0);
-
-                // Refresh dashboard data after approval
-                setTimeout(() => {
-                    onComplete();
-                }, 1500); // Longer delay to ensure database updates propagate before completing
+                } else {
+                    // Project hasn't moved yet, wait a bit and then show popup
+                    // This might be due to database transaction timing
+                    setTimeout(() => {
+                        setShowPopup(true);
+                    }, 500);
+                }
             } else if (decision === 'REWORK') {
                 // Rework -> Smart routing based on who sent for rework
                 
@@ -551,7 +581,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
 
                     {/* Assets Section (Only for final review) */}
-                    {project.current_stage === WorkflowStage.FINAL_REVIEW_CMO && (
+                    {(project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) && (
                         <section className="space-y-4 pt-6 border-t-4 border-black">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
 
@@ -905,11 +935,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     onClose={() => {
                         setShowPopup(false);
                         // Call onComplete to close the review screen and refresh dashboard
+                        // Ensure we only call onComplete once to avoid duplicate refreshes
                         onComplete();
-                        // Additionally, ensure the dashboard is refreshed to reflect project status changes
-                        setTimeout(() => {
-                            onComplete();
-                        }, 2000); // Extra refresh after 2 seconds to ensure database changes have propagated
                     }}
                     duration={popupDuration}
                 />

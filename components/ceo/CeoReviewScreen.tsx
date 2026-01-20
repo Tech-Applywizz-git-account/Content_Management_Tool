@@ -180,6 +180,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     stageLabel = STAGE_LABELS[WorkflowStage.SCRIPT] || 'SCRIPT';
                     setPopupMessage(`CEO has approved the idea. Sent back to writer to convert into script.`);
                 } else {
+                    // For regular projects (including rework), always advance to the next stage with single CEO approval
                     nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ?
                         WorkflowStage.CINEMATOGRAPHY : WorkflowStage.OPS_SCHEDULING;
                     // For final review CEO stage (non-idea), show OPS_SCHEDULING as current stage

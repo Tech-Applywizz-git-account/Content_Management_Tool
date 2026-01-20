@@ -111,6 +111,21 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
               <p className="font-medium bg-slate-50 p-2">{project.channel}</p>
             </div>
             <div>
+              <div>
+  <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Writer</h3>
+  <p className="font-medium bg-slate-50 p-2">
+    {project.writer_name || '—'}
+  </p>
+</div>
+<div>
+  <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
+  <p className="font-medium bg-slate-50 p-2">
+    {project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id 
+      ? userDetails[project.assigned_to_user_id]?.full_name || 'Loading...' 
+      : '—'}
+  </p>
+</div>
+
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Priority</h3>
               <span className={`inline-block px-2 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                 ? 'bg-red-500 text-white'
@@ -133,12 +148,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Assigned To</h3>
               <p className="font-medium bg-slate-50 p-2">{project.assigned_to_role || 'Unassigned'}</p>
             </div>
-            {project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id && (
-              <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
-                <p className="font-medium bg-slate-50 p-2">{userDetails[project.assigned_to_user_id]?.full_name || 'Loading...'}</p>
-              </div>
-            )}
+
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Created At</h3>
               <p className="font-medium bg-slate-50 p-2">{new Date(project.created_at).toLocaleString()}</p>

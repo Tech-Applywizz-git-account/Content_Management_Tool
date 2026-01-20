@@ -144,7 +144,15 @@ async function handleWorkflowNotification(record: any) {
       break;
   }
 
-  recipientEmails = [...new Set(recipientEmails.filter(Boolean))];
+  const ceoEmails = await getRoleEmails("CEO");
+
+recipientEmails = [
+  ...new Set(
+    recipientEmails
+      .filter(Boolean)
+      .filter(email => !ceoEmails.includes(email))
+  ),
+];
 
   if (recipientEmails.length === 0) {
     return { ok: true, msg: "No recipients" };

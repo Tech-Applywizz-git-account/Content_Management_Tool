@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import { db } from '../../services/supabaseDb';
+import { getWorkflowStateForRole } from '../../services/workflowUtils';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -469,23 +470,31 @@ const canModifyProject = (project: Project, userId: string) => {
                 
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 ${
-                    // Check if this is a rework project (REWORK action in history)
-                    task.history?.some(h => h.action === 'REWORK')
-                      ? 'bg-orange-100 text-orange-800 border-2 border-orange-600'
-                      : task.history?.some(h => h.action === 'REJECTED')
-                      ? 'bg-red-100 text-red-700 border-red-600'
-                      : task.status === TaskStatus.DONE
-                      ? 'bg-green-100 text-green-700 border-green-600'
-                      : 'bg-blue-100 text-blue-700 border-blue-600'
+                    // Use role-specific workflow state detection
+                    (() => {
+                      const workflowState = getWorkflowStateForRole(task, user.role);
+                      if (workflowState.isTargetedRework || workflowState.isRework)
+                        return 'bg-orange-100 text-orange-800 border-2 border-orange-600';
+                      else if (workflowState.isRejected)
+                        return 'bg-red-100 text-red-700 border-red-600';
+                      else if (task.status === TaskStatus.DONE)
+                        return 'bg-green-100 text-green-700 border-green-600';
+                      else
+                        return 'bg-blue-100 text-blue-700 border-blue-600';
+                    })()
                   }`}
                 >
-                  {task.history?.some(h => h.action === 'REWORK')
-                    ? 'Rework'
-                    : task.history?.some(h => h.action === 'REJECTED')
-                    ? 'Rejected'
-                    : task.status === TaskStatus.DONE
-                    ? 'Approved'
-                    : 'In Progress'}
+                  {(() => {
+                    const workflowState = getWorkflowStateForRole(task, user.role);
+                    if (workflowState.isTargetedRework || workflowState.isRework)
+                      return 'Rework';
+                    else if (workflowState.isRejected)
+                      return 'Rejected';
+                    else if (task.status === TaskStatus.DONE)
+                      return 'Approved';
+                    else
+                      return 'In Progress';
+                  })()}
                 </span>
               </div>
 

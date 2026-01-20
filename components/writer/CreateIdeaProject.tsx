@@ -234,13 +234,17 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
 
       <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-10">
         <div className="max-w-4xl mx-auto space-y-6">
-          {isRework && project?.rejected_reason && (
+          {isRework && (
             <div className="p-4 bg-red-50 border-l-4 border-red-500">
               <h4 className="font-black text-red-800 uppercase mb-2">
                 Rework Comments from Reviewer
               </h4>
               <p className="text-red-700 whitespace-pre-wrap">
-                {project.rejected_reason}
+                {(() => {
+                  // Get the rework comment from workflow history instead of project.rejected_reason
+                  const reworkHistory = project.history?.find(h => h.action === 'REWORK');
+                  return reworkHistory?.comment || 'No specific reason provided.';
+                })()}
               </p>
             </div>
           )}

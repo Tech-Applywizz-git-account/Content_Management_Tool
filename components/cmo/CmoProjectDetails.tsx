@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel } from '../../types';
 import { format } from 'date-fns';
-import { ArrowLeft, Video, Image as ImageIcon, Download } from 'lucide-react';
+import { ArrowLeft, Video, Image as ImageIcon, Download, MessageSquare, User } from 'lucide-react';
 import Timeline from '../../components/Timeline';
 import { db } from '../../services/supabaseDb';
+import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
     project: Project;
@@ -14,6 +15,8 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
     const [users, setUsers] = useState<any[]>([]);
     const [fullProject, setFullProject] = useState<Project>(project);
     const [assignedUserName, setAssignedUserName] = useState<string | undefined>(undefined);
+    const [editorName, setEditorName] = useState<string | undefined>(undefined);
+    const [comments, setComments] = useState<any[]>([]);
 
     useEffect(() => {
         // Fetch full project details including history
@@ -52,7 +55,7 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
         fetchUsers();
     }, [project]);
     
-    // Update assigned user name when fullProject changes
+    // Update assigned user name, writer name, and editor name when fullProject changes
     useEffect(() => {
         if (fullProject.assigned_to_user_id && users.length > 0) {
             const assignedUser = users.find(user => user.id === fullProject.assigned_to_user_id);
@@ -60,7 +63,63 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                 setAssignedUserName(assignedUser.full_name);
             }
         }
+        
+        // Fetch writer name if writer_id is available but writer_name is not
+        if (fullProject.writer_id && !fullProject.writer_name && users.length > 0) {
+            const writerUser = users.find(user => user.id === fullProject.writer_id);
+            if (writerUser) {
+                // Update the fullProject state to include the writer name
+                setFullProject(prev => ({
+                    ...prev,
+                    writer_name: writerUser.full_name
+                }));
+            }
+        }
+        
+        // Fetch editor name based on editor_user_id from project data if available
+        if (fullProject.data?.editor_user_id && users.length > 0) {
+            const editorUser = users.find(user => user.id === fullProject.data.editor_user_id);
+            if (editorUser) {
+                setEditorName(editorUser.full_name);
+            }
+        } else if (fullProject.editor_user_id && users.length > 0) {
+            // Check if editor_user_id exists directly on the project object
+            const editorUser = users.find(user => user.id === fullProject.editor_user_id);
+            if (editorUser) {
+                setEditorName(editorUser.full_name);
+            }
+        } else {
+            // If no user ID is available, try to set the editor name directly from the project if it's already available
+            if (fullProject.editor_name) {
+                setEditorName(fullProject.editor_name);
+            }
+        }
     }, [fullProject, users]);
+    
+    // Fetch comments
+    useEffect(() => {
+        const fetchComments = async () => {
+            const { data: commentsData, error: commentsError } = await supabase
+                .from('workflow_history')
+                .select(`
+                    action,
+                    comment,
+                    actor_name,
+                    timestamp
+                `)
+                .eq('project_id', fullProject.id)
+                .in('action', ['APPROVED', 'REJECTED', 'REWORK'])
+                .order('timestamp', { ascending: false });
+
+            if (commentsError) {
+                console.error('Error fetching comments:', commentsError);
+            } else {
+                setComments(commentsData || []);
+            }
+        };
+
+        fetchComments();
+    }, [fullProject.id]);
     const isVideo = fullProject.channel !== Channel.LINKEDIN;
 
     const getRoleForStage = (stage: WorkflowStage): string => {
@@ -176,7 +235,10 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                              fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content ? 'Idea Details: ' : 'Project Details: '}
                             {fullProject.title}
                         </h1>
-                        <div className="flex items-center space-x-2 mt-1">
+                        
+
+                        
+                        <div className="flex items-center space-x-2 mt-2">
                             {fullProject.data?.source === 'IDEA_PROJECT' && (
                                 <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                                     {fullProject.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
@@ -211,14 +273,6 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                 <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
                     {/* Info Block */}
                     <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">
-                                Writer
-                            </label>
-                            <div className="font-bold text-slate-900 uppercase">
-                                {fullProject.writer_name || '—'}
-                            </div>
-                        </div>
 
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
@@ -301,8 +355,36 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                         </div>
                     </section>
 
-                    {/* Timeline intentionally omitted for main dashboard projects */}
-                    {/* Timeline only appears in CMO Overview page as per requirements */}
+                    {/* Comments & Feedback Section */}
+                    {(comments.length > 0) && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <div className="flex items-center space-x-2 mb-4">
+                                <MessageSquare className="w-6 h-6" />
+                                <h3 className="text-2xl font-black uppercase text-slate-900">Comments & Feedback</h3>
+                            </div>
+
+                            {comments.length > 0 ? (
+                                <div className="space-y-6 bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                    {comments.map((comment, index) => (
+                                        <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="font-bold text-slate-900">{comment.actor_name}</p>
+                                                    <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {comment.action}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-slate-500 italic">No comments yet</p>
+                            )}
+                        </section>
+                    )}
 
                     {/* Assets Section */}
                     {(fullProject.current_stage === WorkflowStage.FINAL_REVIEW_CMO || 
@@ -411,6 +493,8 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                                 Role assigned: {getMostRecentTimestampForRole(fullProject.assigned_to_role)}
                             </div>
                         </div>
+
+
 
                         <div className="p-6 border-2 border-black bg-white">
                             <div className="flex items-center justify-between">

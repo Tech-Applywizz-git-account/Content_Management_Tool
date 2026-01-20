@@ -180,7 +180,9 @@ const approvedIdeas = dashboardProjects.filter(p =>
       h.action === 'APPROVED'
   ) &&
   // ✅ IMPORTANT: hide ideas that already became scripts
-  !convertedIdeaIds.has(p.id)
+  !convertedIdeaIds.has(p.id) &&
+  // ✅ IMPORTANT: only show ideas created by the current writer
+  (p.created_by === user.id || p.created_by_user_id === user.id)
 );
 const handleEdit = (project: Project) => {
   const parsedData =

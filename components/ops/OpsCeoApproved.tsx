@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 
 interface Props {
     projects: Project[];
-    onSelectProject: (project: Project) => void;
+    onSelectProject: (project: {project: Project, source: 'ceoapproved'}) => void;
 }
 
 const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
@@ -137,7 +137,7 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                             {/* Read-only view - no action button */}
                             <div className="border-t-2 border-slate-100 pt-3">
                                 <button 
-                                    onClick={() => onSelectProject(project)}
+                                    onClick={() => onSelectProject({project, source: 'ceoapproved'})}
                                     className="w-full bg-[#8B5CF6] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
                                 >
                                     <Eye size={12} className="inline mr-1" /> View Details

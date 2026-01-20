@@ -3,6 +3,7 @@ import { Project, Role } from '../types';
 export interface WorkflowState {
   isRejected: boolean;
   isRework: boolean;
+  isTargetedRework: boolean; // True if current user's role was specifically targeted for rework
   isInReview: boolean;
   isApproved: boolean;
   latestAction: string | null;
@@ -32,13 +33,35 @@ export function getWorkflowState(project: Project | undefined): WorkflowState {
 
   const isRejected = latestAction === "REJECTED";
   
-  // A project is in rework state if there was a "REWORK" action in history
-  // and the project is still in the rework workflow (not yet fully approved)
-  const hasReworkAction = project?.history?.some(h => h.action === 'REWORK') || false;
-  // The project is considered in rework if:
-  // 1. There was a REWORK action in history
-  // 2. The latest action is not an approval (meaning the rework cycle is not complete)
-  const isRework = hasReworkAction && latestAction !== 'APPROVED';
+  // For the general workflow state (without role context), we check if there's any unresolved rework
+  let isRework = false;
+  
+  if (project?.history && project.history.length > 0) {
+    // Sort history by timestamp descending to find the most recent actions
+    const sortedHistory = [...project.history].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // Find the most recent REWORK or REJECTED action
+    const reworkAction = sortedHistory.find(h => {
+      return h.action === 'REWORK' || h.action === 'REJECTED';
+    });
+    
+    // Check if there's a later SUBMITTED or APPROVED action after the rework/reject action
+    if (reworkAction) {
+      const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
+      const hasLaterSubmission = sortedHistory.some(h => {
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const actionTimestamp = new Date(h.timestamp).getTime();
+        return isSubmissionAction && actionTimestamp > reworkTimestamp;
+      });
+      
+      // Only show rework if there's no later submission/approval
+      if (!hasLaterSubmission) {
+        isRework = true;
+      }
+    }
+  }
   
   const isInReview = 
     latestAction === "SUBMITTED" || 
@@ -48,6 +71,87 @@ export function getWorkflowState(project: Project | undefined): WorkflowState {
   return {
     isRejected,
     isRework,
+    isTargetedRework: false, // Default value, will be calculated separately based on user context
+    isInReview,
+    isApproved,
+    latestAction
+  };
+}
+
+/**
+ * Determine workflow state with role-specific context (for targeted rework detection)
+ */
+export function getWorkflowStateForRole(project: Project | undefined, userRole: string): WorkflowState {
+  const latestAction = getLatestAction(project);
+
+  // Check for targeted rework: REWORK action where to_role matches user's role and stage matches current project stage
+  // AND there is no later SUBMITTED or APPROVED action that would resolve the rework
+  let isRework = false;
+  let isTargetedRework = false;
+  let isRejected = false;
+  
+  if (project?.history && project.history.length > 0) {
+    // Sort history by timestamp descending to find the most recent actions
+    const sortedHistory = [...project.history].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // Find the most recent REWORK action that targets the current user's role
+    const reworkAction = sortedHistory.find(h => {
+      return h.action === 'REWORK' && 
+             h.to_role === userRole && 
+             h.stage === project.current_stage;
+    });
+    
+    // Find the most recent REJECTED action that targets the current user's role
+    const rejectedAction = sortedHistory.find(h => {
+      return h.action === 'REJECTED' && 
+             h.to_role === userRole && 
+             h.stage === project.current_stage;
+    });
+    
+    // Check if there's a later SUBMITTED or APPROVED action after the rework/reject action
+    if (reworkAction) {
+      const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
+      const hasLaterSubmission = sortedHistory.some(h => {
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const actionTimestamp = new Date(h.timestamp).getTime();
+        return isSubmissionAction && actionTimestamp > reworkTimestamp;
+      });
+      
+      // Only show rework if there's no later submission/approval
+      if (!hasLaterSubmission) {
+        isRework = true;
+        isTargetedRework = true;
+      }
+    }
+    
+    if (rejectedAction) {
+      const rejectedTimestamp = new Date(rejectedAction.timestamp).getTime();
+      const hasLaterSubmission = sortedHistory.some(h => {
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const actionTimestamp = new Date(h.timestamp).getTime();
+        return isSubmissionAction && actionTimestamp > rejectedTimestamp;
+      });
+      
+      // Only show rejected if there's no later submission/approval
+      if (!hasLaterSubmission) {
+        isRejected = true;
+        isRework = true; // Rejected projects are also considered in rework state
+        isTargetedRework = true;
+      }
+    }
+  }
+  
+  const isInReview = 
+    latestAction === "SUBMITTED" || 
+    latestAction?.includes("REWORK_");
+  const isApproved = latestAction === "APPROVED";
+
+  return {
+    isRejected,
+    isRework,
+    isTargetedRework,
     isInReview,
     isApproved,
     latestAction
@@ -69,11 +173,14 @@ export function canUserEdit(role: string, workflowState: WorkflowState, assigned
   // When in rework state, implement the hierarchical access rules:
   // - If assigned to CINE: CINE, EDITOR, and DESIGNER can edit
   // - If assigned to EDITOR: EDITOR and DESIGNER can edit
+  // - If assigned to SUB_EDITOR: SUB_EDITOR and EDITOR can edit
   // - If assigned to DESIGNER: only DESIGNER can edit
   if (assignedRole === Role.CINE) {
     return role === Role.CINE || role === Role.EDITOR || role === Role.DESIGNER;
   } else if (assignedRole === Role.EDITOR) {
     return role === Role.EDITOR || role === Role.DESIGNER;
+  } else if (assignedRole === Role.SUB_EDITOR) {
+    return role === Role.SUB_EDITOR || role === Role.EDITOR;
   } else if (assignedRole === Role.DESIGNER) {
     return role === Role.DESIGNER;
   }
@@ -83,30 +190,70 @@ export function canUserEdit(role: string, workflowState: WorkflowState, assigned
 }
 
 /**
- * Get the most recent rework/reject comment from project history
+ * Get the most recent rework/reject comment from project history for a specific role
+ * Only returns comments where:
+ * - action = 'REWORK' or 'REJECTED'
+ * - to_role = current_user_role
+ * - and no resubmission has happened after the rework request
  */
-export function getLatestReworkRejectComment(project: Project | undefined): { comment: string | null; actor_name: string | null } | null {
+export function getLatestReworkRejectComment(project: Project | undefined, userRole?: string): { comment: string | null; actor_name: string | null } | null {
   if (!project || !project.history || project.history.length === 0) {
     return null;
   }
   
-  // Sort by timestamp to get the most recent action
+  // Sort by timestamp to get the most recent actions
   const sortedHistory = [...project.history].sort((a, b) => 
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
   
   // Find the most recent REWORK or REJECTED action
-  const reworkRejectAction = sortedHistory.find(h => 
-    h.action === 'REWORK' || h.action === 'REJECTED'
-  );
+  const reworkRejectAction = sortedHistory.find(h => {
+    const isReworkOrRejected = h.action === 'REWORK' || h.action === 'REJECTED';
+    
+    // If no user role is specified, return the first rework/reject action
+    if (!userRole) {
+      return isReworkOrRejected;
+    }
+    
+    // If user role is specified, only return actions where to_role matches the user's role and stage matches current project stage
+    return isReworkOrRejected && h.to_role === userRole && h.stage === project.current_stage;
+  });
   
+  // If we found a rework/reject action, check if there was a resubmission after it
   if (reworkRejectAction) {
+    // Find any resubmission action that happened after this rework/reject action
+    const reworkRejectTimestamp = new Date(reworkRejectAction.timestamp).getTime();
+    
+    // Look for resubmission actions that happened after the rework/reject
+    const hasResubmissionAfterRework = sortedHistory.some(h => {
+      // Actions that indicate resubmission after rework
+      const isResubmissionAction = [
+        'SUBMITTED',           // General submission
+        'REWORK_VIDEO_SUBMITTED',
+        'REWORK_EDIT_SUBMITTED', 
+        'REWORK_DESIGN_SUBMITTED',
+        'DIRECT_UPLOAD'
+      ].includes(h.action);
+      
+      const actionTimestamp = new Date(h.timestamp).getTime();
+      
+      // Check if this resubmission happened after the rework/reject action
+      return isResubmissionAction && actionTimestamp > reworkRejectTimestamp;
+    });
+    
+    // If there was a resubmission after the rework, don't show the old rework comment
+    if (hasResubmissionAfterRework) {
+      return null;
+    }
+    
     return {
       comment: reworkRejectAction.comment || null,
       actor_name: reworkRejectAction.actor_name || null
     };
   }
   
+  // If no targeted rework/reject action found for this user's role, return null
+  // This ensures that rejected_reason from the project level is not used
   return null;
 }
 
@@ -182,25 +329,38 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
 
 /**
  * Determine if a project is a rework project based on history
- * A project is considered a rework project if it has any rework-related actions in its history
+ * A project is considered a rework project if it has any unresolved rework-related actions in its history
  */
 export function isReworkProject(project: Project): boolean {
   if (!project.history) return false;
 
-  // Check if the project has any rework actions in its history
-  const hasAnyRework = project.history.some(h => {
-    const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
+  // Sort history by timestamp descending to find the most recent actions
+  const sortedHistory = [...project.history].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  
+  // Find the most recent REWORK or REJECTED action
+  const reworkAction = sortedHistory.find(h => {
+    const isReworkAction = h.action === 'REWORK' || h.action === 'REJECTED';
     return isReworkAction;
   });
-
-  // Check if the project has been resubmitted by writer after being sent for rework
-  // Look for the pattern: REWORK action followed by SUBMITTED action
-  const hasResubmittedAfterRework = project.history.some(h => h.action === 'SUBMITTED') && 
-                                   project.history.some(h => h.action === 'REWORK' || h.action?.startsWith('REWORK_'));
-
+  
+  // If there's a rework action, check if it has been resolved by a later submission
+  if (reworkAction) {
+    const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
+    const hasLaterSubmission = sortedHistory.some(h => {
+      const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+      const actionTimestamp = new Date(h.timestamp).getTime();
+      return isSubmissionAction && actionTimestamp > reworkTimestamp;
+    });
+    
+    // Return true only if there was a rework action and it hasn't been resolved by submission/approval
+    return !hasLaterSubmission;
+  }
+  
   // Also check if the project status is REWORK
   const hasReworkStatus = project.status === 'REWORK';
-
-  // Return true if any of these conditions are met
-  return hasAnyRework || hasResubmittedAfterRework || hasReworkStatus;
+  
+  // Return true if there's no rework action but the status is REWORK
+  return hasReworkStatus;
 }

@@ -11,12 +11,14 @@ const ApprovalStatusIndicator: React.FC<ApprovalStatusIndicatorProps> = ({ proje
   // Check if project has been reviewed by CMO
   const hasCmoReview = project.history?.some(event => 
     event.stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
+    event.stage === WorkflowStage.POST_WRITER_REVIEW ||
     event.stage === WorkflowStage.FINAL_REVIEW_CMO
   );
   
   // Check if CMO approved the project
   const cmoApproved = project.history?.some(event => 
     (event.stage === WorkflowStage.SCRIPT_REVIEW_L1 && event.action === 'APPROVED') ||
+    (event.stage === WorkflowStage.POST_WRITER_REVIEW && event.action === 'APPROVED') ||
     (event.stage === WorkflowStage.FINAL_REVIEW_CMO && event.action === 'APPROVED')
   );
   
@@ -40,6 +42,7 @@ const ApprovalStatusIndicator: React.FC<ApprovalStatusIndicatorProps> = ({ proje
   // Get the latest approval timestamps
   const cmoApprovalEvent = project.history?.find(event => 
     (event.stage === WorkflowStage.SCRIPT_REVIEW_L1 && event.action === 'APPROVED') ||
+    (event.stage === WorkflowStage.POST_WRITER_REVIEW && event.action === 'APPROVED') ||
     (event.stage === WorkflowStage.FINAL_REVIEW_CMO && event.action === 'APPROVED')
   );
   

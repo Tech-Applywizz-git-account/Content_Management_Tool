@@ -506,10 +506,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           )}
 
           {/* REJECTION REASON */}
-          {selectedHistory?.action === 'REJECTED' && projectData?.rejected_reason && (
+          {selectedHistory?.action === 'REJECTED' && selectedHistory?.comment && (
             <div className="border-2 border-black p-4 bg-red-50">
               <h3 className="font-black uppercase mb-2 text-red-800">Rejection Reason</h3>
-              <p className="text-red-700">{projectData.rejected_reason}</p>
+              <p className="text-red-700">{selectedHistory.comment}</p>
             </div>
           )}
 

@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
   project: Project;
@@ -32,9 +32,9 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   const [stageName, setStageName] = useState('');
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
-  // Use the new workflow state logic
-  const workflowState = getWorkflowState(project);
-  const isRework = workflowState.isRework;
+  // Use the new workflow state logic with role context
+  const workflowState = getWorkflowStateForRole(project, userRole);
+  const isRework = workflowState.isTargetedRework || workflowState.isRework;
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
@@ -86,6 +86,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       alert('Please select a delivery date');
       return;
     }
+    
+    // Check if delivery date is already set
+    if (project.delivery_date) {
+      alert('Delivery date is already set and cannot be changed');
+      return;
+    }
 
     try {
       // Get user session
@@ -109,8 +115,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
       // Update the project with the delivery date but keep it in VIDEO_EDITING stage
       // The stage only changes when the edited video is uploaded
-      await db.projects.update(project.id, { delivery_date: deliveryDate });
+      const updatedProject = await db.projects.update(project.id, { delivery_date: deliveryDate });
       console.log(`Delivery date set: ${deliveryDate}`);
+      
+      // Update local state
+      setLocalProject(updatedProject);
 
       // Show popup notification (include calendar visibility and derive stage label)
       const stageLabel = STAGE_LABELS[WorkflowStage.VIDEO_EDITING] || 'Video Editing';
@@ -302,11 +311,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <div className="p-4 bg-white border-l-4 border-red-500">
               <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
               <p className="text-red-700">
-                {getLatestReworkRejectComment(project)?.comment ||
+                {getLatestReworkRejectComment(project, userRole)?.comment ||
                   'No specific reason provided. Please review your submission and make necessary changes.'}
               </p>
               <p className="text-sm text-red-600 mt-2">
-                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project)?.actor_name || 'Reviewer'}
+                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project, userRole)?.actor_name || 'Reviewer'}
               </p>
             </div>
 
@@ -440,7 +449,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
               <div className="bg-white border-2 border-blue-300 p-4">
                 <p className="text-sm font-bold uppercase text-blue-800 mb-1">Assigned To</p>
-                <p className="text-lg font-bold text-blue-900">Sub-Editor</p>
+                <p className="text-lg font-bold text-blue-900">
+                  {localProject.assigned_to_user_id 
+                    ? (subEditors.find(se => se.id === localProject.assigned_to_user_id)?.full_name || 'Sub-Editor') 
+                    : 'Sub-Editor'}
+                </p>
               </div>
 
               <p className="text-sm text-slate-500 italic">
@@ -584,12 +597,9 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
                     <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
                   </div>
-                  <button
-                    onClick={() => setDeliveryDate('')}
-                    className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase hover:bg-orange-100 transition-colors"
-                  >
-                    Reschedule
-                  </button>
+                  <div className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase bg-orange-200">
+                    Locked
+                  </div>
                 </div>
               </div>
             )}

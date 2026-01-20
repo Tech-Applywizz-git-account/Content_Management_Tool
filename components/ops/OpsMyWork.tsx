@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 interface Props {
     user: { full_name: string };
     projects: Project[];
-    onSelectProject: (project: Project) => void;
+    onSelectProject: (project: {project: Project, source: 'mywork'}) => void;
     filterCategory?: string; // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
 }
 
@@ -82,7 +82,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                 {myTasks.map(project => (
                     <div
                         key={project.id}
-                        onClick={() => onSelectProject(project)}
+                        onClick={() => onSelectProject({project, source: 'mywork'})}
                         className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                     >
                         <div className="p-6 space-y-4">
@@ -164,7 +164,11 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                             <p className="text-[10px] font-bold text-red-800 uppercase">Rework Requested</p>
                                             {project.history && project.history.length > 0 && (
                                                 <p className="text-[10px] text-red-600 mt-1">
-                                                    {project.history[0].comment || 'No comment provided'}
+                                                    {(() => {
+                                                      // Find the most recent REWORK or REJECTED action for the comment
+                                                      const reworkHistory = project.history.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
+                                                      return reworkHistory?.comment || 'No comment provided';
+                                                    })()}
                                                 </p>
                                             )}
                                         </div>
