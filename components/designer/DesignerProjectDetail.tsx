@@ -147,7 +147,14 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 updates.creative_link = link;
             }
 
-            await db.projects.update(project.id, updates);
+            await db.projects.update(project.id, {
+                ...updates,
+                designer_uploaded_at: new Date().toISOString(), // Store timestamp
+                designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
+                data: {
+                    ...project.data
+                }
+            });
 
             // Update project data to persist any changes made during this session
             // Include the asset links in the update so timestamp logic can detect the upload
@@ -250,7 +257,14 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 updates.creative_link = link;
             }
 
-            await db.projects.update(project.id, updates);
+            await db.projects.update(project.id, {
+                ...updates,
+                designer_uploaded_at: new Date().toISOString(), // Store timestamp
+                designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
+                data: {
+                    ...project.data
+                }
+            });
 
             // Skip to CMO review stage directly
             await db.workflow.approve(

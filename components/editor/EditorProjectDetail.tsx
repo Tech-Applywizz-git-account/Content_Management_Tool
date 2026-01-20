@@ -175,7 +175,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       // This will properly check thumbnail_required and route to correct stage
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
-        editor_uploaded_at: new Date().toISOString(), // ✅ REQUIRED
+        editor_uploaded_at: new Date().toISOString(), 
+        editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
         status: TaskStatus.WAITING_APPROVAL,
         data: {
           ...project.data,

@@ -28,9 +28,11 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
         
         setAllProjects(data || []);
         
-        // Fetch user details for assigned editors
-        const editorProjects = data?.filter(p => p.assigned_to_role === Role.EDITOR && p.assigned_to_user_id) || [];
-        const userIds: string[] = [...new Set(editorProjects.map(p => p.assigned_to_user_id).filter(Boolean))] as string[];
+        // Fetch user details for assigned editors, sub-editors, and designers
+        const assignedProjects = data?.filter(p => p.assigned_to_user_id && 
+          (p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR || p.assigned_to_role === Role.DESIGNER)
+        ) || [];
+        const userIds: string[] = [...new Set(assignedProjects.map(p => p.assigned_to_user_id).filter(Boolean))] as string[];
         
         const userDetailsMap: Record<string, User> = {};
         for (const userId of userIds) {
@@ -58,22 +60,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
   // Filter projects by type
   const ideaProjects = allProjects.filter(p => p.data?.source === 'IDEA_PROJECT');
   const scriptProjects = allProjects.filter(p => p.data?.source !== 'IDEA_PROJECT' || p.data?.script_content);
-  
-  // Count projects by status
-  const pendingAtCEO = allProjects.filter(p => 
-    p.assigned_to_role === Role.CEO && 
-    p.status === TaskStatus.WAITING_APPROVAL
-  ).length;
-  
-  const withCine = allProjects.filter(p => 
-    p.assigned_to_role === Role.CINE && 
-    p.status !== TaskStatus.DONE
-  ).length;
-  
-  const withEditor = allProjects.filter(p => 
-    p.assigned_to_role === Role.EDITOR && 
-    p.status !== TaskStatus.DONE
-  ).length;
   
   // Count approved by current user
   const approvedByYou = allProjects.filter(p => 
@@ -111,21 +97,31 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
               <p className="font-medium bg-slate-50 p-2">{project.channel}</p>
             </div>
             <div>
-              <div>
-  <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Writer</h3>
-  <p className="font-medium bg-slate-50 p-2">
-    {project.writer_name || '—'}
-  </p>
-</div>
-<div>
-  <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
-  <p className="font-medium bg-slate-50 p-2">
-    {project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id 
-      ? userDetails[project.assigned_to_user_id]?.full_name || 'Loading...' 
-      : '—'}
-  </p>
-</div>
-
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Writer</h3>
+              <p className="font-medium bg-slate-50 p-2">
+                {project.writer_name || '—'}
+              </p>
+            </div>
+            {project.data?.source !== 'IDEA_PROJECT' && (
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
+              <p className="font-medium bg-slate-50 p-2">
+                {project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name || 
+                  (project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id 
+                    ? userDetails[project.assigned_to_user_id]?.full_name || 'Loading...' 
+                    : '—')}
+              </p>
+            </div>
+            )}
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Status</h3>
+              <p className="font-medium bg-slate-50 p-2">{project.status}</p>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Current Stage</h3>
+              <p className="font-medium bg-slate-50 p-2">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</p>
+            </div>
+            <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Priority</h3>
               <span className={`inline-block px-2 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                 ? 'bg-red-500 text-white'
@@ -135,14 +131,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                 }`}>
                 {project.priority}
               </span>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Status</h3>
-              <p className="font-medium bg-slate-50 p-2">{project.status}</p>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Current Stage</h3>
-              <p className="font-medium bg-slate-50 p-2">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</p>
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Assigned To</h3>
@@ -247,28 +235,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
   return (
     <div className="space-y-6">
       <h1 className="text-4xl font-black uppercase">Overview</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-200">
-          <p className="text-xs font-bold uppercase mb-2">Approved by you</p>
-          <p className="text-3xl font-black text-center py-4 bg-green-100 text-green-800">{approvedByYou}</p>
-        </div>
-
-        <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-200">
-          <p className="text-xs font-bold uppercase mb-2">Pending at CEO</p>
-          <p className="text-3xl font-black text-center py-4 bg-blue-100 text-blue-800">{pendingAtCEO}</p>
-        </div>
-
-        <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-200">
-          <p className="text-xs font-bold uppercase mb-2">With Cine</p>
-          <p className="text-3xl font-black text-center py-4 bg-purple-100 text-purple-800">{withCine}</p>
-        </div>
-
-        <div className="p-6 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all duration-200">
-          <p className="text-xs font-bold uppercase mb-2">With Editor</p>
-          <p className="text-3xl font-black text-center py-4 bg-yellow-100 text-yellow-800">{withEditor}</p>
-        </div>
-      </div>
       
       {/* Tabs for Idea and Script projects */}
       <div className="flex space-x-4 border-b border-gray-200">
@@ -348,9 +314,17 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                     <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                       Created: {new Date(project.created_at).toLocaleDateString()}
                     </div>
-                    {project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id && (
+                    {/* Show actual editor who uploaded content first, then fall back to assigned user */}
+                    {project.data?.source !== 'IDEA_PROJECT' && (project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
                       <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                        Editor: {userDetails[project.assigned_to_user_id]?.full_name || 'Loading...'}
+                        Editor: {project.editor_name || project.sub_editor_name || project.data.editor_name || project.data.sub_editor_name}
+                      </div>
+                    )}
+                    {/* Show assigned user if no actual editor name is available */}
+                    {project.data?.source !== 'IDEA_PROJECT' && project.assigned_to_user_id && !(project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (
+                      <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                        {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && 'Editor'}
+                        : {userDetails[project.assigned_to_user_id]?.full_name || 'Loading...'}
                       </div>
                     )}
                   </div>

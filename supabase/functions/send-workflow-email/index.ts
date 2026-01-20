@@ -132,7 +132,8 @@ serve(async (req) => {
 
             case "REWORK_VIDEO_SUBMITTED":
                 // Send to from_role (the role that requested rework)
-                if (from_role) {
+                // SPECIAL CASE: CEO should never receive any emails
+                if (from_role && from_role !== "CEO") {
                     const emails = await getRoleEmails(from_role);
                     recipientEmails.push(...emails);
                 }
@@ -145,6 +146,13 @@ serve(async (req) => {
                 break;
 
             case "SUBMITTED":
+                // SPECIAL CASE: CEO should never receive any emails
+                if (to_role && to_role !== "CEO") {
+                    const emails = await getRoleEmails(to_role);
+                    recipientEmails.push(...emails);
+                }
+                break;
+
             case "APPROVED":
                 // Special Handling: MULTI_WRITER_APPROVAL
                 // When the 3rd writer approves, notify BOTH CMO and OPS in parallel.
@@ -165,7 +173,8 @@ serve(async (req) => {
                 }
 
                 // Standard Logic: Send to to_role
-                if (to_role) {
+                // SPECIAL CASE: CEO should never receive any emails
+                if (to_role && to_role !== "CEO") {
                     const emails = await getRoleEmails(to_role);
                     recipientEmails.push(...emails);
                 }
@@ -175,28 +184,31 @@ serve(async (req) => {
                 // FIX: Strictly use to_role for routing.
                 // Do NOT use assigned_to_user_id because in rework flow, it often points to the reviewer (Actor).
 
-                if (to_role === "WRITER") {
-                    // Specific handling for WRITER: Send to the content creator
-                    const writerId = project.writer_id || project.created_by_user_id;
-                    const writerEmail = await getUserEmail(writerId);
+                // SPECIAL CASE: CEO should never receive any emails
+                if (to_role && to_role !== "CEO") {
+                    if (to_role === "WRITER") {
+                        // Specific handling for WRITER: Send to the content creator
+                        const writerId = project.writer_id || project.created_by_user_id;
+                        const writerEmail = await getUserEmail(writerId);
 
-                    if (writerEmail) {
-                        recipientEmails.push(writerEmail);
-                        console.log(`REWORK: Sending to specific writer: ${writerEmail}`);
+                        if (writerEmail) {
+                            recipientEmails.push(writerEmail);
+                            console.log(`REWORK: Sending to specific writer: ${writerEmail}`);
+                        } else {
+                            // Fallback to all writers if specific writer not found (rare)
+                            console.warn("REWORK: Specific writer not found, broadcasting to all WRITERs");
+                            const emails = await getRoleEmails("WRITER");
+                            recipientEmails.push(...emails);
+                        }
                     } else {
-                        // Fallback to all writers if specific writer not found (rare)
-                        console.warn("REWORK: Specific writer not found, broadcasting to all WRITERs");
-                        const emails = await getRoleEmails("WRITER");
+                        // For all other roles (CINE, EDITOR, DESIGNER, etc.), broadcast to the role
+                        // This ensures it goes to the correct target group
+                        console.log(`REWORK: Broadcasting to role: ${to_role}`);
+                        const emails = await getRoleEmails(to_role);
                         recipientEmails.push(...emails);
                     }
-                } else if (to_role) {
-                    // For all other roles (CINE, EDITOR, DESIGNER, etc.), broadcast to the role
-                    // This ensures it goes to the correct target group
-                    console.log(`REWORK: Broadcasting to role: ${to_role}`);
-                    const emails = await getRoleEmails(to_role);
-                    recipientEmails.push(...emails);
                 } else {
-                    console.warn("REWORK: No to_role specified, cannot route email.");
+                    console.warn("REWORK: No to_role specified or CEO role blocked, cannot route email.");
                 }
                 break;
 

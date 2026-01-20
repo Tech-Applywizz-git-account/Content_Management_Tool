@@ -148,6 +148,17 @@ const CmoTimelineView: React.FC<TimelineViewProps> = ({ project }) => {
     });
   }
 
+  // Add Sub-Editor upload
+  if (project.data?.sub_editor_uploaded_at) {
+    timelineItems.push({
+      id: 'sub-editor-uploaded',
+      label: 'Sub-Editor Uploaded Video',
+      timestamp: project.data.sub_editor_uploaded_at,
+      status: 'completed',
+      description: 'Edited video uploaded by sub-editor'
+    });
+  }
+
   // Add Designer upload
   if (project.designer_uploaded_at) {
     timelineItems.push({

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Role, TaskStatus, WorkflowStage } from '../../types';
+import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 import Popup from '../Popup';
 
 interface Props {
@@ -66,7 +66,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         localProject.current_stage!,
         user.id,
         user.email || user.id,
-        'SUBMITTED',
+        'SUB_EDITOR_SET_DELIVERY_DATE',
         `Delivery date set to ${deliveryDate}`
       );
 
@@ -84,8 +84,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       console.log(`Delivery date set: ${deliveryDate}`);
       
       // Show popup notification
+      const stageLabel = STAGE_LABELS[WorkflowStage.SUB_EDITOR_PROCESSING] || 'Sub-Editor Processing';
       setPopupMessage(`Delivery date set for ${localProject.title} on ${deliveryDate}.`);
-      setStageName('Sub-Editor Processing');
+      setStageName(stageLabel);
       setPopupDuration(5000); // 5 seconds
       setShowPopup(true);
       
@@ -123,7 +124,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       }
 
       // Record the action in workflow history with appropriate action type
-      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUBMITTED';
+      const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUB_EDITOR_VIDEO_UPLOADED';
       const comment = isRework
         ? `Rework edited video uploaded: ${editedVideoLink}`
         : `Edited video uploaded: ${editedVideoLink}`;
@@ -140,8 +141,15 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       // Update the project with the edited video link and advance the workflow
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
+        editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail (as per requirement)
+        sub_editor_uploaded_at: new Date().toISOString(), // Store timestamp
+        sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name in direct column
         status: TaskStatus.DONE,
-        data: { ...localProject.data, needs_sub_editor: false, thumbnail_required: localProject.data?.thumbnail_required } // Mark that sub-editor work is complete
+        data: { 
+          ...localProject.data, 
+          needs_sub_editor: false, 
+          thumbnail_required: localProject.data?.thumbnail_required
+        } // Mark that sub-editor work is complete
       });
 
       // Update project data to persist any changes made during this session
@@ -156,16 +164,51 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       // Advance workflow to next stage based on project settings using the helper logic
       await db.advanceWorkflow(localProject.id, comment);
 
-      // Update local state
+      // Get updated project to determine who to notify and update local state
       const updatedProject = await db.getProjectById(localProject.id);
       setLocalProject(updatedProject);
 
+      // Find users to notify based on the next assigned role
+      if (updatedProject?.assigned_to_role) {
+        const { data: nextUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', updatedProject.assigned_to_role)
+          .eq('status', 'ACTIVE');
+
+        if (nextUsers && nextUsers.length > 0) {
+          // Send notification to all users of the assigned role
+          for (const nextUser of nextUsers) {
+            try {
+              // Use type assertion to access the notifications service
+              const dbWithNotifications = db as any;
+              await dbWithNotifications.notifications.create(
+                nextUser.id,
+                localProject.id,
+                'ASSET_UPLOADED',
+                'New Edited Video Available',
+                `${user?.user_metadata?.full_name || 'Sub-Editor'} has uploaded an edited video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+              );
+            } catch (notificationError) {
+              console.error('Failed to send notification:', notificationError);
+              // Continue with the process even if notification fails
+            }
+          }
+        }
+      }
+
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
       
-      // Show popup notification
-      setPopupMessage(`${isRework ? 'Rework edited' : 'Edited'} video uploaded successfully!`);
-      setStageName('Sub-Editor Upload');
-      setPopupDuration(5000); // 5 seconds
+      // Show popup notification using STAGE_LABELS for the actual next stage
+      const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.FINAL_REVIEW_CMO] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
+      const popupMessageText = isRework
+          ? `Rework edited video uploaded successfully for ${localProject.title}. Waiting for ${actualNextStageLabel}.`
+          : `Edited video uploaded successfully for ${localProject.title}. Waiting for ${actualNextStageLabel}.`;
+
+      setPopupMessage(popupMessageText);
+      setStageName(actualNextStageLabel);
+      // For rework scenarios, use longer duration to ensure visibility
+      setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
       setShowPopup(true);
       
       onUpdate();
@@ -224,6 +267,112 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           </button>
         </div>
       </div>
+
+      {/* Rework Information Box (Shown for all rework projects assigned to Sub-Editor) */}
+      {(isRework || isRejected) && localProject.assigned_to_role === Role.SUB_EDITOR && localProject.history && localProject.history.length > 0 && (
+        <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+
+          {/* Header */}
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+              <span className="text-white font-bold text-sm">!</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-black uppercase text-red-800">
+                {isRejected ? 'Project Rejected' : 'Rework Required'}
+              </h2>
+              <p className="text-sm font-bold text-red-600">
+                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+
+            {/* Reviewer Comment */}
+            <div className="p-4 bg-white border-l-4 border-red-500">
+              <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+              <p className="text-red-700">
+                {getLatestReworkRejectComment(localProject, userRole)?.comment ||
+                  'No specific reason provided. Please review your submission and make necessary changes.'}
+              </p>
+              <p className="text-sm text-red-600 mt-2">
+                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
+              </p>
+            </div>
+
+            {/* Existing Project Data (READ-ONLY) */}
+            <div className="bg-white border-2 border-gray-300 p-4">
+              <h4 className="font-bold text-gray-800 mb-3">
+                Existing Project Data
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                {(localProject.delivery_date || isRework) && (
+
+                  <div>
+                    <span className="text-sm font-bold text-gray-600 block mb-1">
+                      Current Delivery Date
+                    </span>
+                    <p className="font-medium">{localProject.delivery_date}</p>
+                  </div>
+                )}
+
+                {localProject.edited_video_link && (
+                  <div>
+                    <span className="text-sm font-bold text-gray-600 block mb-1">
+                      Previous Edited Video
+                    </span>
+                    <a
+                      href={localProject.edited_video_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline break-all"
+                    >
+                      {localProject.edited_video_link}
+                    </a>
+                  </div>
+                )}
+
+                {localProject.video_link && (
+                  <div>
+                    <span className="text-sm font-bold text-gray-600 block mb-1">
+                      Raw Video Link
+                    </span>
+                    <a
+                      href={localProject.video_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 underline break-all"
+                    >
+                      {localProject.video_link}
+                    </a>
+                  </div>
+                )}
+
+                {localProject.shoot_date && (
+                  <div>
+                    <span className="text-sm font-bold text-gray-600 block mb-1">
+                      Shoot Date
+                    </span>
+                    <p className="font-medium">{localProject.shoot_date}</p>
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            {/* Instruction */}
+            <div className="bg-red-100 border-2 border-red-200 p-3">
+              <p className="text-sm text-red-800 font-bold">
+                Please review the feedback above and submit a new edited video in the section below.
+              </p>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">

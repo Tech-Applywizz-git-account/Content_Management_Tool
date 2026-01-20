@@ -83,6 +83,9 @@ export interface Project {
   created_by_name?: string; // Name of the creator
   writer_id?: string; // User ID of the writer (optional)
   writer_name?: string; // Name of the writer (optional)
+  editor_name?: string; // Name of the editor (optional)
+  designer_name?: string; // Name of the designer (optional)
+  sub_editor_name?: string; // Name of the sub-editor (optional)
   created_at: string;
   writer_submitted_at?: string; // When writer submits the project
   cmo_approved_at?: string; // When CMO approves the project

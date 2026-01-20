@@ -479,9 +479,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div className="text-xs font-bold uppercase text-slate-700">
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                             <div className="text-xs font-bold text-slate-500 uppercase">
-                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                             </div>
                           )}
                           <div className="text-xs font-bold text-slate-500 uppercase">
@@ -564,9 +564,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                             </div>
                           )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
@@ -631,9 +631,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                             </div>
                           )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
@@ -693,9 +693,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                             </div>
                           )}
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
@@ -779,9 +779,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
-                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                  Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                                  Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                                 </div>
                               )}
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
@@ -845,9 +845,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
-                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && p.assigned_to_user_id && (
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                  Editor: {p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor'}
+                                  Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || (p.assigned_to_user_id ? (users.find(u => u.id === p.assigned_to_user_id)?.full_name || 'Editor') : 'Editor')}
                                 </div>
                               )}
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">

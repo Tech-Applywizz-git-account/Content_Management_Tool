@@ -18,7 +18,10 @@ interface Props {
 
 const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete }) => {
     const [decision, setDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
-    const [comment, setComment] = useState('');
+    const [approveComment, setApproveComment] = useState('');
+    const [reworkComment, setReworkComment] = useState('');
+    const [reworkReason, setReworkReason] = useState('');
+    const [rejectComment, setRejectComment] = useState('');
     const [reworkStage, setReworkStage] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
@@ -42,6 +45,15 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
+
+    // Reset comment inputs when action changes
+    useEffect(() => {
+        setApproveComment('');
+        setReworkComment('');
+        setReworkReason('');
+        setRejectComment('');
+        setReworkStage('');
+    }, [decision]);
 
     // Effect to track when CEO opens the project for the first time
     useEffect(() => {
@@ -167,8 +179,21 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         setIsSubmitting(true);
 
         try {
+            // Get the appropriate comment based on decision type
+            let finalComment = '';
             if (decision === 'APPROVE') {
-                await db.advanceWorkflow(project.id, comment || 'Approved by CEO');
+                finalComment = approveComment || 'Approved by CEO';
+            } else if (decision === 'REWORK') {
+                // Avoid duplicating the same text if dropdown value matches text input
+                finalComment = reworkReason === reworkComment 
+                    ? reworkReason 
+                    : `${reworkReason}${reworkComment ? ' - ' + reworkComment : ''}`;
+            } else if (decision === 'REJECT') {
+                finalComment = rejectComment || 'Rejected by CEO';
+            }
+
+            if (decision === 'APPROVE') {
+                await db.advanceWorkflow(project.id, finalComment);
 
                 // Show popup for approval
                 let nextStage, displayStage, stageLabel;
@@ -196,7 +221,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 }, 0);
             } else if (decision === 'REWORK') {
                 // Send the project for rework
-                await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
+                await db.rejectTask(project.id, reworkStage as WorkflowStage, finalComment);
 
                 // Show popup for rework
                 const roleLabel = getReworkRoleLabel(reworkStage as WorkflowStage);
@@ -216,8 +241,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 // For reject, we don't send back to a specific role, just reject the project
                 // Use comment that indicates this is a full rejection to distinguish from rework
                 // Adding 'Project terminated' to trigger reject behavior in backend logic
-                const rejectComment = (comment ? comment + ' - Project terminated' : 'Rejected completely by CEO - Project terminated');
-                await db.rejectTask(project.id, WorkflowStage.SCRIPT, rejectComment);
+                const rejectCommentWithTermination = (finalComment ? finalComment + ' - Project terminated' : 'Rejected completely by CEO - Project terminated');
+                await db.rejectTask(project.id, WorkflowStage.SCRIPT, rejectCommentWithTermination);
 
                 // Show popup for rejection
                 setPopupMessage('CEO has rejected the script. The recipient will see comments but have limited editing capabilities.');
@@ -793,26 +818,93 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             </div>
                         )}
 
-                        {(decision === 'REWORK' || decision === 'REJECT' || decision === 'APPROVE') && (
+                        {/* Approve Comments - Dropdown only */}
+                        {decision === 'APPROVE' && (
                             <div className="animate-fade-in space-y-2">
-                                <label className="block text-xs font-black text-slate-500 uppercase">
-                                    {decision === 'APPROVE' ? 'Notes (Optional)' : 'Reason (Required)'}
-                                </label>
+                                <label className="block text-xs font-black text-slate-500 uppercase">Comment (Optional)</label>
+                                <select
+                                    value={approveComment}
+                                    onChange={(e) => setApproveComment(e.target.value)}
+                                    className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]"
+                                >
+                                    <option value="">-- Select Comment --</option>
+                                    <option value="Good work">Good work</option>
+                                    <option value="Looks good">Looks good</option>
+                                    <option value="Approved">Approved</option>
+                                    <option value="Approved without changes">Approved without changes</option>
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Rework Comments - Mandatory dropdown + input */}
+                        {decision === 'REWORK' && (
+                            <div className="animate-fade-in space-y-4">
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-black text-slate-500 uppercase">Reason *</label>
+                                    <select
+                                        value={reworkReason}
+                                        onChange={(e) => {
+                                            setReworkReason(e.target.value);
+                                            // Auto-populate the text input with the selected dropdown value
+                                            if (e.target.value !== 'Other') {
+                                                setReworkComment(e.target.value);
+                                            } else {
+                                                setReworkComment(''); // Clear the input when 'Other' is selected
+                                            }
+                                        }}
+                                        className={`w-full p-4 border-2 ${reworkReason ? 'border-black' : 'border-red-500'} bg-white focus:bg-yellow-50 focus:outline-none font-bold text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]`}
+                                    >
+                                        <option value="">-- Select Reason --</option>
+                                        <option value="Needs rework">Needs rework</option>
+                                        <option value="Minor changes required">Minor changes required</option>
+                                        <option value="Major changes required">Major changes required</option>
+                                        <option value="Script improvement needed">Script improvement needed</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                    {!reworkReason && (
+                                        <p className="text-xs text-red-500 font-bold">Reason is required</p>
+                                    )}
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-black text-slate-500 uppercase">Additional Instructions *</label>
+                                    <textarea
+                                        value={reworkComment}
+                                        onChange={(e) => setReworkComment(e.target.value)}
+                                        placeholder="Provide specific instructions..."
+                                        className={`w-full p-4 border-2 ${reworkComment ? 'border-black' : 'border-red-500'} rounded-none text-sm min-h-[100px] focus:bg-yellow-50 focus:outline-none font-medium resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]`}
+                                    />
+                                    {!reworkComment && (
+                                        <p className="text-xs text-red-500 font-bold">Instructions are required</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Reject Comments - Textarea */}
+                        {decision === 'REJECT' && (
+                            <div className="animate-fade-in space-y-2">
+                                <label className="block text-xs font-black text-slate-500 uppercase">Reason *</label>
                                 <textarea
-                                    value={comment}
-                                    onChange={(e) => setComment(e.target.value)}
-                                    placeholder={decision === 'APPROVE' ? "Good job..." : "Please fix..."}
-                                    className="w-full p-4 border-2 border-black rounded-none text-sm min-h-[120px] focus:bg-yellow-50 focus:outline-none font-medium resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]"
+                                    value={rejectComment}
+                                    onChange={(e) => setRejectComment(e.target.value)}
+                                    placeholder="Please provide reason for rejection..."
+                                    className={`w-full p-4 border-2 ${rejectComment ? 'border-black' : 'border-red-500'} rounded-none text-sm min-h-[120px] focus:bg-yellow-50 focus:outline-none font-medium resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]`}
                                 />
+                                {!rejectComment && (
+                                    <p className="text-xs text-red-500 font-bold">Reason is required</p>
+                                )}
                             </div>
                         )}
                     </div>
 
                     <div className="mt-8">
                         <button
-                            disabled={!decision || isSubmitting || (decision === 'REWORK' && (!reworkStage || reworkStage === '')) || (decision === 'REJECT' && (!comment || comment.trim() === ''))}
+                            disabled={!decision || isSubmitting || 
+                                (decision === 'REWORK' && (!reworkStage || reworkStage === '' || !reworkReason || !reworkComment)) || 
+                                (decision === 'REJECT' && (!rejectComment || rejectComment.trim() === ''))}
                             onClick={() => {
-                                console.log('Button clicked', { decision, reworkStage, comment });
+                                console.log('Button clicked', { decision, reworkStage, approveComment, reworkReason, reworkComment, rejectComment });
                                 setConfirmationAction(decision);
                                 setShowConfirmation(true);
                             }}
