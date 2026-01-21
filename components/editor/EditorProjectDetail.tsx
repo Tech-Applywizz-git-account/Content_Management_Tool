@@ -575,9 +575,9 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     console.log(`Project assigned to sub-editor: ${selectedSubEditor.full_name}`);
 
                     // Show popup notification
-                    setPopupMessage(`Project ${localProject.title} assigned to sub-editor: ${selectedSubEditor.full_name}.`);
+                    setPopupMessage(`Project ${localProject.title} has been successfully assigned to sub-editor: ${selectedSubEditor.full_name}. The sub-editor will now process the video editing task.`);
                     setStageName(STAGE_LABELS[WorkflowStage.SUB_EDITOR_ASSIGNMENT]);
-                    setPopupDuration(5000);
+                    setPopupDuration(7000); // Slightly longer duration for assignment notifications
                     setShowPopup(true);
 
                     // Update the parent component

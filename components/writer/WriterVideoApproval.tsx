@@ -311,6 +311,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             // Call the workflow reject function to send project back to the selected role
             await db.rejectTask(project.id, targetStage, reworkComment || 'Writer rejected the video - needs rework');
 
+            // Update the project to ensure it's not assigned to the writer anymore
+            // This ensures the project doesn't show in the writer's dashboard anymore
+            await db.updateProjectData(project.id, {
+                assigned_to_role: roleForRework,
+                assigned_to_user_id: null  // Clear specific user assignment
+            });
+
             // Show rejection popup
             setPopupMessage(`Video rejected. Sent back to ${roleForRework || 'Editor'} for rework.`);
             setStageName(STAGE_LABELS[targetStage] || 'Rework');

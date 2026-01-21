@@ -573,9 +573,10 @@ export const projects = {
         switch (role) {
             case Role.WRITER:
                 // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL, MULTI_WRITER_APPROVAL
+                // Only show projects assigned to the writer role
                 query = query.or(
                     `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL},current_stage.eq.${WorkflowStage.MULTI_WRITER_APPROVAL}`
-                );
+                ).eq('assigned_to_role', Role.WRITER);
                 break;
 
             case Role.CMO:
@@ -2241,7 +2242,6 @@ export const helpers = {
                     stage: contentType === 'VIDEO' ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
                     role: contentType === 'VIDEO' ? Role.EDITOR : Role.DESIGNER
                 },
-                [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 // New sub-editor stages
                 [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.SUB_EDITOR_PROCESSING]: { stage: WorkflowStage.SUB_EDITOR_ASSIGNMENT, role: Role.EDITOR },
@@ -2301,7 +2301,6 @@ export const helpers = {
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },  // After CEO final approval, send to ops for scheduling
-            [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },  // After writer approves, send to post-writer review stage for parallel visibility to CMO and OPS
             // ❌ MULTI_WRITER_APPROVAL removed from here as per instructions
             [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO }, // After post-writer review, send to CEO for final approval before ops scheduling
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
@@ -2980,13 +2979,50 @@ export const db = {
             nextStageInfo = { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR };
             // The assigned_to_user_id is already in the project and will be preserved during the update
         } else if (project.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && project.assigned_to_role === Role.SUB_EDITOR) {
-            // After sub-editor completes work, check if thumbnail is required
-            if (project.data?.thumbnail_required === false) {
-                // If no thumbnail required, go to writer for video approval
-                nextStageInfo = { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER };
+            // Check if this completion is from a rework scenario
+            const { data: workflowHistory, error: historyError } = await supabase
+                .from('workflow_history')
+                .select('*')
+                .eq('project_id', projectId)
+                .order('timestamp', { ascending: false })
+                .limit(10);
+            
+            let isFromSubEditorRework = false;
+            let reworkRequestActorRole = null;
+            
+            if (workflowHistory && workflowHistory.length > 0) {
+                // Find the most recent REWORK action targeted at SUB_EDITOR
+                const recentRework = workflowHistory.find(h => 
+                    (h.action === 'REWORK' || h.action === 'REJECTED') && 
+                    h.to_role === Role.SUB_EDITOR &&
+                    h.stage === WorkflowStage.SUB_EDITOR_PROCESSING
+                );
+                
+                if (recentRework && recentRework.from_role) {
+                    isFromSubEditorRework = true;
+                    reworkRequestActorRole = recentRework.from_role; // The role that requested the rework
+                }
+            }
+            
+            // If this was a rework requested by a higher role, route back to that role for review
+            if (isFromSubEditorRework) {
+                // Route back to the role that requested the rework
+                if (reworkRequestActorRole === Role.EDITOR) {
+                    nextStageInfo = { stage: WorkflowStage.SUB_EDITOR_ASSIGNMENT, role: Role.EDITOR };
+                } else if (reworkRequestActorRole === Role.CMO) {
+                    // If CMO requested the rework, route back to CMO for review
+                    nextStageInfo = { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO };
+                } else if (reworkRequestActorRole === Role.CEO) {
+                    // If CEO requested the rework, route back to CEO for review
+                    nextStageInfo = { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO };
+                } else {
+                    // Default: follow normal workflow
+                    // After sub-editor completes work, always go to multi-writer approval stage with writer as assigned role
+                    nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
+                }
             } else {
-                // If thumbnail required, go to designer
-                nextStageInfo = { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER };
+                // After sub-editor completes work, always go to multi-writer approval stage with writer as assigned role
+                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
             }
         } else if (project.current_stage === WorkflowStage.THUMBNAIL_DESIGN && project.assigned_to_role === Role.DESIGNER) {
             // After designer completes work, go to multi-writer approval
@@ -3001,9 +3037,6 @@ export const db = {
             // Always return to MULTI_WRITER_APPROVAL stage
             // The final decision on advancement happens in workflow.approve() after the approval is recorded
             nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-        } else if (project.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL && project.assigned_to_role === Role.WRITER) {
-            // After writer approves video, go to ops for scheduling
-            nextStageInfo = { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS };
         } else {
             // For all other transitions, use the standard hierarchy to ensure 
             // no review stages (like CMO review) are skipped, even after rework.
@@ -3092,7 +3125,6 @@ export const db = {
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.OPS,
-            [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO, // Assign to CMO for approval
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,

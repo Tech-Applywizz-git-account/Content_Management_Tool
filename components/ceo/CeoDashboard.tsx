@@ -233,6 +233,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           // Include project information
           title: project?.title || `Project ${entry.project_id}`,
           channel: project?.channel || 'UNKNOWN',
+          priority: project?.priority || 'NORMAL', // Include priority
           current_stage: entry.stage,
           created_at: entry.timestamp,
           status: project?.status || 'UNKNOWN'
@@ -255,7 +256,15 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     // Reset state when not viewing history detail
     if (!selectedProject || viewMode !== 'HISTORY') {
       setProjectData(null);
-      setLoadingProject(true);
+      setLoadingProject(false); // Don't show loading when not viewing
+      return;
+    }
+
+    // Check if selectedProject already has the necessary data
+    if (selectedProject.data && selectedProject.title && selectedProject.channel) {
+      // Project data is already available, no need to fetch
+      setProjectData(selectedProject);
+      setLoadingProject(false);
       return;
     }
 
@@ -471,9 +480,22 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             {/* Edit button - only show if current user is the actor */}
             {selectedHistory?.actor_id === user.id && (
               <button
-                onClick={() => {
-                  // Switch to review mode to edit
+                onClick={async () => {
+                  // Switch to review mode to edit, but use the full project data
                   setViewMode('REVIEW');
+                  // We need to make sure the selectedProject is the actual project, not the history entry
+                  if (selectedProject.project_id && !selectedProject.data) {
+                    // Fetch the full project data if not already available
+                    const { data, error } = await supabase
+                      .from('projects')
+                      .select('*')
+                      .eq('id', selectedProject.project_id)
+                      .single();
+                    
+                    if (data) {
+                      setSelectedProject(data);
+                    }
+                  }
                 }}
                 className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
               >
@@ -486,7 +508,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             {projectData.title} - Approved
           </h1>
           <p className="text-slate-600">
-            Approved on {selectedHistory?.timestamp ? new Date(selectedHistory.timestamp).toLocaleDateString() : 'Unknown date'}
+            Approved on {selectedHistory?.timestamp ? new Date(selectedHistory.timestamp).toLocaleString() : 'Unknown date'}
           </p>
 
           {/* SCRIPT CONTENT */}
@@ -527,10 +549,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
               </p>
               <p className="text-sm text-slate-500">
                 {selectedHistory?.timestamp
-                  ? `${Math.floor(
-                    (Date.now() - new Date(selectedHistory.timestamp).getTime()) /
-                    3600000
-                  )} hours ago`
+                  ? new Date(selectedHistory.timestamp).toLocaleString()
                   : ''}
               </p>
             </div>
@@ -692,10 +711,31 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
               {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).map(project => (
                 <div
                   key={project.id}
-                  onClick={() => {
+                  onClick={async () => {
                     if (activeTab === 'HISTORY') {
                       setViewMode('HISTORY');
-                      setSelectedProject(project);
+                                      
+                      // For history entries, we need to get the full project data
+                      // Check if project already has full data, otherwise fetch it
+                      if (project.data && project.priority) {
+                        // Project already has full data
+                        setSelectedProject(project);
+                      } else {
+                        // Need to fetch full project data
+                        const { data: fullProject, error } = await supabase
+                          .from('projects')
+                          .select('*')
+                          .eq('id', project.project_id)
+                          .single();
+                                        
+                        if (fullProject) {
+                          setSelectedProject(fullProject);
+                        } else {
+                          // Fallback to the history entry if full data unavailable
+                          setSelectedProject(project);
+                        }
+                      }
+                                      
                       // For history entries, we stored them by history entry ID
                       setSelectedHistory(historyMapRef.current.get(project.id));
                     } else {
@@ -754,13 +794,13 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   <h3 className="text-2xl font-black text-slate-900 mb-2 leading-tight uppercase truncate">
                     {project.title}
                   </h3>
-                   <div className="flex justify-between text-sm mt-2">
-              <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Writer</span>
-              <span className="font-bold text-slate-900 uppercase text-xs">{project.data?.writer_name || 'Unknown'}</span>
-            </div>
                   <div className="space-y-2 mt-8 border-t-2 border-slate-100 pt-4">
                     {activeTab === 'HISTORY' ? (
                       <>
+                        <div className="flex justify-between text-sm">
+                          <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Writer</span>
+                          <span className="font-bold text-slate-900 uppercase text-xs">{project.data?.writer_name || 'Unknown'}</span>
+                        </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Action</span>
                           <span className={`font-bold text-slate-900 uppercase text-xs ${project.action === 'APPROVED' ? 'text-green-600' : 'text-red-600'}`}>
@@ -775,11 +815,15 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Date</span>
-                          <span className="font-bold text-slate-900 uppercase text-xs">{format(new Date(project.created_at), 'MMM dd, yyyy')}</span>
+                          <span className="font-bold text-slate-900 uppercase text-xs">{format(new Date(project.timestamp), 'MMM dd, yyyy HH:mm')}</span>
                         </div>
                       </>
                     ) : (
                       <>
+                        <div className="flex justify-between text-sm">
+                          <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Writer</span>
+                          <span className="font-bold text-slate-900 uppercase text-xs">{project.data?.writer_name || 'Unknown'}</span>
+                        </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Current Stage</span>
                           <span className="font-bold text-slate-900 uppercase text-xs">

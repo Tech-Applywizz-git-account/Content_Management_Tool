@@ -95,39 +95,46 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
     useEffect(() => {
         const fetchPreviousScript = async () => {
-            // Fetch previous script version and asset links if project is rejected
-            const { data: historyData, error: historyError } = await supabase
-                .from('workflow_history')
-                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link')
-                .eq('project_id', project.id)
-                .in('action', ['REJECTED', 'REWORK', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'])
-                .order('timestamp', { ascending: false })
-                .limit(1);
+            // Fetch previous script version and asset links if project is in rework status
+            // Only show previous/current comparison if the project is actually in rework status
+            if (project.status === 'REWORK') {
+                const { data: historyData, error: historyError } = await supabase
+                    .from('workflow_history')
+                    .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link')
+                    .eq('project_id', project.id)
+                    .in('action', ['REJECTED', 'REWORK', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'])
+                    .order('timestamp', { ascending: false })
+                    .limit(1);
 
-            if (historyError) {
-                // Handle case where script_content column doesn't exist yet
-                if (historyError.code === '42703') {
-                    console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
-                } else {
-                    console.error('Error fetching previous script:', historyError);
-                }
-            } else if (historyData && historyData.length > 0) {
-                if (historyData[0].script_content) {
-                    setPreviousScript(historyData[0].script_content);
-                }
+                if (historyError) {
+                    // Handle case where script_content column doesn't exist yet
+                    if (historyError.code === '42703') {
+                        console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
+                    } else {
+                        console.error('Error fetching previous script:', historyError);
+                    }
+                } else if (historyData && historyData.length > 0) {
+                    if (historyData[0].script_content) {
+                        setPreviousScript(historyData[0].script_content);
+                    }
 
-                // Set previous asset links
-                setPreviousAssets({
-                    video_link: historyData[0].video_link,
-                    edited_video_link: historyData[0].edited_video_link,
-                    thumbnail_link: historyData[0].thumbnail_link,
-                    creative_link: historyData[0].creative_link
-                });
+                    // Set previous asset links
+                    setPreviousAssets({
+                        video_link: historyData[0].video_link,
+                        edited_video_link: historyData[0].edited_video_link,
+                        thumbnail_link: historyData[0].thumbnail_link,
+                        creative_link: historyData[0].creative_link
+                    });
+                }
+            } else {
+                // If not in rework status, ensure previous script is cleared
+                setPreviousScript(null);
+                setPreviousAssets(null);
             }
         };
 
         fetchPreviousScript();
-    }, [project.id]);
+    }, [project.id, project.status]);
 
     const downloadPDF = async () => {
         if (!scriptContentRef.current) return;

@@ -195,10 +195,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       );
 
       // Update the project with the edited video link and advance the workflow
-      // Determine if thumbnail is required to set appropriate status and stage
-      const thumbnailIsRequired = localProject.data?.thumbnail_required !== false;
-      const nextStatus = thumbnailIsRequired ? TaskStatus.WAITING_APPROVAL : TaskStatus.WAITING_APPROVAL; // Both routes require waiting for approval
-      const nextStage = thumbnailIsRequired ? WorkflowStage.THUMBNAIL_DESIGN : WorkflowStage.MULTI_WRITER_APPROVAL;
+      // After sub-editor completes work, always go to multi-writer approval
+      const nextStage = WorkflowStage.MULTI_WRITER_APPROVAL;
+      const nextStatus = TaskStatus.WAITING_APPROVAL; // Set status to waiting for approval
       
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
@@ -228,9 +227,8 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
       
       // Show success popup notification immediately after DB update succeeds
-      // Determine the next stage based on thumbnail requirement
-      const updatedNeedsThumbnail = updatedProject?.data?.thumbnail_required !== false;
-      const updatedNextStage = updatedNeedsThumbnail ? WorkflowStage.THUMBNAIL_DESIGN : WorkflowStage.MULTI_WRITER_APPROVAL;
+      // After sub-editor completes work, always goes to multi-writer approval
+      const updatedNextStage = WorkflowStage.MULTI_WRITER_APPROVAL;
       const updatedNextStageLabel = STAGE_LABELS[updatedNextStage];
       
       const popupMessageText = isRework

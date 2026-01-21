@@ -30,7 +30,6 @@ export enum WorkflowStage {
   FINAL_REVIEW_CMO = 'FINAL_REVIEW_CMO', // CMO Round 2
   FINAL_REVIEW_CEO = 'FINAL_REVIEW_CEO', // CEO Round 2
   FINAL_REVIEW_CEO_POST_APPROVAL = 'FINAL_REVIEW_CEO_POST_APPROVAL', // CEO final approval before ops posting
-  WRITER_VIDEO_APPROVAL = 'WRITER_VIDEO_APPROVAL', // Writer approves final video before ops
   MULTI_WRITER_APPROVAL = 'MULTI_WRITER_APPROVAL', // Multiple writers approve in parallel
   POST_WRITER_REVIEW = 'POST_WRITER_REVIEW', // Post multi-writer approval - visible to OPS and CMO in parallel
   OPS_SCHEDULING = 'OPS_SCHEDULING', // Ops schedules post
@@ -194,7 +193,6 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review (CMO)',
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
   [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: 'Final Review (CEO) Post Approval',
-  [WorkflowStage.WRITER_VIDEO_APPROVAL]: 'Writer Video Approval',
   [WorkflowStage.MULTI_WRITER_APPROVAL]: 'Multi-Writer Approval',
   [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review (CMO)',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
