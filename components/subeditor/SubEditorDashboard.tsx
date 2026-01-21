@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Role, TaskStatus, WorkflowStage } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Upload, Video, FileText, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, Upload, Video, Film, FileText, Clock } from 'lucide-react';
 import SubEditorProjectDetail from './SubEditorProjectDetail';
 import SubEditorMyWork from './SubEditorMyWork';
 import SubEditorCalendar from './SubEditorCalendar';
@@ -12,11 +12,12 @@ interface Props {
   user: any;
   inboxProjects: Project[];
   historyProjects: Project[];
+  scriptProjects?: Project[];
   onRefresh: () => void;
   onLogout: () => void;
 }
 
-const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
   const viewStorageKey = `activeView:${user.role}`;
   const getStoredView = () => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -24,48 +25,102 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   };
   
   const [activeView, setActiveView] = useState<string>(getStoredView());
-  const [activeTab, setActiveTab] = useState<'ALL'>('ALL');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | null>(null);
+  const [projectSource, setProjectSource] = useState<'MYWORK' | 'SCRIPTS' | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+
 
   const handleViewChange = (view: string) => {
     setActiveView(view);
+
+    // ✅ IMPORTANT:
+    // If user manually clicks "My Work",
+    // clear any dashboard-based filters
     if (view === 'mywork') {
       setActiveFilter(null);
     }
+
     if (typeof window !== 'undefined') {
       localStorage.setItem(viewStorageKey, view);
     }
   };
 
+  // Handle top-level view changes (Dashboard / My Work / Calendar)
+  const handleInternalRefresh = async () => {
+    await onRefresh(); // MUST refetch from Supabase
+    setRefreshKey(prev => prev + 1); // force UI re-render
+  };
+
+  // Restore last active view on load
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        setLoading(true);
-        // Get projects assigned to this sub-editor
-        const allProjects = await db.getProjects(user);
-        
-        // Filter for projects assigned to this specific sub-editor
-        const subEditorProjects = allProjects.filter(p => 
-          p.assigned_to_role === Role.SUB_EDITOR &&
-          p.assigned_to_user_id === user.id
-        );
+    const storedView = getStoredView();
+    setActiveView(storedView);
 
-        setProjects(subEditorProjects);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Safety: never restore dashboard filters on reload
+    setActiveFilter(null);
+  }, [viewStorageKey]);
 
-    fetchProjects();
-  }, [user]);
+  // Update projects state with inboxProjects that are assigned to this specific sub-editor
+  useEffect(() => {
+    const subEditorProjects = (inboxProjects || []).filter(p => 
+      p.assigned_to_role === Role.SUB_EDITOR &&
+      p.assigned_to_user_id === user.id
+    );
+    setProjects(subEditorProjects);
+  }, [inboxProjects, user]);
 
-  // Show all projects (no tab-based filtering)
-  const filteredProjects = projects;
+  /**
+ * Projects shown in MyWork:
+ * - If user came from dashboard cards → filtered inbox projects
+ * - If user clicked My Work manually → ALL projects the user has worked on (historyProjects)
+ */
+const filteredProjects = useMemo(() => {
+  // No filter → show ALL sub-editor projects the user has worked on (history)
+  if (!activeFilter) {
+    return historyProjects || [];
+  }
+
+  // Filtered views (from dashboard cards)
+  switch (activeFilter) {
+    case 'NEEDS_DELIVERY':
+      return (historyProjects || []).filter(p => !p.delivery_date);
+    case 'IN_PROGRESS':
+      return (historyProjects || []).filter(
+        p => p.delivery_date && !p.edited_video_link
+      );
+    case 'COMPLETED':
+      return (historyProjects || []).filter(p => !!p.edited_video_link);
+    case 'SCRIPTS':
+      // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
+      return (historyProjects || []).filter(project => 
+        project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+      );
+    default:
+      return historyProjects || [];
+  }
+}, [activeFilter, historyProjects]);
+
+  // Add state for counts
+  const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
+  const [inProgressCount, setInProgressCount] = useState(0);
+  const [completedEditsCount, setCompletedEditsCount] = useState(0);
+  const [scriptsCount, setScriptsCount] = useState(0);
+
+  // Calculate counts when historyProjects change
+  useEffect(() => {
+    setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
+    setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
+    setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
+    
+    // Count script projects
+    setScriptsCount((historyProjects || []).filter(project => 
+      project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+    ).length);
+  }, [historyProjects]);
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
@@ -88,104 +143,34 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     }
   };
 
-  const renderProjectCard = (project: Project) => {
-    const isDelivered = !!project.edited_video_link;
-    
-    return (
-      <div
-        key={project.id}
-        onClick={() => {
-          setSelectedProject(project);
-        }}
-        className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
-      >
-        <div className="p-6 space-y-4">
-          {/* Channel and Priority Badges */}
-          <div className="flex justify-between items-start">
-            <span
-              className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                ? 'bg-[#FF4F4F] text-white'
-                : project.channel === 'LINKEDIN'
-                  ? 'bg-[#0085FF] text-white'
-                  : 'bg-[#D946EF] text-white'
-              }`}
-            >
-              {project.channel}
-            </span>
-            <span
-              className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                ? 'bg-red-500 text-white'
-                : project.priority === 'NORMAL'
-                  ? 'bg-yellow-500 text-black'
-                  : 'bg-green-500 text-white'
-              }`}
-            >
-              {project.priority}
-            </span>
-            {isDelivered ? (
-              <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
-                ✓ Delivered
-              </span>
-            ) : project.delivery_date ? (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 border-2 border-blue-600 text-[10px] font-black uppercase">
-                In Progress
-              </span>
-            ) : (
-              <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
-                Needs Delivery
-              </span>
-            )}
-          </div>
-
-          {/* Title */}
-          <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">{project.title}</h3>
-
-          {/* Status */}
-          <div className="space-y-2 text-sm">
-            {project.video_link && (
-              <div className="bg-blue-50 border-2 border-blue-400 p-2">
-                <p className="text-[10px] font-bold text-blue-800">
-                  <Video className="w-3 h-3 inline mr-1" />
-                  Raw Video Ready
-                </p>
-              </div>
-            )}
-            {project.delivery_date && (
-              <div className="flex justify-between">
-                <span className="font-bold text-slate-400 uppercase text-xs">Delivery</span>
-                <span className="font-bold text-slate-900">{project.delivery_date}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-              <span className="font-bold text-slate-900">
-                {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-              </span>
-            </div>
-          </div>
-
-          {/* Action Hint */}
-          <div className="border-t-2 border-slate-100 pt-3">
-            <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-              {!project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (selectedProject) {
     return (
       <SubEditorProjectDetail
         project={selectedProject}
         userRole={Role.SUB_EDITOR}
-        onBack={() => setSelectedProject(null)}
+        fromView={projectSource}
+        onBack={() => {
+          setSelectedProject(null);
+          if (projectSource === 'SCRIPTS') {
+            setActiveFilter('SCRIPTS');
+            setActiveView('mywork');
+          } else {
+            setProjectSource(null);
+          }
+        }}
         onUpdate={() => {
           setSelectedProject(null);
+          if (projectSource === 'SCRIPTS') {
+            setActiveFilter('SCRIPTS');
+            setActiveView('mywork');
+          } else {
+            setProjectSource(null);
+          }
           onRefresh();
         }}
         onLogout={onLogout}
+        onNavigateToView={handleViewChange}
+        activeView={activeView}
       />
     );
   }
@@ -198,17 +183,55 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
       activeView={activeView}
       onChangeView={handleViewChange}
     >
-      {activeView === 'mywork' ? (
+      {selectedProject ? (
+        <SubEditorProjectDetail
+          project={selectedProject}
+          userRole={Role.SUB_EDITOR}
+          fromView={projectSource}
+          onBack={() => {
+            setSelectedProject(null);
+            if (projectSource === 'SCRIPTS') {
+              setActiveFilter('SCRIPTS');
+              setActiveView('mywork');
+            } else {
+              setProjectSource(null);
+            }
+          }}
+          onUpdate={() => {
+            setSelectedProject(null);
+            if (projectSource === 'SCRIPTS') {
+              setActiveFilter('SCRIPTS');
+              setActiveView('mywork');
+            } else {
+              setProjectSource(null);
+            }
+            onRefresh();
+          }}
+          onLogout={onLogout}
+          onNavigateToView={handleViewChange}
+          activeView={activeView}
+        />
+      ) : activeView === 'mywork' ? (
         <SubEditorMyWork 
           user={user}
-          projects={projects}
-          onSelectProject={setSelectedProject}
+          projects={activeFilter ? filteredProjects : historyProjects}
+          onSelectProject={(project) => {
+            setSelectedProject(project);
+            setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
+          }}
           activeFilter={activeFilter}
+          scriptProjects={
+            activeFilter === 'SCRIPTS' 
+              ? [...(inboxProjects || []), ...(historyProjects || [])].filter(project => 
+                  project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+                )
+              : scriptProjects
+          }
         />
       ) : activeView === 'calendar' ? (
-        <SubEditorCalendar user={user} />
+        <SubEditorCalendar projects={historyProjects} user={user} />
       ) : (
-        <div className="space-y-8">
+        <div key={refreshKey} className="space-y-8 animate-fade-in">
           {/* Dashboard Content */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
@@ -217,20 +240,26 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               </h1>
               <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
+            <button
+              onClick={handleInternalRefresh}
+              className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
+            >
+              🔄 Refresh
+            </button>
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {/* NEEDS DELIVERY DATE */}
             <div
               onClick={() => {
-                setActiveFilter(null);
+                setActiveFilter('NEEDS_DELIVERY');
                 setActiveView('mywork');
               }}
               className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
               <div className="text-4xl font-black text-white mb-1">
-                {projects.filter(p => !p.delivery_date).length}
+                {needsDeliveryCount}
               </div>
               <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
             </div>
@@ -238,29 +267,43 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             {/* IN PROGRESS */}
             <div
               onClick={() => {
-                setActiveFilter(null);
+                setActiveFilter('IN_PROGRESS');
                 setActiveView('mywork');
               }}
               className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
               <div className="text-4xl font-black text-white mb-1">
-                {projects.filter(p => p.delivery_date && !p.edited_video_link).length}
+                {inProgressCount}
               </div>
               <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
             </div>
 
-            {/* COMPLETED FOOTAGE */}
+            {/* COMPLETED EDITS */}
             <div
               onClick={() => {
-                setActiveFilter(null);
+                setActiveFilter('COMPLETED');
                 setActiveView('mywork');
               }}
               className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
               <div className="text-4xl font-black text-white mb-1">
-                {projects.filter(p => !!p.edited_video_link).length}
+                {completedEditsCount}
               </div>
-              <div className="text-sm font-bold uppercase text-white/80">Completed Footage</div>
+              <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
+            </div>
+            
+            {/* SCRIPTS */}
+            <div
+              onClick={() => {
+                setActiveFilter('SCRIPTS');
+                setActiveView('mywork');
+              }}
+              className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {scriptsCount}
+              </div>
+              <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
             </div>
           </div>
 
@@ -270,22 +313,10 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               Quick Overview
             </h2>
             <p className="text-slate-600">
-              You have {projects.length} {projects.length === 1 ? 'project' : 'projects'} assigned. Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+              You have {(historyProjects || []).length} {(historyProjects || []).length === 1 ? 'project' : 'projects'} in sub-editing.
+              Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
             </p>
           </div>
-
-          {/* Projects Grid */}
-          {loading ? (
-            <div className="p-12 text-center text-gray-500">Loading projects...</div>
-          ) : filteredProjects.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              No projects found
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProjects.map(renderProjectCard)}
-            </div>
-          )}
         </div>
       )}
     </Layout>

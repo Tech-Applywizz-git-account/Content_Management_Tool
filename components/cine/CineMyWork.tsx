@@ -3,6 +3,7 @@ import { Project, Role, WorkflowStage, STAGE_LABELS } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video } from 'lucide-react';
 import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import CineScripts from './CineScripts';
 
 interface Props {
     user: { full_name: string; role: Role };
@@ -13,6 +14,8 @@ interface Props {
 }
 
 const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
+    const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
+    
     // Show all projects the cinematographer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
@@ -22,6 +25,16 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
         }
         return projects || [];
     }, [projects, scriptProjects, activeFilter]);
+
+    if (selectedProject && activeFilter === 'SCRIPTS') {
+        return (
+            <CineScripts
+                project={selectedProject}
+                userRole={user.role}
+                onBack={() => setSelectedProject(null)}
+            />
+        );
+    }
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -47,7 +60,13 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     return (
                         <div
                             key={project.id}
-                            onClick={() => onSelectProject(project)}
+                            onClick={() => {
+                                if (activeFilter === 'SCRIPTS') {
+                                    setSelectedProject(project);
+                                } else {
+                                    onSelectProject(project);
+                                }
+                            }}
                             className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                         >
                             <div className="p-6 space-y-4">

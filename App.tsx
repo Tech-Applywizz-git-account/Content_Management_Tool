@@ -79,6 +79,9 @@ function App() {
   // Designer State - State for Designer dashboard script projects
   const [designerScriptProjects, setDesignerScriptProjects] = useState<Project[]>([]);
 
+  // Sub-Editor State - State for Sub-Editor dashboard script projects
+  const [subEditorScriptProjects, setSubEditorScriptProjects] = useState<Project[]>([]);
+
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
     try {
@@ -354,6 +357,20 @@ function App() {
 
       fetchDesignerScriptProjects();
     }
+
+    // Only fetch for Sub-Editor users
+    if (user?.role === Role.SUB_EDITOR) {
+      const fetchSubEditorScriptProjects = async () => {
+        try {
+          const projects = await db.projects.getScriptProjects();
+          setSubEditorScriptProjects(projects);
+        } catch (error) {
+          console.error('Failed to fetch script projects for Sub-Editor:', error);
+        }
+      };
+
+      fetchSubEditorScriptProjects();
+    }
   }, [user]);
 
   const refreshData = async (u: User = user!) => {
@@ -397,7 +414,7 @@ function App() {
           }
         }
 
-        // For Editor and Designer roles, also refresh script projects
+        // For Editor, Designer, and Sub-Editor roles, also refresh script projects
         if (u.role === Role.EDITOR) {
           try {
             console.log('🔄 App.tsx: Refreshing script projects for Editor');
@@ -415,6 +432,15 @@ function App() {
             console.log('✅ App.tsx: Designer script projects refreshed:', scriptProjects.length);
           } catch (error) {
             console.error('❌ App.tsx: Failed to refresh script projects for Designer:', error);
+          }
+        } else if (u.role === Role.SUB_EDITOR) {
+          try {
+            console.log('🔄 App.tsx: Refreshing script projects for Sub-Editor');
+            const scriptProjects = await db.projects.getScriptProjects();
+            setSubEditorScriptProjects(scriptProjects);
+            console.log('✅ App.tsx: Sub-Editor script projects refreshed:', scriptProjects.length);
+          } catch (error) {
+            console.error('❌ App.tsx: Failed to refresh script projects for Sub-Editor:', error);
           }
         }
       }
@@ -661,7 +687,10 @@ function App() {
     return (
       <SubEditorDashboard
         user={user}
-        onBack={() => { }}
+        inboxProjects={projects.inbox}
+        historyProjects={projects.history}
+        scriptProjects={subEditorScriptProjects}
+        onRefresh={() => refreshData(user)}
         onLogout={handleLogout}
       />
     );

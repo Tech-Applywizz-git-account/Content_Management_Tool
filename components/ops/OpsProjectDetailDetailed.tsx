@@ -135,7 +135,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                                 Script / Caption
                             </h2>
                             <div className="p-4 bg-slate-50 border border-slate-300 rounded max-h-60 overflow-y-auto">
-                                <p className="text-slate-700 whitespace-pre-wrap">{project.data.script_content}</p>
+                                {project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}

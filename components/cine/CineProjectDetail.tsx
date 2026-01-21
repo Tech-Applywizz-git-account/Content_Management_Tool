@@ -347,7 +347,37 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
-
+                        
+                        {/* Display forwarded comments from CMO and CEO */}
+                        {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
+                            <div className="mb-4">
+                                <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
+                                <div className="space-y-2 ml-2">
+                                    {localProject.forwarded_comments
+                                        .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
+                                        .map((comment, index) => {
+                                            const timestamp = new Date(comment.created_at).toLocaleString();
+                                            
+                                            return (
+                                                <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
+                                                    <div className="flex items-center">
+                                                        <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
+                                                        <span className="mx-2 text-slate-400">•</span>
+                                                        <span className="text-xs text-slate-500">{timestamp}</span>
+                                                    </div>
+                                                    <div className="mt-1">
+                                                        <span className="px-1.5 py-0.5 text-xs font-black uppercase border border-black bg-blue-500 text-white">
+                                                            {comment.action}
+                                                        </span>
+                                                        <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        )}
+                        
                         {/* Existing Data Display */}
                         <div className="bg-white border-2 border-gray-300 p-4">
                             <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
@@ -392,7 +422,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         <h2 className="text-xl font-black uppercase">Script</h2>
                     </div>
                     <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {localProject.data.script_content || 'No script content available'}
+                        {localProject.data.script_content 
+                            ? <div dangerouslySetInnerHTML={{ __html: localProject.data.script_content }} />
+                            : 'No script content available'}
                     </div>
                 </div>
 
@@ -426,6 +458,29 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     </div>
                                 </div>
                                 <p className="text-xs text-blue-600 mt-2 italic">This is the thumbnail provided by the writer for reference</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Script Reference from Writer */}
+                    {localProject.data?.script_reference_link && (
+                        <div className="mb-6 pt-6 border-t-2 border-gray-200">
+                            <h3 className="text-lg font-black uppercase mb-3">Writer's Script Reference</h3>
+                            <div className="bg-blue-50 border-2 border-blue-200 p-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold uppercase text-blue-800 mb-1">Reference Script Link</p>
+                                        <a
+                                            href={localProject.data.script_reference_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all font-medium"
+                                        >
+                                            {localProject.data.script_reference_link}
+                                        </a>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-blue-600 mt-2 italic">This is the script provided by the writer for reference</p>
                             </div>
                         </div>
                     )}

@@ -6,6 +6,21 @@ import Timeline from '../../components/Timeline';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 
+// Helper function to format date to DD-MM-YYYY
+const formatDateDDMMYYYY = (dateString: string | undefined): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Month is zero-indexed
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return dateString; // Return original if parsing fails
+  }
+};
+
 interface Props {
     project: Project;
     onBack: () => void;
@@ -99,23 +114,133 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
     // Fetch comments
     useEffect(() => {
         const fetchComments = async () => {
-            const { data: commentsData, error: commentsError } = await supabase
+            const { data: allHistoryData, error: historyError } = await supabase
                 .from('workflow_history')
                 .select(`
                     action,
                     comment,
                     actor_name,
-                    timestamp
+                    actor_id,
+                    timestamp,
+                    stage
                 `)
                 .eq('project_id', fullProject.id)
-                .in('action', ['APPROVED', 'REJECTED', 'REWORK'])
                 .order('timestamp', { ascending: false });
-
-            if (commentsError) {
-                console.error('Error fetching comments:', commentsError);
-            } else {
-                setComments(commentsData || []);
+            
+            if (historyError) {
+                console.error('Error fetching workflow history:', historyError);
+                setComments([]);
+                return;
             }
+            
+            // Filter to only show approved actions for most stages, but include writer submissions, multi-writer approvals, and date-setting actions
+            const commentsData = allHistoryData.filter(item => {
+                // Always include APPROVED, REWORK, and REJECTED actions
+                if (['APPROVED', 'REWORK', 'REJECTED'].includes(item.action)) {
+                    return true;
+                }
+                
+                // Include SUBMITTED actions specifically for SCRIPT stage (writer submissions)
+                if (item.stage === 'SCRIPT' && item.action === 'SUBMITTED') {
+                    return true;
+                }
+                
+                // Include APPROVED and SUBMITTED actions for MULTI_WRITER_APPROVAL stage (writer approvals)
+                if (item.stage === 'MULTI_WRITER_APPROVAL' && ['APPROVED', 'SUBMITTED'].includes(item.action)) {
+                    return true;
+                }
+                
+                // Include SET_SHOOT_DATE and SET_DELIVERY_DATE actions
+                if (item.action === 'SET_SHOOT_DATE' || item.action === 'SET_DELIVERY_DATE') {
+                    return true;
+                }
+                
+                // Only include APPROVED actions for CINEMATOGRAPHY, VIDEO_EDITING, SUB_EDITOR_PROCESSING, THUMBNAIL_DESIGN, and SUB_EDITOR_ASSIGNMENT stages
+                // This ensures we only see the approved versions, not all submitted uploads or assignments
+                if (['CINEMATOGRAPHY', 'VIDEO_EDITING', 'SUB_EDITOR_PROCESSING', 'THUMBNAIL_DESIGN', 'SUB_EDITOR_ASSIGNMENT'].includes(item.stage) && item.action === 'APPROVED') {
+                    return true;
+                }
+                
+                // For other stages, only include specific approved-type actions
+                return false;
+            });
+
+            // Filter out 'CREATED' actions and remove duplicates
+            const filteredComments = commentsData?.filter(comment => comment.action !== 'CREATED') || [];
+            
+            // Track if we've already added certain repeated events
+            let multiWriterSubmittedAdded = false;
+            let deliveryDateSetAdded = false;
+            let shootDateSetAdded = false;
+            
+            // Create a map to track unique events by their meaningful content
+            const uniqueEventsMap = new Map();
+            
+            filteredComments.forEach(comment => {
+              let uniqueKey;
+              
+              // Create a key based on the type of action and its content
+              if (comment.action === 'SET_SHOOT_DATE') {
+                if (shootDateSetAdded) {
+                  return; // Skip duplicate shoot date events
+                }
+                shootDateSetAdded = true;
+                uniqueKey = 'SHOOT_DATE_SET';
+              } else if (comment.action === 'SET_DELIVERY_DATE') {
+                if (deliveryDateSetAdded) {
+                  return; // Skip duplicate delivery date events
+                }
+                deliveryDateSetAdded = true;
+                uniqueKey = 'DELIVERY_DATE_SET';
+              } else if (comment.action === 'SUBMITTED' && comment.comment) {
+                if (comment.stage === 'MULTI_WRITER_APPROVAL') {
+                  // For MULTI_WRITER_APPROVAL SUBMITTED, check if it's the "All writers have approved" message
+                  if (comment.comment.includes('All writers have approved')) {
+                    if (multiWriterSubmittedAdded) {
+                      return; // Skip duplicate "All writers have approved" events
+                    }
+                    multiWriterSubmittedAdded = true;
+                    uniqueKey = 'MULTI_WRITER_APPROVAL_SUBMITTED_ALL_WRITERS'; // Fixed key for this specific event
+                  } else {
+                    // For other MULTI_WRITER_APPROVAL submissions, use actor-specific key
+                    uniqueKey = `${comment.action}-${comment.stage}-${comment.actor_id || comment.actor_name}-${comment.timestamp}-${comment.comment || ''}`;
+                  }
+                } else if (comment.comment.includes('Project assigned to sub-editor')) {
+                  uniqueKey = 'PROJECT_ASSIGNED_TO_SUBEDITOR';
+                } else if (comment.comment.includes('Raw video uploaded')) {
+                  uniqueKey = 'RAW_VIDEO_UPLOADED';
+                } else if (comment.comment.includes('Edited video uploaded')) {
+                  uniqueKey = 'EDITED_VIDEO_UPLOADED';
+                } else {
+                  // For other submitted actions, use action + stage + partial comment
+                  uniqueKey = `${comment.action}-${comment.stage}-${comment.comment.substring(0, 30)}`;
+                }
+              } else if (comment.action === 'APPROVED' && comment.comment) {
+                if (comment.stage === 'MULTI_WRITER_APPROVAL') {
+                  // For MULTI_WRITER_APPROVAL, each approval should be unique (each writer approval)
+                  // Include the comment content to differentiate between similar events
+                  uniqueKey = `${comment.action}-${comment.stage}-${comment.actor_id || comment.actor_name}-${comment.timestamp}-${comment.comment || ''}`;
+                } else if (comment.comment.includes('Project assigned to sub-editor')) {
+                  uniqueKey = 'PROJECT_ASSIGNED_TO_SUBEDITOR_APPROVED';
+                } else {
+                  uniqueKey = `${comment.action}-${comment.stage}-${comment.comment.substring(0, 30)}`;
+                }
+              } else {
+                // For other actions, combine action, stage, and a portion of comment if available
+                uniqueKey = `${comment.action}-${comment.stage}-${comment.comment ? comment.comment.substring(0, 30) : ''}`;
+              }
+              
+              // Only add the first occurrence of each unique event (latest due to reverse chronological order)
+              if (!uniqueEventsMap.has(uniqueKey)) {
+                uniqueEventsMap.set(uniqueKey, comment);
+              }
+            });
+            
+            // Convert map values back to array and sort by timestamp (most recent first)
+            const uniqueComments = Array.from(uniqueEventsMap.values())
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            
+            setComments(uniqueComments);
         };
 
         fetchComments();
@@ -169,22 +294,32 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
             return format(new Date(fullProject.created_at), 'MMM dd, yyyy h:mm a');
         }
         
-        // Find the most recent history entry where the project was assigned to the current role
+        // Special handling for CMO role - if current stage is FINAL_REVIEW_CMO, show that timestamp
+        if (currentRole === Role.CMO && fullProject.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+            const finalReviewHistory = fullProject.history
+                .filter(h => h.stage === WorkflowStage.FINAL_REVIEW_CMO)
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            
+            if (finalReviewHistory.length > 0) {
+                return format(new Date(finalReviewHistory[0].timestamp), 'MMM dd, yyyy h:mm a');
+            }
+        }
+        
+        // Find the FIRST history entry where the project was assigned to the current role
         // This happens when the project moved to a stage associated with the role
         const allStages = Object.values(WorkflowStage);
         const roleStages = allStages.filter(stage => getRoleForStage(stage) === currentRole);
         
         const roleHistory = fullProject.history
             .filter(h => roleStages.includes(h.stage))
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // Ascending order to get the first occurrence
         
         if (roleHistory.length > 0) {
             return format(new Date(roleHistory[0].timestamp), 'MMM dd, yyyy h:mm a');
         }
         
-        // If no specific role assignment found, return the most recent history entry
-        const sortedHistory = [...fullProject.history].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        return format(new Date(sortedHistory[0].timestamp), 'MMM dd, yyyy h:mm a');
+        // If no specific role assignment found, return the project creation date
+        return format(new Date(fullProject.created_at), 'MMM dd, yyyy h:mm a');
     };
 
     const getMostRecentTimestampForStatus = (currentStatus: TaskStatus): string => {
@@ -350,8 +485,12 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                             {fullProject.data?.source === 'DESIGNER_INITIATED'
                                 ? fullProject.data?.creative_link || 'No creative link available.'
                                 : fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content
-                                    ? fullProject.data.idea_description
-                                    : fullProject.data?.script_content || 'No content available.'}
+                                    ? fullProject.data.idea_description 
+                                        ? <div dangerouslySetInnerHTML={{ __html: fullProject.data.idea_description }} />
+                                        : 'No idea description available.'
+                                    : fullProject.data?.script_content 
+                                        ? <div dangerouslySetInnerHTML={{ __html: fullProject.data.script_content }} />
+                                        : 'No content available.'}
                         </div>
                     </section>
 
@@ -362,23 +501,168 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                                 <MessageSquare className="w-6 h-6" />
                                 <h3 className="text-2xl font-black uppercase text-slate-900">Comments & Feedback</h3>
                             </div>
+                            
+                            {/* Display current project dates if they exist */}
+                            {(fullProject?.shoot_date || fullProject?.delivery_date || fullProject?.post_scheduled_date) && (
+                              <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  {fullProject?.shoot_date && (
+                                    <div className="flex items-center">
+                                      <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
+                                      <span className="font-bold text-green-600">{formatDateDDMMYYYY(fullProject.shoot_date)}</span>
+                                    </div>
+                                  )}
+                                  {fullProject?.delivery_date && (
+                                    <div className="flex items-center">
+                                      <span className="mr-2 font-bold text-slate-700">📦 Delivery Date:</span>
+                                      <span className="font-bold text-blue-600">{formatDateDDMMYYYY(fullProject.delivery_date)}</span>
+                                    </div>
+                                  )}
+                                  {fullProject?.post_scheduled_date && (
+                                    <div className="flex items-center">
+                                      <span className="mr-2 font-bold text-slate-700">🗓️ Post Date:</span>
+                                      <span className="font-bold text-purple-600">{formatDateDDMMYYYY(fullProject.post_scheduled_date)}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
+                            {/* Display forwarded comments from CEO */}
+                            {fullProject?.forwarded_comments && fullProject.forwarded_comments.length > 0 && (
+                                <div className="mb-6">
+                                    <h4 className="text-lg font-black uppercase mb-3 text-slate-700 border-l-4 border-blue-500 pl-3">
+                                        Forwarded Comments from CEO
+                                    </h4>
+                                    <div className="space-y-3 ml-2">
+                                        {fullProject.forwarded_comments
+                                            .filter(comment => comment.from_role === 'CEO')
+                                            .map((comment, index) => {
+                                                const timestamp = new Date(comment.created_at).toLocaleString();
+                                                
+                                                return (
+                                                    <div key={`forwarded-${comment.id || index}`} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                        <div className="flex items-center mb-1">
+                                                            <span className="font-bold text-blue-800">CEO Comment</span>
+                                                            <span className="mx-2 text-slate-400">•</span>
+                                                            <span className="text-sm text-slate-500">{timestamp}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2 py-1 text-xs font-black uppercase border-2 border-black bg-blue-500 text-white">
+                                                                {comment.action}
+                                                            </span>
+                                                            <span className="font-medium text-slate-800">{comment.comment}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                </div>
+                            )}
+                            
                             {comments.length > 0 ? (
                                 <div className="space-y-6 bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    {comments.map((comment, index) => (
-                                        <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
+                                    {comments.map((comment, index) => {
+                                        // Determine the description based on stage and action
+                                        let description = `${comment.action} in ${comment.stage}`;
+                                        
+                                        switch (comment.stage) {
+                                          case 'SCRIPT':
+                                            if (comment.action === 'SUBMITTED') {
+                                              description = 'Project submitted by writer';
+                                            }
+                                            break;
+                                          case 'SCRIPT_REVIEW_L1':
+                                            if (comment.action === 'APPROVED') {
+                                              description = 'Project approved by CMO';
+                                            } else if (comment.action === 'REWORK') {
+                                              description = 'CMO requested rework';
+                                            }
+                                            break;
+                                          case 'FINAL_REVIEW_CMO':
+                                            if (comment.action === 'APPROVED') {
+                                              description = 'Project approved by CMO';
+                                            } else if (comment.action === 'REWORK') {
+                                              description = 'CMO requested rework';
+                                            }
+                                            break;
+                                          case 'FINAL_REVIEW_CEO':
+                                            if (comment.action === 'APPROVED') {
+                                              description = 'Project approved by CEO';
+                                            } else if (comment.action === 'REWORK') {
+                                              description = 'CEO requested rework';
+                                            }
+                                            break;
+                                          case 'MULTI_WRITER_APPROVAL':
+                                            if (comment.action === 'APPROVED') {
+                                              description = 'Writer approved the final video';
+                                            } else if (comment.action === 'SUBMITTED') {
+                                              description = 'All writers have approved - Project advanced to CMO for final review';
+                                            }
+                                            break;
+                                          case 'CINEMATOGRAPHY':
+                                            if (comment.action === 'SUBMITTED') {
+                                              description = 'Raw video uploaded by cinematographer';
+                                            }
+                                            break;
+                                          case 'VIDEO_EDITING':
+                                            if (comment.action === 'SUBMITTED') {
+                                              description = 'Edited video uploaded by editor';
+                                            }
+                                            break;
+                                          case 'SUB_EDITOR_PROCESSING':
+                                            if (comment.action === 'SUBMITTED') {
+                                              description = 'Edited video uploaded by sub-editor';
+                                            } else if (comment.action === 'APPROVED') {
+                                              description = 'Sub-editor completed processing';
+                                            }
+                                            break;
+                                          case 'THUMBNAIL_DESIGN':
+                                            if (comment.action === 'SUBMITTED') {
+                                              description = 'Assets uploaded by designer';
+                                            }
+                                            break;
+                                          default:
+                                            // Handle special actions that might not have a specific stage mapping
+                                            if (comment.action === 'SET_SHOOT_DATE') {
+                                              description = 'Shoot date set';
+                                            } else if (comment.action === 'SET_DELIVERY_DATE') {
+                                              description = 'Delivery date set';
+                                            } else if (comment.action === 'REWORK_VIDEO_SUBMITTED') {
+                                              description = 'Rework video uploaded';
+                                            } else if (comment.action === 'SUB_EDITOR_ASSIGNED') {
+                                              description = 'Project assigned to sub-editor';
+                                            } else {
+                                              description = `${comment.action} in ${comment.stage}`;
+                                            }
+                                        }
+                                        
+                                        return (
+                                        <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <p className="font-bold text-slate-900">{comment.actor_name}</p>
                                                     <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
                                                 </div>
-                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : comment.action === 'REWORK' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
                                                     {comment.action}
                                                 </span>
                                             </div>
-                                            <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                            <p className="mt-2 text-slate-700">{comment.comment || description}</p>
+                                            {/* Display shoot date and delivery date based on action type */}
+                                            {comment.action === 'SET_SHOOT_DATE' && (
+                                              <div className="mt-2 text-sm text-slate-600 font-bold">
+                                                📅 Shoot Date: <span className="text-green-600">{comment.comment}</span>
+                                              </div>
+                                            )}
+                                            {comment.action === 'SET_DELIVERY_DATE' && (
+                                              <div className="mt-2 text-sm text-slate-600 font-bold">
+                                                📦 Delivery Date: <span className="text-blue-600">{comment.comment}</span>
+                                              </div>
+                                            )}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <p className="text-slate-500 italic">No comments yet</p>
@@ -504,9 +788,6 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                                         {fullProject.status}
                                     </div>
                                 </div>
-                            </div>
-                            <div className="mt-2 text-xs font-bold text-slate-500 uppercase">
-                                Status updated: {getMostRecentTimestampForStatus(fullProject.status)}
                             </div>
                         </div>
 

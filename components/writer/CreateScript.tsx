@@ -16,6 +16,8 @@ interface Props {
 }
 
 const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRole, mode }) => {
+  const editorRef = React.useRef<HTMLDivElement>(null);
+  
   const parsedProjectData: ProjectData | null = React.useMemo(() => {
     if (!project?.data) return null;
     if (typeof project.data === 'string') {
@@ -158,6 +160,124 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const showIdeaAsReference = React.useMemo(() => {
     return isScriptFromApprovedIdea && parsedProjectData?.source === 'IDEA_PROJECT';
   }, [isScriptFromApprovedIdea, parsedProjectData]);
+
+  // Function to save selection before updating content
+  const saveSelection = () => {
+    if (!editorRef.current) return null;
+    
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return null;
+    
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(editorRef.current);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+    const start = preCaretRange.toString().length;
+    
+    return {
+      start,
+      end: start + range.toString().length
+    };
+  };
+  
+  // Function to restore selection after updating content
+  const restoreSelection = (savedSelection: { start: number; end: number } | null) => {
+    if (!savedSelection || !editorRef.current) return;
+    
+    let charIndex = 0;
+    const walker = document.createTreeWalker(
+      editorRef.current,
+      NodeFilter.SHOW_TEXT
+    );
+    
+    let node;
+    let foundStart = false;
+    let range = document.createRange();
+    range.setStart(editorRef.current, 0);
+    range.collapse(true);
+    
+    while ((node = walker.nextNode())) {
+      const nextCharIndex = charIndex + node.textContent!.length;
+      if (!foundStart && savedSelection.start >= charIndex && savedSelection.start <= nextCharIndex) {
+        range.setStart(node, savedSelection.start - charIndex);
+        foundStart = true;
+      }
+      if (foundStart && savedSelection.end >= charIndex && savedSelection.end <= nextCharIndex) {
+        range.setEnd(node, savedSelection.end - charIndex);
+        break;
+      }
+      charIndex = nextCharIndex;
+    }
+    
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  };
+  
+  // Function to apply color to selected text
+  const applyColor = (color: string) => {
+    if (!canEdit || !editorRef.current) return;
+    
+    const selection = window.getSelection();
+    if (!selection || selection.toString().trim() === '') return;
+    
+    // Map color names to bolder/darker hex values for better contrast
+    const colorMap: Record<string, string> = {
+      'red': '#990000', // bold dark red
+      'blue': '#000099', // bold dark blue
+      'green': '#006600', // bold dark green
+      'purple': '#6600cc', // bold dark purple
+      'orange': '#cc6600', // bold dark orange
+      'black': '#000000', // black
+    };
+    
+    const darkColor = colorMap[color] || color;
+    
+    // Save selection before applying color
+    const savedSelection = saveSelection();
+    
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('foreColor', false, darkColor);
+    
+    // Update the form data with the new content
+    const content = editorRef.current.innerHTML;
+    setFormData({ ...formData, script_content: content });
+    
+    // Restore selection after updating state
+    setTimeout(() => {
+      restoreSelection(savedSelection);
+    }, 0);
+  };
+  
+  // Function to apply bold formatting
+  const applyBold = () => {
+    if (!canEdit || !editorRef.current) return;
+    
+    const selection = window.getSelection();
+    if (!selection || selection.toString().trim() === '') return;
+    
+    // Save selection before applying bold
+    const savedSelection = saveSelection();
+    
+    document.execCommand('bold', false, null);
+    
+    // Update the form data with the new content
+    const content = editorRef.current.innerHTML;
+    setFormData({ ...formData, script_content: content });
+    
+    // Restore selection after updating state
+    setTimeout(() => {
+      restoreSelection(savedSelection);
+    }, 0);
+  };
+  
+  // Function to handle text selection events
+  const handleTextSelection = () => {
+    // We can add logic here to show/hide the toolbar based on selection
+    // For now, just keeping the toolbar visible
+  };
 
 
   // Load user effect
@@ -311,6 +431,22 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       window.removeEventListener('beforeLogout', handleBeforeLogout);
     };
   }, [formData, newProjectDetails, project]);
+
+  // Initialize the contentEditable div with initial content once when component mounts
+  useEffect(() => {
+    if (editorRef.current) {
+      // Only set content if editor is empty
+      if (!editorRef.current.innerHTML || editorRef.current.innerHTML === '<br>' || editorRef.current.innerHTML === '<div><br></div>') {
+        if (formData.script_content) {
+          editorRef.current.innerHTML = formData.script_content;
+        } else {
+          editorRef.current.innerHTML = 'Start writing your script here...';
+        }
+      }
+    }
+  }, []);
+
+
 
   // Fetch reviewer comments and previous script for rework/rejected projects
   useEffect(() => {
@@ -1294,6 +1430,23 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     </div>
                   )}
                 </div>
+                
+                {/* Script Reference Link */}
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                    Script Reference Link
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.script_reference_link || ''}
+                    onChange={e =>
+                      canEdit ? setFormData({ ...formData, script_reference_link: e.target.value }) : null
+                    }
+                    readOnly={!canEdit}
+                    className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                    placeholder="Enter script reference link (optional)"
+                  />
+                </div>
 
                 {/* Cinematographer Instructions - Only for VIDEO content */}
                 {/* Cinematography Instructions (Optional) */}
@@ -1426,29 +1579,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               />
             </div>
 
-            {/* REVIEW COMMENTS (FOR REWORK/REJECTED PROJECTS) */}
-            {(returnType === 'rework' || returnType === 'reject') && (
-              <div className="bg-red-50 p-6 border-2 border-red-300 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase text-lg text-red-800 mb-4">
-                  Review Comments
-                </h3>
 
-                <div className="space-y-4">
-                  {reviewComment && (
-                    <div className="bg-white p-4 border-2 border-red-200">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-bold text-slate-700">{reviewComment.actor_name}</span>
-                        <span className="text-sm text-slate-500">{new Date(reviewComment.timestamp).toLocaleString()}</span>
-                      </div>
-                      <p className="text-slate-700 whitespace-pre-wrap">{reviewComment.comment || 'No specific comments provided.'}</p>
-                      <div className="mt-2 px-3 py-1 bg-red-100 text-red-800 font-bold text-sm border border-red-300 inline-block">
-                        {reviewComment.action}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* ================= RIGHT COLUMN ================= */}
@@ -1477,6 +1608,30 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
 
 
+            {/* REVIEW COMMENTS (FOR REWORK/REJECTED PROJECTS) */}
+            {(returnType === 'rework' || returnType === 'reject') && (
+              <div className="bg-red-50 p-6 border-2 border-red-300 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="font-black uppercase text-lg text-red-800 mb-4">
+                  Review Comments
+                </h3>
+
+                <div className="space-y-4">
+                  {reviewComment && (
+                    <div className="bg-white p-4 border-2 border-red-200">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-slate-700">{reviewComment.actor_name}</span>
+                        <span className="text-sm text-slate-500">{new Date(reviewComment.timestamp).toLocaleString()}</span>
+                      </div>
+                      <p className="text-slate-700 whitespace-pre-wrap">{reviewComment.comment || 'No specific comments provided.'}</p>
+                      <div className="mt-2 px-3 py-1 bg-red-100 text-red-800 font-bold text-sm border border-red-300 inline-block">
+                        {reviewComment.action}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* PREVIOUS SCRIPT (FOR REWORK/REJECTED PROJECTS) */}
             {(returnType === 'rework' || returnType === 'reject') && previousScript && (
               <div className="bg-yellow-50 p-6 border-2 border-yellow-300 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
@@ -1499,16 +1654,77 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   <span className="font-black uppercase text-xs text-slate-400">
                     Rich Text Editor
                   </span>
+                  {/* Color picker toolbar - appears when text is selected */}
+                  {canEdit && (
+                    <div className="flex space-x-2">
+                      <button 
+                        onClick={() => applyColor('red')}
+                        className="w-6 h-6 bg-red-800 border border-black rounded-sm"
+                        title="Red"
+                        disabled={!canEdit}
+                      />
+                      <button 
+                        onClick={() => applyColor('blue')}
+                        className="w-6 h-6 bg-blue-800 border border-black rounded-sm"
+                        title="Blue"
+                        disabled={!canEdit}
+                      />
+                      <button 
+                        onClick={() => applyColor('green')}
+                        className="w-6 h-6 bg-green-800 border border-black rounded-sm"
+                        title="Green"
+                        disabled={!canEdit}
+                      />
+                      <button 
+                        onClick={() => applyColor('purple')}
+                        className="w-6 h-6 bg-purple-800 border border-black rounded-sm"
+                        title="Purple"
+                        disabled={!canEdit}
+                      />
+                      <button 
+                        onClick={() => applyColor('orange')}
+                        className="w-6 h-6 bg-orange-700 border border-black rounded-sm"
+                        title="Orange"
+                        disabled={!canEdit}
+                      />
+                      <button 
+                        onClick={() => applyColor('black')}
+                        className="w-6 h-6 bg-black border border-black rounded-sm"
+                        title="Black"
+                        disabled={!canEdit}
+                      />
+                      <button
+                        onClick={applyBold}
+                        className="w-6 h-6 bg-gray-500 border border-black rounded-sm flex items-center justify-center font-bold text-white"
+                        title="Bold"
+                        disabled={!canEdit}
+                      >
+                        B
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                <textarea
-                  value={formData.script_content || ''}
-                  onChange={e =>
-                    canEdit ? setFormData({ ...formData, script_content: e.target.value }) : null
-                  }
-                  readOnly={!canEdit}
-                  className="flex-1 w-full text-lg resize-none outline-none font-serif"
-                  placeholder="Start writing your script here..."
+                <div
+                  contentEditable={canEdit}
+                  suppressContentEditableWarning={true}
+                  onInput={(e) => {
+                    if (canEdit) {
+                      const content = e.currentTarget.innerHTML;
+                      setFormData({ ...formData, script_content: content });
+                    }
+                  }}
+                  onMouseUp={handleTextSelection}
+                  onKeyDown={handleTextSelection}
+                  onBlur={() => {
+                    // Ensure content is synced when editor loses focus
+                    if (canEdit && editorRef.current) {
+                      const content = editorRef.current.innerHTML;
+                      setFormData({ ...formData, script_content: content });
+                    }
+                  }}
+                  className="flex-1 w-full text-lg resize-none outline-none font-serif p-2 border border-gray-300 rounded min-h-[600px]"
+                  ref={editorRef}
                 />
               </div>
             )}

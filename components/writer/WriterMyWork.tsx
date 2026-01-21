@@ -288,11 +288,13 @@ const canModifyProject = (project: Project, userId: string) => {
     {isIdeaProject ? 'Idea Description' : 'Script Content'}
   </h3>
 
-  <pre className="whitespace-pre-wrap text-sm text-slate-900">
-    {isIdeaProject
-      ? parsedData?.idea_description || 'No idea description found'
-      : parsedData?.script_content || 'No script found'}
-  </pre>
+  {isIdeaProject
+    ? parsedData?.idea_description 
+      ? <div className="whitespace-pre-wrap text-sm text-slate-900" dangerouslySetInnerHTML={{ __html: parsedData.idea_description }} />
+      : 'No idea description found'
+    : parsedData?.script_content 
+      ? <div className="whitespace-pre-wrap text-sm text-slate-900" dangerouslySetInnerHTML={{ __html: parsedData.script_content }} />
+      : 'No script found'}
 </div>
 
         

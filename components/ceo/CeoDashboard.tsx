@@ -492,9 +492,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           {/* SCRIPT CONTENT */}
           <div className="border-2 border-black p-4 bg-slate-100">
             <h3 className="font-black uppercase mb-2">Script Content</h3>
-            <pre className="whitespace-pre-wrap text-sm">
-              {projectData.data?.script_content || 'No script'}
-            </pre>
+            {projectData.data?.script_content 
+              ? <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: projectData.data.script_content }} />
+              : <p>No script</p>
+            }
           </div>
 
           {/* CEO COMMENT */}
@@ -753,7 +754,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   <h3 className="text-2xl font-black text-slate-900 mb-2 leading-tight uppercase truncate">
                     {project.title}
                   </h3>
-
+                   <div className="flex justify-between text-sm mt-2">
+              <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Writer</span>
+              <span className="font-bold text-slate-900 uppercase text-xs">{project.data?.writer_name || 'Unknown'}</span>
+            </div>
                   <div className="space-y-2 mt-8 border-t-2 border-slate-100 pt-4">
                     {activeTab === 'HISTORY' ? (
                       <>

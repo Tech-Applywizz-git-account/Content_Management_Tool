@@ -237,8 +237,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                                     </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                         {project.data?.source === 'IDEA_PROJECT'
-                                            ? project.data.idea_description || 'No idea description available'
-                                            : project.data.script_content || 'No content available'}
+                                            ? project.data.idea_description ? <div dangerouslySetInnerHTML={{ __html: project.data.idea_description }} /> : 'No idea description available'
+                                            : project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
                                     </div>
                                 </div>
                             </div>
@@ -247,8 +247,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                             <div className="prose prose-slate max-w-none">
                                 <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
                                     {project.data?.source === 'IDEA_PROJECT'
-                                        ? project.data.idea_description || 'No idea description available'
-                                        : project.data.script_content || 'No content available'}
+                                        ? project.data.idea_description ? <div dangerouslySetInnerHTML={{ __html: project.data.idea_description }} /> : 'No idea description available'
+                                        : project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
                                 </div>
                             </div>
                         )}

@@ -3,26 +3,39 @@ import { Project, Role } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video, Film } from 'lucide-react';
 import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import SubEditorScripts from './SubEditorScripts';
 
 interface Props {
     user: { full_name: string; role: Role };
     projects: Project[];
+    scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
-    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | null;
+    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null;
 }
 
-const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, activeFilter }) => {
-    // Filter projects based on active filter
-    const filteredProjects = React.useMemo(() => {
-        if (activeFilter === 'NEEDS_DELIVERY') {
-            return projects.filter(p => !p.delivery_date);
-        } else if (activeFilter === 'IN_PROGRESS') {
-            return projects.filter(p => p.delivery_date && !p.edited_video_link);
-        } else if (activeFilter === 'COMPLETED') {
-            return projects.filter(p => !!p.edited_video_link);
+const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
+    const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
+    
+    // Show all projects the sub-editor has participated in
+    // No filtering by assigned_to_role - show all projects from getMyWork
+    const myTasks = React.useMemo(() => {
+        if (activeFilter === 'SCRIPTS') {
+            // Use the script projects passed from parent when SCRIPTS filter is active
+            return scriptProjects || [];
         }
-        return projects;
-    }, [projects, activeFilter]);
+        // When no filter, show all projects assigned to this sub-editor (including completed)
+        return projects || [];
+    }, [projects, scriptProjects, activeFilter]);
+
+    if (selectedProject && activeFilter === 'SCRIPTS') {
+        return (
+            <SubEditorScripts
+                project={selectedProject}
+                userRole={user.role}
+                onBack={() => setSelectedProject(null)}
+            />
+        );
+    }
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -31,12 +44,12 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, act
                     My Work
                 </h1>
                 <p className="font-bold text-lg text-slate-500">
-                    {filteredProjects.length} sub-editing {filteredProjects.length === 1 ? 'project' : 'projects'} awaiting action
+                    {myTasks.length} sub-editing {myTasks.length === 1 ? 'project' : 'projects'} awaiting action
                 </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProjects.map(project => {
+                {myTasks.map(project => {
                     const isDelivered = !!project.edited_video_link;
                     
                     // Use the centralized workflow state detection with role context
@@ -47,7 +60,13 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, act
                     return (
                         <div
                             key={project.id}
-                            onClick={() => onSelectProject(project)}
+                            onClick={() => {
+                                if (activeFilter === 'SCRIPTS') {
+                                    setSelectedProject(project);
+                                } else {
+                                    onSelectProject(project);
+                                }
+                            }}
                             className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                         >
                             <div className="p-6 space-y-4">
@@ -122,7 +141,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, act
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'COMPLETED' ? 'View Details' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
                                     </button>
                                 </div>
                             </div>
@@ -130,7 +149,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, onSelectProject, act
                     );
                 })}
 
-                {filteredProjects.length === 0 && (
+                {myTasks.length === 0 && (
                     <div className="col-span-full border-2 border-dashed border-black p-12 text-center bg-slate-50">
                         <h3 className="text-xl font-black uppercase text-slate-400">All Caught Up!</h3>
                         <p className="text-slate-500 mt-2">No pending sub-edits</p>

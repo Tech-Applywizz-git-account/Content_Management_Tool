@@ -821,12 +821,12 @@ export const projects = {
         };
     },
 
-    // Get all projects with script content
+    // Get all projects that are script projects (not pure idea projects)
     async getScriptProjects() {
         const { data, error } = await supabase
             .from('projects')
             .select('*')
-            .or('data->>script_content.not.is.null,data->>script_content.neq.') // Where script_content exists and is not empty
+            .or('data->>source.neq.IDEA_PROJECT,data->>script_content.not.is.null')  // Projects where source is not IDEA_PROJECT OR script_content exists
             .order('created_at', { ascending: false });
 
         if (error) throw error;

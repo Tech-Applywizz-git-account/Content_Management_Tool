@@ -3,36 +3,19 @@ import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Video, Uplo
 import { db } from '../../services/supabaseDb';
 import { Project, Role } from '../../types';
 
-const SubEditorCalendar: React.FC<{ user: any }> = ({ user }) => {
+interface Props {
+  projects: Project[];
+  user: any;
+}
+
+const SubEditorCalendar: React.FC<Props> = ({ projects = [], user }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        setLoading(true);
-        // Get all projects for this user
-        const allProjects = await db.getProjects(user);
-        
-        // Filter for projects assigned to this sub-editor
-        const subEditorProjects = allProjects.filter(p => 
-          p.assigned_to_role === Role.SUB_EDITOR &&
-          p.assigned_to_user_id === user.id
-        );
-        
-        setProjects(subEditorProjects);
-      } catch (error) {
-        console.error('Error fetching projects for calendar:', error);
-        // Set empty array to prevent infinite loading
-        setProjects([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProjects();
-  }, [user]);
+  
+  // Filter projects to only show those assigned to this sub-editor
+  const subEditorProjects = projects.filter(p => 
+    p.assigned_to_role === Role.SUB_EDITOR &&
+    p.assigned_to_user_id === user.id
+  );
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -78,7 +61,7 @@ const SubEditorCalendar: React.FC<{ user: any }> = ({ user }) => {
     if (!date) return [];
     
     const dateString = formatDate(date);
-    return projects.filter(project => 
+    return subEditorProjects.filter(project => 
       project.delivery_date === dateString || project.due_date === dateString
     );
   };
@@ -96,14 +79,6 @@ const SubEditorCalendar: React.FC<{ user: any }> = ({ user }) => {
     return date.getMonth() === currentDate.getMonth() &&
            date.getFullYear() === currentDate.getFullYear();
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-xl font-black text-slate-600">Loading calendar...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6">

@@ -191,6 +191,34 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
                 }
 
+                // Store comments in forwarded_comments if comment exists
+                if (comment && comment.trim() !== '') {
+                    const newComment = {
+                        id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9),
+                        from_role: Role.CMO,
+                        to_role: project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW ? 'CEO' : 'CINEMATOGRAPHER',
+                        comment: comment,
+                        created_at: new Date().toISOString(),
+                        action: 'APPROVED'
+                    };
+
+                    const { data: currentProject, error: fetchError } = await supabase
+                        .from('projects')
+                        .select('forwarded_comments')
+                        .eq('id', project.id)
+                        .single();
+
+                    if (!fetchError) {
+                        const existingComments = currentProject.forwarded_comments || [];
+                        const updatedComments = [...existingComments, newComment];
+                        
+                        await supabase
+                            .from('projects')
+                            .update({ forwarded_comments: updatedComments })
+                            .eq('id', project.id);
+                    }
+                }
+
                 // Show popup for approval
                 let stageLabel, message;
                 if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
@@ -517,6 +545,29 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         </section>
                     )}
 
+                    {/* Script Reference from Writer */}
+                    {project.data?.script_reference_link && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Writer's Script Reference</h3>
+                            <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Script Link</p>
+                                        <a 
+                                            href={project.data.script_reference_link} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline break-all font-medium"
+                                        >
+                                            {project.data.script_reference_link}
+                                        </a>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2 italic">This is the script provided by the writer for reference</p>
+                            </div>
+                        </section>
+                    )}
+
                     {/* Script Viewer */}
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -545,7 +596,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                             {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
                                         </h4>
                                         <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                            {previousScript}
+                                            {previousScript ? <div dangerouslySetInnerHTML={{ __html: previousScript }} /> : previousScript}
                                         </div>
                                     </div>
 
@@ -559,7 +610,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                     ? project.data.idea_description
-                                                    : project.data?.script_content || 'No script content available.'}
+                                                    : project.data?.script_content 
+                                                        ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} />
+                                                        : 'No script content available.'}
                                         </div>
                                     </div>
                                 </div>
@@ -572,7 +625,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                         ? project.data?.creative_link || 'No creative link available.'
                                         : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                             ? project.data.idea_description
-                                            : project.data?.script_content || 'No script content available.'}
+                                            : project.data?.script_content 
+                                                ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} />
+                                                : 'No script content available.'}
                                 </div>
                             )}
                         </div>

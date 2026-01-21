@@ -491,7 +491,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         </h2>
                     </div>
                     <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {project.data.script_content || 'No content available'}
+                        {project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
                     </div>
                 </div>
 
