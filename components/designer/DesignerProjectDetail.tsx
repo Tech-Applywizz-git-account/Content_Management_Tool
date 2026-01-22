@@ -351,9 +351,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             >
                                 {isVideo ? '🎬 Thumbnail Task' : '🎨 Creative Task'}
                             </span>
-                            <span className="text-sm text-slate-500 font-bold">
-                                Due: {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-                            </span>
+
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
@@ -491,7 +489,16 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         </h2>
                     </div>
                     <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
+                        {project.data.script_content ? (() => {
+                            let decodedContent = project.data.script_content
+                                .replace(/&lt;/g, '<')
+                                .replace(/&gt;/g, '>')
+                                .replace(/&amp;/g, '&')
+                                .replace(/&quot;/g, '"')
+                                .replace(/&#39;/g, "'")
+                                .replace(/&nbsp;/g, ' ');
+                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                          })() : 'No content available'}
                     </div>
                 </div>
 

@@ -228,7 +228,16 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                         <div className="border-2 border-black p-6 bg-white">
                             <h2 className="text-xl font-black uppercase mb-4 text-slate-900">Script / Caption</h2>
                             <div className="p-4 bg-slate-50 border border-slate-300 rounded">
-                                {project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
+                                {project.data.script_content ? (() => {
+                                    let decodedContent = project.data.script_content
+                                        .replace(/&lt;/g, '<')
+                                        .replace(/&gt;/g, '>')
+                                        .replace(/&amp;/g, '&')
+                                        .replace(/&quot;/g, '"')
+                                        .replace(/&#39;/g, "'")
+                                        .replace(/&nbsp;/g, ' ');
+                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                  })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}
@@ -374,12 +383,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                     {project.priority}
                                 </span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Due Date:</span>
-                                <span className="font-bold text-slate-900">
-                                    {format(new Date(project.due_date), 'MMM dd, yyyy')}
-                                </span>
-                            </div>
+
                             <div className="flex justify-between">
                                 <span className="text-slate-600">Status:</span>
                                 <span className={`font-bold ${isPosted ? 'text-green-600' : 'text-amber-600'}`}>

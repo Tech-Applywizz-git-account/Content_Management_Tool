@@ -479,7 +479,20 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                 <div 
                   className="whitespace-pre-wrap font-sans text-sm"
                   dangerouslySetInnerHTML={{ 
-                    __html: project.data?.script_content || project.data?.idea_description || 'No content available' 
+                    __html: (() => {
+                      let content = project.data?.script_content || project.data?.idea_description || 'No content available';
+                      if (content !== 'No content available') {
+                        // Decode HTML entities to properly display the content
+                        content = content
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>')
+                          .replace(/&amp;/g, '&')
+                          .replace(/&quot;/g, '"')
+                          .replace(/&#39;/g, "'")
+                          .replace(/&nbsp;/g, ' ');
+                      }
+                      return content;
+                    })()
                   }} 
                 />
               ) : (

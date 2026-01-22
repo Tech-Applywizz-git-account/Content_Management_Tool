@@ -6,9 +6,9 @@ import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, X, RotateCcw, Download, Video, Image as ImageIcon } from 'lucide-react';
 import Popup from '../Popup';
-import ScriptComparison from '../ScriptComparison';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import ScriptComparison from '../ScriptComparison';
 
 interface Props {
     project: Project;
@@ -96,55 +96,119 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
     useEffect(() => {
         const fetchPreviousScript = async () => {
-            // Identify if the project is returning from rework
-            // The key condition is that there's a ceo_rework_at timestamp and writer_submitted_at is after it
+            // Fetch previous script version and asset links for rework scenarios
+            // Check for rework status or rework workflow state
+            const workflowState = getWorkflowState(project);
+            // Check if it's a rework scenario by multiple criteria
+            // Specifically check for writer resubmitting after CEO rework
+            const isRework = project.status === 'REWORK' || workflowState.isRework ||
+                (project.ceo_rework_at && project.writer_submitted_at && 
+                 new Date(project.writer_submitted_at) > new Date(project.ceo_rework_at)) ||
+                (project.ceo_rework_at && project.cmo_submitted_at && 
+                 new Date(project.cmo_submitted_at) > new Date(project.ceo_rework_at));
+            
+            // Additional check: If project is coming back to CEO after being sent for rework
             const isReturnFromRework = project.ceo_rework_at && project.writer_submitted_at &&
                 new Date(project.writer_submitted_at) > new Date(project.ceo_rework_at);
             
-            console.log('CEO Review: Project has ceo_rework_at:', project.ceo_rework_at);
-            console.log('CEO Review: Project has writer_submitted_at:', project.writer_submitted_at);
-            console.log('CEO Review: Is return from rework:', isReturnFromRework);
+            // Even more comprehensive check: If current stage is FINAL_REVIEW_CEO and there's a rework timestamp, it's likely a return from rework
+            const isFinalReviewAfterRework = project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && project.ceo_rework_at;
             
-            if (isReturnFromRework) {
-                console.log('CEO Review: Fetching previous script for rework comparison');
-                
+            console.log('CEO Review: Workflow state isRework:', workflowState.isRework);
+            console.log('CEO Review: Project status:', project.status);
+            console.log('CEO Review: Project has ceo_rework_at:', project.ceo_rework_at);
+            console.log('CEO Review: Is rework scenario:', isRework);
+            
+            if (isRework || isReturnFromRework || isFinalReviewAfterRework) {
                 const { data: historyData, error: historyError } = await supabase
                     .from('workflow_history')
                     .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp')
                     .eq('project_id', project.id)
+                    .in('action', ['REJECTED', 'REWORK', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'CINE_SCRIPT_EDIT', 'SUBMITTED', 'APPROVED', 'CEO_REWORK'])
                     .order('timestamp', { ascending: false })
-                    .limit(50);
+                    .limit(50); // Get more entries to find the most relevant script content
 
                 if (historyError) {
-                    console.error('Error fetching previous script:', historyError);
+                    // Handle case where script_content column doesn't exist yet
+                    if (historyError.code === '42703') {
+                        console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
+                    } else {
+                        console.error('Error fetching previous script:', historyError);
+                    }
                 } else if (historyData && historyData.length > 0) {
                     console.log('CEO Review: History data found:', historyData.length, 'entries');
                     
-                    // Find the script content that existed just before ceo_rework_at
-                    // Find the workflow entry with script_content IS NOT NULL whose timestamp < project.ceo_rework_at
-                    // Closest to (just before) ceo_rework_at
-                    const sortedHistory = [...historyData].sort((a, b) => 
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-                    
-                    for (const entry of sortedHistory) {
-                        // Look for an entry that was created before the CEO rework request
-                        // That has script_content and whose timestamp is before ceo_rework_at
-                        if (entry.script_content && 
-                            new Date(entry.timestamp) < new Date(project.ceo_rework_at)) {
-                            console.log('CEO Review: Found previous script content before CEO rework at:', entry.timestamp);
-                            setPreviousScript(entry.script_content);
-                            console.log('CEO Review: Previous script set');
-                            break;
+                    // For CEO review, specifically look for the script content that existed when CEO sent for rework
+                    // Find the script content just before the ceo_rework_at timestamp
+                    if (project.ceo_rework_at) {
+                        // Sort history by timestamp descending to find the most recent entry before ceo_rework_at
+                        const sortedHistory = [...historyData].sort((a, b) => 
+                            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                        );
+                        
+                        for (const entry of sortedHistory) {
+                            // Look for an entry that was created before the CEO rework request
+                            if (entry.script_content && new Date(entry.timestamp) < new Date(project.ceo_rework_at)) {
+                                console.log('CEO Review: Found previous script content before CEO rework at:', entry.timestamp);
+                                setPreviousScript(entry.script_content);
+                                break;
+                            }
                         }
                     }
                     
-                    // Set previous asset links from the entry that was before rework
-                    const prevAssetsEntry = sortedHistory.find(entry => 
-                        new Date(entry.timestamp) < new Date(project.ceo_rework_at)
-                    );
-                    
-                    if (prevAssetsEntry) {
+                    // If we still don't have previous script, try other methods
+                    if (!previousScript) {
+                        // Look for the most recent script content from a REWORK or REJECTED action
+                        const reworkEntry = historyData.find(entry => 
+                            ['REJECTED', 'REWORK', 'CEO_REWORK'].includes(entry.action) && entry.script_content
+                        );
+                        
+                        // Also look for other rework-related actions
+                        const otherReworkEntry = historyData.find(entry => 
+                            ['REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'CINE_SCRIPT_EDIT'].includes(entry.action) && entry.script_content
+                        );
+                        
+                        // If we have a REWORK or REJECTED entry with script content, use that as previous
+                        if (reworkEntry) {
+                            setPreviousScript(reworkEntry.script_content);
+                        } else if (otherReworkEntry) {
+                            // Otherwise, try other rework-related actions
+                            setPreviousScript(otherReworkEntry.script_content);
+                        } else if (workflowState.isRework) {
+                            // If workflow state indicates rework but we couldn't find specific history, 
+                            // try to get the most recent script content from any action
+                            const anyScriptEntry = historyData.find(entry => entry.script_content);
+                            if (anyScriptEntry) {
+                                setPreviousScript(anyScriptEntry.script_content);
+                            }
+                        } else if (isFinalReviewAfterRework) {
+                            // For final review after rework, get the most recent script before the rework was initiated
+                            const sortedHistory = [...historyData].sort((a, b) => 
+                                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                            );
+                            
+                            for (const entry of sortedHistory) {
+                                // Look for an entry that was created before the CEO rework request
+                                if (entry.script_content && new Date(entry.timestamp) < new Date(project.ceo_rework_at)) {
+                                    console.log('CEO Review: Found previous script content before CEO rework at:', entry.timestamp);
+                                    setPreviousScript(entry.script_content);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Set previous asset links from the most recent entry
+                    if (historyData.length > 0) {
+                        // Find the most recent entry that was before the CEO rework timestamp
+                        let prevAssetsEntry = historyData[0];
+                        if (project.ceo_rework_at) {
+                            // Find the first entry that was created before the CEO rework request
+                            prevAssetsEntry = historyData.find(entry => 
+                                new Date(entry.timestamp) < new Date(project.ceo_rework_at)
+                            ) || historyData[0]; // Fallback to latest if none found
+                        }
+                        
                         setPreviousAssets({
                             video_link: prevAssetsEntry.video_link,
                             edited_video_link: prevAssetsEntry.edited_video_link,
@@ -154,14 +218,14 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     }
                 }
             } else {
-                // If not returning from rework, clear previous script
+                // If not in rework status, ensure previous script is cleared
                 setPreviousScript(null);
                 setPreviousAssets(null);
             }
         };
 
         fetchPreviousScript();
-    }, [project.id, project.ceo_rework_at, project.writer_submitted_at, project.data?.script_content]);
+    }, [project.id, project.status, project.ceo_rework_at, project.writer_submitted_at, project.cmo_submitted_at, project.data?.script_content, project.current_stage]);
 
     const downloadPDF = async () => {
         if (!scriptContentRef.current) return;
@@ -527,6 +591,36 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         )}
                     </div>
 
+                    {/* Forwarded Comments from CMO */}
+                    {project?.forwarded_comments && project.forwarded_comments.length > 0 && (
+                        <section className="space-y-4 pt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Forwarded Comments from CMO</h3>
+                            <div className="space-y-3">
+                                {project.forwarded_comments
+                                    .filter(comment => comment.from_role === 'CMO')
+                                    .map((comment, index) => {
+                                        const timestamp = new Date(comment.created_at).toLocaleString();
+                                        
+                                        return (
+                                            <div key={`cmo-forwarded-${comment.id || index}`} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <div className="flex items-center mb-2">
+                                                    <span className="font-bold text-blue-800">CMO Comment</span>
+                                                    <span className="mx-2 text-slate-400">•</span>
+                                                    <span className="text-sm text-slate-500">{timestamp}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-1 text-xs font-black uppercase border border-black bg-blue-500 text-white">
+                                                        {comment.action}
+                                                    </span>
+                                                    <span className="font-medium text-slate-800">{comment.comment}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </section>
+                    )}
+
                     {/* Script Reference Link - Additional Section for clarity */}
                     {project.data?.script_reference_link && (
                         <section className="space-y-4 pt-6 border-t-4 border-black">
@@ -588,61 +682,125 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </div>
 
                         {/* Script Reference Link */}
-       
+                        {project.data?.script_reference_link && (
+                            <div className="border-2 border-black bg-white p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-sm uppercase">Script Reference Link</h4>
+                                        <a href={project.data.script_reference_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-bold">
+                                            View Reference Script
+                                        </a>
+                                    </div>
+                                    <div className="text-blue-500">
+                                        🔗
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Wrapper for PDF generation - both cases */}
                         <div
                             ref={scriptContentRef}
                             className="overflow-auto"
                         >
-                            {previousScript && previousScript.trim() !== '' ? (
-                                // Show both old and new scripts side by side
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Previous Script */}
-                                    <div className="bg-white border-2 border-slate-300 p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            Previous Version
-                                        </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                            {(() => {
-                                                // Decode HTML entities in the previous script content
-                                                let decodedContent = previousScript
-                                                    .replace(/&lt;/g, '<')
-                                                    .replace(/&gt;/g, '>')
-                                                    .replace(/&amp;/g, '&')
-                                                    .replace(/&quot;/g, '"')
-                                                    .replace(/&#39;/g, "'")
-                                                    .replace(/&nbsp;/g, ' ');
-                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                              })()}
-                                        </div>
-                                    </div>
-
-                                    {/* Current Script */}
-                                    <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            Writer Rework Submission
-                                        </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
-                                            {project.data?.source === 'DESIGNER_INITIATED'
-                                                ? project.data?.creative_link || 'No creative link available.'
-                                                : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                                    ? project.data.idea_description
-                                                    : project.data?.script_content 
-                                                        ? (() => {
-                                                            let decodedContent = project.data.script_content
-                                                                .replace(/&lt;/g, '<')
-                                                                .replace(/&gt;/g, '>')
-                                                                .replace(/&amp;/g, '&')
-                                                                .replace(/&quot;/g, '"')
-                                                                .replace(/&#39;/g, "'")
-                                                                .replace(/&nbsp;/g, ' ');
-                                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                          })()
-                                                        : 'No script content available.'}
-                                        </div>
-                                    </div>
-                                </div>
+                            {previousScript && previousScript !== (project.data?.script_content || '') ? (
+                                // Show script comparison when there are different versions
+                                <ScriptComparison
+                                    previousScript={(() => {
+                                        // Decode HTML entities in the previous script content
+                                        let decodedContent = previousScript
+                                            .replace(/&lt;/g, '<')
+                                            .replace(/&gt;/g, '>')
+                                            .replace(/&amp;/g, '&')
+                                            .replace(/&quot;/g, '"')
+                                            .replace(/&#39;/g, "'")
+                                            .replace(/&nbsp;/g, ' ');
+                                        return decodedContent;
+                                    })()}
+                                    currentScript={(() => {
+                                        // Decode HTML entities in the current script content
+                                        let decodedContent = project.data?.script_content || '';
+                                        if (decodedContent) {
+                                            decodedContent = decodedContent
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                        }
+                                        return decodedContent;
+                                    })()}
+                                    previousAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
+                                    currentAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
+                                    previousTimestamp=""
+                                    currentTimestamp=""
+                                />
+                            ) : previousScript ? (
+                                // Show script comparison even when content is the same (for rework scenarios)
+                                <ScriptComparison
+                                    previousScript={(() => {
+                                        // Decode HTML entities in the previous script content
+                                        let decodedContent = previousScript
+                                            .replace(/&lt;/g, '<')
+                                            .replace(/&gt;/g, '>')
+                                            .replace(/&amp;/g, '&')
+                                            .replace(/&quot;/g, '"')
+                                            .replace(/&#39;/g, "'")
+                                            .replace(/&nbsp;/g, ' ');
+                                        return decodedContent;
+                                    })()}
+                                    currentScript={(() => {
+                                        // Decode HTML entities in the current script content
+                                        let decodedContent = project.data?.script_content || '';
+                                        if (decodedContent) {
+                                            decodedContent = decodedContent
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                        }
+                                        return decodedContent;
+                                    })()}
+                                    previousAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
+                                    currentAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
+                                    previousTimestamp=""
+                                    currentTimestamp=""
+                                />
+                            ) : (                                // Show script comparison with visual diff highlighting changes
+                                <ScriptComparison
+                                    previousScript={(() => {
+                                        // Decode HTML entities in the previous script content
+                                        let decodedContent = previousScript
+                                            .replace(/&lt;/g, '<')
+                                            .replace(/&gt;/g, '>')
+                                            .replace(/&amp;/g, '&')
+                                            .replace(/&quot;/g, '"')
+                                            .replace(/&#39;/g, "'")
+                                            .replace(/&nbsp;/g, ' ');
+                                        return decodedContent;
+                                    })()}
+                                    currentScript={(() => {
+                                        // Decode HTML entities in the current script content
+                                        let decodedContent = project.data?.script_content || '';
+                                        if (decodedContent) {
+                                            decodedContent = decodedContent
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                        }
+                                        return decodedContent;
+                                    })()}
+                                    previousAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
+                                    currentAuthor={project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
+                                    previousTimestamp=""
+                                    currentTimestamp=""
+                                />
                             ) : (
                                 // Show single script for non-rework projects
                                 <div
@@ -680,7 +838,21 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 // Show both previous and current assets side by side for rework projects
                                 <div className="space-y-8">
                                     {/* Script Reference Link */}
-                                 
+                                    {project.data?.script_reference_link && (
+                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="font-black text-slate-900 text-sm uppercase">Script Reference Link</h4>
+                                                    <a href={project.data.script_reference_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-bold">
+                                                        View Reference Script
+                                                    </a>
+                                                </div>
+                                                <div className="text-blue-500">
+                                                    🔗
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     
                                     {/* Raw Video Assets */}
                                     {isVideo && (project.video_link || previousAssets?.video_link) && (
@@ -837,7 +1009,21 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 // Show single assets for non-rework projects
                                 <div className="grid grid-cols-3 gap-6">
                                     {/* Script Reference Link */}
-                                   
+                                    {project.data?.script_reference_link && (
+                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="font-black text-slate-900 text-sm uppercase">Script Reference Link</h4>
+                                                    <a href={project.data.script_reference_link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm font-bold">
+                                                        View Reference Script
+                                                    </a>
+                                                </div>
+                                                <div className="text-blue-500">
+                                                    🔗
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (

@@ -12,6 +12,7 @@
     "@supabase/supabase-js": "^2.86.0",
     "@types/pg": "^8.16.0",
     "date-fns": "^4.1.0",
+    "diff-match-patch": "^1.0.5",
     "dotenv": "^17.2.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.4",

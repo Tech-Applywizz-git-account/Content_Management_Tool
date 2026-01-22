@@ -364,3 +364,40 @@ export function isReworkProject(project: Project): boolean {
   // Return true if there's no rework action but the status is REWORK
   return hasReworkStatus;
 }
+
+/**
+ * Determine if a project is a rework project initiated by a specific role
+ * A project is considered a rework project initiated by a specific role 
+ * if it has any unresolved rework-related actions initiated by that role in its history
+ */
+export function isReworkInitiatedByRole(project: Project, role: Role): boolean {
+  if (!project.history) return false;
+
+  // Sort history by timestamp descending to find the most recent actions
+  const sortedHistory = [...project.history].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  
+  // Find the most recent REWORK or REJECTED action initiated by the specified role
+  const reworkAction = sortedHistory.find(h => {
+    const isReworkAction = h.action === 'REWORK' || h.action === 'REJECTED';
+    // Check if the action was initiated by the specified role
+    // The actor_role field stores the role of the person who took the action
+    return isReworkAction && h.actor_role === role;
+  });
+  
+  // If there's a rework action by this role, check if it has been resolved by a later submission
+  if (reworkAction) {
+    const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
+    const hasLaterSubmission = sortedHistory.some(h => {
+      const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+      const actionTimestamp = new Date(h.timestamp).getTime();
+      return isSubmissionAction && actionTimestamp > reworkTimestamp;
+    });
+    
+    // Return true only if there was a rework action by this role and it hasn't been resolved by submission/approval
+    return !hasLaterSubmission;
+  }
+  
+  return false;
+}

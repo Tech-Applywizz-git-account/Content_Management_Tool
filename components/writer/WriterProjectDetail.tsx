@@ -130,87 +130,185 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">
-            <header className="h-16 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white/95 backdrop-blur z-20 shadow-[0_4px_0px_0px_rgba(0,0,0,0.1)]">
-                <div className="flex items-center space-x-4">
+            <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center space-x-6">
                     <button
                         onClick={onBack}
-                        className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 border-2 border-transparent hover:border-black"
+                        className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all"
                     >
-                        <ArrowLeft className="w-5 h-5" />
+                        <ArrowLeft className="w-6 h-6 text-black" />
                     </button>
-                    <h1 className="text-xl font-black uppercase text-slate-900">{project.title}</h1>
-                    <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                        project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                            'bg-[#D946EF] text-white'
-                        }`}>
-                        {project.channel}
-                    </span>
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea Details: ' : 'Project Details: '}
+                            {project.title}
+                        </h1>
+                        
+                        <div className="flex items-center space-x-2 mt-2">
+                            {project.data?.source === 'IDEA_PROJECT' && (
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                    {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                </span>
+                            )}
+                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                                project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
+                                    'bg-[#D946EF]'
+                                }`}>
+                                {project.channel}
+                            </span>
+                            <span className="text-xs font-bold uppercase text-slate-500">
+                                Stage: {STAGE_LABELS[project.current_stage]}
+                            </span>
+                            <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                    ? 'bg-red-500 text-white'
+                                    : project.priority === 'NORMAL'
+                                        ? 'bg-yellow-500 text-black'
+                                        : 'bg-green-500 text-white'
+                                    }`}>
+                                {project.priority}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto">
-                <div className="max-w-5xl mx-auto p-8 space-y-8">
+            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+                {/* LEFT COLUMN: Content (70%) */}
+                <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
 
-                    {/* Current Status Card */}
-                    <div className="bg-gradient-to-br from-blue-50 to-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="flex items-start justify-between mb-6">
-                            <div>
-                                <h2 className="text-2xl font-black uppercase text-slate-900 mb-2">Current Status</h2>
-                                <p className="text-sm font-bold text-slate-500 uppercase">Submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
-                            </div>
-                            <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                                {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
+                    {/* Info Block */}
+                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
+                            <div className={`font-bold uppercase ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
+                                {project.priority}
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <User className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Current Reviewer</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">
-                                    {project.assigned_to_role === Role.CMO ? 'CMO Review' :
-                                        project.assigned_to_role === Role.CEO ? 'CEO Review' :
-                                            STAGE_LABELS[project.current_stage]}
-                                </p>
-                            </div>
-
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <Clock className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Stage</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
-                            </div>
-
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <FileText className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Status</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">{isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : project.status}</p>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Status</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.status}
                             </div>
                         </div>
-
-                        {/* Progress Bar */}
-                        <div className="mt-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-bold uppercase text-slate-500">Workflow Progress</span>
-                                <span className="text-xs font-bold uppercase text-slate-900">
-                                    {project.assigned_to_role === Role.CMO ? 'Level 1 Review' :
-                                        project.assigned_to_role === Role.CEO ? 'Level 2 Review' : 'Processing'}
-                                </span>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                             </div>
-                            <div className="w-full bg-slate-200 h-3 border-2 border-black overflow-hidden">
-                                <div
-                                    className="bg-blue-600 h-full transition-all duration-500"
-                                    style={{ width: project.assigned_to_role === Role.CEO ? '75%' : '50%' }}
-                                ></div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Assigned To</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.assigned_to_role}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Content Type</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.content_type}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Created</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {format(new Date(project.created_at), 'MMM dd, yyyy')}
                             </div>
                         </div>
                     </div>
 
+                    {/* Brief Content */}
+                    {project.data?.brief && (
+                        <section className="space-y-4">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">Brief / Notes</h3>
+                            <div className="border-2 border-black bg-white p-8 min-h-[100px] whitespace-pre-wrap text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                {project.data.brief}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Content */}
+                    <div className="space-y-4">
+                        <h3 className="text-2xl font-black text-slate-900 uppercase">
+                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
+                        </h3>
+
+                        {isRejected && previousScript ? (
+                            // Show both old and new content side by side for rework projects
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {/* Previous Content */}
+                                <div className="bg-white border-2 border-slate-300 p-6">
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
+                                    </h4>
+                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                        {(() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            const decodedContent = decodeHtmlEntities(previousScript);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                        })()}
+                                    </div>
+                                </div>
+
+                                {/* Current Content */}
+                                <div className="bg-white border-2 border-black p-6">
+                                    <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Updated Idea' : 'Updated Script'}
+                                    </h4>
+                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
+                                        {project.data?.source === 'IDEA_PROJECT'
+                                            ? project.data.idea_description ? (() => {
+                                                const decodeHtmlEntities = (html) => {
+                                                    const txt = document.createElement('textarea');
+                                                    txt.innerHTML = html;
+                                                    return txt.value;
+                                                };
+                                                let decodedContent = decodeHtmlEntities(project.data.idea_description);
+                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                              })() : 'No idea description available'
+                                            : project.data.script_content ? (() => {
+                                                const decodeHtmlEntities = (html) => {
+                                                    const txt = document.createElement('textarea');
+                                                    txt.innerHTML = html;
+                                                    return txt.value;
+                                                };
+                                                let decodedContent = decodeHtmlEntities(project.data.script_content);
+                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                              })() : 'No content available'}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            // Show single content for non-rework projects
+                            <div className="prose prose-slate max-w-none">
+                                <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-8 min-h-[300px] border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                    {project.data?.source === 'IDEA_PROJECT'
+                                        ? project.data.idea_description ? (() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            let decodedContent = decodeHtmlEntities(project.data.idea_description);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })() : 'No idea description available'
+                                        : project.data.script_content ? (() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            let decodedContent = decodeHtmlEntities(project.data.script_content);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })() : 'No content available'}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     {/* Content */}
                     <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">
@@ -226,7 +324,15 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
                                     </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {previousScript}
+                                        {(() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            const decodedContent = decodeHtmlEntities(previousScript);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                        })()}
                                     </div>
                                 </div>
 
@@ -237,8 +343,24 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                                     </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                         {project.data?.source === 'IDEA_PROJECT'
-                                            ? project.data.idea_description ? <div dangerouslySetInnerHTML={{ __html: project.data.idea_description }} /> : 'No idea description available'
-                                            : project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
+                                            ? project.data.idea_description ? (() => {
+                                                const decodeHtmlEntities = (html) => {
+                                                    const txt = document.createElement('textarea');
+                                                    txt.innerHTML = html;
+                                                    return txt.value;
+                                                };
+                                                let decodedContent = decodeHtmlEntities(project.data.idea_description);
+                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                              })() : 'No idea description available'
+                                            : project.data.script_content ? (() => {
+                                                const decodeHtmlEntities = (html) => {
+                                                    const txt = document.createElement('textarea');
+                                                    txt.innerHTML = html;
+                                                    return txt.value;
+                                                };
+                                                let decodedContent = decodeHtmlEntities(project.data.script_content);
+                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                              })() : 'No content available'}
                                     </div>
                                 </div>
                             </div>
@@ -247,44 +369,126 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                             <div className="prose prose-slate max-w-none">
                                 <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
                                     {project.data?.source === 'IDEA_PROJECT'
-                                        ? project.data.idea_description ? <div dangerouslySetInnerHTML={{ __html: project.data.idea_description }} /> : 'No idea description available'
-                                        : project.data.script_content ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} /> : 'No content available'}
+                                        ? project.data.idea_description ? (() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            let decodedContent = decodeHtmlEntities(project.data.idea_description);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })() : 'No idea description available'
+                                        : project.data.script_content ? (() => {
+                                            const decodeHtmlEntities = (html) => {
+                                                const txt = document.createElement('textarea');
+                                                txt.innerHTML = html;
+                                                return txt.value;
+                                            };
+                                            let decodedContent = decodeHtmlEntities(project.data.script_content);
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })() : 'No content available'}
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Project Details */}
-                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Project Details</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {project.data.brief && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brief</span>
-                                    <p className="text-slate-700 font-medium">{project.data.brief}</p>
-                                </div>
-                            )}
-                            {project.data.keywords && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Keywords</span>
-                                    <p className="text-slate-700 font-medium">{project.data.keywords}</p>
-                                </div>
-                            )}
-                            {project.data.niche && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
-                                    <p className="text-slate-700 font-medium uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche}
+                    {/* Cinematographer Notes for Writer */}
+                    {(project.data?.cine_notes_for_writer || project.data?.cine_comments) && (
+                        <div className="bg-blue-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-center space-x-2 mb-4">
+                                <MessageSquare className="w-5 h-5 text-blue-600" />
+                                <h3 className="text-xl font-black uppercase text-blue-900">Notes from Cinematographer</h3>
+                            </div>
+                            <div className="bg-white p-4 border-2 border-blue-300">
+                                <p className="text-slate-800 whitespace-pre-wrap font-medium">{project.data.cine_notes_for_writer || project.data.cine_comments}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Cinematographer Instructions */}
+                    {(project.data?.actor_details || project.data?.location_details || project.data?.lighting_details || project.data?.camera_angles) && (
+                        <div className="bg-green-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-center space-x-2 mb-4">
+                                <FileText className="w-5 h-5 text-green-600" />
+                                <h3 className="text-xl font-black uppercase text-green-900">Cinematographer Instructions</h3>
+                            </div>
+                            <div className="bg-white p-4 border-2 border-green-300 space-y-4">
+                                {project.data?.actor_details && (
+                                    <div>
+                                        <p className="text-xs font-bold text-green-700 uppercase mb-1">Actor Details</p>
+                                        <p className="text-slate-800 whitespace-pre-wrap font-medium">{project.data.actor_details}</p>
+                                    </div>
+                                )}
+                                {project.data?.location_details && (
+                                    <div>
+                                        <p className="text-xs font-bold text-green-700 uppercase mb-1">Location Details</p>
+                                        <p className="text-slate-800 whitespace-pre-wrap font-medium">{project.data.location_details}</p>
+                                    </div>
+                                )}
+                                {project.data?.lighting_details && (
+                                    <div>
+                                        <p className="text-xs font-bold text-green-700 uppercase mb-1">Lighting Details</p>
+                                        <p className="text-slate-800 whitespace-pre-wrap font-medium">{project.data.lighting_details}</p>
+                                    </div>
+                                )}
+                                {project.data?.camera_angles && (
+                                    <div>
+                                        <p className="text-xs font-bold text-green-700 uppercase mb-1">Camera Angles</p>
+                                        <p className="text-slate-800 whitespace-pre-wrap font-medium">{project.data.camera_angles}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Comments Section */}
+                    {(comments.length > 0 || isRejected || rejectionReason) && (
+                        <div className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-center space-x-2 mb-4">
+                                <MessageSquare className="w-5 h-5" />
+                                <h3 className="text-xl font-black uppercase text-slate-900">
+                                    {isRejected || project.status === 'REWORK' ? 'Rework Comments' : project.data?.source === 'IDEA_PROJECT' ? 'Reviewer Comments' : 'Reviewer Comments'}
+                                </h3>
+                            </div>
+
+                            {/* Show rejection reason prominently for rework projects */}
+                            {(isRejected || project.status === 'REWORK') && rejectionReason && (
+                                <div className="mb-6 p-4 bg-red-50 border-2 border-red-500 shadow-sm">
+                                    <h4 className="font-black text-red-800 mb-2 text-lg uppercase">
+                                        {project.data?.source === 'IDEA_PROJECT' ? 'Idea Rework Comments' : 'Rework Comments'}
+                                    </h4>
+                                    <p className="text-red-700 whitespace-pre-wrap text-base font-medium">
+                                        {rejectionReason}
+                                    </p>
+                                    <p className="text-sm text-red-600 mt-2 font-bold">
+                                        {project.data?.source === 'IDEA_PROJECT'
+                                            ? `Rework requested by: ${rejectionComment?.actor_name || 'Reviewer'}`
+                                            : `Rework requested by: ${rejectionComment?.actor_name || 'Reviewer'}`}
+                                        {rejectionComment?.timestamp && ` at ${format(new Date(rejectionComment.timestamp), 'MMM dd, yyyy h:mm a')}`}
                                     </p>
                                 </div>
                             )}
+
+                            {comments.length > 0 && (
+                                <div className="space-y-6">
+                                    {comments.map((comment, index) => (
+                                        <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="font-bold text-slate-900">{comment.actor_name}</p>
+                                                    <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                    {comment.action}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    )}
 
                     {/* Comments Section */}
                     {(comments.length > 0 || isRejected || rejectionReason) && (
@@ -335,68 +539,11 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                         </div>
                     )}
 
-                    {/* Review History */}
-                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="flex items-center space-x-2 mb-6">
-                            <MessageSquare className="w-6 h-6" />
-                            <h3 className="text-xl font-black uppercase text-slate-900">Review History</h3>
-                        </div>
 
-                        <div className="space-y-4">
-                            {/* Timeline */}
-                            <div className="flex items-start space-x-4">
-                                <div className="w-3 h-3 bg-blue-600 border-2 border-black rounded-full mt-2"></div>
-                                <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
-                                    <span className="text-xs font-bold uppercase text-slate-500">
-                                        {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
-                                    </span>
-                                    <p className="font-black text-slate-900 uppercase mt-1">Script Submitted</p>
-                                    <p className="text-sm text-slate-600 mt-2">Script submitted for review by Writer</p>
-                                </div>
-                            </div>
-
-                            {project.assigned_to_role === Role.CEO && (
-                                <div className="flex items-start space-x-4">
-                                    <div className="w-3 h-3 bg-green-600 border-2 border-black rounded-full mt-2"></div>
-                                    <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
-                                        <span className="text-xs font-bold uppercase text-slate-500">Recently</span>
-                                        <p className="font-black text-slate-900 uppercase mt-1">CMO Approved</p>
-                                        <p className="text-sm text-slate-600 mt-2">Passed initial review, now with CEO</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {isRejected && (
-                                <div className="flex items-start space-x-4">
-                                    <div className="w-3 h-3 bg-red-600 border-2 border-black rounded-full mt-2"></div>
-                                    <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
-                                        <span className="text-xs font-bold uppercase text-slate-500">Recently</span>
-                                        <p className="font-black text-slate-900 uppercase mt-1">{returnType === 'reject' ? 'Project Rejected' : 'Rework Required'}</p>
-                                        <p className="text-sm text-slate-600 mt-2">{returnType === 'reject' ? 'Project rejected by reviewer' : 'Changes requested by reviewer'}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex items-start space-x-4">
-                                <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
-                                <div className="flex-1 pl-6">
-                                    <span className="text-xs font-bold uppercase text-slate-500">Current</span>
-                                    <p className="font-black text-slate-900 uppercase mt-1">
-                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
-                                            project.assigned_to_role === Role.CMO ? 'With CMO' :
-                                                project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
-                                    </p>
-                                    <p className="text-sm text-slate-600 mt-2">
-                                        {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Multi-Writer Approval Section - Show if project is in multi-writer approval stage */}
                     {(project.current_stage === 'MULTI_WRITER_APPROVAL' || project.current_stage === 'WRITER_VIDEO_APPROVAL') && (
-                        <div className="bg-orange-50 p-6 border-2 border-orange-400 mb-6">
+                        <div className="bg-orange-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <h3 className="text-lg font-black uppercase text-orange-900 mb-4">
                                 {project.current_stage === 'MULTI_WRITER_APPROVAL' ? 'Multi-Writer Approval' : 'Video Approval'}
                             </h3>
@@ -498,6 +645,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                                                         return;
                                                     }
 
+                                                    // Prompt for rework comments
+                                                    const reworkComment = prompt('Enter rework comments for the editor:', 'Please rework the video');
+                                                    if (reworkComment === null) return; // User cancelled
+
                                                     // Use the centralized db service to reject the project
                                                     const { db } = await import('../../services/supabaseDb');
                                                     // Set the current user in the db service with proper User interface
@@ -509,8 +660,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                                                         status: UserStatus.ACTIVE
                                                     });
 
-                                                    // Call the workflow reject function to send project back to editor
-                                                    await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, 'Writer rejected the video - needs rework');
+                                                    // Call the workflow reject function to send project back to editor with comments
+                                                    await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, reworkComment);
 
                                                     // Show rejection popup
                                                     setPopupMessage('Video rejected. Sent back to editor for rework.');
@@ -552,7 +703,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                     )}
 
                     {/* Info Note */}
-                    <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
+                    <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-black' : 'bg-yellow-50 border-2 border-black'} shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong>
                             {isRejected || project.status === 'REWORK'
@@ -569,6 +720,63 @@ const WriterProjectDetail: React.FC<Props> = ({ project, userRole, onBack }) => 
                         </p>
                     </div>
 
+                </div>
+
+                {/* RIGHT COLUMN: Project Status Panel (30%) - Information only */}
+                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 md:top-20 md:h-[calc(100vh-80px)] overflow-y-auto z-10">
+                    <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 inline-block">Project Status</h2>
+
+                    <div className="space-y-6">
+                        <div className="p-6 border-2 border-black bg-white">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-black text-lg uppercase text-slate-900">Current Stage</div>
+                                    <div className="text-xs font-bold uppercase text-slate-600">
+                                        {STAGE_LABELS[project.current_stage]}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-xs font-bold text-slate-500 uppercase">
+                                Stage set: {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-2 border-black bg-white">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-black text-lg uppercase text-slate-900">Assigned To</div>
+                                    <div className="text-xs font-bold uppercase text-slate-600">
+                                        {project.assigned_to_role}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-2 text-xs font-bold text-slate-500 uppercase">
+                                Role assigned: {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-2 border-black bg-white">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-black text-lg uppercase text-slate-900">Status</div>
+                                    <div className="text-xs font-bold uppercase text-slate-600">
+                                        {project.status}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-2 border-black bg-white">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-black text-lg uppercase text-slate-900">Created</div>
+                                    <div className="text-xs font-bold uppercase text-slate-600">
+                                        {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

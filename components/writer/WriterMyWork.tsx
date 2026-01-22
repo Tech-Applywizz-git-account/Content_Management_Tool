@@ -237,90 +237,305 @@ const canModifyProject = (project: Project, userId: string) => {
   // If viewing project details
   if (selectedProject) {
     const isReadOnly = isProjectOpenedByReviewers(selectedProject);
-      const parsedData = selectedProject.data;
-  const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
+    const parsedData = selectedProject.data;
+    const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
+    
     return (
-      <div className="p-8 space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in">
+        {/* Back button */}
         <button
           onClick={() => setSelectedProject(null)}
-          className="font-black underline text-sm"
+          className="flex items-center text-sm font-black text-slate-700 hover:text-slate-900 py-2 px-4 bg-gray-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
         >
           ← Back to My Work
         </button>
-         {selectedProject &&
-    isIdeaApprovedByCEO(selectedProject) &&
-    selectedProject.data?.brief && (
-      <div className="border-2 border-black bg-yellow-50 p-5 shadow">
-        <h3 className="font-black uppercase mb-2">
-          Approved Idea Description
-        </h3>
-        <p className="text-slate-800 whitespace-pre-wrap">
-          {selectedProject.data.brief}
-        </p>
-      </div>
-    )}
-
-        <div className="flex justify-between items-start">
-          <h1 className="text-3xl font-black uppercase">
-            {selectedProject.title}
-          </h1>
-          {isReadOnly && (
-            <span className="bg-red-100 text-red-800 px-3 py-1 border-2 border-red-300 text-sm font-black uppercase">
-              Read Only
-            </span>
-          )}
-        </div>
-
-        {/* STATUS BAR */}
-        <div className="flex justify-between border-2 border-black p-4 bg-slate-50">
-          <span className="font-black uppercase">
-            Status: {selectedProject.status}
-          </span>
-          <span className="text-sm text-slate-500">
-            Updated: {format(new Date(selectedProject.updated_at || selectedProject.created_at), 'MMM dd, yyyy h:mm a')}
-          </span>
-        </div>
-
-        {/* SCRIPT CONTENT */}
-        {/* CONTENT */}
-<div className="border-2 border-black bg-white p-6 shadow">
-  <h3 className="font-black uppercase mb-3">
-    {isIdeaProject ? 'Idea Description' : 'Script Content'}
-  </h3>
-
-  {isIdeaProject
-    ? parsedData?.idea_description 
-      ? <div className="whitespace-pre-wrap text-sm text-slate-900" dangerouslySetInnerHTML={{ __html: parsedData.idea_description }} />
-      : 'No idea description found'
-    : parsedData?.script_content 
-      ? <div className="whitespace-pre-wrap text-sm text-slate-900" dangerouslySetInnerHTML={{ __html: parsedData.script_content }} />
-      : 'No script found'}
-</div>
-
         
-        {/* COMMENTS SECTION */}
-{reviewComments.length > 0 && (
-  <div className="border-2 border-black bg-red-50 p-6 shadow">
-    <h3 className="font-black uppercase mb-3 text-red-700">
-      {selectedProject.data?.source === 'IDEA_PROJECT' ? 'Rework Comments' : 'Reviewer Comments'}
-    </h3>
-
-    {reviewComments.map((c, i) => (
-      <div key={i} className="mb-4">
-        <p className="font-black text-sm text-slate-900">
-          {c.actor_name} ({c.action})
-        </p>
-        <p className="text-sm text-slate-700 whitespace-pre-wrap">
-          {c.comment}
-        </p>
-        <p className="text-xs text-slate-500">
-          {format(new Date(c.timestamp), 'MMM dd, yyyy h:mm a')}
-        </p>
-      </div>
-    ))}
-  </div>
-)}
-
+        <div className="space-y-6">
+          {/* Basic Info Section */}
+          <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h2 className="text-2xl font-black uppercase mb-4">Project Details</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Title</h3>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.title}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Channel</h3>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.channel}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Writer</h3>
+                <p className="font-medium bg-slate-50 p-2">
+                  {selectedProject.writer_name || '—'}
+                </p>
+              </div>
+              {selectedProject.data?.source !== 'IDEA_PROJECT' && (
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
+                <p className="font-medium bg-slate-50 p-2">
+                  {selectedProject.editor_name || selectedProject.sub_editor_name || selectedProject.data?.editor_name || selectedProject.data?.sub_editor_name || '—'}
+                </p>
+              </div>
+              )}
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Status</h3>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.status}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Current Stage</h3>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.current_stage ? selectedProject.current_stage.replace(/_/g, ' ') : 'N/A'}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Priority</h3>
+                <span className={`inline-block px-2 py-1 text-xs font-black uppercase border-2 border-black ${selectedProject.priority === 'HIGH'
+                  ? 'bg-red-500 text-white'
+                  : selectedProject.priority === 'NORMAL'
+                    ? 'bg-yellow-500 text-black'
+                    : 'bg-green-500 text-white'
+                  }`}>
+                  {selectedProject.priority}
+                </span>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Assigned To</h3>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.assigned_to_role || 'Unassigned'}</p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Created At</h3>
+                <p className="font-medium bg-slate-50 p-2">{new Date(selectedProject.created_at).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+          
+          {/* Script Content Section */}
+          {(selectedProject.data?.script_content || selectedProject.data?.idea_description) && (
+            <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="text-lg font-black uppercase mb-4">
+                {selectedProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
+              </h3>
+              <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
+                {selectedProject.data?.script_content || selectedProject.data?.idea_description ? (
+                  <div 
+                    className="whitespace-pre-wrap font-sans text-sm"
+                    dangerouslySetInnerHTML={{ 
+                      __html: (() => {
+                        let content = selectedProject.data?.script_content || selectedProject.data?.idea_description || 'No content available';
+                        if (content !== 'No content available') {
+                          // Decode HTML entities to properly display the content
+                          content = content
+                            .replace(/&lt;/g, '<')
+                            .replace(/&gt;/g, '>')
+                            .replace(/&amp;/g, '&')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#39;/g, "'")
+                            .replace(/&nbsp;/g, ' ');
+                        }
+                        return content;
+                      })()
+                    }} 
+                  />
+                ) : (
+                  <pre className="whitespace-pre-wrap font-sans text-sm">
+                    No content available
+                  </pre>
+                )}
+                
+                {/* Show cinematographer comments if available */}
+                {selectedProject.data?.cine_comments && (
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    <p className="text-xs font-bold text-blue-700 uppercase">Cinematographer Note:</p>
+                    <p className="text-xs text-slate-600 whitespace-pre-wrap">{selectedProject.data.cine_comments}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* Workflow Status Section */}
+          <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h3 className="text-lg font-black uppercase mb-4">Workflow Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Current Stage</h4>
+                <p className="font-medium bg-slate-50 p-2">{selectedProject.current_stage ? selectedProject.current_stage.replace(/_/g, ' ') : 'N/A'}</p>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Status</h4>
+                <span className={`inline-block px-2 py-1 text-xs font-black uppercase border-2 border-black ${selectedProject.status === 'DONE'
+                  ? 'bg-green-500 text-white'
+                  : selectedProject.status === 'WAITING_APPROVAL'
+                    ? 'bg-yellow-500 text-black'
+                    : 'bg-blue-500 text-white'
+                  }`}>
+                  {selectedProject.status}
+                </span>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Rework Indicator</h4>
+                <p className="font-medium bg-slate-50 p-2">
+                  {selectedProject.history?.some(h => h.action === 'REJECTED' || h.action.startsWith('REWORK')) ? 'Yes' : 'No'}
+                </p>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Project Type</h4>
+                <span className="inline-block px-2 py-1 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                  {selectedProject.data?.source === 'IDEA_PROJECT' ? (selectedProject.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA') : 'SCRIPT'}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Comments and Feedback Section */}
+          <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h3 className="text-xl font-black uppercase mb-6 border-b-2 border-black pb-3 text-slate-900">
+              Project Comments & Feedback
+            </h3>
+            
+            {/* Display current project dates if they exist */}
+            {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date) && (
+              <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {selectedProject?.shoot_date && (
+                    <div className="flex items-center">
+                      <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
+                      <span className="font-bold text-green-600">{format(new Date(selectedProject.shoot_date), 'dd-MM-yyyy')}</span>
+                    </div>
+                  )}
+                  {selectedProject?.delivery_date && (
+                    <div className="flex items-center">
+                      <span className="mr-2 font-bold text-slate-700">📦 Delivery Date:</span>
+                      <span className="font-bold text-blue-600">{format(new Date(selectedProject.delivery_date), 'dd-MM-yyyy')}</span>
+                    </div>
+                  )}
+                  {selectedProject?.post_scheduled_date && (
+                    <div className="flex items-center">
+                      <span className="mr-2 font-bold text-slate-700">🗓️ Post Date:</span>
+                      <span className="font-bold text-purple-600">{format(new Date(selectedProject.post_scheduled_date), 'dd-MM-yyyy')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Display comments */}
+            {reviewComments.length > 0 ? (
+              <div className="space-y-6 bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                {reviewComments.map((comment, index) => {
+                  // Determine the description based on stage and action
+                  let description = `${comment.action} in ${comment.stage}`;
+                  
+                  switch (comment.stage) {
+                    case 'SCRIPT':
+                      if (comment.action === 'SUBMITTED') {
+                        description = 'Project submitted by writer';
+                      }
+                      break;
+                    case 'SCRIPT_REVIEW_L1':
+                      if (comment.action === 'APPROVED') {
+                        description = 'Project approved by CMO';
+                      } else if (comment.action === 'REWORK') {
+                        description = 'CMO requested rework';
+                      }
+                      break;
+                    case 'FINAL_REVIEW_CMO':
+                      if (comment.action === 'APPROVED') {
+                        description = 'Project approved by CMO';
+                      } else if (comment.action === 'REWORK') {
+                        description = 'CMO requested rework';
+                      }
+                      break;
+                    case 'FINAL_REVIEW_CEO':
+                      if (comment.action === 'APPROVED') {
+                        description = 'Project approved by CEO';
+                      } else if (comment.action === 'REWORK') {
+                        description = 'CEO requested rework';
+                      }
+                      break;
+                    case 'MULTI_WRITER_APPROVAL':
+                      if (comment.action === 'APPROVED') {
+                        description = 'Writer approved the final video';
+                      } else if (comment.action === 'SUBMITTED') {
+                        description = 'All writers have approved - Project advanced to CMO for final review';
+                      }
+                      break;
+                    case 'CINEMATOGRAPHY':
+                      if (comment.action === 'SUBMITTED') {
+                        description = 'Raw video uploaded by cinematographer';
+                      }
+                      break;
+                    case 'VIDEO_EDITING':
+                      if (comment.action === 'SUBMITTED') {
+                        description = 'Edited video uploaded by editor';
+                      }
+                      break;
+                    case 'SUB_EDITOR_PROCESSING':
+                      if (comment.action === 'SUBMITTED') {
+                        description = 'Edited video uploaded by sub-editor';
+                      } else if (comment.action === 'APPROVED') {
+                        description = 'Sub-editor completed processing';
+                      }
+                      break;
+                    case 'THUMBNAIL_DESIGN':
+                      if (comment.action === 'SUBMITTED') {
+                        description = 'Assets uploaded by designer';
+                      }
+                      break;
+                    default:
+                      // Handle special actions that might not have a specific stage mapping
+                      if (comment.action === 'SET_SHOOT_DATE') {
+                        description = 'Shoot date set';
+                      } else if (comment.action === 'SET_DELIVERY_DATE') {
+                        description = 'Delivery date set';
+                      } else if (comment.action === 'REWORK_VIDEO_SUBMITTED') {
+                        description = 'Rework video uploaded';
+                      } else if (comment.action === 'SUB_EDITOR_ASSIGNED') {
+                        description = 'Project assigned to sub-editor';
+                      } else {
+                        description = `${comment.action} in ${comment.stage}`;
+                      }
+                  }
+                  
+                  return (
+                    <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-bold text-slate-900">{comment.actor_name}</p>
+                          <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : comment.action === 'REWORK' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                          {comment.action}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-slate-700">{comment.comment || description}</p>
+                      {/* Display shoot date and delivery date based on action type */}
+                      {comment.action === 'SET_SHOOT_DATE' && (
+                        <div className="mt-2 text-sm text-slate-600 font-bold">
+                          📅 Shoot Date: <span className="text-green-600">{comment.comment}</span>
+                        </div>
+                      )}
+                      {comment.action === 'SET_DELIVERY_DATE' && (
+                        <div className="mt-2 text-sm text-slate-600 font-bold">
+                          📅 Delivery Date: <span className="text-blue-600">{comment.comment}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-400 mb-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 italic font-medium">Comments and feedback will appear here as they are added</p>
+                <p className="text-sm text-gray-400 mt-1">No comments or feedback recorded yet</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -509,15 +724,35 @@ const canModifyProject = (project: Project, userId: string) => {
               {task.data?.brief && (
                 <p className="text-slate-600 mb-4">{task.data.brief}</p>
               )}
+              
+              {/* CINEMATOGRAPHER COMMENTS PREVIEW */}
+              {task.data?.cine_comments && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-xs font-bold text-blue-700 uppercase mb-1">Cinematographer Note:</p>
+                  <p className="text-xs text-slate-600 whitespace-pre-wrap truncate max-h-12 overflow-hidden">
+                    {task.data.cine_comments}
+                  </p>
+                </div>
+              )}
 
               {/* FOOTER */}
-              <div className="flex justify-between items-center border-t pt-3 text-sm">
+              <div className="flex flex-col space-y-2 border-t pt-3 text-sm">
+                {/* Cinematographer Comments */}
+                {task.data?.cine_comments && (
+                  <div className="flex items-start">
+                    <span className="text-xs font-bold uppercase text-blue-700 mr-2">Cine Note:</span>
+                    <p className="text-xs text-slate-600 whitespace-pre-wrap truncate max-w-xs">
+                      {task.data.cine_comments}
+                    </p>
+                  </div>
+                )}
+                
                 <div className="flex items-center font-bold text-slate-500 uppercase">
                   <Clock className="w-4 h-4 mr-2" />
                   Created: {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
                 </div>
 
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 self-end">
                   <button 
                     className="flex items-center font-bold uppercase text-blue-600 hover:text-blue-800"
                     onClick={(e) => {

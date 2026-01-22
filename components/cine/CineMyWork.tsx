@@ -10,10 +10,12 @@ interface Props {
     projects: Project[];
     scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
-    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | null;
+    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | 'POSTED' | null;
+    uploadedSubTab?: 'EDITOR' | 'POST' | 'POSTED' | null;
+    onSetUploadedSubTab?: (tab: 'EDITOR' | 'POST' | 'POSTED' | null) => void;
 }
 
-const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
+const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter, uploadedSubTab, onSetUploadedSubTab }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
     
     // Show all projects the cinematographer has participated in
@@ -23,7 +25,30 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
-        return projects || [];
+        
+        // Sort projects by priority for Cine role:
+        // 1. Projects without shoot date (highest priority)
+        // 2. Projects with shoot date but no video uploaded
+        // 3. Projects with video uploaded (lowest priority)
+        const sortedProjects = [...(projects || [])].sort((a, b) => {
+            const aHasShootDate = !!a.shoot_date;
+            const bHasShootDate = !!b.shoot_date;
+            const aHasVideo = !!a.video_link;
+            const bHasVideo = !!b.video_link;
+            
+            // Projects without shoot date come first
+            if (aHasShootDate && !bHasShootDate) return 1;
+            if (!aHasShootDate && bHasShootDate) return -1;
+            
+            // Among projects with shoot date, those without video come before those with video
+            if (aHasVideo && !bHasVideo) return 1;
+            if (!aHasVideo && bHasVideo) return -1;
+            
+            // If both have same status, maintain original order
+            return 0;
+        });
+        
+        return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
     if (selectedProject && activeFilter === 'SCRIPTS') {
@@ -46,6 +71,36 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     {myTasks.length} {myTasks.length === 1 ? 'project' : 'projects'} awaiting action
                 </p>
             </div>
+
+            {/* Sub-tabs for UPLOADED filter */}
+            {activeFilter === 'UPLOADED' && onSetUploadedSubTab && (
+                <div className="flex space-x-4 border-b-2 border-black pb-2">
+                    <button
+                        onClick={() => onSetUploadedSubTab('EDITOR')}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'EDITOR' 
+                            ? 'bg-[#3B82F6] text-white' 
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        Editor
+                    </button>
+                    <button
+                        onClick={() => onSetUploadedSubTab('POST')}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POST' 
+                            ? 'bg-[#10B981] text-white' 
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        Post
+                    </button>
+                    <button
+                        onClick={() => onSetUploadedSubTab('POSTED')}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POSTED' 
+                            ? 'bg-[#EC4899] text-white' 
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        Posted
+                    </button>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
@@ -92,26 +147,30 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                     >
                                         {project.priority}
                                     </span>
-                                    {isRejected ? (
-                                        <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
-                                            Rejected
-                                        </span>
-                                    ) : isRework ? (
-                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
-                                            Rework
-                                        </span>
-                                    ) : isUploaded ? (
-                                        <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
-                                            ✓ Uploaded
-                                        </span>
-                                    ) : isScheduled ? (
-                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
-                                            Scheduled
-                                        </span>
-                                    ) : (
-                                        <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
-                                            Needs Schedule
-                                        </span>
+                                    {activeFilter !== 'UPLOADED' && (
+                                        <>
+                                            {isRejected ? (
+                                                <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
+                                                    Rejected
+                                                </span>
+                                            ) : isRework ? (
+                                                <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
+                                                    Rework
+                                                </span>
+                                            ) : isUploaded ? (
+                                                <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
+                                                    ✓ Uploaded
+                                                </span>
+                                            ) : isScheduled ? (
+                                                <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
+                                                    Scheduled
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
+                                                    Needs Schedule
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </div>
 
@@ -123,6 +182,14 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                     <div className="flex justify-between text-sm">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                                         <span className="font-bold text-slate-900">{project.data.writer_name}</span>
+                                    </div>
+                                )}
+                                
+                                {/* Editor Name - Show for UPLOADED filter */}
+                                {activeFilter === 'UPLOADED' && project.data?.editor_name && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-bold text-slate-400 uppercase text-xs">Editor</span>
+                                        <span className="font-bold text-slate-900">{project.data.editor_name}</span>
                                     </div>
                                 )}
                                 
@@ -146,13 +213,34 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                             {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
-                                    {/* Show current stage for script preview */}
-                                    {activeFilter === 'SCRIPTS' && (
+                                    {/* Show current stage for script preview and footage upload */}
+                                    {(activeFilter === 'SCRIPTS' || activeFilter === 'UPLOADED') && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
                                             <span className="font-bold text-slate-900">
                                                 {STAGE_LABELS[project.current_stage] || project.current_stage.replace(/_/g, ' ')}
                                             </span>
+                                        </div>
+                                    )}
+                                    
+                                    {/* Show live URL for posted projects */}
+                                    {(activeFilter === 'POSTED' || uploadedSubTab === 'POSTED') && project.data?.live_url && (
+                                        <div className="pt-2">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="font-bold text-slate-400 uppercase text-xs">Live URL</span>
+                                                <a
+                                                    href={project.data.live_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[150px]"
+                                                    title={project.data.live_url}
+                                                >
+                                                    View Live
+                                                </a>
+                                            </div>
+                                            <div className="text-xs text-slate-600 truncate" title={project.data.live_url}>
+                                                {project.data.live_url}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

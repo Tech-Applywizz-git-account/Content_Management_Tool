@@ -23,7 +23,32 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
-        return projects || [];
+        
+        // Sort projects by priority for Designer role:
+        // 1. Projects without delivery date (highest priority)
+        // 2. Projects with delivery date but no creative assets uploaded
+        // 3. Projects with creative assets uploaded (lowest priority)
+        const sortedProjects = [...(projects || [])].sort((a, b) => {
+            const aHasDeliveryDate = !!a.delivery_date;
+            const bHasDeliveryDate = !!b.delivery_date;
+            const isVideoA = a.content_type === 'VIDEO';
+            const isVideoB = b.content_type === 'VIDEO';
+            const aHasCreative = isVideoA ? !!a.thumbnail_link : !!a.creative_link;
+            const bHasCreative = isVideoB ? !!b.thumbnail_link : !!b.creative_link;
+            
+            // Projects without delivery date come first
+            if (aHasDeliveryDate && !bHasDeliveryDate) return 1;
+            if (!aHasDeliveryDate && bHasDeliveryDate) return -1;
+            
+            // Among projects with delivery date, those without creative come before those with creative
+            if (aHasCreative && !bHasCreative) return 1;
+            if (!aHasCreative && bHasCreative) return -1;
+            
+            // If both have same status, maintain original order
+            return 0;
+        });
+        
+        return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
     if (selectedProject && activeFilter === 'SCRIPTS') {
@@ -116,24 +141,25 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
 
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">
-                                    {!project.delivery_date ? (
+
+                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date ? (
                                         <div className="bg-red-50 border-2 border-red-400 p-2">
                                             <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
                                         </div>
-                                    ) : isDelivered ? (
+                                    ) : activeFilter !== 'SCRIPTS' && isDelivered ? (
                                         <div className="bg-green-50 border-2 border-green-400 p-2">
                                             <p className="text-[10px] font-bold text-green-800">
                                                 <FileImage className="w-3 h-3 inline mr-1" />
                                                 Delivered
                                             </p>
                                         </div>
-                                    ) : (
+                                    ) : activeFilter !== 'SCRIPTS' ? (
                                         <div className="bg-orange-50 border-2 border-orange-400 p-2">
                                             <p className="text-[10px] font-bold text-orange-800 uppercase">In Progress</p>
                                         </div>
-                                    )}
+                                    ) : null}
 
-                                    {project.delivery_date && (
+                                    {activeFilter !== 'SCRIPTS' && project.delivery_date && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Delivery</span>
                                             <span className="font-bold text-slate-900">{project.delivery_date}</span>
@@ -145,6 +171,16 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                             {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
+                                    <div className="flex justify-between">
+                                        <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
+                                        <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
+                                    </div>
+                                    {activeFilter === 'SCRIPTS' && (
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
+                                            <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Hint */}
@@ -152,9 +188,6 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                     <button className="w-full bg-[#D946EF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
                                         {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : isDelivered ? 'View Details' : `Upload ${isVideo ? 'Thumbnail' : 'Creative'}`}
                                     </button>
-                                    <p className="text-xs text-slate-500 mt-1 text-center">
-                                        Direct upload option available in detail view
-                                    </p>
                                 </div>
                             </div>
                         </div>

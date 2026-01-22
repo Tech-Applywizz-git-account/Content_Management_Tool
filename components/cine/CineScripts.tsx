@@ -424,9 +424,27 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
             </h3>
             <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
               {localProject.data?.script_content 
-                ? <div dangerouslySetInnerHTML={{ __html: localProject.data.script_content }} />
+                ? (() => {
+                    let decodedContent = localProject.data.script_content
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'")
+                        .replace(/&nbsp;/g, ' ');
+                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                  })()
                 : localProject.data?.idea_description 
-                  ? <div dangerouslySetInnerHTML={{ __html: localProject.data.idea_description }} />
+                  ? (() => {
+                      let decodedContent = localProject.data.idea_description
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>')
+                          .replace(/&amp;/g, '&')
+                          .replace(/&quot;/g, '"')
+                          .replace(/&#39;/g, "'")
+                          .replace(/&nbsp;/g, ' ');
+                      return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                    })()
                   : 'No content available'}
             </div>
           </div>

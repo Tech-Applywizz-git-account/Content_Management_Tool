@@ -220,13 +220,7 @@ const filteredProjects = useMemo(() => {
             setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
           }}
           activeFilter={activeFilter}
-          scriptProjects={
-            activeFilter === 'SCRIPTS' 
-              ? [...(inboxProjects || []), ...(historyProjects || [])].filter(project => 
-                  project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
-                )
-              : scriptProjects
-          }
+          scriptProjects={scriptProjects}
         />
       ) : activeView === 'calendar' ? (
         <SubEditorCalendar projects={historyProjects} user={user} />

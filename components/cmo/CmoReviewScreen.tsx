@@ -4,6 +4,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
 import Popup from '../Popup';
+import ScriptComparison from '../ScriptComparison';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { getWorkflowState } from '../../services/workflowUtils';
@@ -37,7 +38,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
-    const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO;
+    const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW;
     const isVideo = project.channel !== Channel.LINKEDIN;
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
@@ -80,28 +81,97 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
     useEffect(() => {
         const fetchPreviousScript = async () => {
-            // Fetch previous script version and asset links if project is rejected
+            console.log('CMO Review: Starting fetchPreviousScript for project:', project.id);
+            console.log('CMO Review: Project cmo_rework_at:', project.cmo_rework_at);
+            console.log('CMO Review: Project writer_submitted_at:', project.writer_submitted_at);
+            
+            // Only fetch previous script if this is a rework scenario
+            const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
+                new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
+            
+            console.log('CMO Review: Is rework scenario:', isReworkScenario);
+            
+            if (!isReworkScenario) {
+                console.log('CMO Review: Not a rework scenario, clearing previous script');
+                setPreviousScript(null);
+                return;
+            }
+            
+            // Fetch previous script version and asset links for rework scenarios
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp')
                 .eq('project_id', project.id)
-                .in('action', ['REJECTED', 'REWORK', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'])
                 .order('timestamp', { ascending: false })
-                .limit(1);
+                .limit(50); // Get more entries to ensure we find the rework script
 
             if (historyError) {
-                // Handle case where script_content column doesn't exist yet
-                if (historyError.code === '42703') {
-                    console.warn('script_content column not found in workflow_history table. This is expected if the migration hasn\'t been applied yet.');
+                console.error('Error fetching previous script:', historyError);
+                return;
+            }
+            
+            if (!historyData || historyData.length === 0) {
+                console.log('CMO Review: No history data found for project:', project.id);
+                return;
+            }
+            
+            console.log('CMO Review: History data found:', historyData.length, 'entries');
+            console.log('CMO Review: Looking for script before cmo_rework_at:', project.cmo_rework_at);
+            
+            // Find the script content that existed when CMO sent for rework
+            // This is the script content from the entry JUST BEFORE cmo_rework_at
+            let previousScriptFound = null;
+            
+            // Sort by timestamp ascending to process chronologically
+            const chronologicalHistory = [...historyData].sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+            
+            console.log('CMO Review: Chronological history processing...');
+            
+            for (let i = 0; i < chronologicalHistory.length; i++) {
+                const entry = chronologicalHistory[i];
+                console.log(`Entry ${i}:`, {
+                    timestamp: entry.timestamp,
+                    action: entry.action,
+                    hasScript: !!entry.script_content,
+                    isBeforeRework: new Date(entry.timestamp) < new Date(project.cmo_rework_at)
+                });
+                
+                // Look for the last script content that existed before the CMO rework request
+                if (entry.script_content && new Date(entry.timestamp) < new Date(project.cmo_rework_at)) {
+                    console.log('CMO Review: Found candidate script before rework:', entry.timestamp);
+                    previousScriptFound = entry.script_content;
+                }
+                
+                // Stop once we reach or pass the rework timestamp
+                if (new Date(entry.timestamp) >= new Date(project.cmo_rework_at)) {
+                    console.log('CMO Review: Reached or passed cmo_rework_at, stopping search');
+                    break;
+                }
+            }
+            
+            if (previousScriptFound) {
+                console.log('CMO Review: Setting previous script (first 100 chars):', previousScriptFound.substring(0, 100));
+                setPreviousScript(previousScriptFound);
+            } else {
+                console.log('CMO Review: No previous script found before cmo_rework_at');
+                
+                // Fallback: try to find any REWORK or REJECTED action with script content
+                const reworkEntry = historyData.find(entry => 
+                    ['REJECTED', 'REWORK'].includes(entry.action) && entry.script_content
+                );
+                
+                if (reworkEntry) {
+                    console.log('CMO Review: Using fallback - REWORK/REJECTED entry script');
+                    setPreviousScript(reworkEntry.script_content);
                 } else {
-                    console.error('Error fetching previous script:', historyError);
+                    console.log('CMO Review: No fallback script found either');
                 }
-            } else if (historyData && historyData.length > 0) {
-                if (historyData[0].script_content) {
-                    setPreviousScript(historyData[0].script_content);
-                }
+            }
 
-                // Set previous asset links
+            // Set previous asset links from the most recent entry
+            if (historyData.length > 0) {
                 setPreviousAssets({
                     video_link: historyData[0].video_link,
                     edited_video_link: historyData[0].edited_video_link,
@@ -112,7 +182,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
         };
 
         fetchPreviousScript();
-    }, [project.id]);
+    }, [project.id, project.cmo_rework_at, project.writer_submitted_at]);
 
     const downloadPDF = async () => {
         if (!scriptContentRef.current) return;
@@ -178,17 +248,60 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         project.data
                     );
                     
+                    // Ensure we have a valid user ID
+                    const currentUser = db.getCurrentUser();
+                    if (!currentUser?.id) {
+                        throw new Error('User not authenticated');
+                    }
+                    
                     await db.workflow.approve(
                         project.id,
-                        db.getCurrentUser()?.id || '',
-                        db.getCurrentUser()?.full_name || 'CMO',
+                        currentUser.id,
+                        currentUser.full_name || 'CMO',
                         Role.CMO,
                         nextStageInfo.stage,
                         nextStageInfo.role,
                         comment || 'Approved by CMO'
                     );
                 } else {
-                    await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
+                    // For rework projects and final review, ensure proper stage advancement
+                    // Check if this is a rework scenario based on the presence of rework timestamps
+                    const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
+                        new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
+                    
+                    if (isReworkScenario || project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+                        // For rework scenarios, use the standardized workflow advancement
+                        const nextStageInfo = db.helpers.getNextStage(
+                            project.current_stage,
+                            project.content_type,
+                            'APPROVED',
+                            project.data
+                        );
+                        
+                        // Ensure we have a valid user ID
+                        const currentUser = db.getCurrentUser();
+                        if (!currentUser?.id) {
+                            throw new Error('User not authenticated');
+                        }
+                        
+                        await db.workflow.approve(
+                            project.id,
+                            currentUser.id,
+                            currentUser.full_name || 'CMO',
+                            Role.CMO,
+                            nextStageInfo.stage,
+                            nextStageInfo.role,
+                            comment || 'Approved by CMO'
+                        );
+                    } else {
+                        // Ensure we have a valid user ID
+                        const currentUser = db.getCurrentUser();
+                        if (!currentUser?.id) {
+                            throw new Error('User not authenticated');
+                        }
+                        
+                        await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
+                    }
                 }
 
                 // Store comments in forwarded_comments if comment exists
@@ -238,22 +351,22 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
                 
-                // Ensure database updates propagate, then show the popup
-                // First, fetch the updated project to confirm the stage has changed
-                const updatedProject = await db.getProjectById(project.id);
-                if (updatedProject && updatedProject.current_stage !== project.current_stage) {
-                    // Project has moved to the next stage, show the popup immediately
-                    setShowPopup(true);
-                } else {
-                    // Project hasn't moved yet, wait a bit and then show popup
-                    // This might be due to database transaction timing
-                    setTimeout(() => {
-                        setShowPopup(true);
-                    }, 500);
-                }
+                // Show the popup immediately after successful approval
+                // This ensures immediate feedback to the user
+                setShowPopup(true);
+                
+                // The popup will handle the navigation back when closed
+                // No need to call onComplete here since it's handled in the popup onClose
             } else if (decision === 'REWORK') {
                 // Rework -> Send to the role selected by the user in the dropdown
                 // Respect the user's selection from the reworkStage dropdown
+                
+                // Ensure we have a valid user ID
+                const currentUser = db.getCurrentUser();
+                if (!currentUser?.id) {
+                    throw new Error('User not authenticated');
+                }
+                
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
 
 
@@ -272,6 +385,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             } else if (decision === 'REJECT') {
                 // Full Reject - don't send back to a specific role, just reject the project
+                
+                // Ensure we have a valid user ID
+                const currentUser = db.getCurrentUser();
+                if (!currentUser?.id) {
+                    throw new Error('User not authenticated');
+                }
+                
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
 
                 // Show popup for rejection
@@ -307,21 +427,26 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' }];
         }
 
-        // For Final Review CMO, can send back to various roles
-        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
+        // For Final Review CMO and POST_WRITER_REVIEW, can send back to various roles
+        if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
             const options = [];
 
-            // Add Designer option only if thumbnail is required
+            // Always include all relevant roles for these final review stages
+            // Add Designer option if thumbnail is required
             const thumbnailRequired = project.data?.thumbnail_required;
             if (thumbnailRequired !== false) { // Include designer if thumbnail_required is true or undefined
                 options.push({ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Visuals)' });
             }
 
-            // If video channel, add Editor/Cine
-            if (isVideo) {
-                options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
-                options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
-            }
+            // Add Editor option
+            options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
+            
+            // Add Cinematographer option
+            options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
+            
+            // Add Writer option (in case script changes are needed)
+            options.push({ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' });
+            
             return options;
         }
 
@@ -522,49 +647,62 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             ref={scriptContentRef}
                             className="overflow-auto"
                         >
-                            {previousScript ? (
-                                // Show both old and new scripts side by side
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Previous Script */}
-                                    <div className="bg-white border-2 border-slate-300 p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            {project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Previous Idea' : 'Previous Script'}
-                                        </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                            {previousScript ? <div dangerouslySetInnerHTML={{ __html: previousScript }} /> : previousScript}
-                                        </div>
-                                    </div>
-
-                                    {/* Current Script */}
-                                    <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Current Idea' : 'Current Script'}
-                                        </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
+                            {/* Show both scripts in script review for rework scenarios */}
+                            {(() => {
+                                console.log('CMO Review: Render - previousScript:', previousScript);
+                                console.log('CMO Review: Render - project.data.script_content:', project.data?.script_content);
+                                console.log('CMO Review: Render - isFinalReview:', isFinalReview);
+                                console.log('CMO Review: Render - cmo_rework_at:', project.cmo_rework_at);
+                                console.log('CMO Review: Render - writer_submitted_at:', project.writer_submitted_at);
+                                
+                                // Show comparison if we have a previous script content
+                                // This ensures the comparison shows whenever we have a previous script
+                                if (previousScript && previousScript.trim() !== '') {
+                                    console.log('CMO Review: Showing script comparison - has previous script');
+                                    
+                                    // Use project's script content as current if available, otherwise use a placeholder
+                                    const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
+                                    
+                                    // Show comparison for rework scenarios
+                                    return (
+                                        <ScriptComparison
+                                            previousScript={previousScript.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
+                                            currentScript={currentScriptContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
+                                            previousAuthor="Previous Version"
+                                            currentAuthor="Writer Rework Submission"
+                                            previousTimestamp=""
+                                            currentTimestamp=""
+                                        />
+                                    );
+                                } else {
+                                    console.log('CMO Review: Showing single script - previousScript exists:', !!previousScript, 'current exists:', !!project.data?.script_content, 'isFinalReview:', isFinalReview);
+                                    console.log('CMO Review: Conditions for comparison - hasPrevious:', !!previousScript, 'prev not empty:', previousScript && previousScript.trim() !== '', 'not final review:', !isFinalReview);
+                                    // Show single script for non-rework projects or in final review
+                                    return (
+                                        <div
+                                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                        >
                                             {project.data?.source === 'DESIGNER_INITIATED'
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                     ? project.data.idea_description
                                                     : project.data?.script_content 
-                                                        ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} />
+                                                        ? (() => {
+                                                            // Comprehensive HTML entity decoding
+                                                            let decodedContent = project.data.script_content
+                                                                .replace(/&lt;/g, '<')
+                                                                .replace(/&gt;/g, '>')
+                                                                .replace(/&amp;/g, '&')
+                                                                .replace(/&quot;/g, '"')
+                                                                .replace(/&#39;/g, "'")
+                                                                .replace(/&nbsp;/g, ' ');
+                                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                                          })()
                                                         : 'No script content available.'}
                                         </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                // Show single script for non-rework projects
-                                <div
-                                    className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                                >
-                                    {project.data?.source === 'DESIGNER_INITIATED'
-                                        ? project.data?.creative_link || 'No creative link available.'
-                                        : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                            ? project.data.idea_description
-                                            : project.data?.script_content 
-                                                ? <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} />
-                                                : 'No script content available.'}
-                                </div>
-                            )}
+                                    );
+                                }
+                            })()}
                         </div>
                     </section>
 

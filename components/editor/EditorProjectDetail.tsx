@@ -177,6 +177,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         edited_video_link: editedVideoLink,
         editor_uploaded_at: new Date().toISOString(), 
         editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
+        edited_by_role: 'EDITOR', // Track who actually edited
+        edited_by_user_id: user.id, // Track the specific user
+        edited_by_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Track the name
+        edited_at: new Date().toISOString(), // Track when edited
         status: TaskStatus.WAITING_APPROVAL,
         data: {
           ...project.data,
@@ -269,9 +273,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               >
                 {project.channel}
               </span>
-              <span className="text-sm text-slate-500 font-bold">
-                Due: {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-              </span>
+
               <span
                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                   ? 'bg-red-500 text-white'
@@ -550,14 +552,17 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     // Fetch the selected sub-editor details
                     const selectedSubEditor = await db.users.getById(selectedSubEditorId);
 
-                    // Record the action in workflow history
+                    // Record the action in workflow history with proper role tracking
                     await db.workflow.recordAction(
                       localProject.id,
                       localProject.current_stage, // stage
                       user.id,
-                      user.email || user.id, // userName (using email or ID as fallback)
+                      user.user_metadata?.full_name || user.email || user.id, // userName
                       'SUB_EDITOR_ASSIGNED', // specific action
-                      `Project assigned to sub-editor: ${selectedSubEditor.full_name}`
+                      `Project assigned to sub-editor: ${selectedSubEditor.full_name}`,
+                      Role.EDITOR, // actor_role
+                      Role.EDITOR, // from_role
+                      Role.SUB_EDITOR // to_role
                     );
 
                     // Update the project to assign to sub-editor

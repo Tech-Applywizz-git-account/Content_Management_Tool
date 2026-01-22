@@ -23,8 +23,31 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
+        
         // When no filter, show all projects assigned to this sub-editor (including completed)
-        return projects || [];
+        // Sort projects by priority:
+        // 1. Projects without delivery date (highest priority)
+        // 2. Projects in progress without uploaded video
+        // 3. Projects with uploaded videos (lowest priority)
+        const sortedProjects = [...(projects || [])].sort((a, b) => {
+            const aHasDeliveryDate = !!a.delivery_date;
+            const bHasDeliveryDate = !!b.delivery_date;
+            const aHasVideo = !!a.edited_video_link;
+            const bHasVideo = !!b.edited_video_link;
+            
+            // Projects without delivery date come first
+            if (aHasDeliveryDate && !bHasDeliveryDate) return 1;
+            if (!aHasDeliveryDate && bHasDeliveryDate) return -1;
+            
+            // Among projects with delivery date, those without video come before those with video
+            if (aHasVideo && !bHasVideo) return 1;
+            if (!aHasVideo && bHasVideo) return -1;
+            
+            // If both have same status, maintain original order
+            return 0;
+        });
+        
+        return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
     if (selectedProject && activeFilter === 'SCRIPTS') {
@@ -116,7 +139,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
 
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">
-                                    {project.video_link && (
+                                    {activeFilter !== 'SCRIPTS' && project.video_link && (
                                         <div className="bg-blue-50 border-2 border-blue-400 p-2">
                                             <p className="text-[10px] font-bold text-blue-800">
                                                 <Video className="w-3 h-3 inline mr-1" />
@@ -124,7 +147,12 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                                             </p>
                                         </div>
                                     )}
-                                    {project.delivery_date && (
+                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date && (
+                                        <div className="bg-red-50 border-2 border-red-400 p-2">
+                                            <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
+                                        </div>
+                                    )}
+                                    {activeFilter !== 'SCRIPTS' && project.delivery_date && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Delivery</span>
                                             <span className="font-bold text-slate-900">{project.delivery_date}</span>
@@ -136,6 +164,16 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                                             {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
+                                    <div className="flex justify-between">
+                                        <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
+                                        <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
+                                    </div>
+                                    {activeFilter === 'SCRIPTS' && (
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
+                                            <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Hint */}

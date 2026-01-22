@@ -185,26 +185,32 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         ? `Rework edited video uploaded: ${editedVideoLink}`
         : `Edited video uploaded: ${editedVideoLink}`;
 
+      // Determine the correct to_role based on thumbnail_required
+      const nextRole = localProject.data?.thumbnail_required === true ? 'DESIGNER' : 'WRITER';
+      
       await db.workflow.recordAction(
         localProject.id,
         localProject.current_stage!, // Record action at current stage
         user.id,
-        user.email || user.id, // UserName (using email or ID as fallback)
+        user.user_metadata?.full_name || user.email || user.id, // UserName
         actionType, // Use appropriate action value
-        comment
+        comment,
+        Role.SUB_EDITOR, // actor_role
+        Role.SUB_EDITOR, // from_role
+        nextRole // to_role - Designer if thumbnail required, Writer (for multi-writer approval) if not
       );
 
-      // Update the project with the edited video link and advance the workflow
-      // After sub-editor completes work, always go to multi-writer approval
-      const nextStage = WorkflowStage.MULTI_WRITER_APPROVAL;
-      const nextStatus = TaskStatus.WAITING_APPROVAL; // Set status to waiting for approval
-      
+      // Update the project with the edited video link and preserve who actually edited the video
+      // Don't update assigned_to_role here since advanceWorkflow will handle proper role assignment based on thumbnail_required
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
-        editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail (as per requirement)
-        sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name in direct column
-        status: nextStatus, // Set appropriate status based on next step
-        current_stage: nextStage, // Set the next stage so advanceWorkflow knows where to go
+        editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail
+        sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name
+        edited_by_role: 'SUB_EDITOR', // Track who actually edited
+        edited_by_user_id: user.id, // Track the specific user
+        edited_by_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Track the name
+        edited_at: new Date().toISOString(), // Track when edited
+        status: TaskStatus.WAITING_APPROVAL, // Set appropriate status
         data: { 
           ...localProject.data, // Preserve all existing data
           needs_sub_editor: false, 
@@ -220,6 +226,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         thumbnail_required: localProject.data?.thumbnail_required
       });
 
+      // Use advanceWorkflow to properly determine the next stage based on thumbnail_required
+      await db.advanceWorkflow(localProject.id, comment);
+
       // Get updated project to update local state
       const updatedProject = await db.getProjectById(localProject.id);
       setLocalProject(updatedProject);
@@ -227,9 +236,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
       
       // Show success popup notification immediately after DB update succeeds
-      // After sub-editor completes work, always goes to multi-writer approval
-      const updatedNextStage = WorkflowStage.MULTI_WRITER_APPROVAL;
-      const updatedNextStageLabel = STAGE_LABELS[updatedNextStage];
+      // Get the actual next stage from the updated project
+      const actualNextStage = updatedProject.current_stage;
+      const updatedNextStageLabel = STAGE_LABELS[actualNextStage] || actualNextStage.replace(/_/g, ' ');
       
       const popupMessageText = isRework
           ? `Rework edited video uploaded successfully for ${localProject.title}. Waiting for ${updatedNextStageLabel}.`
@@ -241,48 +250,41 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
       setShowPopup(true);
       
-      // Decouple workflow advancement and notifications from the main upload flow
-      // Handle these side effects separately so that upload success is shown regardless
-      try {
-        // Advance workflow to next stage based on project settings using the helper logic
-        await db.advanceWorkflow(localProject.id, comment);
+      // The project has already been updated to MULTI_WRITER_APPROVAL stage, 
+      // so no further workflow advancement is needed here.
+      // The MULTI_WRITER_APPROVAL stage is handled by the writers themselves.
+      
+      // Get updated project to update UI
+      const postWorkflowProject = await db.getProjectById(localProject.id);
+      setLocalProject(postWorkflowProject);
 
-        // Get updated project to determine who to notify
-        const postWorkflowProject = await db.getProjectById(localProject.id);
-        setLocalProject(postWorkflowProject);
+      // Find users to notify based on the next assigned role
+      if (postWorkflowProject?.assigned_to_role) {
+        const { data: nextUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', postWorkflowProject.assigned_to_role)
+          .eq('status', 'ACTIVE');
 
-        // Find users to notify based on the next assigned role
-        if (postWorkflowProject?.assigned_to_role) {
-          const { data: nextUsers } = await supabase
-            .from('users')
-            .select('id')
-            .eq('role', postWorkflowProject.assigned_to_role)
-            .eq('status', 'ACTIVE');
-
-          if (nextUsers && nextUsers.length > 0) {
-            // Send notification to all users of the assigned role
-            for (const nextUser of nextUsers) {
-              try {
-                // Use type assertion to access the notifications service
-                const dbWithNotifications = db as any;
-                await dbWithNotifications.notifications.create(
-                  nextUser.id,
-                  localProject.id,
-                  'ASSET_UPLOADED',
-                  'New Edited Video Available',
-                  `${user?.user_metadata?.full_name || 'Sub-Editor'} has uploaded an edited video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[postWorkflowProject.current_stage] || postWorkflowProject.current_stage.replace(/_/g, ' ')}.`
-                );
-              } catch (notificationError) {
-                console.error('Failed to send notification:', notificationError);
-                // Continue with the process even if notification fails
-              }
+        if (nextUsers && nextUsers.length > 0) {
+          // Send notification to all users of the assigned role
+          for (const nextUser of nextUsers) {
+            try {
+              // Use type assertion to access the notifications service
+              const dbWithNotifications = db as any;
+              await dbWithNotifications.notifications.create(
+                nextUser.id,
+                localProject.id,
+                'ASSET_UPLOADED',
+                'New Edited Video Available',
+                `${user?.user_metadata?.full_name || 'Sub-Editor'} has uploaded an edited video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[postWorkflowProject.current_stage] || postWorkflowProject.current_stage.replace(/_/g, ' ')}.`
+              );
+            } catch (notificationError) {
+              console.error('Failed to send notification:', notificationError);
+              // Continue with the process even if notification fails
             }
           }
         }
-      } catch (workflowError) {
-        console.error('Workflow advancement or notification failed (this does not affect upload success):', workflowError);
-        // Don't show error to user since the video was uploaded successfully
-        // The workflow and notifications are side effects that shouldn't impact the main upload flow
       }
 
       onUpdate();
@@ -399,9 +401,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                   >
                     {localProject.channel}
                   </span>
-                  <span className="text-sm text-slate-500 font-bold">
-                    Due: {format(new Date(localProject.due_date), 'MMM dd, yyyy h:mm a')}
-                  </span>
+
                   <span
                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
                         ? 'bg-red-500 text-white'

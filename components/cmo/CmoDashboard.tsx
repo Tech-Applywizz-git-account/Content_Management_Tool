@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, User } from '../../types';
-import { isReworkProject } from '../../services/workflowUtils';
+import { isReworkProject, isReworkInitiatedByRole } from '../../services/workflowUtils';
 import { format } from 'date-fns';
 import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
@@ -91,6 +91,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // State for counts
   const [approvedCount, setApprovedCount] = useState(0);
 
+  // Helper function to check if rework was initiated by CMO
+  const isReworkInitiatedByCMO = (project: Project) => {
+    return isReworkInitiatedByRole(project, Role.CMO);
+  };
+
   const handleInternalRefresh = async () => {
     console.log('🔄 CMO Dashboard: Refresh button clicked');
     console.log('🔄 CMO Dashboard: Calling onRefresh() to fetch data from Supabase');
@@ -173,7 +178,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         .select('*')
         .in('id', projectIds);
 
-      setFilteredHistoryProjects(projects || []);
+      // Filter out idea projects (projects where data.source is 'IDEA_PROJECT')
+      const filteredProjects = projects?.filter(project => project.data?.source !== 'IDEA_PROJECT') || [];
+      
+      setFilteredHistoryProjects(filteredProjects);
     };
 
     loadHistory();
@@ -549,11 +557,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             {p.priority}
                           </span>
                           <span
-                            className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkProject(p)
+                            className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkInitiatedByCMO(p)
                               ? 'bg-orange-100 text-orange-800'
                               : 'bg-slate-100 text-slate-800'
                               }`}>
-                            {isReworkProject(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
+                            {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
 
 
@@ -616,7 +624,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {p.priority}
                           </span>
-                          {isReworkProject(p) && (
+                          {isReworkInitiatedByCMO(p) && (
                             <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
                               REWORK
                             </span>
@@ -678,7 +686,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {p.priority}
                           </span>
-                          {isReworkProject(p) && (
+                          {isReworkInitiatedByCMO(p) && (
                             <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
                               REWORK
                             </span>
@@ -764,7 +772,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   }`}>
                                 {p.priority}
                               </span>
-                              {isReworkProject(p) && (
+                              {isReworkInitiatedByCMO(p) && (
                                 <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
                                   REWORK
                                 </span>
@@ -830,7 +838,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   }`}>
                                 {p.priority}
                               </span>
-                              {isReworkProject(p) && (
+                              {isReworkInitiatedByCMO(p) && (
                                 <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
                                   REWORK
                                 </span>

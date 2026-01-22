@@ -532,7 +532,7 @@ const handleEdit = (project: Project) => {
                             </div>
                             <div className="space-y-4">
                                 {inProduction.map(p => (
-                                    <div key={p.id} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}>
+                                    <div key={p.id} onClick={() => handleViewProject(p)} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -568,6 +568,16 @@ const handleEdit = (project: Project) => {
                                             </span>
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+
+                                        {/* Cinematographer Comments */}
+                                        {p.data?.cine_comments && (
+                                            <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                                                <p className="text-xs font-bold text-blue-700 uppercase">Cine Note:</p>
+                                                <p className="text-xs text-slate-600 whitespace-pre-wrap truncate max-w-xs">
+                                                    {p.data.cine_comments}
+                                                </p>
+                                            </div>
+                                        )}
 
                                         <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                             <Clock className="w-3 h-3 mr-1" />

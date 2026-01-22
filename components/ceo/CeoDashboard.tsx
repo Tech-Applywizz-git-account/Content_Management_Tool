@@ -515,7 +515,16 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           <div className="border-2 border-black p-4 bg-slate-100">
             <h3 className="font-black uppercase mb-2">Script Content</h3>
             {projectData.data?.script_content 
-              ? <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: projectData.data.script_content }} />
+              ? (() => {
+                  let decodedContent = projectData.data.script_content
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#39;/g, "'")
+                      .replace(/&nbsp;/g, ' ');
+                  return <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                })()
               : <p>No script</p>
             }
           </div>

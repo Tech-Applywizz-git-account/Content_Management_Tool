@@ -157,6 +157,35 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                     </div>
                                 ) : null}
 
+                                {/* Approval Status Indicators */}
+                                <div className="space-y-2 text-sm">
+                                    {/* CMO Approval Status */}
+                                    {project.cmo_approved_at ? (
+                                        <div className="flex items-center gap-2 text-green-700">
+                                            <span className="text-green-600 font-bold">✓</span>
+                                            <span className="text-green-700 font-bold">CMO Approved</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-red-500">
+                                            <span className="text-red-500 font-bold">✕</span>
+                                            <span className="text-red-500 font-bold">CMO Pending</span>
+                                        </div>
+                                    )}
+                                    
+                                    {/* CEO Approval Status */}
+                                    {project.ceo_approved_at ? (
+                                        <div className="flex items-center gap-2 text-green-700">
+                                            <span className="text-green-600 font-bold">✓</span>
+                                            <span className="text-green-700 font-bold">CEO Approved</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-red-500">
+                                            <span className="text-red-500 font-bold">✕</span>
+                                            <span className="text-red-500 font-bold">CEO Pending</span>
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Status Info */}
                                 <div className="space-y-2 text-sm">
                                     {project.status === 'REJECTED' ? (

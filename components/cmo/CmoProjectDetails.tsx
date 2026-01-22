@@ -486,10 +486,28 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
                                 ? fullProject.data?.creative_link || 'No creative link available.'
                                 : fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content
                                     ? fullProject.data.idea_description 
-                                        ? <div dangerouslySetInnerHTML={{ __html: fullProject.data.idea_description }} />
+                                        ? (() => {
+                                            let decodedContent = fullProject.data.idea_description
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })()
                                         : 'No idea description available.'
                                     : fullProject.data?.script_content 
-                                        ? <div dangerouslySetInnerHTML={{ __html: fullProject.data.script_content }} />
+                                        ? (() => {
+                                            let decodedContent = fullProject.data.script_content
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                          })()
                                         : 'No content available.'}
                         </div>
                     </section>

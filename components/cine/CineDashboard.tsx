@@ -30,6 +30,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const [activeFilter, setActiveFilter] = useState<
   'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | null
 >(null);
+    const [uploadedSubTab, setUploadedSubTab] = useState<'EDITOR' | 'POST' | 'POSTED' | null>(null);
 
     const [shootDate, setShootDate] = useState<string>('');
     const [videoLink, setVideoLink] = useState<string>('');
@@ -82,7 +83,7 @@ const filteredProjects = React.useMemo(() => {
   }
 
   // Filtered views (from dashboard cards)
-  return (historyProjects || []).filter(project => {
+  let baseFilteredProjects = (historyProjects || []).filter(project => {
     switch (activeFilter) {
       case 'NEEDS_SCHEDULE':
         return !project.shoot_date;
@@ -97,11 +98,37 @@ const filteredProjects = React.useMemo(() => {
           !!project.data?.raw_footage_link
         );
 
+      case 'POSTED':
+        // Show projects that are completed and have live URLs from Ops
+        return (
+          project.status === TaskStatus.DONE &&
+          !!project.data?.live_url
+        );
+
       default:
         return true;
     }
   });
-}, [activeFilter, historyProjects]);
+
+  // Apply sub-tab filtering for UPLOADED
+  if (activeFilter === 'UPLOADED' && uploadedSubTab) {
+    baseFilteredProjects = baseFilteredProjects.filter(project => {
+      if (uploadedSubTab === 'EDITOR') {
+        // Show projects assigned to Editor or SubEditor roles
+        return project.assigned_to_role === 'EDITOR' || project.assigned_to_role === 'SUB_EDITOR';
+      } else if (uploadedSubTab === 'POST') {
+        // Show projects NOT assigned to Editor roles
+        return project.assigned_to_role !== 'EDITOR' && project.assigned_to_role !== 'SUB_EDITOR';
+      } else if (uploadedSubTab === 'POSTED') {
+        // Show projects that are completed and have live URLs (posted projects)
+        return project.status === TaskStatus.DONE && !!project.data?.live_url;
+      }
+      return true;
+    });
+  }
+
+  return baseFilteredProjects;
+}, [activeFilter, historyProjects, uploadedSubTab]);
 
 
 
@@ -154,6 +181,8 @@ const filteredProjects = React.useMemo(() => {
   project={selectedProject}
   userRole={user.role}
   fromView={projectSource}
+  activeFilter={activeFilter}
+  uploadedSubTab={uploadedSubTab}
   onBack={() => {
     setSelectedProject(null);
     if (projectSource === 'SCRIPTS') {
@@ -162,12 +191,27 @@ const filteredProjects = React.useMemo(() => {
     } else {
       setActiveFilter(null);
     }
-    setProjectSource(null);
+    // Preserve the original filter and sub-tab when navigating back
+  if (projectSource === 'MYWORK' && activeFilter) {
+    // Maintain the active filter and sub-tab state
+    setActiveFilter(activeFilter);
+    setActiveView('mywork');
+  } else if (projectSource === 'SCRIPTS') {
+    setActiveFilter('SCRIPTS');
+    setActiveView('mywork');
+  } else {
+    setActiveFilter(null);
+  }
+  setProjectSource(null);
   }}
   onUpdate={() => {
     setSelectedProject(null);
     if (projectSource === 'SCRIPTS') {
       setActiveFilter('SCRIPTS');
+      setActiveView('mywork');
+    } else if (projectSource === 'MYWORK' && activeFilter) {
+      // Maintain the active filter and sub-tab state
+      setActiveFilter(activeFilter);
       setActiveView('mywork');
     } else {
       setActiveFilter(null);
@@ -187,6 +231,8 @@ const filteredProjects = React.useMemo(() => {
     setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
   }}
   activeFilter={activeFilter}
+  uploadedSubTab={uploadedSubTab}
+  onSetUploadedSubTab={setUploadedSubTab}
 />
 
             ) : activeView === 'calendar' ? (

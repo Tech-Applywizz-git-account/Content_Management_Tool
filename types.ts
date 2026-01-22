@@ -95,6 +95,10 @@ export interface Project {
   editor_uploaded_at?: string; // When Editor uploads video
   sub_editor_uploaded_at?: string; // When Sub-Editor uploads video
   designer_uploaded_at?: string; // When Designer uploads assets
+  edited_by_role?: 'EDITOR' | 'SUB_EDITOR'; // Role of the person who actually edited the video
+  edited_by_user_id?: string; // User ID of the person who actually edited the video
+  edited_by_name?: string; // Name of the person who actually edited the video
+  edited_at?: string; // Timestamp when the video was edited
   shoot_date?: string; // Cinematographer sets
   delivery_date?: string; // Editor/Designer sets
   post_scheduled_date?: string; // Ops sets

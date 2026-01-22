@@ -358,13 +358,29 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
             <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
-              <pre className="whitespace-pre-wrap font-sans text-sm">
-                {localProject.data?.script_content 
-                  ? <div dangerouslySetInnerHTML={{ __html: localProject.data.script_content }} />
-                  : localProject.data?.idea_description 
-                    ? <div dangerouslySetInnerHTML={{ __html: localProject.data.idea_description }} />
-                    : 'No content available'}
-              </pre>
+              {localProject.data?.script_content 
+                ? (() => {
+                    let decodedContent = localProject.data.script_content
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'")
+                        .replace(/&nbsp;/g, ' ');
+                    return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                  })()
+                : localProject.data?.idea_description 
+                  ? (() => {
+                      let decodedContent = localProject.data.idea_description
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>')
+                          .replace(/&amp;/g, '&')
+                          .replace(/&quot;/g, '"')
+                          .replace(/&#39;/g, "'")
+                          .replace(/&nbsp;/g, ' ');
+                      return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                    })()
+                  : <pre className="whitespace-pre-wrap font-sans text-sm">No content available</pre>}
             </div>
           </div>
         )}

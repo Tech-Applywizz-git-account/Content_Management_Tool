@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
+import RichTextEditor from '../RichTextEditor';
 import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
@@ -13,9 +14,11 @@ interface Props {
     onBack: () => void;
     onUpdate: () => void;
     fromView?: 'MYWORK' | 'SCRIPTS';
+    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | 'POSTED' | null;
+    uploadedSubTab?: 'EDITOR' | 'POST' | 'POSTED' | null;
 }
 
-const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, fromView }) => {
+const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, fromView, activeFilter, uploadedSubTab }) => {
     // For rework projects, keep existing data but track new inputs
     const processedProject = { ...initialProject };
 
@@ -41,8 +44,24 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
 
     const [videoLink, setVideoLink] = useState(processedProject.video_link || '');
+    const [cineComments, setCineComments] = useState('');
+    const [editingActorDetails, setEditingActorDetails] = useState(processedProject.data?.actor_details || '');
+    const [editingLocationDetails, setEditingLocationDetails] = useState(processedProject.data?.location_details || '');
+    const [editingLightingDetails, setEditingLightingDetails] = useState(processedProject.data?.lighting_details || '');
+    const [editingCameraAngles, setEditingCameraAngles] = useState(processedProject.data?.camera_angles || '');
 
+    // Helper function to decode HTML entities
+    const decodeHtmlEntities = (html) => {
+        if (!html) return '';
+        const txt = document.createElement('textarea');
+        txt.innerHTML = html;
+        return txt.value;
+    };
 
+    // State for script content (decoded for editing)
+    const [scriptContent, setScriptContent] = useState(decodeHtmlEntities(processedProject.data.script_content || ''));
+    // State for script edit mode
+    const [isScriptEditing, setIsScriptEditing] = useState(false);
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -55,6 +74,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         const processedProject = { ...initialProject };
         setShootDate(processedProject.shoot_date || '');
         setVideoLink(processedProject.video_link || '');
+        setCineComments(''); // Reset comments when project changes
+        setEditingActorDetails(processedProject.data?.actor_details || '');
+        setEditingLocationDetails(processedProject.data?.location_details || '');
+        setEditingLightingDetails(processedProject.data?.lighting_details || '');
+        setEditingCameraAngles(processedProject.data?.camera_angles || '');
+        setScriptContent(decodeHtmlEntities(processedProject.data.script_content || ''));
+        setIsScriptEditing(false); // Reset edit mode when project changes
         setLocalProject(processedProject);
     }, [initialProject]);
 
@@ -180,9 +206,17 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             // Record the action in workflow history before updating the project
             const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'CINE_VIDEO_UPLOADED';
-            const comment = isRework
+            let comment = isRework
                 ? `Rework video uploaded: ${videoLink}`
                 : `Raw video uploaded: ${videoLink}`;
+            
+            // Add cinematographer comments if provided
+            if (cineComments.trim()) {
+                comment += `\n\nCinematographer Comments: ${cineComments}`;
+            } else if (localProject.data?.cine_comments) {
+                // If there are existing comments in the project data, include them
+                comment += `\n\nCinematographer Comments: ${localProject.data.cine_comments}`;
+            }
 
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
@@ -208,11 +242,32 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             // Update project data to persist any changes made during this session
             // Include video_link in the update so timestamp logic can detect the upload
+            // Also clear any rework metadata to ensure proper routing from CINEMATOGRAPHY to VIDEO_EDITING
+            const updatedProjectData = {
+                ...localProject.data,
+                video_link: videoLink,
+                cine_uploaded_at: new Date().toISOString(),
+                cine_comments: cineComments.trim() || undefined, // Store cinematographer comments
+                // Clear rework metadata to ensure normal workflow routing
+                rework_initiator_role: undefined,
+                rework_initiator_stage: undefined,
+                rework_target_role: undefined
+            };
+            
+            // Clear comments after storing them
+            setCineComments('');
+                        
+            // Update the existing updatedProjectData to clear comments after upload
+            updatedProjectData.cine_comments = undefined; // Clear comments after upload
+                        
             await db.projects.update(localProject.id, {
                 video_link: videoLink,
                 cine_uploaded_at: new Date().toISOString(),
                 status: TaskStatus.WAITING_APPROVAL
             });
+            
+            // Update the project data separately to clear rework metadata
+            await db.updateProjectData(localProject.id, updatedProjectData);
 
             // Advance workflow to next stage based on project settings
             await db.advanceWorkflow(localProject.id, comment);
@@ -278,6 +333,59 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         }
     };
 
+    const handleSaveCinematographyInstructions = async () => {
+        try {
+            // Get user session for workflow history
+            const { data: { session } } = await supabase.auth.getSession();
+            const user = session?.user;
+
+            if (!user) {
+                alert('User not authenticated');
+                return;
+            }
+
+            // Record the action in workflow history
+            await db.workflow.recordAction(
+                localProject.id,
+                localProject.current_stage, // Record action at current stage
+                user.id,
+                user.email || user.id, // UserName (using email or ID as fallback)
+                'CINE_INSTRUCTIONS_UPDATED', // Use appropriate action value
+                `Cinematographer updated instructions`
+            );
+
+            // Update project data with the cinematography instructions
+            const updatedData = {
+                ...localProject.data,
+                actor_details: editingActorDetails,
+                location_details: editingLocationDetails,
+                lighting_details: editingLightingDetails,
+                camera_angles: editingCameraAngles
+            };
+
+            await db.updateProjectData(localProject.id, updatedData);
+
+            setLocalProject(prev => ({
+                ...prev,
+                data: updatedData
+            }));
+            
+            // Update editing states to match saved values
+            setEditingActorDetails(updatedData.actor_details || '');
+            setEditingLocationDetails(updatedData.location_details || '');
+            setEditingLightingDetails(updatedData.lighting_details || '');
+            setEditingCameraAngles(updatedData.camera_angles || '');
+            
+            setPopupMessage('Cinematographer instructions updated successfully');
+            setStageName('Instructions Updated');
+            setShowPopup(true);
+            setPopupDuration(3000);
+        } catch (error) {
+            console.error('Error saving cinematography instructions:', error);
+            alert('Failed to save cinematography instructions');
+        }
+    };
+
 
     return (
         <div className="min-h-screen bg-slate-50 animate-fade-in">
@@ -303,9 +411,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             >
                                 {localProject.channel}
                             </span>
-                            <span className="text-sm text-slate-500 font-bold">
-                                Due: {format(new Date(localProject.due_date), 'MMM dd, yyyy h:mm a')}
-                            </span>
+
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
@@ -348,8 +454,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </p>
                         </div>
                         
-                        {/* Display forwarded comments from CMO and CEO */}
-                        {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
+                        {/* Display forwarded comments from CMO and CEO - Hide when in footage upload tab */}
+                        {activeFilter !== 'UPLOADED' && localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
                             <div className="mb-4">
                                 <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
                                 <div className="space-y-2 ml-2">
@@ -415,6 +521,44 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+                {/* Project Info */}
+                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                    <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                            <p className="font-bold text-slate-900 mt-1">
+                                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+                            </p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                            <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+                        </div>
+                        {localProject.data?.niche && (
+                            <div className="col-span-2">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                                    ? localProject.data.niche_other
+                                                    : localProject.data.niche}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 {/* Script Content */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <div className="flex items-center gap-2 mb-4">
@@ -422,208 +566,517 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         <h2 className="text-xl font-black uppercase">Script</h2>
                     </div>
                     <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {localProject.data.script_content 
-                            ? <div dangerouslySetInnerHTML={{ __html: localProject.data.script_content }} />
-                            : 'No script content available'}
-                    </div>
-                </div>
-
-                {/* Cinematography Instructions */}
-                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-black uppercase">Cinematography Instructions</h2>
-                        {!isCurrentlyAssignedToCine && (
-                            <span className="px-3 py-1 text-xs font-bold uppercase border-2 border-blue-500 bg-blue-100 text-blue-800">
-                                Preview Only
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Thumbnail Reference from Writer */}
-                    {localProject.data?.thumbnail_reference_link && (
-                        <div className="mb-6 pt-6 border-t-2 border-gray-200">
-                            <h3 className="text-lg font-black uppercase mb-3">Writer's Thumbnail Reference</h3>
-                            <div className="bg-blue-50 border-2 border-blue-200 p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold uppercase text-blue-800 mb-1">Reference Thumbnail Link</p>
-                                        <a
-                                            href={localProject.data.thumbnail_reference_link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 hover:underline break-all font-medium"
-                                        >
-                                            {localProject.data.thumbnail_reference_link}
-                                        </a>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-blue-600 mt-2 italic">This is the thumbnail provided by the writer for reference</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Script Reference from Writer */}
-                    {localProject.data?.script_reference_link && (
-                        <div className="mb-6 pt-6 border-t-2 border-gray-200">
-                            <h3 className="text-lg font-black uppercase mb-3">Writer's Script Reference</h3>
-                            <div className="bg-blue-50 border-2 border-blue-200 p-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold uppercase text-blue-800 mb-1">Reference Script Link</p>
-                                        <a
-                                            href={localProject.data.script_reference_link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 hover:underline break-all font-medium"
-                                        >
-                                            {localProject.data.script_reference_link}
-                                        </a>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-blue-600 mt-2 italic">This is the script provided by the writer for reference</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Writer Name */}
-                    {localProject.data.writer_name && (
-                        <div className="mb-4">
-                            <span className="text-sm font-bold text-slate-500 uppercase">Writer</span>
-                            <p className="font-medium text-slate-900">{localProject.data.writer_name}</p>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Actor</label>
-                            <input
-                                type="text"
-                                value={localProject.data.actor || ''}
-                                onChange={(e) => setLocalProject(prev => ({
-                                    ...prev,
-                                    data: {
-                                        ...prev.data,
-                                        actor: e.target.value
-                                    }
-                                }))}
-                                disabled={!canEdit}
-                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
-                                placeholder="e.g. Female presenter, 30s, business attire"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Location</label>
-                            <input
-                                type="text"
-                                value={localProject.data.location || ''}
-                                onChange={(e) => setLocalProject(prev => ({
-                                    ...prev,
-                                    data: {
-                                        ...prev.data,
-                                        location: e.target.value
-                                    }
-                                }))}
-                                disabled={!canEdit}
-                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
-                                placeholder="e.g. Office, studio, outdoor street"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Lighting</label>
-                            <input
-                                type="text"
-                                value={localProject.data.lighting || ''}
-                                onChange={(e) => setLocalProject(prev => ({
-                                    ...prev,
-                                    data: {
-                                        ...prev.data,
-                                        lighting: e.target.value
-                                    }
-                                }))}
-                                disabled={!canEdit}
-                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
-                                placeholder="e.g. Soft daylight, cinematic, low-key"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Angles</label>
-                            <input
-                                type="text"
-                                value={localProject.data.angles || ''}
-                                onChange={(e) => setLocalProject(prev => ({
-                                    ...prev,
-                                    data: {
-                                        ...prev.data,
-                                        angles: e.target.value
-                                    }
-                                }))}
-                                disabled={!canEdit}
-                                className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
-                                placeholder="e.g. Medium shot, close-up, over-the-shoulder"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Thumbnail Upload Section - Only show if thumbnail_required is true */}
-                    {localProject.data.thumbnail_required && (
-                        <div className="mt-6 pt-6 border-t-2 border-gray-200">
-                            <h3 className="text-lg font-black uppercase mb-4">Thumbnail Assets</h3>
-                            <div>
-                                <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">Thumbnail Drive Link</label>
-                                <input
-                                    type="text"
-                                    value={localProject.data.cine_thumbnail_link || ''}
-                                    onChange={(e) => setLocalProject(prev => ({
-                                        ...prev,
-                                        data: {
-                                            ...prev.data,
-                                            cine_thumbnail_link: e.target.value
-                                        }
-                                    }))}
-                                    disabled={!canEdit}
-                                    className={`w-full p-2 border-2 border-black font-medium ${canEdit ? 'focus:bg-yellow-50 focus:outline-none' : 'bg-gray-100'}`}
-                                    placeholder="Paste Google Drive link for thumbnail assets"
-                                />
-                                <p className="text-xs text-slate-500 mt-1">This link will be shared with the Designer for thumbnail creation</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Save Button for Cinematography Fields */}
-                    {canEdit && (
-                        <div className="mt-4 flex justify-end">
-                            <button
-                                onClick={async () => {
+                        {isScriptEditing ? (
+                            <RichTextEditor
+                                initialContent={scriptContent}
+                                onSave={async (content) => {
                                     try {
-                                        await db.updateProjectData(localProject.id, {
+                                        // Get user session for workflow history
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const user = session?.user;
+
+                                        if (!user) {
+                                            alert('User not authenticated');
+                                            return;
+                                        }
+
+                                        // Record the CINE edit in workflow history
+                                        await db.workflow.recordAction(
+                                            localProject.id,
+                                            localProject.current_stage,
+                                            user.id,
+                                            user.email || user.id,
+                                            'CINE_SCRIPT_EDIT',
+                                            `Cinematographer edited script content`,
+                                            content, // Store the new script content
+                                            Role.CINE, // fromRole
+                                            localProject.assigned_to_role || Role.CMO, // toRole
+                                            Role.CINE // actorRole
+                                        );
+
+                                        // Update the local project data with the new script content
+                                        const updatedData = {
                                             ...localProject.data,
-                                            actor: localProject.data.actor,
-                                            location: localProject.data.location,
-                                            lighting: localProject.data.lighting,
-                                            angles: localProject.data.angles,
-                                            cine_thumbnail_link: localProject.data.cine_thumbnail_link
-                                        });
+                                            script_content: content
+                                        };
+                                        
+                                        await db.updateProjectData(localProject.id, updatedData);
+
+                                        // Update local state to reflect the saved changes
+                                        setLocalProject(prev => ({
+                                            ...prev,
+                                            data: updatedData
+                                        }));
+
+                                        // Update the scriptContent state
+                                        setScriptContent(content);
+
+                                        // Exit edit mode
+                                        setIsScriptEditing(false);
 
                                         // Show success message
-                                        setPopupMessage('Cinematography instructions updated successfully');
+                                        setPopupMessage('Script content updated successfully');
                                         setStageName('Updated');
                                         setShowPopup(true);
                                         setPopupDuration(3000);
+                                        
+                                        // Don't call onUpdate() here to prevent navigation back
                                     } catch (error) {
-                                        console.error('Error updating cinematography instructions:', error);
-                                        alert('Failed to update cinematography instructions');
+                                        console.error('Error updating script content:', error);
+                                        alert('Failed to update script content');
                                     }
                                 }}
-                                className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
-                            >
-                                Save Instructions
-                            </button>
-                        </div>
-                    )}
+                                onCancel={() => {
+                                    // Cancel editing - revert to original content
+                                    setScriptContent(decodeHtmlEntities(localProject.data.script_content || ''));
+                                    setIsScriptEditing(false);
+                                }}
+                                canEdit={canEdit}
+                                projectId={localProject.id}
+                                projectName={localProject.title}
+                            />
+                        ) : (
+                            <>
+                                {localProject.data.script_content 
+                                    ? <div className="prose max-w-none text-lg" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
+                                    : 'No script content available'}
+                                
+                                {canEdit && (
+                                    <div className="mt-4 flex justify-end">
+                                        <button
+                                            onClick={() => setIsScriptEditing(true)}
+                                            className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                        >
+                                            Edit Script
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
+
+                {/* Script Reference Link - Show for projects that haven't completed video upload */}
+                {(!localProject.video_link || localProject.current_stage === WorkflowStage.CINEMATOGRAPHY) && localProject.data?.script_reference_link && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <FileText className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Script Reference Link</h2>
+                        </div>
+                        <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                            <p className="text-sm font-bold uppercase text-blue-800 mb-2">Reference Video</p>
+                            <a
+                                href={localProject.data.script_reference_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                            >
+                                {localProject.data.script_reference_link}
+                            </a>
+                        </div>
+                    </div>
+                )}
+
+                {/* Thumbnail Link - Show when thumbnail_required is true and project hasn't completed video upload */}
+                {(localProject.data?.thumbnail_required || localProject.data?.cine_thumbnail_required) && !localProject.video_link && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <FileText className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Thumbnail Link</h2>
+                        </div>
+                        <div className="space-y-4">
+                            {localProject.data?.cine_thumbnail_link && (
+                                <div className="bg-green-50 border-2 border-green-600 p-4">
+                                    <p className="text-sm font-bold uppercase text-green-800 mb-2">Current Thumbnail Link</p>
+                                    <a
+                                        href={localProject.data.cine_thumbnail_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block p-3 bg-white border-2 border-green-400 text-green-600 font-medium hover:bg-green-50 transition-colors break-all"
+                                    >
+                                        {localProject.data.cine_thumbnail_link}
+                                    </a>
+                                </div>
+                            )}
+                            
+                            {canEdit && (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 uppercase">Thumbnail Link</label>
+                                        <input
+                                            type="url"
+                                            value={localProject.data?.cine_thumbnail_link || ''}
+                                            onChange={async (e) => {
+                                                try {
+                                                    // Get user session for workflow history
+                                                    const { data: { session } } = await supabase.auth.getSession();
+                                                    const user = session?.user;
+
+                                                    if (!user) {
+                                                        alert('User not authenticated');
+                                                        return;
+                                                    }
+
+                                                    // Update project data with the thumbnail link
+                                                    const updatedData = {
+                                                        ...localProject.data,
+                                                        cine_thumbnail_link: e.target.value
+                                                    };
+
+                                                    await db.updateProjectData(localProject.id, updatedData);
+
+                                                    setLocalProject(prev => ({
+                                                        ...prev,
+                                                        data: updatedData
+                                                    }));
+                                                    
+                                                    setPopupMessage('Thumbnail link updated successfully');
+                                                    setStageName('Thumbnail Updated');
+                                                    setShowPopup(true);
+                                                    setPopupDuration(3000);
+                                                } catch (error) {
+                                                    console.error('Error saving thumbnail link:', error);
+                                                    alert('Failed to save thumbnail link');
+                                                }
+                                            }}
+                                            placeholder="https://drive.google.com/file/d/... or https://imgur.com/..."
+                                            className="w-full p-3 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    </div>
+                                    <p className="text-sm text-slate-600">
+                                        Provide a thumbnail link for the designer to use.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Cinematographer Instructions Section - Hidden for UPLOADED filter */}
+                {activeFilter !== 'UPLOADED' && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <FileText className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Cinematographer Instructions</h2>
+                        </div>
+                        <div className="space-y-4">
+                            {/* Writer's name */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 uppercase">Writer</label>
+                                <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                                    {localProject.data?.writer_name || 'Writer name not available'}
+                                </p>
+                            </div>
+                                            
+                            {/* Cinematographer can edit instructions */}
+                            {canEdit && (
+                                <div className="space-y-4 mt-6 pt-4 border-t-2 border-gray-200">
+                                    <h3 className="text-lg font-black uppercase text-slate-800">Edit Instructions</h3>
+                                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
+                                            <input
+                                                type="text"
+                                                value={editingActorDetails}
+                                                onChange={(e) => setEditingActorDetails(e.target.value)}
+                                                placeholder="e.g. Female presenter, 30s, business attire"
+                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                            />
+                                        </div>
+                                                        
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
+                                            <input
+                                                type="text"
+                                                value={editingLocationDetails}
+                                                onChange={(e) => setEditingLocationDetails(e.target.value)}
+                                                placeholder="e.g. Office, studio, outdoor street"
+                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                            />
+                                        </div>
+                                                        
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
+                                            <input
+                                                type="text"
+                                                value={editingLightingDetails}
+                                                onChange={(e) => setEditingLightingDetails(e.target.value)}
+                                                placeholder="e.g. Soft daylight, cinematic, low-key"
+                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                            />
+                                        </div>
+                                                        
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
+                                            <input
+                                                type="text"
+                                                value={editingCameraAngles}
+                                                onChange={(e) => setEditingCameraAngles(e.target.value)}
+                                                placeholder="e.g. Medium shot, close-up, over-the-shoulder"
+                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                                    
+                                    <button
+                                        onClick={handleSaveCinematographyInstructions}
+                                        className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        Save Instructions
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                                
+                {/* Cinematographer Comments Section - Hidden for UPLOADED filter */}
+                {activeFilter !== 'UPLOADED' && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <FileText className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Cinematographer Notes</h2>
+                        </div>
+                        <div className="space-y-4">
+                            {localProject.data?.cine_comments ? (
+                                <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
+                                    <p>{localProject.data.cine_comments}</p>
+                                </div>
+                            ) : (
+                                <p className="text-slate-500 italic">No cinematographer notes added yet</p>
+                            )}
+                                            
+                            {canEdit && (
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 uppercase">Add Comments</label>
+                                    <textarea
+                                        value={cineComments}
+                                        onChange={(e) => setCineComments(e.target.value)}
+                                        placeholder="Add any comments or notes for the writer/next team members..."
+                                        className="w-full p-3 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none min-h-[80px]"
+                                    />
+                                    <button
+                                        onClick={async () => {
+                                            // Save comments without uploading video
+                                            if (!cineComments.trim()) {
+                                                alert('Please enter some comments');
+                                                return;
+                                            }
+                                                            
+                                            try {
+                                                // Get user session for workflow history
+                                                const { data: { session } } = await supabase.auth.getSession();
+                                                const user = session?.user;
+                
+                                                if (!user) {
+                                                    alert('User not authenticated');
+                                                    return;
+                                                }
+                                                                
+                                                // Record the action in workflow history
+                                                await db.workflow.recordAction(
+                                                    localProject.id,
+                                                    localProject.current_stage, // Record action at current stage
+                                                    user.id,
+                                                    user.email || user.id, // UserName (using email or ID as fallback)
+                                                    'CINE_COMMENTS_ADDED', // Use appropriate action value
+                                                    `Cinematographer added comments: ${cineComments.trim()}`
+                                                );
+                                                                
+                                                // Update project data with comments
+                                                const updatedData = {
+                                                    ...localProject.data,
+                                                    cine_comments: cineComments.trim()
+                                                };
+                                                                
+                                                await db.updateProjectData(localProject.id, updatedData);
+                                                                
+                                                setLocalProject(prev => ({
+                                                    ...prev,
+                                                    data: updatedData
+                                                }));
+                                                setCineComments('');
+                                                setPopupMessage('Comments saved successfully');
+                                                setStageName('Notes Updated');
+                                                setShowPopup(true);
+                                                setPopupDuration(3000);
+                                            } catch (error) {
+                                                console.error('Error saving comments:', error);
+                                                alert('Failed to save comments');
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        Save Comments
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Video Upload Section - Show if project has shoot date and either assigned to Cine or has a video link */}
+                {(isCurrentlyAssignedToCine || localProject.video_link) && localProject.shoot_date && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Upload className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Video Upload</h2>
+                        </div>
+
+                        {(canEdit) ? (
+                            <div className="space-y-4">
+                                {/* Show existing video link as reference */}
+                                {localProject.video_link && (
+                                    <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <Video className="w-5 h-5 text-blue-800" />
+                                                <p className="text-sm font-bold uppercase text-blue-800">Previous Video Link</p>
+                                            </div>
+                                            <a
+                                                href={localProject.video_link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                            >
+                                                {localProject.video_link}
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Input for new video link */}
+                                <div className="space-y-4">
+                                    <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="url"
+                                            value={videoLink}
+                                            onChange={(e) => setVideoLink(e.target.value)}
+                                            placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
+                                            className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                        <button
+                                            onClick={handleUploadVideo}
+                                            className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                        >
+                                            <Upload className="w-5 h-5 inline mr-2" />
+                                            {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : 'Upload Video'}
+                                        </button>
+                                    </div>
+                                    
+                                    <p className="text-sm text-slate-500">
+                                        🎬 Once uploaded, the Editor will be automatically notified
+                                    </p>
+                                </div>
+                            </div>
+                        ) : !localProject.video_link ? (
+                            <div className="space-y-4">
+                                <p className="text-slate-600 font-medium">Upload the video link after shooting</p>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="url"
+                                        value={videoLink}
+                                        onChange={(e) => setVideoLink(e.target.value)}
+                                        placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
+                                        className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
+                                    />
+                                    <button
+                                        onClick={handleUploadVideo}
+                                        className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <Upload className="w-5 h-5 inline mr-2" />
+                                        Upload Video
+                                    </button>
+                                </div>
+                                <p className="text-sm text-slate-500">
+                                    🎬 Once uploaded, the Editor will be automatically notified
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Video className="w-5 h-5 text-blue-800" />
+                                        <p className="text-sm font-bold uppercase text-blue-800">✓ Video Uploaded</p>
+                                    </div>
+                                    <a
+                                        href={localProject.video_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                    >
+                                        {localProject.video_link}
+                                    </a>
+                                    <p className="text-sm text-blue-800 font-medium">
+                                        → Project has been moved to Editor for video editing
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Editor Video - Show when in POST sub-tab */}
+                {activeFilter === 'UPLOADED' && uploadedSubTab === 'POST' && localProject.edited_video_link && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Video className="w-5 h-5" />
+                            <h2 className="text-xl font-black uppercase">Editor's Video</h2>
+                        </div>
+                        <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Video className="w-5 h-5 text-blue-800" />
+                                    <p className="text-sm font-bold uppercase text-blue-800">Edited Video Link</p>
+                                </div>
+                                <a
+                                    href={localProject.edited_video_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                >
+                                    {localProject.edited_video_link}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Cinematography Instructions - Hidden for both tabs */}
+                {/* Removed per user request */}
+
+                {/* Forwarded Comments from CEO - Hide when in POST sub-tab */}
+                {!(activeFilter === 'UPLOADED' && uploadedSubTab === 'POST') && localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <h2 className="text-xl font-black uppercase mb-4">Forwarded Comments from CEO</h2>
+                        <div className="space-y-3">
+                            {(() => {
+                                const ceoComments = localProject.forwarded_comments?.filter(comment => comment.from_role === 'CEO') || [];
+                                return ceoComments.map((comment, index) => {
+                                    const timestamp = new Date(comment.created_at).toLocaleString();
+                                    
+                                    return (
+                                        <div key={`ceo-forwarded-${comment.id || index}`} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div className="flex items-center mb-2">
+                                                <span className="font-bold text-blue-800">CEO Comment</span>
+                                                <span className="mx-2 text-slate-400">•</span>
+                                                <span className="text-sm text-slate-500">{timestamp}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2 py-1 text-xs font-bold uppercase border border-black bg-blue-500 text-white">
+                                                    {comment.action}
+                                                </span>
+                                                <span className="font-medium text-slate-800">{comment.comment}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    </div>
+                )}
 
 
 
@@ -683,145 +1136,6 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         )}
                     </div>
                 )}
-
-                {/* Video Upload Section - Show if project has shoot date and either assigned to Cine or has a video link */}
-                {(isCurrentlyAssignedToCine || localProject.video_link) && localProject.shoot_date && (
-                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Upload className="w-5 h-5" />
-                            <h2 className="text-xl font-black uppercase">Video Upload</h2>
-                        </div>
-
-                        {(canEdit) ? (
-                            <div className="space-y-4">
-                                {/* Show existing video link as reference */}
-                                {localProject.video_link && (
-                                    <div className="bg-blue-50 border-2 border-blue-600 p-4">
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2">
-                                                <Video className="w-5 h-5 text-blue-800" />
-                                                <p className="text-sm font-bold uppercase text-blue-800">Previous Video Link</p>
-                                            </div>
-                                            <a
-                                                href={localProject.video_link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
-                                            >
-                                                {localProject.video_link}
-                                            </a>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Input for new video link */}
-                                <div className="space-y-4">
-                                    <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
-                                    <div className="flex gap-3">
-                                        <input
-                                            type="url"
-                                            value={videoLink}
-                                            onChange={(e) => setVideoLink(e.target.value)}
-                                            placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
-                                            className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
-                                        />
-                                        <button
-                                            onClick={handleUploadVideo}
-                                            className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                        >
-                                            <Upload className="w-5 h-5 inline mr-2" />
-                                            {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : 'Upload Video'}
-                                        </button>
-                                    </div>
-                                    <p className="text-sm text-slate-500">
-                                        🎬 Once uploaded, the Editor will be automatically notified
-                                    </p>
-                                </div>
-                            </div>
-                        ) : !localProject.video_link ? (
-                            <div className="space-y-4">
-                                <p className="text-slate-600 font-medium">Upload the video link after shooting</p>
-                                <div className="flex gap-3">
-                                    <input
-                                        type="url"
-                                        value={videoLink}
-                                        onChange={(e) => setVideoLink(e.target.value)}
-                                        placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
-                                        className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
-                                    />
-                                    <button
-                                        onClick={handleUploadVideo}
-                                        className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                    >
-                                        <Upload className="w-5 h-5 inline mr-2" />
-                                        Upload Video
-                                    </button>
-                                </div>
-                                <p className="text-sm text-slate-500">
-                                    🎬 Once uploaded, the Editor will be automatically notified
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="bg-blue-50 border-2 border-blue-600 p-4">
-                                <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Video className="w-5 h-5 text-blue-800" />
-                                        <p className="text-sm font-bold uppercase text-blue-800">✓ Video Uploaded</p>
-                                    </div>
-                                    <a
-                                        href={localProject.video_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
-                                    >
-                                        {localProject.video_link}
-                                    </a>
-                                    <p className="text-sm text-blue-800 font-medium">
-                                        → Project has been moved to Editor for video editing
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Project Info */}
-                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-                        </div>
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-                        </div>
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                            <p className="font-bold text-slate-900 mt-1">
-                                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-                            </p>
-                        </div>
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-                        </div>
-                        {localProject.data?.niche && (
-                            <div className="col-span-2">
-                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                                <p className="font-bold text-slate-900 mt-1 uppercase">
-                                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                        : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                            : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                                                    ? localProject.data.niche_other
-                                                    : localProject.data.niche}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </div>
             </div>
             {showPopup && (
                 <Popup
@@ -830,7 +1144,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     duration={popupDuration}
                     onClose={() => {
                         setShowPopup(false);
-                        onUpdate();
+                        // Only call onUpdate() for major state changes, not for script saves
+                        if (!popupMessage.includes('Script content updated successfully')) {
+                            onUpdate();
+                        }
                     }}
                 />
             )}

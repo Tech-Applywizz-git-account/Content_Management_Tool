@@ -33,61 +33,75 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Helper to check if project has script content
   const hasScript = React.useMemo(() => !!parsedProjectData?.script_content, [parsedProjectData]);
 
+  // State for reviewer access check
+  const [hasReviewerAccessed, setHasReviewerAccessed] = useState<boolean>(false);
+
   // Helper function to check if a reviewer (CMO or CEO) has accessed the project
-  const hasReviewerAccessed = React.useMemo(async (): Promise<boolean> => {
-    if (!project?.id) return false;
-
-    try {
-      // First, get workflow history entries for this project
-      const { data: historyData, error: historyError } = await supabase
-        .from('workflow_history')
-        .select('actor_id')
-        .eq('project_id', project.id)
-        .limit(10); // Get recent history entries
-
-      if (historyError) {
-        console.error('Error checking reviewer access:', historyError);
-        return false;
+  useEffect(() => {
+    const checkReviewerAccess = async () => {
+      if (!project?.id) {
+        setHasReviewerAccessed(false);
+        return;
       }
 
-      // If no history entries, no reviewer has accessed
-      if (!historyData || historyData.length === 0) {
-        return false;
+      try {
+        // First, get workflow history entries for this project
+        const { data: historyData, error: historyError } = await supabase
+          .from('workflow_history')
+          .select('actor_id')
+          .eq('project_id', project.id)
+          .limit(10); // Get recent history entries
+
+        if (historyError) {
+          console.error('Error checking reviewer access:', historyError);
+          setHasReviewerAccessed(false);
+          return;
+        }
+
+        // If no history entries, no reviewer has accessed
+        if (!historyData || historyData.length === 0) {
+          setHasReviewerAccessed(false);
+          return;
+        }
+
+        // Get unique actor IDs from history, filtering out null values
+        const actorIds = [...new Set(historyData.map(entry => entry.actor_id).filter(id => id !== null && id !== undefined))];
+
+        // Only proceed if we have valid actor IDs
+        if (actorIds.length === 0) {
+          setHasReviewerAccessed(false);
+          return;
+        }
+
+        // Check if any of these actors are CMO or CEO
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, role')
+          .in('id', actorIds)
+          .in('role', ['CMO', 'CEO']);
+
+        if (userError) {
+          console.error('Error checking user roles:', userError);
+          setHasReviewerAccessed(false);
+          return;
+        }
+
+        // Set state if any of the actors who accessed the project are CMO or CEO
+        setHasReviewerAccessed(userData && userData.length > 0);
+      } catch (error) {
+        console.error('Error checking reviewer access:', error);
+        setHasReviewerAccessed(false);
       }
+    };
 
-      // Get unique actor IDs from history, filtering out null values
-      const actorIds = [...new Set(historyData.map(entry => entry.actor_id).filter(id => id !== null && id !== undefined))];
-
-      // Only proceed if we have valid actor IDs
-      if (actorIds.length === 0) {
-        return false;
-      }
-
-      // Check if any of these actors are CMO or CEO
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('id, role')
-        .in('id', actorIds)
-        .in('role', ['CMO', 'CEO']);
-
-      if (userError) {
-        console.error('Error checking user roles:', userError);
-        return false;
-      }
-
-      // Return true if any of the actors who accessed the project are CMO or CEO
-      return userData && userData.length > 0;
-    } catch (error) {
-      console.error('Error checking reviewer access:', error);
-      return false;
-    }
+    checkReviewerAccess();
   }, [project?.id]);
 
   // State for edit permission
   const [canEdit, setCanEdit] = useState(true);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [formData, setFormData] = useState<ProjectData>(parsedProjectData || {});
+  const [formData, setFormData] = useState<ProjectData>({ ...(parsedProjectData || {}), _workflow_script_loaded: false });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reviewComment, setReviewComment] = useState<any>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -109,18 +123,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Sync editor state when project changes
-  useEffect(() => {
-    if (project) {
-      // Update newProjectDetails when project changes
-      setNewProjectDetails({
-        title: project.title || '',
-        channel: project.channel || '',
-        contentType: project.content_type || '',
-        dueDate: project.due_date || new Date().toISOString().split('T')[0],
-        priority: project.priority || 'NORMAL'
-      });
-    }
-  }, [project]);
+
 
   // Initialize formData once when component mounts and project is available
   useEffect(() => {
@@ -300,6 +303,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     loadUser();
   }, []);
 
+  // Initialize form data once when component mounts and project is available
   useEffect(() => {
     if (!project) return;
 
@@ -308,10 +312,18 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
-    setFormData({
-      ...parsed,
-      script_content: parsed?.script_content || '',
-      brief: parsed?.brief || ''
+    // Only initialize formData if it's empty or doesn't have script content
+    setFormData(prev => {
+      // If we already have script content, don't overwrite it
+      if (prev && prev.script_content) {
+        return prev;
+      }
+      
+      return {
+        ...prev,
+        ...parsed,
+        script_content: parsed?.script_content || ''
+      };
     });
 
     setNewProjectDetails({
@@ -321,7 +333,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       dueDate: project.due_date || new Date().toISOString().split('T')[0],
       priority: project.priority || 'NORMAL'
     });
-  }, [project]);
+  }, []); // Only run once when component mounts
 
 
   // Check edit permissions after user is loaded
@@ -432,19 +444,93 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     };
   }, [formData, newProjectDetails, project]);
 
-  // Initialize the contentEditable div with initial content once when component mounts
+  // Function to save current cursor position
+  const saveCursorPosition = () => {
+    if (!editorRef.current) return null;
+    
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(editorRef.current);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+    
+    return preCaretRange.toString().length;
+  };
+  
+  // Function to restore cursor position
+  const restoreCursorPosition = (position: number | null) => {
+    if (!editorRef.current || position === null) return;
+    
+    let charIndex = 0;
+    const walker = document.createTreeWalker(
+      editorRef.current,
+      NodeFilter.SHOW_TEXT
+    );
+    
+    let node;
+    let foundStart = false;
+    let range = document.createRange();
+    const selection = window.getSelection();
+    
+    if (!selection) return;
+    
+    while ((node = walker.nextNode())) {
+      const nextCharIndex = charIndex + node.textContent!.length;
+      
+      if (!foundStart && position >= charIndex && position <= nextCharIndex) {
+        range.setStart(node, position - charIndex);
+        foundStart = true;
+      }
+      
+      if (foundStart && position >= charIndex && position <= nextCharIndex) {
+        range.setEnd(node, position - charIndex);
+        break;
+      }
+      
+      charIndex = nextCharIndex;
+    }
+    
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  // Single effect to synchronize editor content with formData while preserving cursor position
   useEffect(() => {
-    if (editorRef.current) {
-      // Only set content if editor is empty
-      if (!editorRef.current.innerHTML || editorRef.current.innerHTML === '<br>' || editorRef.current.innerHTML === '<div><br></div>') {
+    if (editorRef.current && formData.script_content !== undefined) {
+      // Only update editor if content is different
+      if (editorRef.current.innerHTML !== formData.script_content) {
+        // Save cursor position before updating content
+        const cursorPosition = saveCursorPosition();
+        
         if (formData.script_content) {
           editorRef.current.innerHTML = formData.script_content;
         } else {
           editorRef.current.innerHTML = 'Start writing your script here...';
         }
+        
+        // Restore cursor position after updating content
+        restoreCursorPosition(cursorPosition);
       }
     }
-  }, []);
+  }, [formData.script_content]);
+
+  // Effect to update editor when workflow script is loaded
+  useEffect(() => {
+    if (editorRef.current && formData._workflow_script_loaded && formData.script_content) {
+      // Save cursor position before updating content
+      const cursorPosition = saveCursorPosition();
+      
+      editorRef.current.innerHTML = formData.script_content;
+      
+      // Restore cursor position after updating content
+      restoreCursorPosition(cursorPosition);
+    }
+  }, [formData._workflow_script_loaded, formData.script_content]);
+
+  // Ensure editor is initialized when component mounts and has project data
+
 
 
 
@@ -475,26 +561,80 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           }
 
           // Fetch script version based on the latest action
-          let scriptAction = workflowState?.isRework ? 'REWORK' : 'REJECTED';
-          const { data: scriptData, error: scriptError } = await supabase
-            .from('workflow_history')
-            .select('script_content')
-            .eq('project_id', project.id)
-            .eq('action', scriptAction)
-            .order('timestamp', { ascending: false })
-            .limit(1);
+          // We'll try both REWORK and REJECTED actions to find the most recent script content
+          let scriptData = null;
+          let scriptError = null;
+          
+          // First, try to get the most recent script based on workflow state
+          if (workflowState?.isRework || workflowState?.isRejected) {
+            let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
+            
+            const { data, error } = await supabase
+              .from('workflow_history')
+              .select('script_content')
+              .eq('project_id', project.id)
+              .eq('action', scriptAction)
+              .order('timestamp', { ascending: false })
+              .limit(1);
+              
+            if (!error && data && data.length > 0 && data[0].script_content) {
+              scriptData = data;
+              scriptError = error;
+            } else {
+              // If the specific action didn't have script content, try the other one
+              let fallbackAction = workflowState.isRework ? 'REJECTED' : 'REWORK';
+              const { data: fallbackData, error: fallbackError } = await supabase
+                .from('workflow_history')
+                .select('script_content')
+                .eq('project_id', project.id)
+                .eq('action', fallbackAction)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+                
+              if (!fallbackError && fallbackData && fallbackData.length > 0 && fallbackData[0].script_content) {
+                scriptData = fallbackData;
+                scriptError = fallbackError;
+              }
+            }
+          }
+          
+          // If we still don't have script content from rework/reject, try to get the most recent script content regardless of action
+          if (!scriptData || (scriptData.length === 0 || !scriptData[0].script_content)) {
+            const { data: fallbackData, error: fallbackError } = await supabase
+              .from('workflow_history')
+              .select('script_content, action')
+              .eq('project_id', project.id)
+              .not('script_content', 'is', null)
+              .neq('script_content', '')
+              .order('timestamp', { ascending: false })
+              .limit(1);
+              
+            if (!fallbackError && fallbackData && fallbackData.length > 0) {
+              scriptData = fallbackData;
+              scriptError = fallbackError;
+            }
+          }
 
           if (scriptError) {
             console.error('Error fetching previous script:', scriptError);
-          } else if (scriptData && scriptData.length > 0) {
-            if (scriptData[0].script_content) {
-              setPreviousScript(scriptData[0].script_content);
-              // Also update the current formData with the script content for editing
-              setFormData(prev => ({
+          } else if (scriptData && scriptData.length > 0 && scriptData[0].script_content) {
+            const script = scriptData[0].script_content;
+
+            setPreviousScript(script);
+
+            // Update formData with script content from workflow history (this is the source of truth for rework/reject)
+            setFormData(prev => {
+              // Only update if we don't already have script content from workflow history
+              if (prev._workflow_script_loaded) {
+                return prev;
+              }
+              
+              return {
                 ...prev,
-                script_content: scriptData[0].script_content
-              }));
-            }
+                script_content: script,
+                _workflow_script_loaded: true  // Flag to prevent overwrites
+              };
+            });
           }
 
           // Also try to get the idea description from the project data itself
@@ -507,7 +647,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           }
 
           // For rework projects, also update formData with script content if available
-          if (workflowState?.isRework && project.data?.script_content) {
+          if (workflowState?.isRework && project.data?.script_content && !formData._workflow_script_loaded) {
             setFormData(prev => ({
               ...prev,
               script_content: project.data?.script_content
@@ -520,7 +660,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     };
 
     fetchReviewData();
-  }, [project?.id, workflowState?.isRework, workflowState?.isRejected]);
+  }, [project?.id, workflowState?.isRework, workflowState?.isRejected, formData._workflow_script_loaded]);
 
   // Don't render the main form if user is not loaded yet
   if (loading) {
@@ -680,6 +820,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const handleSubmitForReview = async () => {
     setIsSubmitting(true);
     console.log('🚀 Starting submit process');
+    
+    // Check if project is in rejected state and not in the resubmit flow
+    if (project && getWorkflowState(project).isRejected && returnType !== 'reject') {
+      setIsSubmitting(false);
+      alert('Cannot submit this project. It has been rejected and requires resubmission through the rejection workflow.');
+      return;
+    }
 
     try {
       let realProjectId = project?.id;
@@ -1209,10 +1356,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           </button>
           <button
             onClick={() => setShowConfirmation(true)}
-            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))}
+            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined))) || (project && getWorkflowState(project).isRejected && returnType !== 'reject')}
             className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
           >
-            {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected && returnType === 'reject' ? 'Resubmit for Review' : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
+            {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected ? (returnType === 'reject' ? 'Resubmit for Review' : 'Cannot Submit (Rejected)') : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
             <Send className="w-4 h-4 ml-2" />
           </button>
         </div>
@@ -1640,9 +1787,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </h3>
 
                 <div className="bg-white p-4 border-2 border-yellow-200 min-h-[200px] max-h-60 overflow-y-auto">
-                  <pre className="text-slate-700 whitespace-pre-wrap font-serif">
-                    {previousScript}
-                  </pre>
+                  <div className="text-slate-700 whitespace-pre-wrap font-serif">
+                    {(() => {
+                      const decodeHtmlEntities = (html) => {
+                        const txt = document.createElement('textarea');
+                        txt.innerHTML = html;
+                        return txt.value;
+                      };
+                      const decodedContent = decodeHtmlEntities(previousScript);
+                      return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                    })()}
+                  </div>
                 </div>
               </div>
             )}
