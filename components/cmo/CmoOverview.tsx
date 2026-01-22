@@ -31,7 +31,18 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILS'>('OVERVIEW');
   const [userDetails, setUserDetails] = useState<Record<string, User>>({});
-  const [comments, setComments] = useState<any[]>([]);
+  interface WorkflowHistoryEntry {
+    action: string;
+    comment: string;
+    actor_name: string;
+    actor_id?: string;
+    timestamp: string;
+    stage: string;
+    idx?: number;
+    id?: string;
+  }
+  
+  const [comments, setComments] = useState<WorkflowHistoryEntry[]>([]);
   const [userMap, setUserMap] = useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -209,141 +220,22 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
         // Filter out 'CREATED' actions and remove duplicates
         const filteredComments = commentsData?.filter(comment => comment.action !== 'CREATED') || [];
         
-        // Track if we've already added certain repeated events
-        let multiWriterSubmittedAdded = false;
-        let deliveryDateSetAdded = false;
-        let shootDateSetAdded = false;
-        
-        // Create a map to track unique events by their meaningful content
+        // Deduplicate events based on a unique combination of action, actor, comment, and timestamp
         const uniqueEventsMap = new Map();
         
         filteredComments.forEach(comment => {
-          let uniqueKey;
+          // Create a unique key for each event based on action, actor, comment and timestamp
+          const uniqueKey = `${comment.action}-${comment.actor_id || comment.actor_name}-${comment.comment || ''}-${comment.timestamp}`;
           
-          // Create a key based on the type of action and its content
-          if (comment.action === 'SET_SHOOT_DATE') {
-            if (shootDateSetAdded) {
-              return; // Skip duplicate shoot date events
-            }
-            shootDateSetAdded = true;
-            uniqueKey = 'SHOOT_DATE_SET';
-          } else if (comment.action === 'SET_DELIVERY_DATE') {
-            if (deliveryDateSetAdded) {
-              return; // Skip duplicate delivery date events
-            }
-            deliveryDateSetAdded = true;
-            uniqueKey = 'DELIVERY_DATE_SET';
-          } else if (comment.action === 'SUBMITTED' && comment.comment) {
-            if (comment.stage === 'MULTI_WRITER_APPROVAL') {
-              // For MULTI_WRITER_APPROVAL SUBMITTED, check if it's the "All writers have approved" message
-              if (comment.comment.includes('All writers have approved')) {
-                if (multiWriterSubmittedAdded) {
-                  return; // Skip duplicate "All writers have approved" events
-                }
-                multiWriterSubmittedAdded = true;
-                uniqueKey = 'MULTI_WRITER_APPROVAL_SUBMITTED_ALL_WRITERS'; // Fixed key for this specific event
-              } else {
-                // For other MULTI_WRITER_APPROVAL submissions, use actor-specific key
-                uniqueKey = `${comment.action}-${comment.stage}-${comment.actor_id || comment.actor_name}-${comment.timestamp}-${comment.comment || ''}`;
-              }
-            } else if (comment.comment.includes('Project assigned to sub-editor')) {
-              // Use the same key for both SUBMITTED and APPROVED to deduplicate, but prioritize APPROVED
-              uniqueKey = 'PROJECT_ASSIGNED_TO_SUBEDITOR';
-            } else if (comment.comment.includes('Raw video uploaded')) {
-              uniqueKey = 'RAW_VIDEO_UPLOADED';
-            } else if (comment.comment.includes('Edited video uploaded')) {
-              uniqueKey = 'EDITED_VIDEO_UPLOADED';
-            } else if (comment.comment.includes('Assets uploaded')) {
-              uniqueKey = 'ASSETS_UPLOADED';
-            } else {
-              // For other submitted actions, use action + stage + partial comment
-              uniqueKey = `${comment.action}-${comment.stage}-${comment.comment.substring(0, 30)}`;
-            }
-          } else if (comment.action === 'APPROVED' && comment.comment) {
-            if (comment.stage === 'MULTI_WRITER_APPROVAL') {
-              // For MULTI_WRITER_APPROVAL, each approval should be unique (each writer approval)
-              // Include the comment content to differentiate between similar events
-              uniqueKey = `${comment.action}-${comment.stage}-${comment.actor_id || comment.actor_name}-${comment.timestamp}-${comment.comment || ''}`;
-            } else if (comment.comment.includes('Project assigned to sub-editor')) {
-              // For "Project assigned to sub-editor", prioritize APPROVED by using the same key
-              uniqueKey = 'PROJECT_ASSIGNED_TO_SUBEDITOR';
-            } else {
-              uniqueKey = `${comment.action}-${comment.stage}-${comment.comment.substring(0, 30)}`;
-            }
-
-          } else if (comment.action === 'SUB_EDITOR_ASSIGNED') {
-            uniqueKey = 'SUB_EDITOR_ASSIGNED';
-          } else if (comment.action === 'REWORK_VIDEO_SUBMITTED') {
-            uniqueKey = 'REWORK_VIDEO_SUBMITTED';
-          } else {
-            // For other actions, combine action, stage, and a portion of comment if available
-            uniqueKey = `${comment.action}-${comment.stage}-${comment.comment ? comment.comment.substring(0, 30) : ''}`;
-          }
-          
-          // Only add the first occurrence of each unique event (latest due to reverse chronological order)
+          // Only add the first occurrence of each unique event
           if (!uniqueEventsMap.has(uniqueKey)) {
             uniqueEventsMap.set(uniqueKey, comment);
           }
         });
         
         // Convert map values back to array
-        let allUniqueComments = Array.from(uniqueEventsMap.values());
-        
-        // Create a map to track content groups and prioritize APPROVED actions
-        const contentBasedMap = new Map();
-        
-        allUniqueComments.forEach(comment => {
-          // Define content identifier for grouping
-          let contentIdentifier = null;
-          
-          if (comment.comment?.includes('Project assigned to sub-editor')) {
-            contentIdentifier = 'PROJECT_ASSIGNED_TO_SUBEDITOR';
-          } else if (comment.comment?.includes('Raw video uploaded')) {
-            contentIdentifier = 'RAW_VIDEO_UPLOADED';
-          } else if (comment.comment?.includes('Edited video uploaded')) {
-            contentIdentifier = 'EDITED_VIDEO_UPLOADED';
-          } else if (comment.comment?.includes('Assets uploaded')) {
-            contentIdentifier = 'ASSETS_UPLOADED';
-          } else if (comment.comment?.includes('Shoot date set')) {
-            contentIdentifier = 'SHOOT_DATE_SET';
-          } else if (comment.comment?.includes('Delivery date set')) {
-            contentIdentifier = 'DELIVERY_DATE_SET';
-          }
-          
-          if (contentIdentifier) {
-            if (!contentBasedMap.has(contentIdentifier)) {
-              contentBasedMap.set(contentIdentifier, []);
-            }
-            contentBasedMap.get(contentIdentifier).push(comment);
-          } else {
-            // For comments that don't match special cases, use a unique key based on action, stage and content
-            // This ensures that individual events that don't have duplicates are preserved
-            const originalKey = `${comment.action}-${comment.stage}-${comment.idx || comment.id || comment.timestamp}`;
-            
-            if (!contentBasedMap.has(originalKey)) {
-              contentBasedMap.set(originalKey, []);
-            }
-            contentBasedMap.get(originalKey).push(comment);
-          }
-        });
-        
-        // Process each group to prioritize APPROVED actions
-        const finalComments = [];
-        contentBasedMap.forEach(group => {
-          // Check if there's an APPROVED action in this group
-          const approvedAction = group.find(comment => comment.action === 'APPROVED');
-          
-          if (approvedAction) {
-            // If there's an APPROVED action, only include that one
-            finalComments.push(approvedAction);
-          } else {
-            // Otherwise, include all actions in the group
-            finalComments.push(...group);
-          }
-        });
-        
         // Sort by timestamp (most recent first)
-        let uniqueComments = finalComments
+        let uniqueComments = (Array.from(uniqueEventsMap.values()) as WorkflowHistoryEntry[])
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         
         // Fetch user details to get proper names instead of emails
@@ -426,14 +318,11 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                 {project.writer_name || '—'}
               </p>
             </div>
-            {project.data?.source !== 'IDEA_PROJECT' && (
+            {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
               <p className="font-medium bg-slate-50 p-2">
-                {project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name || 
-                  (project.assigned_to_role === Role.EDITOR && project.assigned_to_user_id 
-                    ? userDetails[project.assigned_to_user_id]?.full_name || 'Loading...' 
-                    : '—')}
+                {project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name || '—'}
               </p>
             </div>
             )}
@@ -785,17 +674,37 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                     <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                       Created: {new Date(project.created_at).toLocaleDateString()}
                     </div>
+                    
+                    {/* Show live URL for completed projects */}
+                    {project.status === 'DONE' && project.data?.live_url && (
+                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-green-800 uppercase">Live URL</span>
+                          <a
+                            href={project.data.live_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[100px]"
+                            title={project.data.live_url}
+                          >
+                            View Live
+                          </a>
+                        </div>
+                        <div className="text-xs text-slate-600 truncate" title={project.data.live_url}>
+                          {project.data.live_url}
+                        </div>
+                      </div>
+                    )}
                     {/* Show actual editor who uploaded content first, then fall back to assigned user */}
-                    {project.data?.source !== 'IDEA_PROJECT' && (project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
+                    {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
                       <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                         Editor: {project.editor_name || project.sub_editor_name || project.data.editor_name || project.data.sub_editor_name}
                       </div>
                     )}
-                    {/* Show assigned user if no actual editor name is available */}
-                    {project.data?.source !== 'IDEA_PROJECT' && project.assigned_to_user_id && !(project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (
+                    {/* Show only if there is an actual editor name, don't fall back to assigned user */}
+                    {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && !(project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
                       <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                        {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && 'Editor'}
-                        : {userDetails[project.assigned_to_user_id]?.full_name || 'Loading...'}
+                        Editor: —
                       </div>
                     )}
                   </div>

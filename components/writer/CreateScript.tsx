@@ -122,6 +122,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Helper function to decode HTML entities
+  const decodeHtmlEntities = (html) => {
+    if (!html) return '';
+    const txt = document.createElement('textarea');
+    txt.innerHTML = html;
+    return txt.value;
+  };
+
   // Sync editor state when project changes
 
 
@@ -496,25 +504,19 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     selection.addRange(range);
   };
 
-  // Single effect to synchronize editor content with formData while preserving cursor position
-  useEffect(() => {
-    if (editorRef.current && formData.script_content !== undefined) {
-      // Only update editor if content is different
-      if (editorRef.current.innerHTML !== formData.script_content) {
-        // Save cursor position before updating content
-        const cursorPosition = saveCursorPosition();
-        
-        if (formData.script_content) {
-          editorRef.current.innerHTML = formData.script_content;
-        } else {
-          editorRef.current.innerHTML = 'Start writing your script here...';
-        }
-        
-        // Restore cursor position after updating content
-        restoreCursorPosition(cursorPosition);
-      }
+
+
+  // Helper function to format content for the editor with proper line breaks
+  const formatContentForEditor = (content) => {
+    if (!content) return '';
+    
+    // If content doesn't contain HTML tags but has line breaks, wrap paragraphs in <p> tags
+    if (!content.includes('<p>') && !content.includes('<br>')) {
+      return content.split('\n\n').map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`).join('');
     }
-  }, [formData.script_content]);
+    
+    return content;
+  };
 
   // Effect to update editor when workflow script is loaded
   useEffect(() => {
@@ -522,18 +524,40 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       // Save cursor position before updating content
       const cursorPosition = saveCursorPosition();
       
-      editorRef.current.innerHTML = formData.script_content;
+      // Format content for proper display in editor
+      const formattedContent = formatContentForEditor(formData.script_content);
+      editorRef.current.innerHTML = formattedContent;
       
       // Restore cursor position after updating content
-      restoreCursorPosition(cursorPosition);
+      if (cursorPosition !== null) {
+        setTimeout(() => {
+          restoreCursorPosition(cursorPosition);
+        }, 0);
+      }
     }
   }, [formData._workflow_script_loaded, formData.script_content]);
 
-  // Ensure editor is initialized when component mounts and has project data
+  // This effect ensures the editor content is initialized with the script content when available
+  useEffect(() => {
+    if (editorRef.current && formData.script_content !== undefined && !formData._workflow_script_loaded) {
+      // Only initialize if the editor is currently empty or has default content
+      if (!editorRef.current.innerHTML || editorRef.current.innerHTML === '' || editorRef.current.innerHTML === 'Start writing your script here...') {
+        // Format content for proper display in editor, preserving formatting
+        const formattedContent = formatContentForEditor(formData.script_content);
+        editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
+      }
+    }
+  }, [formData.script_content, formData._workflow_script_loaded]);
 
-
-
-
+  // Initialize editor content when component mounts
+    useEffect(() => {
+      if (editorRef.current && !editorRef.current.innerHTML) {
+        // Initialize with an empty string or placeholder if no content exists yet
+        editorRef.current.innerHTML = formData.script_content || 'Start writing your script here...';
+      }
+    }, []); // Run once on mount
+  
+  
   // Fetch reviewer comments and previous script for rework/rejected projects
   useEffect(() => {
     const fetchReviewData = async () => {
@@ -1865,20 +1889,32 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   suppressContentEditableWarning={true}
                   onInput={(e) => {
                     if (canEdit) {
+                      // Only update formData if content actually changed
                       const content = e.currentTarget.innerHTML;
-                      setFormData({ ...formData, script_content: content });
+                      if (formData.script_content !== content) {
+                        setFormData({ ...formData, script_content: content });
+                      }
                     }
                   }}
                   onMouseUp={handleTextSelection}
-                  onKeyDown={handleTextSelection}
+                  onKeyDown={(e) => {
+                    // Prevent certain keys from triggering unwanted behavior
+                    if (e.key === 'Enter' && e.shiftKey) {
+                      // Allow shift+enter for line breaks
+                      return;
+                    }
+                    handleTextSelection();
+                  }}
                   onBlur={() => {
                     // Ensure content is synced when editor loses focus
                     if (canEdit && editorRef.current) {
                       const content = editorRef.current.innerHTML;
-                      setFormData({ ...formData, script_content: content });
+                      if (formData.script_content !== content) {
+                        setFormData({ ...formData, script_content: content });
+                      }
                     }
                   }}
-                  className="flex-1 w-full text-lg resize-none outline-none font-serif p-2 border border-gray-300 rounded min-h-[600px]"
+                  className="flex-1 w-full text-lg resize-none outline-none font-serif p-2 border border-gray-300 rounded min-h-[600px] whitespace-pre-wrap"
                   ref={editorRef}
                 />
               </div>

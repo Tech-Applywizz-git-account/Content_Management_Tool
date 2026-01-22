@@ -532,12 +532,12 @@ const handleEdit = (project: Project) => {
                             </div>
                             <div className="space-y-4">
                                 {inProduction.map(p => (
-                                    <div key={p.id} onClick={() => handleViewProject(p)} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}>
+                                    <div key={p.id} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleViewProject(p)}>
                                         <div className="flex justify-between items-start mb-4">
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     'bg-[#D946EF] text-white'
-                                                }`}>
+                                            }`}>
                                                 {p.channel}
                                             </span>
                                             {/* Show IDEA badge for idea projects */}
@@ -552,15 +552,14 @@ const handleEdit = (project: Project) => {
                                                     : p.priority === 'NORMAL'
                                                         ? 'bg-yellow-500 text-black'
                                                         : 'bg-green-500 text-white'
-                                                    }`}
-                                            >
+                                                }`}>
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                                                 p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
                                                     p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
                                                         'bg-slate-100 text-slate-700'
-                                                }`}>
+                                            }`}>
                                                 {p.assigned_to_role === Role.CINE ? 'WITH CINE' :
                                                     p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
                                                         p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :
@@ -569,13 +568,11 @@ const handleEdit = (project: Project) => {
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
 
-                                        {/* Cinematographer Comments */}
-                                        {p.data?.cine_comments && (
-                                            <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                                                <p className="text-xs font-bold text-blue-700 uppercase">Cine Note:</p>
-                                                <p className="text-xs text-slate-600 whitespace-pre-wrap truncate max-w-xs">
-                                                    {p.data.cine_comments}
-                                                </p>
+                                        {/* Show cine comments if available */}
+                                        {(p.data?.cine_notes_for_writer || p.data?.cine_comments) && (
+                                            <div className="mb-2 p-2 bg-blue-50 border border-blue-200 text-xs">
+                                                <p className="font-bold text-blue-700 mb-1">Cine Notes:</p>
+                                                <p className="text-blue-600 line-clamp-2">{(p.data.cine_notes_for_writer || p.data.cine_comments).substring(0, 100)}{(p.data.cine_notes_for_writer || p.data.cine_comments).length > 100 ? '...' : ''}</p>
                                             </div>
                                         )}
 

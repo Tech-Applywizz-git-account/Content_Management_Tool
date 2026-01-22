@@ -138,11 +138,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // Initialize the contentEditable div with initial content
   useEffect(() => {
-    if (editorRef.current) {
-      // Only set content if editor is empty
-      if (!editorRef.current.innerHTML || editorRef.current.innerHTML === '<br>' || editorRef.current.innerHTML === '<div><br></div>') {
-        editorRef.current.innerHTML = initialContent;
-      }
+    if (editorRef.current && initialContent) {
+      // Always set the content to preserve formatting, spaces, and structure
+      // This ensures existing script content displays exactly as it was saved
+      editorRef.current.innerHTML = initialContent;
+      setContent(initialContent);
     }
   }, [initialContent]);
 

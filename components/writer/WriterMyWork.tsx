@@ -162,6 +162,21 @@ const canModifyProject = (project: Project, userId: string) => {
   // Check if it's an IDEA project in rework status
   const isIdeaRework = project.data?.source === 'IDEA_PROJECT' && project.status === 'REWORK';
   
+  // NEW: Check if this is a rework project from MULTI_WRITER_APPROVAL with a specific target role
+  const isReworkFromMultiWriterApproval = 
+    project.status === 'REWORK' && 
+    project.data?.rework_initiator_stage === 'MULTI_WRITER_APPROVAL' && 
+    project.data?.rework_target_role;
+  
+  // If it's a rework project from MULTI_WRITER_APPROVAL with a target role,
+  // only allow modification if the target role matches the writer role
+  if (isReworkFromMultiWriterApproval) {
+    return (
+      project.created_by_user_id === userId &&
+      project.data?.rework_target_role === 'WRITER'
+    );
+  }
+  
   return (
     project.created_by_user_id === userId &&
     (!isProjectOpenedByReviewers(project) || isReworkNotOpened || isIdeaRework)
@@ -732,6 +747,27 @@ const canModifyProject = (project: Project, userId: string) => {
                   <p className="text-xs text-slate-600 whitespace-pre-wrap truncate max-h-12 overflow-hidden">
                     {task.data.cine_comments}
                   </p>
+                </div>
+              )}
+              
+              {/* Show live URL for completed projects */}
+              {task.status === 'DONE' && task.data?.live_url && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-green-800 uppercase">Live URL</span>
+                    <a
+                      href={task.data.live_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[120px]"
+                      title={task.data.live_url}
+                    >
+                      View Live
+                    </a>
+                  </div>
+                  <div className="text-xs text-slate-600 truncate" title={task.data.live_url}>
+                    {task.data.live_url}
+                  </div>
                 </div>
               )}
 

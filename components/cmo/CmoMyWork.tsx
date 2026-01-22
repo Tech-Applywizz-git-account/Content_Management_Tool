@@ -82,6 +82,27 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                   {task.data.brief}
                 </p>
               )}
+              
+              {/* Show live URL for completed projects */}
+              {task.status === 'DONE' && task.data?.live_url && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-green-800 uppercase">Live URL</span>
+                    <a
+                      href={task.data.live_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[120px]"
+                      title={task.data.live_url}
+                    >
+                      View Live
+                    </a>
+                  </div>
+                  <div className="text-xs text-slate-600 truncate" title={task.data.live_url}>
+                    {task.data.live_url}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-between pt-3 border-t">
                 <div className="flex flex-col">

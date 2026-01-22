@@ -678,35 +678,56 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 )}
 
                 {/* Thumbnail Link - Show when thumbnail_required is true and project hasn't completed video upload */}
-                {(localProject.data?.thumbnail_required || localProject.data?.cine_thumbnail_required) && !localProject.video_link && (
+                {(localProject.data?.thumbnail_required || localProject.data?.cine_thumbnail_required) && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <FileText className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase">Thumbnail Link</h2>
                         </div>
                         <div className="space-y-4">
-                            {localProject.data?.cine_thumbnail_link && (
-                                <div className="bg-green-50 border-2 border-green-600 p-4">
-                                    <p className="text-sm font-bold uppercase text-green-800 mb-2">Current Thumbnail Link</p>
+                            {/* Show writer's thumbnail reference link if it exists */}
+                            {localProject.data?.thumbnail_reference_link && (
+                                <div className="bg-blue-50 border-2 border-blue-600 p-4">
+                                    <p className="text-sm font-bold uppercase text-blue-800 mb-2">Writer's Thumbnail Reference</p>
                                     <a
-                                        href={localProject.data.cine_thumbnail_link}
+                                        href={localProject.data.thumbnail_reference_link}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block p-3 bg-white border-2 border-green-400 text-green-600 font-medium hover:bg-green-50 transition-colors break-all"
+                                        className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
                                     >
-                                        {localProject.data.cine_thumbnail_link}
+                                        {localProject.data.thumbnail_reference_link}
                                     </a>
                                 </div>
                             )}
                             
-                            {canEdit && (
+                            {/* Allow editing if user has permission and project hasn't completed footage upload */}
+                            {!localProject.video_link && canEdit && (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700 uppercase">Thumbnail Link</label>
                                         <input
                                             type="url"
                                             value={localProject.data?.cine_thumbnail_link || ''}
-                                            onChange={async (e) => {
+                                            onChange={(e) => {
+                                                // Update the local state immediately for better UX
+                                                const newValue = e.target.value;
+                                                const updatedData = {
+                                                    ...localProject.data,
+                                                    cine_thumbnail_link: newValue
+                                                };
+                                                
+                                                setLocalProject(prev => ({
+                                                    ...prev,
+                                                    data: updatedData
+                                                }));
+                                            }}
+                                            placeholder="https://drive.google.com/file/d/... or https://imgur.com/..."
+                                            className="w-full p-3 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={async () => {
                                                 try {
                                                     // Get user session for workflow history
                                                     const { data: { session } } = await supabase.auth.getSession();
@@ -720,28 +741,24 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     // Update project data with the thumbnail link
                                                     const updatedData = {
                                                         ...localProject.data,
-                                                        cine_thumbnail_link: e.target.value
+                                                        cine_thumbnail_link: localProject.data?.cine_thumbnail_link || ''
                                                     };
 
                                                     await db.updateProjectData(localProject.id, updatedData);
-
-                                                    setLocalProject(prev => ({
-                                                        ...prev,
-                                                        data: updatedData
-                                                    }));
                                                     
-                                                    setPopupMessage('Thumbnail link updated successfully');
-                                                    setStageName('Thumbnail Updated');
+                                                    setPopupMessage('Thumbnail link submitted successfully');
+                                                    setStageName('Thumbnail Submitted');
                                                     setShowPopup(true);
                                                     setPopupDuration(3000);
                                                 } catch (error) {
-                                                    console.error('Error saving thumbnail link:', error);
-                                                    alert('Failed to save thumbnail link');
+                                                    console.error('Error submitting thumbnail link:', error);
+                                                    alert('Failed to submit thumbnail link');
                                                 }
                                             }}
-                                            placeholder="https://drive.google.com/file/d/... or https://imgur.com/..."
-                                            className="w-full p-3 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
-                                        />
+                                            className="px-6 py-3 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                        >
+                                            Submit Thumbnail Link
+                                        </button>
                                     </div>
                                     <p className="text-sm text-slate-600">
                                         Provide a thumbnail link for the designer to use.
@@ -1018,8 +1035,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     </div>
                 )}
 
-                {/* Editor Video - Show when in POST sub-tab */}
-                {activeFilter === 'UPLOADED' && uploadedSubTab === 'POST' && localProject.edited_video_link && (
+                {/* Editor Video - Show when in UPLOADED tab */}
+                {activeFilter === 'UPLOADED' && localProject.edited_video_link && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Video className="w-5 h-5" />

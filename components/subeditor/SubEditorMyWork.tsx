@@ -174,6 +174,27 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
                                         </div>
                                     )}
+                                    
+                                    {/* Show live URL for completed projects */}
+                                    {project.status === 'DONE' && project.data?.live_url && (
+                                        <div className="pt-2 border-t border-slate-100 mt-2">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="font-bold text-slate-400 uppercase text-xs">Live URL</span>
+                                                <a
+                                                    href={project.data.live_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[120px]"
+                                                    title={project.data.live_url}
+                                                >
+                                                    View Live
+                                                </a>
+                                            </div>
+                                            <div className="text-xs text-slate-600 truncate" title={project.data.live_url}>
+                                                {project.data.live_url}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Hint */}

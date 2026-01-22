@@ -693,55 +693,97 @@ export const projects = {
             // ✅ Merge all results and remove duplicates
             const projectMap = new Map<string, Project & { latest_activity?: Date }>();
 
+            // Helper function to check if a project should be visible to the user based on rework rules
+            const isProjectVisibleToUser = (project: any) => {
+                // If project is not in REWORK status, it's visible
+                if (project.status !== 'REWORK') {
+                    return true;
+                }
+                
+                // If project is in REWORK status but not from MULTI_WRITER_APPROVAL, it's visible
+                if (project.data?.rework_initiator_stage !== 'MULTI_WRITER_APPROVAL') {
+                    return true;
+                }
+                
+                // If project is in REWORK status from MULTI_WRITER_APPROVAL but has no target role, it's visible
+                if (!project.data?.rework_target_role) {
+                    return true;
+                }
+                
+                // For REWORK projects from MULTI_WRITER_APPROVAL with a target role:
+                // Only show to users whose role matches the rework_target_role
+                // AND if assigned_to_user_id exists → only that user
+                if (project.data?.rework_target_role === user.role) {
+                    // If assigned to a specific user, only that user can see it
+                    if (project.assigned_to_user_id) {
+                        return project.assigned_to_user_id === user.id;
+                    }
+                    // Otherwise, anyone with the matching role can see it
+                    return true;
+                }
+                
+                // For all other cases, the project is not visible to this user
+                return false;
+            };
+
             // Add history projects
             historyData.forEach((row: any) => {
                 if (row.projects) {
                     const project = row.projects;
-                    // Only set latest_activity if not already set or if this timestamp is newer
-                    if (!projectMap.has(project.id) ||
-                        !projectMap.get(project.id)?.latest_activity ||
-                        new Date(row.timestamp) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-                        projectMap.set(project.id, {
-                            ...project,
-                            latest_activity: new Date(row.timestamp)
-                        });
+                    // Only add project if it should be visible to the user
+                    if (isProjectVisibleToUser(project)) {
+                        // Only set latest_activity if not already set or if this timestamp is newer
+                        if (!projectMap.has(project.id) ||
+                            !projectMap.get(project.id)?.latest_activity ||
+                            new Date(row.timestamp) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                            projectMap.set(project.id, {
+                                ...project,
+                                latest_activity: new Date(row.timestamp)
+                            });
+                        }
                     }
                 }
             });
 
             // Add projects assigned to user by ID (may overwrite history entries if more recent)
             assignedByIdData.forEach((project: any) => {
-                if (!projectMap.has(project.id) ||
-                    !projectMap.get(project.id)?.latest_activity ||
-                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-                    projectMap.set(project.id, {
-                        ...project,
-                        latest_activity: new Date(project.updated_at)
-                    });
+                if (isProjectVisibleToUser(project)) {
+                    if (!projectMap.has(project.id) ||
+                        !projectMap.get(project.id)?.latest_activity ||
+                        new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                        projectMap.set(project.id, {
+                            ...project,
+                            latest_activity: new Date(project.updated_at)
+                        });
+                    }
                 }
             });
 
             // Add projects assigned to user's role (may overwrite previous entries if more recent)
             assignedByRoleData.forEach((project: any) => {
-                if (!projectMap.has(project.id) ||
-                    !projectMap.get(project.id)?.latest_activity ||
-                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-                    projectMap.set(project.id, {
-                        ...project,
-                        latest_activity: new Date(project.updated_at)
-                    });
+                if (isProjectVisibleToUser(project)) {
+                    if (!projectMap.has(project.id) ||
+                        !projectMap.get(project.id)?.latest_activity ||
+                        new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                        projectMap.set(project.id, {
+                            ...project,
+                            latest_activity: new Date(project.updated_at)
+                        });
+                    }
                 }
             });
 
             // Add projects where user's role is in visible_to_roles (may overwrite previous entries if more recent)
             visibleToRoleData.forEach((project: any) => {
-                if (!projectMap.has(project.id) ||
-                    !projectMap.get(project.id)?.latest_activity ||
-                    new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
-                    projectMap.set(project.id, {
-                        ...project,
-                        latest_activity: new Date(project.updated_at)
-                    });
+                if (isProjectVisibleToUser(project)) {
+                    if (!projectMap.has(project.id) ||
+                        !projectMap.get(project.id)?.latest_activity ||
+                        new Date(project.updated_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                        projectMap.set(project.id, {
+                            ...project,
+                            latest_activity: new Date(project.updated_at)
+                        });
+                    }
                 }
             });
 
