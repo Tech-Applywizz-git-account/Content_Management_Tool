@@ -171,18 +171,18 @@ return (
         onChangeView={handleViewChange}
     >
         {selectedProject ? (
-            <EditorProjectDetail
-                project={selectedProject}
-                userRole={user.role}
-                onBack={() => navigate('/editor')}
-                onUpdate={() => {
-                    navigate('/editor');
-                    onRefresh();
-                }}
-            />
+            // Navigate to the route-based project detail page instead of rendering inline
+            (() => {
+                navigate(`/editor/project/${selectedProject.id}`);
+                return null;
+            })()
         ) : activeView === 'mywork' ? (
             <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
-                onSelectProject={(project) => navigate(`/editor/project/${project.id}`)} scriptProjects={scriptProjects} activeFilter={activeFilter} />
+                onSelectProject={(project) => {
+                    // Navigate to the route-based project detail page with context
+                    const fromView = activeFilter === 'CINE' ? 'SCRIPTS' : 'MYWORK';
+                    navigate(`/editor/project/${project.id}?from=${fromView}`);
+                }} scriptProjects={scriptProjects} activeFilter={activeFilter} />
         ) : activeView === 'calendar' ? (
             <EditorCalendar projects={inboxProjects} />
         ) : (

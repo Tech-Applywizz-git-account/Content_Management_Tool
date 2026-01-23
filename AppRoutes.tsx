@@ -17,7 +17,9 @@ import CmoDashboard from './components/cmo/CmoDashboard';
 import WriterDashboard from './components/writer/WriterDashboard';
 import CineDashboard from './components/cine/CineDashboard';
 import EditorDashboard from './components/editor/EditorDashboard';
+import EditorProjectDetailPage from './components/editor/EditorProjectDetailPage';
 import SubEditorDashboard from './components/subeditor/SubEditorDashboard';
+import SubEditorProjectDetailPage from './components/subeditor/SubEditorProjectDetailPage';
 import DesignerDashboard from './components/designer/DesignerDashboard';
 import OpsDashboard from './components/ops/OpsDashboard';
 import ObserverDashboard from './components/observer/ObserverDashboard';
@@ -115,13 +117,19 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
 
             <Route path="/editor/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.EDITOR]}>
-                    <EditorDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={editorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<EditorProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<EditorDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={editorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
             <Route path="/sub_editor/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.SUB_EDITOR]}>
-                    <SubEditorDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={subEditorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<SubEditorProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<SubEditorDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={subEditorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 

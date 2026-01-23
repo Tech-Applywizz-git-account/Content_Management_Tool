@@ -11,6 +11,7 @@ import { supabase } from '../../src/integrations/supabase/client';
 import CmoHistoryDetail from './CmoHistoryDetail';
 import CmoCalendar from './CmoCalendar';
 import CmoOverview from './CmoOverview';
+import CmoFinalReview from './CmoFinalReview';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
@@ -38,6 +39,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const getActiveViewFromPath = () => {
     const path = location.pathname;
     if (path.endsWith('/overview')) return 'overview';
+    if (path.endsWith('/final-review')) return 'final-review';
     if (path.endsWith('/calendar')) return 'calendar';
     if (path.endsWith('/mywork')) return 'mywork';
     if (path.endsWith('/history')) return 'history';
@@ -115,6 +117,13 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       setActiveTab('HISTORY');
     } else if (path.endsWith('/cmo')) {
       setActiveTab('PENDING');
+    }
+
+    // Handle final-review route
+    if (path.endsWith('/final-review')) {
+      // Reset project selection for final review view
+      setSelectedProject(null);
+      return;
     }
 
     // Pattern: /cmo/review/:id
@@ -275,7 +284,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // Categorize Projects for CMO Dashboard
   // Column 1: Pending Approval Projects (Projects in CMO review stages with WAITING_APPROVAL status)
 
-  // Scripts pending approval at CMO (only script projects, not idea projects)
+  // Scripts pending approval at CMO (only script projects in SCRIPT_REVIEW_L1 stage)
   const pendingApprovalProjects = dashboardProjects.filter(
     p =>
       (
@@ -284,26 +293,31 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       ) &&
       p.data?.source !== 'IDEA_PROJECT' &&
       p.status !== TaskStatus.DONE &&
-      // Include script review stages and new multi-writer approval stage
-      (p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+      // Only show SCRIPT_REVIEW_L1 projects (exclude FINAL_REVIEW_CMO and POST_WRITER_REVIEW)
+      p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1
+  ).sort((a, b) => {
+    // Sort by creation date (newest first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  // Final review projects (separate count for Final Review sidebar)
+  const finalReviewProjects = dashboardProjects.filter(
+    p =>
+      (
+        p.assigned_to_role === Role.CMO ||  // Traditional assignment
+        (p.visible_to_roles && p.visible_to_roles.includes('CMO'))  // Parallel visibility
+      ) &&
+      p.status !== TaskStatus.DONE &&
+      // Include only final review stages
+      (p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
         p.current_stage === WorkflowStage.POST_WRITER_REVIEW)
   ).sort((a, b) => {
-    // Prioritize final review projects (FINAL_REVIEW_CMO and POST_WRITER_REVIEW) at the top
-    const isAFinalReview = a.current_stage === WorkflowStage.FINAL_REVIEW_CMO || a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    const isBFinalReview = b.current_stage === WorkflowStage.FINAL_REVIEW_CMO || b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
+    // Prioritize POST_WRITER_REVIEW over FINAL_REVIEW_CMO
+    const isAPostWriterReview = a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
+    const isBPostWriterReview = b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
 
-    if (isAFinalReview && !isBFinalReview) return -1;
-    if (!isAFinalReview && isBFinalReview) return 1;
-
-    // If both are final review projects, prioritize POST_WRITER_REVIEW over FINAL_REVIEW_CMO
-    if (isAFinalReview && isBFinalReview) {
-      const isAPostWriterReview = a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-      const isBPostWriterReview = b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-
-      if (isAPostWriterReview && !isBPostWriterReview) return -1;
-      if (!isAPostWriterReview && isBPostWriterReview) return 1;
-    }
+    if (isAPostWriterReview && !isBPostWriterReview) return -1;
+    if (!isAPostWriterReview && isBPostWriterReview) return 1;
 
     // For projects in the same category, sort by creation date (newest first)
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -406,6 +420,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         onOpenCreate={() => { }}
         activeView={activeView}
         onChangeView={handleViewChange}
+        finalReviewCount={finalReviewProjects.length}
       >
         {activeView === 'mywork' ? (
           <CmoMyWork
@@ -415,6 +430,13 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           />
         ) : activeView === 'overview' ? (
           <CmoOverview user={user} />
+        ) : activeView === 'final-review' ? (
+          <CmoFinalReview 
+            user={user} 
+            onBack={() => handleViewChange('dashboard')} 
+            onProjectSelect={setSelectedProject}
+            selectedProject={selectedProject}
+          />
         ) : activeView === 'calendar' ? (
           <CmoCalendar projects={allProjects || []} />
         ) : (

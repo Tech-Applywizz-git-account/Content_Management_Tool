@@ -173,23 +173,9 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   };
 
   if (selectedProject) {
-    return (
-      <SubEditorProjectDetail
-        project={selectedProject}
-        userRole={Role.SUB_EDITOR}
-        fromView={projectSource}
-        onBack={() => {
-          navigate('/sub_editor');
-        }}
-        onUpdate={() => {
-          navigate('/sub_editor');
-          onRefresh();
-        }}
-        onLogout={onLogout}
-        onNavigateToView={handleViewChange}
-        activeView={activeView}
-      />
-    );
+    // Navigate to the route-based project detail page instead of rendering inline
+    navigate(`/sub_editor/project/${selectedProject.id}`);
+    return null;
   }
 
   return (
@@ -201,33 +187,19 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
       onChangeView={handleViewChange}
     >
       {selectedProject ? (
-        <SubEditorProjectDetail
-          project={selectedProject}
-          userRole={Role.SUB_EDITOR}
-          fromView={projectSource}
-          onBack={() => {
-            setSelectedProject(null);
-            if (projectSource === 'SCRIPTS') {
-              setActiveFilter('SCRIPTS');
-              handleViewChange('mywork');
-            } else {
-              setProjectSource(null);
-            }
-          }}
-          onUpdate={() => {
-            navigate('/sub_editor');
-            onRefresh();
-          }}
-          onLogout={onLogout}
-          onNavigateToView={handleViewChange}
-          activeView={activeView}
-        />
+        // Navigate to the route-based project detail page instead of rendering inline
+        (() => {
+          navigate(`/sub_editor/project/${selectedProject.id}`);
+          return null;
+        })()
       ) : activeView === 'mywork' ? (
         <SubEditorMyWork
           user={user}
           projects={activeFilter ? filteredProjects : historyProjects}
           onSelectProject={(project) => {
-            navigate(`/sub_editor/project/${project.id}`);
+            // Navigate to the route-based project detail page with context
+            const fromView = activeFilter === 'CINE' ? 'SCRIPTS' : 'MYWORK';
+            navigate(`/sub_editor/project/${project.id}?from=${fromView}`);
           }}
           activeFilter={activeFilter}
           scriptProjects={scriptProjects}

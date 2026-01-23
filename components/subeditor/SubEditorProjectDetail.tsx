@@ -17,7 +17,7 @@ interface Props {
   onNavigateToView?: (view: string) => void;
 }
 
-const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, onLogout, onNavigateToView }) => {
+const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, onLogout, onNavigateToView, fromView }) => {
   const [activeView, setActiveView] = React.useState('project-detail'); // Track the current view
   const [localProject, setLocalProject] = useState<Project>(initialProject);
   const [deliveryDate, setDeliveryDate] = useState(initialProject.delivery_date || '');
@@ -524,7 +524,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         )}
 
           {/* Raw Video from Cinematographer */}
-          {localProject.video_link && (
+          {localProject.video_link && (fromView !== 'SCRIPTS') && (
             <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Video className="w-5 h-5" />
@@ -565,8 +565,67 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             </div>
           </div>
 
+          {/* Cinematographer Instructions - Show when project has cinematographer data */}
+          {(localProject.current_stage === WorkflowStage.CINEMATOGRAPHY || localProject.data?.cine_comments || localProject.data?.actor || localProject.data?.location || localProject.data?.lighting || localProject.data?.angles) && (
+            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-5 h-5" />
+                <h2 className="text-xl font-black uppercase">Cinematographer Instructions</h2>
+              </div>
+              <div className="space-y-4">
+                {/* Writer's name */}
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Writer</label>
+                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                    {localProject.data?.writer_name || 'Writer name not available'}
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
+                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                      {localProject.data?.actor ?? 'Not specified'}
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
+                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                      {localProject.data?.location ?? 'Not specified'}
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
+                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                      {localProject.data?.lighting ?? 'Not specified'}
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
+                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                      {localProject.data?.angles ?? 'Not specified'}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Cinematographer Comments */}
+                {localProject.data?.cine_comments && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Cinematographer Notes</label>
+                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
+                      <p>{localProject.data.cine_comments}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Delivery Date Section */}
-          {(localProject.delivery_date || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
+          {fromView !== 'SCRIPTS' && (localProject.delivery_date || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
             <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Calendar className="w-5 h-5" />
@@ -614,7 +673,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           )}
 
           {/* Edited Video Upload Section */}
-          {(localProject.delivery_date || isRework || localProject.edited_video_link || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
+          {fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework || localProject.edited_video_link || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
             <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Film className="w-5 h-5" />
@@ -698,6 +757,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           )}
 
           {/* Project Info */}
+          {fromView !== 'SCRIPTS' && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -734,6 +794,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
               )}
             </div>
           </div>
+          )}
       </div>
     </main>
       <div className="fixed inset-0 pointer-events-none z-50">

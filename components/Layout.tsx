@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  Calendar
+  Calendar,
+  Eye
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -22,9 +23,10 @@ interface LayoutProps {
   onOpenCreate: () => void;
   activeView?: string;
   onChangeView?: (view: string) => void;
+  finalReviewCount?: number;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate, activeView = 'dashboard', onChangeView }) => {
+const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate, activeView = 'dashboard', onChangeView, finalReviewCount }) => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
@@ -98,6 +100,27 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               >
                 <BarChart3 className="w-5 h-5" />
                 <span>Overview</span>
+              </button>
+            )}
+
+            {/* Final Review - Only for CMO */}
+            {user.role === Role.CMO && (
+              <button
+                onClick={() => handleNavigate('final-review')}
+                className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'final-review'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                  }`}
+              >
+                <Eye className="w-5 h-5" />
+                <span className="flex items-center">
+                  Final Review
+                  {finalReviewCount !== undefined && finalReviewCount > 0 && (
+                    <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                      {finalReviewCount}
+                    </span>
+                  )}
+                </span>
               </button>
             )}
 

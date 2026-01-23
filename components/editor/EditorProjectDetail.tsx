@@ -12,13 +12,14 @@ interface Props {
   userRole: Role;
   onBack: () => void;
   onUpdate: () => void;
+  fromView?: 'MYWORK' | 'SCRIPTS';
 }
 const isReworkProject = (project: Project) =>
   project.history?.some(h =>
     h.action?.startsWith('REWORK_')
   );
 
-const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate }) => {
+const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate, fromView }) => {
   // For rework projects, keep existing data but track new inputs
   const processedProject = { ...project };
 
@@ -428,7 +429,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {/* Raw Video from Cinematographer */}
-        {localProject.video_link && (
+        {localProject.video_link && (fromView !== 'SCRIPTS') && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
@@ -469,10 +470,69 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           </div>
         </div>
 
+        {/* Cinematographer Instructions - Show when project has cinematographer data */}
+        {(localProject.current_stage === WorkflowStage.CINEMATOGRAPHY || localProject.data?.cine_comments || localProject.data?.actor || localProject.data?.location || localProject.data?.lighting || localProject.data?.angles) && (
+          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-5 h-5" />
+              <h2 className="text-xl font-black uppercase">Cinematographer Instructions</h2>
+            </div>
+            <div className="space-y-4">
+              {/* Writer's name */}
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-700 uppercase">Writer</label>
+                <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                  {localProject.data?.writer_name || 'Writer name not available'}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
+                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                    {localProject.data?.actor ?? 'Not specified'}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
+                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                    {localProject.data?.location ?? 'Not specified'}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
+                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                    {localProject.data?.lighting ?? 'Not specified'}
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
+                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                    {localProject.data?.angles ?? 'Not specified'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Cinematographer Comments */}
+              {localProject.data?.cine_comments && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 uppercase">Cinematographer Notes</label>
+                  <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
+                    <p>{localProject.data.cine_comments}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
 
 
         {/* Status information when project is with sub-editor */}
-        {localProject.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT || localProject.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING ? (
+        {fromView !== 'SCRIPTS' && (localProject.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT || localProject.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING ? (
           <div className="bg-blue-50 border-2 border-blue-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
             <div className="flex items-center gap-2 mb-4">
               <Film className="w-5 h-5" />
@@ -601,10 +661,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               </p>
             </div>
           </div>
-        ) : null}
+        ) : null)}
 
         {/* Delivery Date Section - Only show if project is not assigned to sub-editor */}
-        {localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
+        {fromView !== 'SCRIPTS' && localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <CalendarIcon className="w-5 h-5" />
@@ -651,7 +711,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         )}
 
         {/* Edited Video Upload Section */}
-        {(localProject.delivery_date || isRework) && (
+        {fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework) && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Film className="w-5 h-5" />
@@ -735,6 +795,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         )}
 
         {/* Project Info */}
+        {fromView !== 'SCRIPTS' && (
         <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
           <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -771,6 +832,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             )}
           </div>
         </div>
+        )}
       </div>
       {showPopup && (
         <Popup
