@@ -655,7 +655,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             ref={scriptContentRef}
                             className="overflow-auto"
                         >
-                            {/* Show both scripts in script review for rework scenarios */}
                             {(() => {
                                 console.log('CMO Review: Render - previousScript:', previousScript);
                                 console.log('CMO Review: Render - project.data.script_content:', project.data?.script_content);
@@ -663,29 +662,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 console.log('CMO Review: Render - cmo_rework_at:', project.cmo_rework_at);
                                 console.log('CMO Review: Render - writer_submitted_at:', project.writer_submitted_at);
                                 
-                                // Show comparison if we have a previous script content
-                                // This ensures the comparison shows whenever we have a previous script
-                                if (previousScript && previousScript.trim() !== '') {
-                                    console.log('CMO Review: Showing script comparison - has previous script');
-                                    
-                                    // Use project's script content as current if available, otherwise use a placeholder
-                                    const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
-                                    
-                                    // Show comparison for rework scenarios
-                                    return (
-                                        <ScriptComparison
-                                            previousScript={previousScript.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
-                                            currentScript={currentScriptContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
-                                            previousAuthor="Previous Version"
-                                            currentAuthor="Writer Rework Submission"
-                                            previousTimestamp=""
-                                            currentTimestamp=""
-                                        />
-                                    );
-                                } else {
-                                    console.log('CMO Review: Showing single script - previousScript exists:', !!previousScript, 'current exists:', !!project.data?.script_content, 'isFinalReview:', isFinalReview);
-                                    console.log('CMO Review: Conditions for comparison - hasPrevious:', !!previousScript, 'prev not empty:', previousScript && previousScript.trim() !== '', 'not final review:', !isFinalReview);
-                                    // Show single script for non-rework projects or in final review
+                                // For final review stages, always show only the current script
+                                if (isFinalReview) {
+                                    console.log('CMO Review: Showing current script only for final review');
                                     return (
                                         <div
                                             className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
@@ -709,6 +688,53 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                         : 'No script content available.'}
                                         </div>
                                     );
+                                } else {
+                                    // For non-final review stages, show comparison if we have a previous script content
+                                    if (previousScript && previousScript.trim() !== '') {
+                                        console.log('CMO Review: Showing script comparison - has previous script');
+                                        
+                                        // Use project's script content as current if available, otherwise use a placeholder
+                                        const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
+                                        
+                                        // Show comparison for rework scenarios
+                                        return (
+                                            <ScriptComparison
+                                                previousScript={previousScript.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
+                                                currentScript={currentScriptContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
+                                                previousAuthor="Previous Version"
+                                                currentAuthor="Writer Rework Submission"
+                                                previousTimestamp=""
+                                                currentTimestamp=""
+                                            />
+                                        );
+                                    } else {
+                                        console.log('CMO Review: Showing single script - previousScript exists:', !!previousScript, 'current exists:', !!project.data?.script_content, 'isFinalReview:', isFinalReview);
+                                        console.log('CMO Review: Conditions for comparison - hasPrevious:', !!previousScript, 'prev not empty:', previousScript && previousScript.trim() !== '', 'not final review:', !isFinalReview);
+                                        // Show single script for non-rework projects
+                                        return (
+                                            <div
+                                                className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                            >
+                                                {project.data?.source === 'DESIGNER_INITIATED'
+                                                    ? project.data?.creative_link || 'No creative link available.'
+                                                    : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
+                                                        ? project.data.idea_description
+                                                        : project.data?.script_content 
+                                                            ? (() => {
+                                                                // Comprehensive HTML entity decoding
+                                                                let decodedContent = project.data.script_content
+                                                                    .replace(/&lt;/g, '<')
+                                                                    .replace(/&gt;/g, '>')
+                                                                    .replace(/&amp;/g, '&')
+                                                                    .replace(/&quot;/g, '"')
+                                                                    .replace(/&#39;/g, "'")
+                                                                    .replace(/&nbsp;/g, ' ');
+                                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                                              })()
+                                                            : 'No script content available.'}
+                                            </div>
+                                        );
+                                    }
                                 }
                             })()}
                         </div>

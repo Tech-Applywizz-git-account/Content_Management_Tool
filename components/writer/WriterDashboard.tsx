@@ -436,6 +436,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(p => (
                                     <div key={p.id} className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${(p.status === TaskStatus.REWORK || p.status === TaskStatus.REJECTED) ? 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'} transition-all ${p.status === TaskStatus.REWORK ? 'bg-red-50' : p.status === TaskStatus.REJECTED ? 'bg-gray-100' : ''} ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleEdit(p)}>
                                         <div className="flex justify-between items-start mb-4">
+                                            {p.content_type === 'CREATIVE_ONLY' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
+                                                    CREATIVE
+                                                </span>
+                                            )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     'bg-[#D946EF] text-white'
@@ -520,7 +525,12 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                 onClick={() => handleViewProject(p)}
                                                 className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                                             >
-                                                <div className="flex justify-between items-start mb-4">
+                                                <div className="flex flex-wrap gap-1 items-start mb-4">
+                                                    {p.content_type === 'CREATIVE_ONLY' && (
+                                                        <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
+                                                            CREATIVE
+                                                        </span>
+                                                    )}
                                                     <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
                                                     {/* Show IDEA badge for idea projects */}
                                                     {p.data?.source === 'IDEA_PROJECT' && (
@@ -577,6 +587,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 {inProduction.map(p => (
                                     <div key={p.id} className={`bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`} onClick={() => handleViewProject(p)}>
                                         <div className="flex justify-between items-start mb-4">
+                                            {p.content_type === 'CREATIVE_ONLY' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
+                                                    CREATIVE
+                                                </span>
+                                            )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     'bg-[#D946EF] text-white'
@@ -656,6 +671,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
                                                 Approved
                                             </span>
+                                            {p.content_type === 'CREATIVE_ONLY' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
+                                                    CREATIVE
+                                                </span>
+                                            )}
                                             <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">
                                                 Idea → Script
                                             </span>

@@ -18,21 +18,13 @@ interface Props {
   onLogout: () => void;
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
-
 const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Determine activeView from URL path
-  const getActiveViewFromPath = () => {
-    const path = location.pathname;
-    if (path.endsWith('/calendar')) return 'calendar';
-    if (path.endsWith('/mywork')) return 'mywork';
-    return 'dashboard';
+  const viewStorageKey = `activeView:${user.role}`;
+  const getStoredView = () => {
+    if (typeof window === 'undefined') return 'dashboard';
+    return localStorage.getItem(viewStorageKey) || 'dashboard';
   };
-
-  const activeView = getActiveViewFromPath();
+  const [activeView, setActiveView] = useState<string>(getStoredView);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectSource, setProjectSource] = useState<'MYWORK' | 'SCRIPTS' | null>(null);
   const [activeFilter, setActiveFilter] = useState<
@@ -43,28 +35,6 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
   const [shootDate, setShootDate] = useState<string>('');
   const [videoLink, setVideoLink] = useState<string>('');
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
-  useEffect(() => {
-    const path = location.pathname;
-    const subPaths = path.split('/').filter(p => p !== '');
-
-    // Pattern: /cine/project/:id
-    const projectIdx = subPaths.findIndex(p => p === 'project');
-    if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
-      const id = subPaths[projectIdx + 1];
-      const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
-      if (p) setSelectedProject(p);
-    } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
-      setSelectedProject(null);
-    }
-
-    // Pattern: /cine/mywork?filter=...
-    if (path.endsWith('/mywork')) {
-      // For Cine, filters are just state, but we could put them in query params if needed.
-      // For now just ensuring My Work view is active.
-    }
-  }, [location.pathname, inboxProjects, historyProjects]);
 
   const handleInternalRefresh = async () => {
     await onRefresh(); // MUST refetch from Supabase
@@ -78,8 +48,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
 
   // Handle top-level view changes (Dashboard / My Work / Calendar)
   const handleViewChange = (view: string) => {
-    setSelectedProject(null);
-    const rolePath = user.role.toLowerCase();
+    setActiveView(view);
 
     // ✅ IMPORTANT:
     // If user manually clicks "My Work",
@@ -88,18 +57,19 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       setActiveFilter(null);
     }
 
-    if (view === 'dashboard') {
-      navigate(`/${rolePath}`);
-    } else {
-      navigate(`/${rolePath}/${view}`);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(viewStorageKey, view);
     }
   };
 
-  // Mount-only effect
+  // Restore last active view on load
   useEffect(() => {
+    const storedView = getStoredView();
+    setActiveView(storedView);
+
     // Safety: never restore dashboard filters on reload
     setActiveFilter(null);
-  }, []);
+  }, [viewStorageKey]);
 
   /**
    * Projects shown in MyWork:
@@ -214,10 +184,39 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
           activeFilter={activeFilter}
           uploadedSubTab={uploadedSubTab}
           onBack={() => {
-            navigate('/cine');
+            setSelectedProject(null);
+            if (projectSource === 'SCRIPTS') {
+              setActiveFilter('SCRIPTS');
+              setActiveView('mywork');
+            } else {
+              setActiveFilter(null);
+            }
+            // Preserve the original filter and sub-tab when navigating back
+            if (projectSource === 'MYWORK' && activeFilter) {
+              // Maintain the active filter and sub-tab state
+              setActiveFilter(activeFilter);
+              setActiveView('mywork');
+            } else if (projectSource === 'SCRIPTS') {
+              setActiveFilter('SCRIPTS');
+              setActiveView('mywork');
+            } else {
+              setActiveFilter(null);
+            }
+            setProjectSource(null);
           }}
           onUpdate={() => {
-            navigate('/cine');
+            setSelectedProject(null);
+            if (projectSource === 'SCRIPTS') {
+              setActiveFilter('SCRIPTS');
+              setActiveView('mywork');
+            } else if (projectSource === 'MYWORK' && activeFilter) {
+              // Maintain the active filter and sub-tab state
+              setActiveFilter(activeFilter);
+              setActiveView('mywork');
+            } else {
+              setActiveFilter(null);
+            }
+            setProjectSource(null);
             onRefresh();
           }}
         />
@@ -228,7 +227,8 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
           projects={activeFilter ? filteredProjects : historyProjects}
           scriptProjects={scriptProjects}
           onSelectProject={(project) => {
-            navigate(`/cine/project/${project.id}`);
+            setSelectedProject(project);
+            setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
           }}
           activeFilter={activeFilter}
           uploadedSubTab={uploadedSubTab}
@@ -261,7 +261,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             <div
               onClick={() => {
                 setActiveFilter('NEEDS_SCHEDULE');
-                handleViewChange('mywork');
+                setActiveView('mywork');
               }}
               className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -277,7 +277,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             <div
               onClick={() => {
                 setActiveFilter('SCHEDULED');
-                handleViewChange('mywork');
+                setActiveView('mywork');
               }}
               className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -293,7 +293,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             <div
               onClick={() => {
                 setActiveFilter('UPLOADED');
-                handleViewChange('mywork');
+                setActiveView('mywork');
               }}
               className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -309,7 +309,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             <div
               onClick={() => {
                 setActiveFilter('SCRIPTS');
-                handleViewChange('mywork');
+                setActiveView('mywork');
               }}
               className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -330,7 +330,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             </h2>
             <p className="text-slate-600">
               You have {activeProjectsCount} {activeProjectsCount === 1 ? 'project' : 'projects'} in production.
-              Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+              Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
             </p>
           </div>
         </div>

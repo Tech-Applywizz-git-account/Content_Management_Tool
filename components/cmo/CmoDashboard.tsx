@@ -40,6 +40,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     if (path.endsWith('/overview')) return 'overview';
     if (path.endsWith('/calendar')) return 'calendar';
     if (path.endsWith('/mywork')) return 'mywork';
+    if (path.endsWith('/history')) return 'history';
+    if (path.endsWith('/create')) return 'create';
     return 'dashboard';
   };
 
@@ -99,6 +101,22 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     const path = location.pathname;
     const subPaths = path.split('/').filter(p => p !== '');
 
+    // Reset some states initially
+    setIsCreatingScript(false);
+
+    // Handle create script route
+    if (path.endsWith('/create')) {
+      setIsCreatingScript(true);
+      return;
+    }
+
+    // Handle history tab route
+    if (path.endsWith('/history')) {
+      setActiveTab('HISTORY');
+    } else if (path.endsWith('/cmo')) {
+      setActiveTab('PENDING');
+    }
+
     // Pattern: /cmo/review/:id
     const reviewIdx = subPaths.findIndex(p => p === 'review');
     if (reviewIdx !== -1 && subPaths[reviewIdx + 1]) {
@@ -119,8 +137,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       }
     }
     // Pattern: /cmo/history/:id
-    else if (subPaths.findIndex(p => p === 'history') !== -1) {
-      const id = subPaths[subPaths.findIndex(p => p === 'history') + 1];
+    else if (subPaths.findIndex(p => p === 'history_detail') !== -1) { // Renamed from 'history' to avoid conflict with history list view
+      const id = subPaths[subPaths.findIndex(p => p === 'history_detail') + 1];
       const p = dashboardProjects.find(item => item.id === id);
       if (p) {
         setSelectedProject(p);
@@ -136,9 +154,18 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
   const handleViewChange = (view: string) => {
     setSelectedProject(null);
+    setIsCreatingScript(false);
     const rolePath = user.role.toLowerCase();
+
     if (view === 'dashboard') {
+      setActiveTab('PENDING'); // Reset to pending when going to main dashboard
       navigate(`/${rolePath}`);
+    } else if (view === 'history') {
+      setActiveTab('HISTORY');
+      navigate(`/${rolePath}/history`);
+    } else if (view === 'create') {
+      setIsCreatingScript(true);
+      navigate(`/${rolePath}/create`);
     } else {
       navigate(`/${rolePath}/${view}`);
     }
@@ -320,8 +347,19 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     navigate(`/cmo/review/${project.id}`);
   };
 
+  const handleHistoryDetail = (project: Project, history: any) => {
+    setSelectedProject(project);
+    setSelectedHistory(history);
+    setViewMode('HISTORY');
+    navigate(`/cmo/history_detail/${project.id}`);
+  };
+
   const handleBack = () => {
-    navigate('/cmo');
+    if (activeView === 'history') {
+      navigate('/cmo/history');
+    } else {
+      navigate('/cmo');
+    }
     onRefresh();
   };
 
@@ -394,7 +432,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
               <div className="flex space-x-2 flex-wrap gap-2">
                 <button
-                  onClick={() => setIsCreatingScript(true)}
+                  onClick={() => handleViewChange('create')}
                   className="px-6 py-4 bg-[#D946EF] text-white border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2"
                 >
                   <Plus className="w-5 h-5" />
@@ -402,9 +440,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('PENDING')}
+                  onClick={() => handleViewChange('dashboard')}
                   className={`px-6 py-4 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
-              ${activeTab === 'PENDING'
+              ${activeTab === 'PENDING' && activeView === 'dashboard'
                       ? 'bg-[#D946EF] text-white'
                       : 'bg-white text-slate-900 hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                     }`}
@@ -413,9 +451,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('HISTORY')}
+                  onClick={() => handleViewChange('history')}
                   className={`px-6 py-4 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
-              ${activeTab === 'HISTORY'
+              ${activeTab === 'HISTORY' || activeView === 'history'
                       ? 'bg-slate-900 text-white'
                       : 'bg-white text-slate-900 hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                     }`}
@@ -454,11 +492,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     return (
                       <div
                         key={p.id}
-                        onClick={() => {
-                          setViewMode('HISTORY');
-                          setSelectedProject(p);
-                          setSelectedHistory(history);
-                        }}
+                        onClick={() => handleHistoryDetail(p, history)}
                         className="grid grid-cols-12 gap-4 items-center bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
                       >
                         <div className="col-span-4 font-black uppercase text-lg">
@@ -539,21 +573,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         setSelectedProject(p);
                       }}>
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {p.data?.source === 'IDEA_PROJECT' && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                            </span>
-                          )}
-                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                              CREATIVE
-                            </span>
-                          )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                               'bg-[#D946EF] text-white'
                             }`}>
-                            {p.channel}
+                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -571,8 +595,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               }`}>
                             {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
-
-
                         </div>
                         <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
@@ -612,21 +634,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         }}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {p.data?.source === 'IDEA_PROJECT' && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                            </span>
-                          )}
-                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                              CREATIVE
-                            </span>
-                          )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                               'bg-[#D946EF] text-white'
                             }`}>
-                            {p.channel}
+                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -684,18 +696,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         }}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {p.data?.source === 'IDEA_PROJECT' && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                              {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                            </span>
-                          )}
-                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                              CREATIVE
-                            </span>
-                          )}
-                          <span className={`text-xs font-black uppercase tracking-wider text-slate-400 ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'text-pink-500' : 'text-slate-400'}`}>
-                            {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
+                          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                            p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                              'bg-[#D946EF] text-white'
+                            }`}>
+                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -772,26 +777,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             }}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
-                              {p.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                  {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                                </span>
-                              )}
-                              {p.data?.source === 'DESIGNER_INITIATED' && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                                  CREATIVE
-                                </span>
-                              )}
-                              {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                                  CREATIVE
-                                </span>
-                              )}
-                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'bg-pink-500 text-white' : p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                   'bg-[#D946EF] text-white'
                                 }`}>
-                                {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
+                                {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -848,26 +838,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             }}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
-                              {p.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                  {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                                </span>
-                              )}
-                              {p.data?.source === 'DESIGNER_INITIATED' && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                                  CREATIVE
-                                </span>
-                              )}
-                              {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                                  CREATIVE
-                                </span>
-                              )}
-                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'bg-pink-500 text-white' : p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                   'bg-[#D946EF] text-white'
                                 }`}>
-                                {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
+                                {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'

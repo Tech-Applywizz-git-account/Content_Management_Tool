@@ -59,14 +59,14 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     };
 
     // Handle top-level view changes (Dashboard / My Work / Calendar)
-    const handleViewChange = (view: string) => {
+    const handleViewChange = (view: string, preserveFilter = false) => {
         setSelectedProject(null);
         const rolePath = user.role.toLowerCase();
 
         // ✅ IMPORTANT:
         // If user manually clicks "My Work",
         // clear any dashboard-based filters
-        if (view === 'mywork') {
+        if (view === 'mywork' && !preserveFilter) {
             setActiveFilter(null);
         }
 
@@ -93,6 +93,11 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
  * - If user clicked My Work manually → ALL projects
  */
     const filteredProjects = useMemo(() => {
+        // SCRIPTS filter shows ALL script projects (Supabase-wide)
+        if (activeFilter === 'SCRIPTS') {
+            return scriptProjects || [];
+        }
+
         // No filter → show ALL designer projects
         if (!activeFilter) {
             return historyProjects || [];
@@ -100,24 +105,20 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
 
         // Filtered views (from dashboard cards)
         switch (activeFilter) {
-            case 'SCRIPTS':
-                // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
-                return (historyProjects || []).filter(project =>
-                    project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
-                );
             case 'NEEDS_DELIVERY':
-                return (historyProjects || []).filter(p => !p.delivery_date);
+                return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
-                    if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
-                    return p.delivery_date && !p.thumbnail_link;
+                    const isNotDone = p.status !== TaskStatus.DONE;
+                    if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link && isNotDone;
+                    return p.delivery_date && !p.thumbnail_link && isNotDone;
                 });
             case 'DELIVERED':
                 return (historyProjects || []).filter(p => p.creative_link || p.thumbnail_link);
             default:
                 return historyProjects || [];
         }
-    }, [activeFilter, historyProjects]);
+    }, [activeFilter, historyProjects, scriptProjects]);
 
     // Counts derived directly from projects table (source of truth)
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState<number>(0);
@@ -213,7 +214,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         <div
                             onClick={() => {
                                 setActiveFilter('NEEDS_DELIVERY');
-                                handleViewChange('mywork');
+                                handleViewChange('mywork', true);
                             }}
                             className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -225,7 +226,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         <div
                             onClick={() => {
                                 setActiveFilter('IN_PROGRESS');
-                                handleViewChange('mywork');
+                                handleViewChange('mywork', true);
                             }}
                             className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -237,7 +238,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         <div
                             onClick={() => {
                                 setActiveFilter('DELIVERED');
-                                handleViewChange('mywork');
+                                handleViewChange('mywork', true);
                             }}
                             className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -249,7 +250,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         <div
                             onClick={() => {
                                 setActiveFilter('SCRIPTS');
-                                handleViewChange('mywork');
+                                handleViewChange('mywork', true);
                             }}
                             className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >

@@ -36,7 +36,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectSource, setProjectSource] = useState<'MYWORK' | 'SCRIPTS' | null>(null);
-  const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | 'CINE' | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // SYNC STATE WITH URL ON REFRESH/NAVIGATE
@@ -57,14 +57,14 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
 
 
 
-  const handleViewChange = (view: string) => {
+  const handleViewChange = (view: string, preserveFilter = false) => {
     setSelectedProject(null);
     const rolePath = user.role.toLowerCase();
 
     // ✅ IMPORTANT:
     // If user manually clicks "My Work",
     // clear any dashboard-based filters
-    if (view === 'mywork') {
+    if (view === 'mywork' && !preserveFilter) {
       setActiveFilter(null);
     }
 
@@ -102,6 +102,15 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
  * - If user clicked My Work manually → ALL projects the user has worked on (historyProjects)
  */
   const filteredProjects = useMemo(() => {
+    // SCRIPTS filter shows ALL script projects (Supabase-wide)
+    if (activeFilter === 'SCRIPTS') {
+      return scriptProjects || [];
+    }
+    
+    if (activeFilter === 'CINE') {
+      return (scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY);
+    }
+
     // No filter → show ALL sub-editor projects the user has worked on (history)
     if (!activeFilter) {
       return historyProjects || [];
@@ -110,28 +119,24 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     // Filtered views (from dashboard cards)
     switch (activeFilter) {
       case 'NEEDS_DELIVERY':
-        return (historyProjects || []).filter(p => !p.delivery_date);
+        return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
       case 'IN_PROGRESS':
         return (historyProjects || []).filter(
-          p => p.delivery_date && !p.edited_video_link
+          p => p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE
         );
       case 'COMPLETED':
         return (historyProjects || []).filter(p => !!p.edited_video_link);
-      case 'SCRIPTS':
-        // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
-        return (historyProjects || []).filter(project =>
-          project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
-        );
       default:
         return historyProjects || [];
     }
-  }, [activeFilter, historyProjects]);
+  }, [activeFilter, historyProjects, scriptProjects]);
 
   // Add state for counts
   const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
   const [inProgressCount, setInProgressCount] = useState(0);
   const [completedEditsCount, setCompletedEditsCount] = useState(0);
   const [scriptsCount, setScriptsCount] = useState(0);
+  const [cineProjectsCount, setCineProjectsCount] = useState(0);
 
   // Calculate counts when historyProjects change
   useEffect(() => {
@@ -139,11 +144,12 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
     setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
 
-    // Count script projects
-    setScriptsCount((historyProjects || []).filter(project =>
-      project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
-    ).length);
-  }, [historyProjects]);
+    // Count script projects from props
+    setScriptsCount((scriptProjects || []).length);
+    
+    // Count CINE projects from props
+    setCineProjectsCount((scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY).length);
+  }, [historyProjects, scriptProjects]);
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
@@ -247,12 +253,12 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
             {/* NEEDS DELIVERY DATE */}
             <div
               onClick={() => {
                 setActiveFilter('NEEDS_DELIVERY');
-                handleViewChange('mywork');
+                handleViewChange('mywork', true);
               }}
               className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -266,7 +272,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             <div
               onClick={() => {
                 setActiveFilter('IN_PROGRESS');
-                handleViewChange('mywork');
+                handleViewChange('mywork', true);
               }}
               className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -280,7 +286,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             <div
               onClick={() => {
                 setActiveFilter('COMPLETED');
-                handleViewChange('mywork');
+                handleViewChange('mywork', true);
               }}
               className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -294,7 +300,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
             <div
               onClick={() => {
                 setActiveFilter('SCRIPTS');
-                handleViewChange('mywork');
+                handleViewChange('mywork', true);
               }}
               className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -302,6 +308,20 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
                 {scriptsCount}
               </div>
               <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
+            </div>
+            
+            {/* CINE PROJECTS */}
+            <div
+              onClick={() => {
+                setActiveFilter('CINE');
+                handleViewChange('mywork', true);
+              }}
+              className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {cineProjectsCount}
+              </div>
+              <div className="text-sm font-bold uppercase text-white/80">Cine Projects</div>
             </div>
           </div>
 

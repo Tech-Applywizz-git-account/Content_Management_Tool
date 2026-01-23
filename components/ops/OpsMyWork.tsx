@@ -6,29 +6,30 @@ import { format } from 'date-fns';
 interface Props {
     user: { full_name: string };
     projects: Project[];
-    onSelectProject: (project: {project: Project, source: 'mywork'}) => void;
+    onSelectProject: (project: { project: Project, source: 'mywork' }) => void;
     filterCategory?: string; // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
 }
 
 const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory = 'all' }) => {
     // Filter projects based on the selected category
     const filteredProjects = projects.filter(project => {
-        switch(filterCategory) {
+        switch (filterCategory) {
             case 'ceoapproved':
-                return 
+                return (
                     project.current_stage === WorkflowStage.CINEMATOGRAPHY ||
                     project.current_stage === WorkflowStage.VIDEO_EDITING ||
                     project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
                     project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
                     project.current_stage === WorkflowStage.OPS_SCHEDULING ||
-                    project.current_stage === WorkflowStage.POSTED;
+                    project.current_stage === WorkflowStage.POSTED
+                );
             case 'readytoschedule':
                 return project.current_stage === WorkflowStage.OPS_SCHEDULING &&
-                       !project.post_scheduled_date;
+                    !project.post_scheduled_date;
             case 'scheduled':
                 return project.current_stage === WorkflowStage.OPS_SCHEDULING &&
-                       project.post_scheduled_date &&
-                       !project.data?.live_url;
+                    project.post_scheduled_date &&
+                    !project.data?.live_url;
             case 'postedthisweek':
                 if (project.current_stage !== WorkflowStage.POSTED) return false;
                 const postedDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : null;
@@ -39,12 +40,12 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                 return true; // 'all' case
         }
     });
-    
+
     // Show filtered projects based on the selected category
     const myTasks = filteredProjects || [];
 
     const getHeaderText = () => {
-        switch(filterCategory) {
+        switch (filterCategory) {
             case 'ceoapproved':
                 return 'CEO-approved project' + (myTasks.length !== 1 ? 's' : '');
             case 'readytoschedule':
@@ -82,7 +83,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                 {myTasks.map(project => (
                     <div
                         key={project.id}
-                        onClick={() => onSelectProject({project, source: 'mywork'})}
+                        onClick={() => onSelectProject({ project, source: 'mywork' })}
                         className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                     >
                         <div className="p-6 space-y-4">
@@ -90,21 +91,21 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                             <div className="flex justify-between items-start">
                                 <span
                                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                            ? 'bg-[#FF4F4F] text-white'
-                                            : project.channel === 'LINKEDIN'
-                                                ? 'bg-[#0085FF] text-white'
-                                                : 'bg-[#D946EF] text-white'
+                                        ? 'bg-[#FF4F4F] text-white'
+                                        : project.channel === 'LINKEDIN'
+                                            ? 'bg-[#0085FF] text-white'
+                                            : 'bg-[#D946EF] text-white'
                                         }`}
                                 >
                                     {project.channel}
                                 </span>
                                 <span
                                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                            ? 'bg-red-500 text-white'
-                                            : project.priority === 'NORMAL'
-                                                ? 'bg-yellow-500 text-black'
-                                                : 'bg-green-500 text-white'
-                                    }`}
+                                        ? 'bg-red-500 text-white'
+                                        : project.priority === 'NORMAL'
+                                            ? 'bg-yellow-500 text-black'
+                                            : 'bg-green-500 text-white'
+                                        }`}
                                 >
                                     {project.priority}
                                 </span>
@@ -171,7 +172,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                             <span className="text-red-500 font-bold">CMO Pending</span>
                                         </div>
                                     )}
-                                    
+
                                     {/* CEO Approval Status */}
                                     {project.ceo_approved_at ? (
                                         <div className="flex items-center gap-2 text-green-700">
@@ -194,9 +195,9 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                             {project.history && project.history.length > 0 && (
                                                 <p className="text-[10px] text-red-600 mt-1">
                                                     {(() => {
-                                                      // Find the most recent REWORK or REJECTED action for the comment
-                                                      const reworkHistory = project.history.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
-                                                      return reworkHistory?.comment || 'No comment provided';
+                                                        // Find the most recent REWORK or REJECTED action for the comment
+                                                        const reworkHistory = project.history.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
+                                                        return reworkHistory?.comment || 'No comment provided';
                                                     })()}
                                                 </p>
                                             )}

@@ -620,15 +620,21 @@ export const projects = {
             case Role.OPS:
                 // Ops inbox: include projects that have moved forward after CEO approval
                 // These projects should be visible to Ops even if assigned to other roles
-                query = query.in('current_stage', [
+                // Also include projects explicitly assigned to OPS role
+                const opsStages = [
                     WorkflowStage.CINEMATOGRAPHY,
                     WorkflowStage.VIDEO_EDITING,
                     WorkflowStage.FINAL_REVIEW_CMO,
                     WorkflowStage.FINAL_REVIEW_CEO,
-                    WorkflowStage.POST_WRITER_REVIEW, // Include post-writer review for parallel visibility
+                    WorkflowStage.POST_WRITER_REVIEW,
                     WorkflowStage.OPS_SCHEDULING,
                     WorkflowStage.POSTED
-                ]);
+                ];
+                
+                // Combine the conditions properly for Supabase OR query
+                const stageCondition = `current_stage.in.(${opsStages.join(',')})`;
+                const roleCondition = `assigned_to_role.eq.${Role.OPS}`;
+                query = query.or(`${stageCondition},${roleCondition}`);
                 break;
 
             default:
@@ -695,35 +701,24 @@ export const projects = {
 
             // Helper function to check if a project should be visible to the user based on rework rules
             const isProjectVisibleToUser = (project: any) => {
-                // If project is not in REWORK status, it's visible
-                if (project.status !== 'REWORK') {
-                    return true;
-                }
-                
-                // If project is in REWORK status but not from MULTI_WRITER_APPROVAL, it's visible
-                if (project.data?.rework_initiator_stage !== 'MULTI_WRITER_APPROVAL') {
-                    return true;
-                }
-                
-                // If project is in REWORK status from MULTI_WRITER_APPROVAL but has no target role, it's visible
-                if (!project.data?.rework_target_role) {
-                    return true;
-                }
-                
-                // For REWORK projects from MULTI_WRITER_APPROVAL with a target role:
-                // Only show to users whose role matches the rework_target_role
-                // AND if assigned_to_user_id exists → only that user
-                if (project.data?.rework_target_role === user.role) {
-                    // If assigned to a specific user, only that user can see it
-                    if (project.assigned_to_user_id) {
-                        return project.assigned_to_user_id === user.id;
+                // If project is in REWORK status, strict filtering applies
+                if (project.status === 'REWORK') {
+                    // 1. If we have a rework_target_role (new column), use it for strict filtering
+                    if (project.rework_target_role) {
+                        return project.rework_target_role === user.role;
                     }
-                    // Otherwise, anyone with the matching role can see it
-                    return true;
+
+                    // 2. Fallback to legacy data field if column is empty
+                    if (project.data?.rework_target_role) {
+                        return project.data.rework_target_role === user.role;
+                    }
+
+                    // 3. Fallback to assigned_to_role if no rework_target_role is specified
+                    return project.assigned_to_role === user.role;
                 }
-                
-                // For all other cases, the project is not visible to this user
-                return false;
+
+                // If not in REWORK status, project is visible
+                return true;
             };
 
             // Add history projects
@@ -1675,8 +1670,8 @@ export const workflow = {
                 projectUpdateData.assigned_to_role = Role.CMO; // Assign to CMO
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
                 projectUpdateData.visible_to_roles = ['CMO', 'OPS']; // Make visible to CMO and OPS
-            } else if (nextStage === WorkflowStage.WRITER_VIDEO_APPROVAL) {
-                // When sending to writer video approval, make visible to writer and ops
+            } else if (nextStage === WorkflowStage.MULTI_WRITER_APPROVAL) {
+                // When sending to multi-writer approval, make visible to writer and ops
                 projectUpdateData.assigned_to_role = Role.WRITER; // Assign to writer
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
                 projectUpdateData.visible_to_roles = ['WRITER', 'OPS']; // Make visible to writer and ops
@@ -1837,24 +1832,24 @@ export const workflow = {
         }
 
         // SPECIAL CASE: For MULTI_WRITER_APPROVAL rework, determine correct role routing
-        const actualReturnToRole = (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && isRework && updatedProjectData.rework_target_role) 
-            ? updatedProjectData.rework_target_role 
+        const actualReturnToRole = (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && isRework && updatedProjectData.rework_target_role)
+            ? updatedProjectData.rework_target_role
             : returnToRole;
-        
+
         // Store rework initiator information in project metadata for routing back after completion
         let updatedData = {
             ...updatedProjectData,
             rework_initiator_role: isRework ? userRole : undefined,
             rework_initiator_stage: isRework ? currentProject?.current_stage : undefined
         };
-        
+
         // SPECIAL CASE: When rework is initiated from MULTI_WRITER_APPROVAL, FINAL_REVIEW_CMO, FINAL_REVIEW_CEO, or FINAL_REVIEW_CEO_POST_APPROVAL stages,
         // store the target role that should handle the rework instead of routing back to the initiator
-        if (isRework && 
+        if (isRework &&
             (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
-             currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-             currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-             currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) && 
+                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) &&
             returnToRole) {
             updatedData = {
                 ...updatedData,
@@ -3009,115 +3004,126 @@ export const db = {
         // Determine the next stage based on current stage and whether it's from rework
         let nextStageInfo;
 
-        // CHECK FOR REWORK ROUTING: If this project has a rework_initiator_role, route back to them
-        // Priority check - this takes precedence over normal workflow routing
-        if (project.data?.rework_initiator_role && project.data?.rework_initiator_stage) {
-            console.log('🔄 Rework metadata found - routing back to initiator:', project.data.rework_initiator_role);
-            console.log('🔄 Initiator stage:', project.data.rework_initiator_stage);
-            
-            // SPECIAL CASE: If this is rework from MULTI_WRITER_APPROVAL, FINAL_REVIEW_CMO, FINAL_REVIEW_CEO, or FINAL_REVIEW_CEO_POST_APPROVAL, and the target role has completed their work, route back to the original initiator
-            if ((project.data.rework_initiator_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
-                 project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                 project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                 project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) &&
-                project.data.rework_target_role &&
-                currentUserCache.role === project.data.rework_target_role) { // Only if the target role is completing their work
-                console.log('🔄 Special rework stage - target role completed work, routing back to initiator:', project.data.rework_initiator_role);
-                
-                // Route back to the original initiator in the original stage
+        // CHECK FOR REWORK ROUTING: If this project has rework tracking, route back to initiator
+        // Check both top-level (new schema) and data object (legacy/fallback)
+        const trackingInitiatorRole = project.rework_initiator_role || project.data?.rework_initiator_role;
+        const trackingInitiatorStage = project.rework_initiator_stage || project.data?.rework_initiator_stage;
+        const trackingTargetRole = project.rework_target_role || project.data?.rework_target_role;
+
+        if (trackingInitiatorRole && trackingInitiatorStage) {
+            console.log('🔄 Rework tracking found - routing back to initiator:', trackingInitiatorRole);
+
+            // Determine if the current role is the one targeted for rework
+            const isTargetedRoleCompleting = trackingTargetRole && currentUserCache.role === trackingTargetRole;
+            const isWriterResubmitting = currentUserCache.role === Role.WRITER && trackingTargetRole === Role.WRITER;
+
+            if (isTargetedRoleCompleting || isWriterResubmitting) {
+                console.log('🔄 Rework target completed work, routing back to initiator:', trackingInitiatorRole);
+
                 nextStageInfo = {
-                    stage: project.data.rework_initiator_stage as WorkflowStage, // Go back to the original stage
-                    role: project.data.rework_initiator_role as Role // Go back to the original initiator role
+                    stage: trackingInitiatorStage as WorkflowStage,
+                    role: trackingInitiatorRole as Role
                 };
-                
-                // Clear all rework metadata after routing
-                console.log('🔄 Clearing rework metadata after routing');
+
+                // Clear rework tracking from data metadata (safer than top-level columns if they don't exist)
+                const updatedData = { ...project.data };
+                delete updatedData.rework_initiator_role;
+                delete updatedData.rework_initiator_stage;
+                delete updatedData.rework_target_role;
+
                 await supabase
                     .from('projects')
                     .update({
-                        data: {
-                            ...project.data,
-                            rework_initiator_role: undefined,
-                            rework_initiator_stage: undefined,
-                            rework_target_role: undefined
-                        }
+                        data: updatedData
                     })
                     .eq('id', projectId);
-            } else {
-                // Map the rework initiator stage back to the appropriate stage
-                const reworkInitiatorRole = project.data.rework_initiator_role;
-                const reworkInitiatorStage = project.data.rework_initiator_stage;
-    
-                // Route back to the stage where rework was initiated
-                nextStageInfo = {
-                    stage: reworkInitiatorStage as WorkflowStage,
-                    role: reworkInitiatorRole as Role
-                };
-    
-                // Clear the rework initiator metadata after routing
-                console.log('🔄 Clearing rework metadata after routing');
-                await supabase
-                    .from('projects')
-                    .update({
-                        data: {
-                            ...project.data,
-                            rework_initiator_role: undefined,
-                            rework_initiator_stage: undefined
-                        }
-                    })
-                    .eq('id', projectId);
-                console.log('✅ Rework metadata cleared successfully');
             }
         }
-        // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
-        // send it back to the writer to convert the idea into a script
-        // This check should happen regardless of whether the project is from rework or not
-        else if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
-            nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
-        } else if (project.current_stage === WorkflowStage.VIDEO_EDITING && project.assigned_to_role === Role.EDITOR) {
-            // When editor uploads video, check routing based on needs_sub_editor flag
-            // Use the flexible routing logic from helpers.getNextStage
-            const routingInfo = helpers.getNextStage(
-                project.current_stage,
-                project.content_type,
-                'APPROVED',
-                project.data
-            );
-            nextStageInfo = routingInfo;
-        } else if (project.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && project.assigned_to_role === Role.EDITOR) {
-            // When editor assigns to sub-editor, move to sub-editor processing stage
-            // Preserve the specific assigned user ID if it exists
-            nextStageInfo = { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR };
-            // The assigned_to_user_id is already in the project and will be preserved during the update
-        } else if (project.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && project.assigned_to_role === Role.SUB_EDITOR) {
-            // After sub-editor completes work, check routing based on thumbnail_required flag
-            // If thumbnail_required is true -> route to THUMBNAIL_DESIGN
-            // If thumbnail_required is false or undefined -> route to MULTI_WRITER_APPROVAL
-            nextStageInfo = project.data?.thumbnail_required === true
-                ? { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER }
-                : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-        } else if (project.current_stage === WorkflowStage.THUMBNAIL_DESIGN && project.assigned_to_role === Role.DESIGNER) {
-            // After designer completes work, go to multi-writer approval
-            nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-        } else if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && project.assigned_to_role === Role.WRITER) {
-            console.log('🔍 DEBUG: Processing MULTI_WRITER_APPROVAL stage for project:', projectId);
 
-            // For MULTI_WRITER_APPROVAL stage, advanceWorkflow does NOT decide the next stage
-            // The actual advancement will happen in workflow.approve() after checking all approvals
-            // This prevents the race condition where we check approvals before the current approval is recorded
+        // If not handled by rework routing (or if it fallback to normal), use normal flow
+        if (!nextStageInfo) {
+            if (project.data?.rework_initiator_role && project.data?.rework_initiator_stage) {
+                // FALLBACK for legacy data in project.data
+                // ...existing legacy logic...
+                if ((project.data.rework_initiator_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
+                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) &&
+                    project.data.rework_target_role &&
+                    currentUserCache.role === project.data.rework_target_role) {
 
-            // Always return to MULTI_WRITER_APPROVAL stage
-            // The final decision on advancement happens in workflow.approve() after the approval is recorded
-            nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-        } else {
-            // For all other transitions, use the standard hierarchy to ensure 
-            // no review stages (like CMO review) are skipped, even after rework.
-            nextStageInfo = helpers.getNextStage(
-                project.current_stage,
-                project.content_type,
-                'APPROVED',
-                project.data
-            );
+                    nextStageInfo = {
+                        stage: project.data.rework_initiator_stage as WorkflowStage,
+                        role: project.data.rework_initiator_role as Role
+                    };
+
+                    await supabase.from('projects').update({
+                        data: { ...project.data, rework_initiator_role: undefined, rework_initiator_stage: undefined, rework_target_role: undefined }
+                    }).eq('id', projectId);
+                } else if (currentUserCache.role === project.data.rework_target_role || currentUserCache.role === Role.WRITER) {
+                    nextStageInfo = {
+                        stage: project.data.rework_initiator_stage as WorkflowStage,
+                        role: project.data.rework_initiator_role as Role
+                    };
+                    await supabase.from('projects').update({
+                        data: { ...project.data, rework_initiator_role: undefined, rework_initiator_stage: undefined, rework_target_role: undefined }
+                    }).eq('id', projectId);
+                }
+            }
+        }
+
+        // Further routing if still not set
+        if (!nextStageInfo) {
+            // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
+            // send it back to the writer to convert the idea into a script
+            // This check should happen regardless of whether the project is from rework or not
+            if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+                nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
+            } else if (project.current_stage === WorkflowStage.VIDEO_EDITING && project.assigned_to_role === Role.EDITOR) {
+                // When editor uploads video, check routing based on needs_sub_editor flag
+                // Use the flexible routing logic from helpers.getNextStage
+                const routingInfo = helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+                nextStageInfo = routingInfo;
+            } else if (project.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && project.assigned_to_role === Role.EDITOR) {
+                // When editor assigns to sub-editor, move to sub-editor processing stage
+                // Preserve the specific assigned user ID if it exists
+                nextStageInfo = { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR };
+                // The assigned_to_user_id is already in the project and will be preserved during the update
+            } else if (project.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && project.assigned_to_role === Role.SUB_EDITOR) {
+                // After sub-editor completes work, check routing based on thumbnail_required flag
+                // If thumbnail_required is true -> route to THUMBNAIL_DESIGN
+                // If thumbnail_required is false or undefined -> route to MULTI_WRITER_APPROVAL
+                nextStageInfo = project.data?.thumbnail_required === true
+                    ? { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER }
+                    : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
+            } else if (project.current_stage === WorkflowStage.THUMBNAIL_DESIGN && project.assigned_to_role === Role.DESIGNER) {
+                // After designer completes work, go to multi-writer approval
+                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
+            } else if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && project.assigned_to_role === Role.WRITER) {
+                console.log('🔍 DEBUG: Processing MULTI_WRITER_APPROVAL stage for project:', projectId);
+
+                // For MULTI_WRITER_APPROVAL stage, advanceWorkflow does NOT decide the next stage
+                // The actual advancement will happen in workflow.approve() after checking all approvals
+                // This prevents the race condition where we check approvals before the current approval is recorded
+
+                // Always return to MULTI_WRITER_APPROVAL stage
+                // The final decision on advancement happens in workflow.approve() after the approval is recorded
+                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
+            } else {
+                // For all other transitions, use the standard hierarchy to ensure 
+                // no review stages (like CMO review) are skipped, even after rework.
+                nextStageInfo = helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+            }
         }
 
         console.log('Next stage info:', nextStageInfo);
@@ -3206,7 +3212,7 @@ export const db = {
 
         // Determine base target role from stage
         let baseTargetRole = stageToRoleMap[targetStage] || Role.WRITER;
-        
+
         // SPECIAL CASE: When VIDEO_EDITING or MULTI_WRITER_APPROVAL stage is selected with EDITOR role, 
         // check who did the last edit and route to the actual editor (SUB_EDITOR vs EDITOR)
         if ((targetStage === WorkflowStage.VIDEO_EDITING || targetStage === WorkflowStage.MULTI_WRITER_APPROVAL) && baseTargetRole === Role.EDITOR) {
@@ -3220,7 +3226,7 @@ export const db = {
                 baseTargetRole = Role.EDITOR;
             }
         }
-        
+
         // Special case: When CEO rejects (not rework) from FINAL_REVIEW_CEO, send back to CMO instead of CEO
         let targetRole = Role.WRITER;
         if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && targetStage !== WorkflowStage.SCRIPT && !isRework) {

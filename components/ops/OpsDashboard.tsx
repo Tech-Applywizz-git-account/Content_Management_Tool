@@ -238,7 +238,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
-                                {(inboxProjects || []).length - ceoApproved.length}
+                                {(historyProjects || []).length}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Total Managed</div>
                         </div>

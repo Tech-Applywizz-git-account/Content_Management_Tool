@@ -77,6 +77,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     }, [project.id, project.first_review_opened_at, project.first_review_opened_by_role]);
 
     const getReworkRoleLabel = (stage: WorkflowStage) => {
+        // Check if this is a creative project (either designer-initiated or creative-only content type)
+        const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
+        
         switch (stage) {
             case WorkflowStage.SCRIPT:
                 return 'Writer';
@@ -85,7 +88,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             case WorkflowStage.VIDEO_EDITING:
                 return 'Editor';
             case WorkflowStage.CINEMATOGRAPHY:
-                return 'Cinematographer';
+                // For creative projects, show Designer instead of Cinematographer
+                return isCreativeProject ? 'Designer' : 'Cinematographer';
             case WorkflowStage.CREATIVE_DESIGN:
                 return 'Designer';
             default:
@@ -100,14 +104,14 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             // The key condition is that there's a ceo_rework_at timestamp and writer_submitted_at is after it
             const isReturnFromRework = project.ceo_rework_at && project.writer_submitted_at &&
                 new Date(project.writer_submitted_at) > new Date(project.ceo_rework_at);
-            
+
             console.log('CEO Review: Project has ceo_rework_at:', project.ceo_rework_at);
             console.log('CEO Review: Project has writer_submitted_at:', project.writer_submitted_at);
             console.log('CEO Review: Is return from rework:', isReturnFromRework);
-            
+
             if (isReturnFromRework) {
                 console.log('CEO Review: Fetching previous script for rework comparison');
-                
+
                 const { data: historyData, error: historyError } = await supabase
                     .from('workflow_history')
                     .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp')
@@ -119,18 +123,18 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     console.error('Error fetching previous script:', historyError);
                 } else if (historyData && historyData.length > 0) {
                     console.log('CEO Review: History data found:', historyData.length, 'entries');
-                    
+
                     // Find the script content that existed just before ceo_rework_at
                     // Find the workflow entry with script_content IS NOT NULL whose timestamp < project.ceo_rework_at
                     // Closest to (just before) ceo_rework_at
-                    const sortedHistory = [...historyData].sort((a, b) => 
+                    const sortedHistory = [...historyData].sort((a, b) =>
                         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
                     );
-                    
+
                     for (const entry of sortedHistory) {
                         // Look for an entry that was created before the CEO rework request
                         // That has script_content and whose timestamp is before ceo_rework_at
-                        if (entry.script_content && 
+                        if (entry.script_content &&
                             new Date(entry.timestamp) < new Date(project.ceo_rework_at)) {
                             console.log('CEO Review: Found previous script content before CEO rework at:', entry.timestamp);
                             setPreviousScript(entry.script_content);
@@ -138,12 +142,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             break;
                         }
                     }
-                    
+
                     // Set previous asset links from the entry that was before rework
-                    const prevAssetsEntry = sortedHistory.find(entry => 
+                    const prevAssetsEntry = sortedHistory.find(entry =>
                         new Date(entry.timestamp) < new Date(project.ceo_rework_at)
                     );
-                    
+
                     if (prevAssetsEntry) {
                         setPreviousAssets({
                             video_link: prevAssetsEntry.video_link,
@@ -219,8 +223,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 finalComment = approveComment || 'Approved by CEO';
             } else if (decision === 'REWORK') {
                 // Avoid duplicating the same text if dropdown value matches text input
-                finalComment = reworkReason === reworkComment 
-                    ? reworkReason 
+                finalComment = reworkReason === reworkComment
+                    ? reworkReason
                     : `${reworkReason}${reworkComment ? ' - ' + reworkComment : ''}`;
             } else if (decision === 'REJECT') {
                 finalComment = rejectComment || 'Rejected by CEO';
@@ -228,9 +232,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
             if (decision === 'APPROVE') {
                 // Check if this is a rework scenario where the CEO is approving after sending back for rework
-                const isReworkScenario = project.ceo_rework_at && project.writer_submitted_at && 
+                const isReworkScenario = project.ceo_rework_at && project.writer_submitted_at &&
                     new Date(project.writer_submitted_at) > new Date(project.ceo_rework_at);
-                
+
                 if (isReworkScenario || project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
                     // For rework scenarios and final review, use the standardized workflow advancement
                     const nextStageInfo = db.helpers.getNextStage(
@@ -239,13 +243,13 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         'APPROVED',
                         project.data
                     );
-                    
+
                     // Ensure we have a valid user ID
                     const currentUser = db.getCurrentUser();
                     if (!currentUser?.id) {
                         throw new Error('User not authenticated');
                     }
-                    
+
                     await db.workflow.approve(
                         project.id,
                         currentUser.id,
@@ -279,7 +283,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     if (!fetchError) {
                         const existingComments = currentProject.forwarded_comments || [];
                         const updatedComments = [...existingComments, newComment];
-                        
+
                         await supabase
                             .from('projects')
                             .update({ forwarded_comments: updatedComments })
@@ -318,7 +322,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, finalComment);
 
                 // Show popup for rework
@@ -339,13 +343,13 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 // For reject, we don't send back to a specific role, just reject the project
                 // Use comment that indicates this is a full rejection to distinguish from rework
                 // Adding 'Project terminated' to trigger reject behavior in backend logic
-                
+
                 // Ensure we have a valid user ID
                 const currentUser = db.getCurrentUser();
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
                 const rejectCommentWithTermination = (finalComment ? finalComment + ' - Project terminated' : 'Rejected completely by CEO - Project terminated');
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, rejectCommentWithTermination);
 
@@ -369,12 +373,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const getReworkOptions = () => {
         // Check if this is a creative project (either designer-initiated or creative-only content type)
         const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
-        
+
         // For designer-initiated projects, always send back to Designer
         if (project.data?.source === 'DESIGNER_INITIATED') {
             return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
         }
-        
+
         // For pure idea projects (without script content), always send back to Writer regardless of stage
         if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
@@ -388,11 +392,14 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
         // 2. Final Review Stage: Can go to CMO, Cine, Editor, or Designer. CANNOT go to Writer.
         if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
-            // For creative projects, only show Designer as an option
+            // For creative projects, show Designer and CMO as options
             if (isCreativeProject) {
-                return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
+                return [
+                    { value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' },
+                    { value: WorkflowStage.FINAL_REVIEW_CMO, label: 'CMO (Review Feedback)' }
+                ];
             }
-            
+
             const options = [
                 { value: WorkflowStage.FINAL_REVIEW_CMO, label: 'CMO (Review Feedback)' },
             ];
@@ -515,13 +522,13 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.niche 
-                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                    : project.data.niche === 'OTHER' && project.data.niche_other 
-                                        ? project.data.niche_other 
-                                        : project.data.niche
+                                {project.data?.niche
+                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche
                                     : '—'}
                             </div>
                         </div>
@@ -543,9 +550,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Script Link</p>
-                                        <a 
-                                            href={project.data.script_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.script_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -557,7 +564,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             </div>
                         </section>
                     )}
-                    
+
                     {/* Thumbnail Reference from Writer */}
                     {project.data?.thumbnail_reference_link && (
                         <section className="space-y-4 pt-6 border-t-4 border-black">
@@ -566,9 +573,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Thumbnail Link</p>
-                                        <a 
-                                            href={project.data.thumbnail_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.thumbnail_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -596,7 +603,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </div>
 
                         {/* Script Reference Link */}
-       
+
 
                         {/* Wrapper for PDF generation - both cases */}
                         <div
@@ -622,7 +629,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                                     .replace(/&#39;/g, "'")
                                                     .replace(/&nbsp;/g, ' ');
                                                 return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                              })()}
+                                            })()}
                                         </div>
                                     </div>
 
@@ -636,7 +643,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                     ? project.data.idea_description
-                                                    : project.data?.script_content 
+                                                    : project.data?.script_content
                                                         ? (() => {
                                                             let decodedContent = project.data.script_content
                                                                 .replace(/&lt;/g, '<')
@@ -646,7 +653,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                                                 .replace(/&#39;/g, "'")
                                                                 .replace(/&nbsp;/g, ' ');
                                                             return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                          })()
+                                                        })()
                                                         : 'No script content available.'}
                                         </div>
                                     </div>
@@ -660,7 +667,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         ? project.data?.creative_link || 'No creative link available.'
                                         : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                             ? project.data.idea_description
-                                            : project.data?.script_content 
+                                            : project.data?.script_content
                                                 ? (() => {
                                                     let decodedContent = project.data.script_content
                                                         .replace(/&lt;/g, '<')
@@ -670,7 +677,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                                         .replace(/&#39;/g, "'")
                                                         .replace(/&nbsp;/g, ' ');
                                                     return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                  })()
+                                                })()
                                                 : 'No script content available.'}
                                 </div>
                             )}
@@ -688,8 +695,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 // Show both previous and current assets side by side for rework projects
                                 <div className="space-y-8">
                                     {/* Script Reference Link */}
-                                 
-                                    
+
+
                                     {/* Raw Video Assets */}
                                     {isVideo && (project.video_link || previousAssets?.video_link) && (
                                         <div className="grid grid-cols-2 gap-6">
@@ -845,8 +852,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 // Show single assets for non-rework projects
                                 <div className="grid grid-cols-3 gap-6">
                                     {/* Script Reference Link */}
-                                   
-                                    
+
+
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -1042,7 +1049,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         <p className="text-xs text-red-500 font-bold">Reason is required</p>
                                     )}
                                 </div>
-                                
+
                                 <div className="space-y-2">
                                     <label className="block text-xs font-black text-slate-500 uppercase">Additional Instructions *</label>
                                     <textarea
@@ -1077,8 +1084,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     <div className="mt-8">
                         <button
-                            disabled={!decision || isSubmitting || 
-                                (decision === 'REWORK' && (!reworkStage || reworkStage === '' || !reworkReason || !reworkComment)) || 
+                            disabled={!decision || isSubmitting ||
+                                (decision === 'REWORK' && (!reworkStage || reworkStage === '' || !reworkReason || !reworkComment)) ||
                                 (decision === 'REJECT' && (!rejectComment || rejectComment.trim() === ''))}
                             onClick={() => {
                                 console.log('Button clicked', { decision, reworkStage, approveComment, reworkReason, reworkComment, rejectComment });

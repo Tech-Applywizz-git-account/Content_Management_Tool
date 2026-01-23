@@ -108,6 +108,9 @@ export interface Project {
   creative_link?: string; // Designer uploads (creative-only path)
   data: ProjectData; // Flexible JSON blob for form inputs
   history: HistoryEvent[];
+  rework_target_role?: Role;
+  rework_initiator_role?: Role;
+  rework_initiator_stage?: WorkflowStage;
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }

@@ -93,7 +93,7 @@ serve(async (req) => {
         // Fetch Project Context (including assignment info for REWORK routing)
         const { data: project } = await supabaseAdmin
             .from("projects")
-            .select("title, writer_id, created_by_user_id, assigned_to_user_id, assigned_to_role")
+            .select("title, writer_id, created_by_user_id, assigned_to_user_id, assigned_to_role, rework_target_role, rework_initiator_role, rework_initiator_stage")
             .eq("id", project_id)
             .single();
         if (!project) throw new Error("Project not found");
@@ -110,24 +110,17 @@ serve(async (req) => {
                 break;
 
             case "REWORK_VIDEO_SUBMITTED":
-                // Send to from_role (the role that requested rework)
-                // If the Sub-Editor uploaded the video for rework, send to the requesting role
-                if (from_role) {
-                    const emails = await getRoleEmails(from_role);
-                    // Exclude CEO from receiving rework submission emails
-                    const filteredEmails = emails.filter(email => {
-                        // We'd need to check if the email belongs to a CEO user
-                        // For now, we'll exclude based on role logic
-                        return from_role !== "CEO";
-                    });
+            case "REWORK_SUBMITTED":
+            case "REWORK_EDIT_SUBMITTED":
+            case "REWORK_DESIGN_SUBMITTED":
+                // Route back to the role that initiated the rework
+                const initiatorRole = project.rework_initiator_role || from_role;
+                if (initiatorRole) {
+                    const emails = await getRoleEmails(initiatorRole);
+                    // Strictly exclude CEO from receiving rework submission emails
+                    const filteredEmails = emails.filter(email => initiatorRole !== "CEO");
                     recipientEmails.push(...filteredEmails);
-                }
-                // Also send to the Sub-Editor if the video was submitted for rework and they need to know
-                else if (to_role === "SUB_EDITOR" && project.assigned_to_user_id) {
-                    const subEditorEmail = await getUserEmail(project.assigned_to_user_id);
-                    if (subEditorEmail) {
-                        recipientEmails.push(subEditorEmail);
-                    }
+                    console.log(`REWORK_SUBMITTED: Routing back to initiator role: ${initiatorRole}`);
                 }
                 break;
 
@@ -143,7 +136,7 @@ serve(async (req) => {
                 // Also handle Sub-Editor video uploads
                 if (to_role) {
                     const emails = await getRoleEmails(to_role);
-                    
+
                     // Filter out CEO emails for writer submissions
                     if (to_role === "CMO") {
                         // Get CMO emails but exclude CEO
@@ -159,7 +152,7 @@ serve(async (req) => {
                             .select("data")
                             .eq("id", project_id)
                             .single();
-                        
+
                         if (fullProject && fullProject.data && fullProject.data.thumbnail_required === true) {
                             // If thumbnail is required, send to Designer instead of Multi-Writer Approval
                             const designerEmails = await getRoleEmails("DESIGNER");
@@ -181,7 +174,7 @@ serve(async (req) => {
                 // When other roles approve, apply appropriate filtering
                 if (to_role) {
                     const emails = await getRoleEmails(to_role);
-                    
+
                     // If CMO is approving and sending to next role, exclude CEO
                     if (from_role === "CMO") {
                         const ceoEmails = await getRoleEmails("CEO");
@@ -205,14 +198,14 @@ serve(async (req) => {
                 break;
 
             case "REWORK":
-                // REWORK emails should go to the to_role (the role selected by CMO for rework)
-                // Only send to the specific role that should handle the rework request
-                if (to_role) {
-                    console.log(`REWORK: Sending to role: ${to_role} as specified in to_role`);
-                    
+                // REWORK emails should go to the targeted role
+                const targetedRole = project.rework_target_role || to_role;
+                if (targetedRole) {
+                    console.log(`REWORK: Sending to role: ${targetedRole}`);
+
                     // Get all users with the target role
                     const roleUsers = await getRoleEmails(to_role);
-                    
+
                     if (roleUsers && roleUsers.length > 0) {
                         recipientEmails.push(...roleUsers);
                         console.log(`REWORK: Sending to ${roleUsers.length} users with role ${to_role}`);
@@ -228,7 +221,7 @@ serve(async (req) => {
                         console.log(`REWORK: Fallback - sending to writer: ${writerEmail}`);
                     }
                 }
-                
+
                 // CRITICAL: No additional recipients for REWORK - only send to the specified role
                 break;
 
@@ -247,17 +240,7 @@ serve(async (req) => {
                 }
                 break;
 
-            case "REWORK_SUBMITTED":
-            case "REWORK_EDIT_SUBMITTED":
-            case "REWORK_DESIGN_SUBMITTED":
-                // Handle various rework submission actions
-                // If the last video was uploaded by a Sub-Editor, route back to the requesting role
-                // Otherwise, route according to the from_role
-                if (from_role) {
-                    const emails = await getRoleEmails(from_role);
-                    recipientEmails.push(...emails);
-                }
-                break;
+
 
             case "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR":
                 // When rework is specifically routed to Sub-Editor, notify the Sub-Editor
@@ -280,37 +263,37 @@ serve(async (req) => {
 
         // Apply final filtering to prevent unnecessary emails
         const ceoEmails = await getRoleEmails("CEO");
-        
+
         // Remove CEO emails for ALL rework-related actions
         recipientEmails = recipientEmails.filter(email => {
             const isCeoEmail = ceoEmails.includes(email);
-            
+
             if (isCeoEmail) {
                 // CEO should NEVER receive rework or rework-submission emails
                 const reworkActions = [
                     "REWORK",
-                    "REWORK_VIDEO_SUBMITTED", 
+                    "REWORK_VIDEO_SUBMITTED",
                     "REWORK_SUBMITTED",
                     "REWORK_EDIT_SUBMITTED",
                     "REWORK_DESIGN_SUBMITTED",
                     "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR"
                 ];
-                
+
                 if (reworkActions.includes(action)) {
                     console.log(`FILTERED: CEO blocked from ${action} email: ${email}`);
                     return false;
                 }
-                
+
                 // CEO should also not receive CMO approvals
                 if (action === "APPROVED" && from_role === "CMO") {
                     console.log(`FILTERED: Not sending CMO approval email to CEO: ${email}`);
                     return false;
                 }
             }
-            
+
             return true;
         });
-        
+
         // Remove duplicates and empty values
         recipientEmails = [...new Set(recipientEmails.filter(Boolean))];
 
@@ -318,7 +301,7 @@ serve(async (req) => {
             console.log(`No valid recipients after filtering for action: ${action}`);
             return new Response(JSON.stringify({ ok: true, msg: "No recipients after filtering" }), { headers: corsHeaders });
         }
-        
+
         console.log(`Final recipients for ${action}:`, recipientEmails);
 
         // 🔹 Build Email Content

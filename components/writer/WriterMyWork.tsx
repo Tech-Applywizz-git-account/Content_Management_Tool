@@ -51,53 +51,53 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   }));
 
   // Function to check if a project has been opened by CMO or CEO
- const isProjectOpenedByReviewers = (project: Project): boolean => {
-  if (!project.history || project.history.length === 0) {
-    return false;
-  }
+  const isProjectOpenedByReviewers = (project: Project): boolean => {
+    if (!project.history || project.history.length === 0) {
+      return false;
+    }
 
-  return project.history.some(h =>
-    ['REVIEWED', 'APPROVED', 'REJECTED'].includes(h.action)
-  );
-};
-
-// Function to check if a project is in rework state
-const isReworkProject = (project: Project): boolean => {
-  if (!project.history || project.history.length === 0) {
-    return false;
-  }
-
-  return project.history.some(h =>
-    h.action === 'REWORK'
-  );
-};
-
-// Function to check if a rework project has been opened by the next reviewer after rework
-const isReworkOpenedByNextReviewer = (project: Project): boolean => {
-  if (!project.history || project.history.length === 0) {
-    return false;
-  }
-
-  // Find the most recent rework action
-  const reworkActions = project.history
-    .filter(h => h.action === 'REWORK')
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  if (reworkActions.length === 0) {
-    return false;
-  }
-
-  const lastReworkTimestamp = new Date(reworkActions[0].timestamp);
-
-  // Check if there are any REVIEWED, APPROVED, or REJECTED actions after the last rework
-  return project.history.some(h => {
-    const actionTimestamp = new Date(h.timestamp);
-    return (
-      actionTimestamp > lastReworkTimestamp &&
+    return project.history.some(h =>
       ['REVIEWED', 'APPROVED', 'REJECTED'].includes(h.action)
     );
-  });
-};
+  };
+
+  // Function to check if a project is in rework state
+  const isReworkProject = (project: Project): boolean => {
+    if (!project.history || project.history.length === 0) {
+      return false;
+    }
+
+    return project.history.some(h =>
+      h.action === 'REWORK'
+    );
+  };
+
+  // Function to check if a rework project has been opened by the next reviewer after rework
+  const isReworkOpenedByNextReviewer = (project: Project): boolean => {
+    if (!project.history || project.history.length === 0) {
+      return false;
+    }
+
+    // Find the most recent rework action
+    const reworkActions = project.history
+      .filter(h => h.action === 'REWORK')
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    if (reworkActions.length === 0) {
+      return false;
+    }
+
+    const lastReworkTimestamp = new Date(reworkActions[0].timestamp);
+
+    // Check if there are any REVIEWED, APPROVED, or REJECTED actions after the last rework
+    return project.history.some(h => {
+      const actionTimestamp = new Date(h.timestamp);
+      return (
+        actionTimestamp > lastReworkTimestamp &&
+        ['REVIEWED', 'APPROVED', 'REJECTED'].includes(h.action)
+      );
+    });
+  };
 
 
 
@@ -115,73 +115,73 @@ const isReworkOpenedByNextReviewer = (project: Project): boolean => {
 
   // Check if we're editing an approved idea project
   const ideaToConvert =
-  editingProject &&
-  (() => {
-    const parsedData = parseProjectData(editingProject.data);
-    return (
-      parsedData?.source === 'IDEA_PROJECT' &&
-      !parsedData?.script_content && // 🔥 THIS IS THE KEY
-      isIdeaApprovedByCEO(editingProject)
-    );
-  })();
+    editingProject &&
+    (() => {
+      const parsedData = parseProjectData(editingProject.data);
+      return (
+        parsedData?.source === 'IDEA_PROJECT' &&
+        !parsedData?.script_content && // 🔥 THIS IS THE KEY
+        isIdeaApprovedByCEO(editingProject)
+      );
+    })();
 
   // 🔁 FULL PAGE: Create Script from Approved Idea
-  
+
 
 
 
   // Separate idea and script projects
- const ideaProjects: Project[] = Array.from(
-  new Map(
-    (fullyNormalizedProjects as Project[])
-      .filter(project => {
-        const isIdea = !project.data?.script_content && project.data?.source === 'IDEA_PROJECT';
-        return project.created_by_user_id === user.id && isIdea;
-      })
-      .map(project => [project.id, project])
-  ).values()
-);
+  const ideaProjects: Project[] = Array.from(
+    new Map(
+      (fullyNormalizedProjects as Project[])
+        .filter(project => {
+          const isIdea = !project.data?.script_content && project.data?.source === 'IDEA_PROJECT';
+          return project.created_by_user_id === user.id && isIdea;
+        })
+        .map(project => [project.id, project])
+    ).values()
+  );
 
- const scriptProjects: Project[] = Array.from(
-  new Map(
-    (fullyNormalizedProjects as Project[])
-      .filter(project =>
-        !!project.data?.script_content &&
-        project.created_by_user_id === user.id &&
-        // Include projects that have script content, regardless of source
-        // This allows scripts that originated from IDEA projects to appear in SCRIPT tab
-        (!!project.data?.script_content)
-      )
-      .map(project => [project.id, project])
-  ).values()
-);
-const canModifyProject = (project: Project, userId: string) => {
-  // Check if it's a rework project that hasn't been opened by next reviewer
-  const isReworkNotOpened = isReworkProject(project) && !isReworkOpenedByNextReviewer(project);
-  
-  // Check if it's an IDEA project in rework status
-  const isIdeaRework = project.data?.source === 'IDEA_PROJECT' && project.status === 'REWORK';
-  
-  // NEW: Check if this is a rework project from MULTI_WRITER_APPROVAL with a specific target role
-  const isReworkFromMultiWriterApproval = 
-    project.status === 'REWORK' && 
-    project.data?.rework_initiator_stage === 'MULTI_WRITER_APPROVAL' && 
-    project.data?.rework_target_role;
-  
-  // If it's a rework project from MULTI_WRITER_APPROVAL with a target role,
-  // only allow modification if the target role matches the writer role
-  if (isReworkFromMultiWriterApproval) {
+  const scriptProjects: Project[] = Array.from(
+    new Map(
+      (fullyNormalizedProjects as Project[])
+        .filter(project =>
+          !!project.data?.script_content &&
+          project.created_by_user_id === user.id &&
+          // Include projects that have script content, regardless of source
+          // This allows scripts that originated from IDEA projects to appear in SCRIPT tab
+          (!!project.data?.script_content)
+        )
+        .map(project => [project.id, project])
+    ).values()
+  );
+  const canModifyProject = (project: Project, userId: string) => {
+    // Check if it's a rework project that hasn't been opened by next reviewer
+    const isReworkNotOpened = isReworkProject(project) && !isReworkOpenedByNextReviewer(project);
+
+    // Check if it's an IDEA project in rework status
+    const isIdeaRework = project.data?.source === 'IDEA_PROJECT' && project.status === 'REWORK';
+
+    // NEW: Check if this is a rework project from MULTI_WRITER_APPROVAL with a specific target role
+    const isReworkFromMultiWriterApproval =
+      project.status === 'REWORK' &&
+      project.data?.rework_initiator_stage === 'MULTI_WRITER_APPROVAL' &&
+      project.data?.rework_target_role;
+
+    // If it's a rework project from MULTI_WRITER_APPROVAL with a target role,
+    // only allow modification if the target role matches the writer role
+    if (isReworkFromMultiWriterApproval) {
+      return (
+        project.created_by_user_id === userId &&
+        project.data?.rework_target_role === 'WRITER'
+      );
+    }
+
     return (
       project.created_by_user_id === userId &&
-      project.data?.rework_target_role === 'WRITER'
+      (!isProjectOpenedByReviewers(project) || isReworkNotOpened || isIdeaRework)
     );
-  }
-  
-  return (
-    project.created_by_user_id === userId &&
-    (!isProjectOpenedByReviewers(project) || isReworkNotOpened || isIdeaRework)
-  );
-};
+  };
 
   // Determine which projects to display based on active tab
   const displayProjects = activeTab === 'IDEA' ? ideaProjects : scriptProjects;
@@ -189,7 +189,7 @@ const canModifyProject = (project: Project, userId: string) => {
   /* ===============================
     MAIN VIEW - Show edit modal OR list view
   =============================== */
-  
+
   // If converting approved idea to script, show the CreateScript component
   if (scriptFromIdea) {
     return (
@@ -202,24 +202,46 @@ const canModifyProject = (project: Project, userId: string) => {
       />
     );
   }
-  
+
   // If editing project, check if it's an idea or script and show appropriate component
   if (editingProject) {
-  const parsedData =
-    typeof editingProject.data === 'string'
-      ? JSON.parse(editingProject.data)
-      : editingProject.data;
+    const parsedData =
+      typeof editingProject.data === 'string'
+        ? JSON.parse(editingProject.data)
+        : editingProject.data;
 
-  const isIdeaProject = !parsedData?.script_content || parsedData?.source === 'IDEA_PROJECT';
-  const isApprovedIdea =
-    isIdeaProject && isIdeaApprovedByCEO(editingProject);
+    const isIdeaProject = !parsedData?.script_content || parsedData?.source === 'IDEA_PROJECT';
+    const isApprovedIdea =
+      isIdeaProject && isIdeaApprovedByCEO(editingProject);
 
-  // ✅ Approved idea → convert to script
-  if (isApprovedIdea) {
+    // ✅ Approved idea → convert to script
+    if (isApprovedIdea) {
+      return (
+        <CreateScript
+          project={editingProject}
+          mode="SCRIPT_FROM_APPROVED_IDEA"
+          onClose={() => setEditingProject(null)}
+          onSuccess={() => setEditingProject(null)}
+          creatorRole={Role.WRITER}
+        />
+      );
+    }
+
+    // ✅ Normal idea edit
+    if (isIdeaProject) {
+      return (
+        <CreateIdeaProject
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+          onSuccess={() => setEditingProject(null)}
+        />
+      );
+    }
+
+    // ✅ Normal script edit
     return (
       <CreateScript
         project={editingProject}
-        mode="SCRIPT_FROM_APPROVED_IDEA"
         onClose={() => setEditingProject(null)}
         onSuccess={() => setEditingProject(null)}
         creatorRole={Role.WRITER}
@@ -227,34 +249,12 @@ const canModifyProject = (project: Project, userId: string) => {
     );
   }
 
-  // ✅ Normal idea edit
-  if (isIdeaProject) {
-    return (
-      <CreateIdeaProject
-        project={editingProject}
-        onClose={() => setEditingProject(null)}
-        onSuccess={() => setEditingProject(null)}
-      />
-    );
-  }
-
-  // ✅ Normal script edit
-  return (
-    <CreateScript
-      project={editingProject}
-      onClose={() => setEditingProject(null)}
-      onSuccess={() => setEditingProject(null)}
-      creatorRole={Role.WRITER}
-    />
-  );
-}
-
   // If viewing project details
   if (selectedProject) {
     const isReadOnly = isProjectOpenedByReviewers(selectedProject);
     const parsedData = selectedProject.data;
     const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
-    
+
     return (
       <div className="space-y-6 animate-fade-in">
         {/* Back button */}
@@ -264,12 +264,12 @@ const canModifyProject = (project: Project, userId: string) => {
         >
           ← Back to My Work
         </button>
-        
+
         <div className="space-y-6">
           {/* Basic Info Section */}
           <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
             <h2 className="text-2xl font-black uppercase mb-4">Project Details</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Title</h3>
@@ -286,12 +286,12 @@ const canModifyProject = (project: Project, userId: string) => {
                 </p>
               </div>
               {selectedProject.data?.source !== 'IDEA_PROJECT' && (
-              <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
-                <p className="font-medium bg-slate-50 p-2">
-                  {selectedProject.editor_name || selectedProject.sub_editor_name || selectedProject.data?.editor_name || selectedProject.data?.sub_editor_name || '—'}
-                </p>
-              </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Editor</h3>
+                  <p className="font-medium bg-slate-50 p-2">
+                    {selectedProject.editor_name || selectedProject.sub_editor_name || selectedProject.data?.editor_name || selectedProject.data?.sub_editor_name || '—'}
+                  </p>
+                </div>
               )}
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Status</h3>
@@ -322,7 +322,7 @@ const canModifyProject = (project: Project, userId: string) => {
               </div>
             </div>
           </div>
-          
+
           {/* Script Content Section */}
           {(selectedProject.data?.script_content || selectedProject.data?.idea_description) && (
             <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -331,9 +331,9 @@ const canModifyProject = (project: Project, userId: string) => {
               </h3>
               <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
                 {selectedProject.data?.script_content || selectedProject.data?.idea_description ? (
-                  <div 
+                  <div
                     className="whitespace-pre-wrap font-sans text-sm"
-                    dangerouslySetInnerHTML={{ 
+                    dangerouslySetInnerHTML={{
                       __html: (() => {
                         let content = selectedProject.data?.script_content || selectedProject.data?.idea_description || 'No content available';
                         if (content !== 'No content available') {
@@ -348,14 +348,14 @@ const canModifyProject = (project: Project, userId: string) => {
                         }
                         return content;
                       })()
-                    }} 
+                    }}
                   />
                 ) : (
                   <pre className="whitespace-pre-wrap font-sans text-sm">
                     No content available
                   </pre>
                 )}
-                
+
                 {/* Show cinematographer comments if available */}
                 {selectedProject.data?.cine_comments && (
                   <div className="mt-2 pt-2 border-t border-slate-200">
@@ -366,7 +366,7 @@ const canModifyProject = (project: Project, userId: string) => {
               </div>
             </div>
           )}
-          
+
           {/* Workflow Status Section */}
           <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
             <h3 className="text-lg font-black uppercase mb-4">Workflow Status</h3>
@@ -400,13 +400,13 @@ const canModifyProject = (project: Project, userId: string) => {
               </div>
             </div>
           </div>
-          
+
           {/* Comments and Feedback Section */}
           <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
             <h3 className="text-xl font-black uppercase mb-6 border-b-2 border-black pb-3 text-slate-900">
               Project Comments & Feedback
             </h3>
-            
+
             {/* Display current project dates if they exist */}
             {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date) && (
               <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
@@ -432,14 +432,14 @@ const canModifyProject = (project: Project, userId: string) => {
                 </div>
               </div>
             )}
-            
+
             {/* Display comments */}
             {reviewComments.length > 0 ? (
               <div className="space-y-6 bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {reviewComments.map((comment, index) => {
                   // Determine the description based on stage and action
                   let description = `${comment.action} in ${comment.stage}`;
-                  
+
                   switch (comment.stage) {
                     case 'SCRIPT':
                       if (comment.action === 'SUBMITTED') {
@@ -510,7 +510,7 @@ const canModifyProject = (project: Project, userId: string) => {
                         description = `${comment.action} in ${comment.stage}`;
                       }
                   }
-                  
+
                   return (
                     <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
                       <div className="flex justify-between items-start">
@@ -554,7 +554,7 @@ const canModifyProject = (project: Project, userId: string) => {
       </div>
     );
   }
-  
+
   // List view
   return (
     <div className="space-y-6 animate-fade-in">
@@ -598,24 +598,24 @@ const canModifyProject = (project: Project, userId: string) => {
               key={task.id}
               onClick={async (e) => {
                 e.stopPropagation();
-                
+
                 // Check if this is a rework project that the writer can edit
                 const isReworkNotOpened = isReworkProject(task) && !isReworkOpenedByNextReviewer(task);
-                
+
                 if (canModifyProject(task, user.id) || isReworkNotOpened) {
                   // For rework projects or projects that can be modified, go directly to edit mode
                   setEditingProject(task);
                 } else {
                   // Otherwise, show the details view
                   setSelectedProject(task);
-                  
+
                   const { data, error } = await import('../../src/integrations/supabase/client')
                     .then(m => m.supabase)
                     .then(async (supabase) => {
                       // First, get the current user's ID
                       const { data: { session } } = await supabase.auth.getSession();
                       const currentUserId = session?.user?.id;
-                      
+
                       // Fetch all workflow history
                       const { data: historyData, error: historyError } = await supabase
                         .from('workflow_history')
@@ -623,11 +623,11 @@ const canModifyProject = (project: Project, userId: string) => {
                         .eq('project_id', task.id)
                         .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
                         .order('timestamp', { ascending: false });
-                      
+
                       if (historyError) {
                         throw historyError;
                       }
-                      
+
                       // Filter comments to show only relevant ones for the current user:
                       const filteredComments = historyData?.filter(comment => {
                         // For REWORK/REJECTED actions, only show if:
@@ -635,32 +635,32 @@ const canModifyProject = (project: Project, userId: string) => {
                         // 2. OR the project is assigned to the current user's role and user
                         if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
                           // Check if this rework was specifically for the current user
-                          const isForCurrentUser = task.assigned_to_user_id === currentUserId && 
-                                                  task.assigned_to_role === user.role;
-                          
+                          const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
+                            task.assigned_to_role === user.role;
+
                           // Check if the comment mentions the current user
                           const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
-                          
+
                           // Show if either condition is met
                           return isForCurrentUser || mentionsCurrentUser;
                         }
-                        
+
                         // Always show APPROVED comments (informative for everyone)
                         if (comment.action === 'APPROVED') {
                           return true;
                         }
-                        
+
                         // Show comments from the project creator
                         if (comment.actor_id === task.created_by_user_id) {
                           return true;
                         }
-                        
+
                         return false;
                       }) || [];
-                      
+
                       return { data: filteredComments, error: null };
                     });
-                  
+
                   if (!error) {
                     setReviewComments(data || []);
                   }
@@ -671,35 +671,40 @@ const canModifyProject = (project: Project, userId: string) => {
               {/* HEADER */}
               <div className="flex justify-between items-start mb-4">
                 <span
-                  className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${
-                    task.channel === 'YOUTUBE'
+                  className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.channel === 'YOUTUBE'
                       ? 'bg-[#FF4F4F] text-white'
                       : task.channel === 'LINKEDIN'
-                      ? 'bg-[#0085FF] text-white'
-                      : 'bg-[#D946EF] text-white'
-                  }`}
+                        ? 'bg-[#0085FF] text-white'
+                        : 'bg-[#D946EF] text-white'
+                    }`}
                 >
                   {task.channel}
                 </span>
-                
+
+                {task.content_type === 'CREATIVE_ONLY' && (
+                  <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-yellow-400 text-black">
+                    CREATIVE
+                  </span>
+                )}
+
                 {/* Show IDEA badge for idea projects */}
                 {(task.data?.source === 'IDEA_PROJECT' || !task.data?.script_content) && (
                   <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                     IDEA
                   </span>
                 )}
-                
+
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.priority === 'HIGH'
-                        ? 'bg-red-500 text-white'
-                        : task.priority === 'NORMAL'
-                            ? 'bg-yellow-500 text-black'
-                            : 'bg-green-500 text-white'
+                    ? 'bg-red-500 text-white'
+                    : task.priority === 'NORMAL'
+                      ? 'bg-yellow-500 text-black'
+                      : 'bg-green-500 text-white'
                     }`}
                 >
                   {task.priority}
                 </span>
-                
+
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 ${
                     // Use role-specific workflow state detection
@@ -714,7 +719,7 @@ const canModifyProject = (project: Project, userId: string) => {
                       else
                         return 'bg-blue-100 text-blue-700 border-blue-600';
                     })()
-                  }`}
+                    }`}
                 >
                   {(() => {
                     const workflowState = getWorkflowStateForRole(task, user.role);
@@ -739,7 +744,7 @@ const canModifyProject = (project: Project, userId: string) => {
               {task.data?.brief && (
                 <p className="text-slate-600 mb-4">{task.data.brief}</p>
               )}
-              
+
               {/* CINEMATOGRAPHER COMMENTS PREVIEW */}
               {task.data?.cine_comments && (
                 <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
@@ -749,7 +754,7 @@ const canModifyProject = (project: Project, userId: string) => {
                   </p>
                 </div>
               )}
-              
+
               {/* Show live URL for completed projects */}
               {task.status === 'DONE' && task.data?.live_url && (
                 <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
@@ -782,19 +787,19 @@ const canModifyProject = (project: Project, userId: string) => {
                     </p>
                   </div>
                 )}
-                
+
                 <div className="flex items-center font-bold text-slate-500 uppercase">
                   <Clock className="w-4 h-4 mr-2" />
                   Created: {format(new Date(task.created_at), 'MMM dd, yyyy h:mm a')}
                 </div>
 
                 <div className="flex items-center space-x-3 self-end">
-                  <button 
+                  <button
                     className="flex items-center font-bold uppercase text-blue-600 hover:text-blue-800"
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedProject(task);
-                      
+
                       // Fetch comments for the selected project
                       const fetchComments = async () => {
                         const { data, error } = await import('../../src/integrations/supabase/client')
@@ -803,7 +808,7 @@ const canModifyProject = (project: Project, userId: string) => {
                             // First, get the current user's ID
                             const { data: { session } } = await supabase.auth.getSession();
                             const currentUserId = session?.user?.id;
-                            
+
                             // Fetch all workflow history
                             const { data: historyData, error: historyError } = await supabase
                               .from('workflow_history')
@@ -811,11 +816,11 @@ const canModifyProject = (project: Project, userId: string) => {
                               .eq('project_id', task.id)
                               .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
                               .order('timestamp', { ascending: false });
-                            
+
                             if (historyError) {
                               throw historyError;
                             }
-                            
+
                             // Filter comments to show only relevant ones for the current user:
                             const filteredComments = historyData?.filter(comment => {
                               // For REWORK/REJECTED actions, only show if:
@@ -823,81 +828,81 @@ const canModifyProject = (project: Project, userId: string) => {
                               // 2. OR the project is assigned to the current user's role and user
                               if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
                                 // Check if this rework was specifically for the current user
-                                const isForCurrentUser = task.assigned_to_user_id === currentUserId && 
-                                                        task.assigned_to_role === user.role;
-                                
+                                const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
+                                  task.assigned_to_role === user.role;
+
                                 // Check if the comment mentions the current user
                                 const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
-                                
+
                                 // Show if either condition is met
                                 return isForCurrentUser || mentionsCurrentUser;
                               }
-                              
+
                               // Always show APPROVED comments (informative for everyone)
                               if (comment.action === 'APPROVED') {
                                 return true;
                               }
-                              
+
                               // Show comments from the project creator
                               if (comment.actor_id === task.created_by_user_id) {
                                 return true;
                               }
-                              
+
                               return false;
                             }) || [];
-                            
+
                             return { data: filteredComments, error: null };
                           });
-                        
+
                         if (!error) {
                           setReviewComments(data || []);
                         }
                       };
-                      
+
                       fetchComments();
                     }}
                   >
                     <FileText className="w-4 h-4 mr-2" />
                     View
                   </button>
-   {canModifyProject(task, user.id) && (
-  <button
-    className="flex items-center font-bold uppercase text-green-600 hover:text-green-800"
-    onClick={(e) => {
-      e.stopPropagation();
-      setEditingProject(task);
-    }}
-  >
-    <Edit3 className="w-4 h-4 mr-2" />
-    Edit
-  </button>
-)}
+                  {canModifyProject(task, user.id) && (
+                    <button
+                      className="flex items-center font-bold uppercase text-green-600 hover:text-green-800"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingProject(task);
+                      }}
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Edit
+                    </button>
+                  )}
 
 
-                  
-    {canModifyProject(task, user.id) && (
-  <button
-    className="flex items-center font-bold uppercase text-red-600 hover:text-red-800"
-    onClick={async (e) => {
-      e.stopPropagation();
 
-      if (!window.confirm(`Are you sure you want to delete the project "${task.title}"? This action cannot be undone.`)) {
-        return;
-      }
+                  {canModifyProject(task, user.id) && (
+                    <button
+                      className="flex items-center font-bold uppercase text-red-600 hover:text-red-800"
+                      onClick={async (e) => {
+                        e.stopPropagation();
 
-      try {
-        await db.projects.delete(task.id);
-        window.location.reload();
-      } catch (error) {
-        console.error('Error deleting project:', error);
-        alert('Failed to delete project. Please try again.');
-      }
-    }}
-  >
-    <Trash2 className="w-4 h-4 mr-2" />
-    Delete
-  </button>
-)}
+                        if (!window.confirm(`Are you sure you want to delete the project "${task.title}"? This action cannot be undone.`)) {
+                          return;
+                        }
+
+                        try {
+                          await db.projects.delete(task.id);
+                          window.location.reload();
+                        } catch (error) {
+                          console.error('Error deleting project:', error);
+                          alert('Failed to delete project. Please try again.');
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </button>
+                  )}
 
                 </div>
               </div>

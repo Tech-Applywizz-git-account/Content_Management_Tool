@@ -10,7 +10,7 @@ interface Props {
     projects: Project[];
     scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
-    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null;
+    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | 'CINE' | null;
 }
 
 const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
@@ -22,6 +22,11 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
         if (activeFilter === 'SCRIPTS') {
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
+        }
+        
+        if (activeFilter === 'CINE') {
+            // Use the script projects and filter for CINE stage when CINE filter is active
+            return (scriptProjects || []).filter(p => p.current_stage === 'CINEMATOGRAPHY');
         }
         
         // When no filter, show all projects assigned to this sub-editor (including completed)
@@ -84,7 +89,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                         <div
                             key={project.id}
                             onClick={() => {
-                                if (activeFilter === 'SCRIPTS') {
+                                if (activeFilter === 'SCRIPTS' || activeFilter === 'CINE') {
                                     setSelectedProject(project);
                                 } else {
                                     onSelectProject(project);
@@ -200,7 +205,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+                                        {activeFilter === 'SCRIPTS' || activeFilter === 'CINE' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
                                     </button>
                                 </div>
                             </div>

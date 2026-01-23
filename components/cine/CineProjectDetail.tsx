@@ -45,10 +45,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
     const [videoLink, setVideoLink] = useState(processedProject.video_link || '');
     const [cineComments, setCineComments] = useState('');
-    const [editingActorDetails, setEditingActorDetails] = useState(processedProject.data?.actor_details || '');
-    const [editingLocationDetails, setEditingLocationDetails] = useState(processedProject.data?.location_details || '');
-    const [editingLightingDetails, setEditingLightingDetails] = useState(processedProject.data?.lighting_details || '');
-    const [editingCameraAngles, setEditingCameraAngles] = useState(processedProject.data?.camera_angles || '');
+    const [editingActorDetails, setEditingActorDetails] = useState(processedProject.data?.actor ?? '');
+    const [editingLocationDetails, setEditingLocationDetails] = useState(processedProject.data?.location ?? '');
+    const [editingLightingDetails, setEditingLightingDetails] = useState(processedProject.data?.lighting ?? '');
+    const [editingCameraAngles, setEditingCameraAngles] = useState(processedProject.data?.angles ?? '');
 
     // Helper function to decode HTML entities
     const decodeHtmlEntities = (html) => {
@@ -75,14 +75,24 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         setShootDate(processedProject.shoot_date || '');
         setVideoLink(processedProject.video_link || '');
         setCineComments(''); // Reset comments when project changes
-        setEditingActorDetails(processedProject.data?.actor_details || '');
-        setEditingLocationDetails(processedProject.data?.location_details || '');
-        setEditingLightingDetails(processedProject.data?.lighting_details || '');
-        setEditingCameraAngles(processedProject.data?.camera_angles || '');
+        setEditingActorDetails(processedProject.data?.actor ?? '');
+        setEditingLocationDetails(processedProject.data?.location ?? '');
+        setEditingLightingDetails(processedProject.data?.lighting ?? '');
+        setEditingCameraAngles(processedProject.data?.angles ?? '');
         setScriptContent(decodeHtmlEntities(processedProject.data.script_content || ''));
         setIsScriptEditing(false); // Reset edit mode when project changes
         setLocalProject(processedProject);
     }, [initialProject]);
+
+    // Ensure state is updated when localProject changes
+    useEffect(() => {
+        if (localProject.data) {
+            setEditingActorDetails(localProject.data.actor ?? '');
+            setEditingLocationDetails(localProject.data.location ?? '');
+            setEditingLightingDetails(localProject.data.lighting ?? '');
+            setEditingCameraAngles(localProject.data.angles ?? '');
+        }
+    }, [localProject.data]);
 
     const handleSetShootDate = async () => {
         if (!shootDate) {
@@ -269,8 +279,22 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             // Update the project data separately to clear rework metadata
             await db.updateProjectData(localProject.id, updatedProjectData);
 
-            // Advance workflow to next stage based on project settings
-            await db.advanceWorkflow(localProject.id, comment);
+            // Update project stage directly to VIDEO_EDITING since cine uploaded the video
+            await db.workflow.recordAction(
+                localProject.id,
+                WorkflowStage.CINEMATOGRAPHY, // Current stage
+                user.id,
+                user.email || user.id, // userName
+                'CINE_VIDEO_UPLOADED', // specific action
+                `Raw video uploaded: ${videoLink}`
+            );
+            
+            // Update project to move to VIDEO_EDITING stage
+            await db.projects.update(localProject.id, {
+                current_stage: WorkflowStage.VIDEO_EDITING,
+                assigned_to_role: Role.EDITOR,
+                status: TaskStatus.WAITING_APPROVAL
+            });
 
             // ✅ Update local state ONLY after success
             setLocalProject(prev => ({
@@ -357,10 +381,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             // Update project data with the cinematography instructions
             const updatedData = {
                 ...localProject.data,
-                actor_details: editingActorDetails,
-                location_details: editingLocationDetails,
-                lighting_details: editingLightingDetails,
-                camera_angles: editingCameraAngles
+                actor: editingActorDetails,
+                location: editingLocationDetails,
+                lighting: editingLightingDetails,
+                angles: editingCameraAngles
             };
 
             await db.updateProjectData(localProject.id, updatedData);
@@ -371,10 +395,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             }));
             
             // Update editing states to match saved values
-            setEditingActorDetails(updatedData.actor_details || '');
-            setEditingLocationDetails(updatedData.location_details || '');
-            setEditingLightingDetails(updatedData.lighting_details || '');
-            setEditingCameraAngles(updatedData.camera_angles || '');
+            setEditingActorDetails(updatedData.actor ?? '');
+            setEditingLocationDetails(updatedData.location ?? '');
+            setEditingLightingDetails(updatedData.lighting ?? '');
+            setEditingCameraAngles(updatedData.angles ?? '');
             
             setPopupMessage('Cinematographer instructions updated successfully');
             setStageName('Instructions Updated');
@@ -700,8 +724,28 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 </div>
                             )}
                             
-                            {/* Allow editing if user has permission and project hasn't completed footage upload */}
-                            {!localProject.video_link && canEdit && (
+                            {/* Show thumbnail link if already submitted */}
+                            {localProject.data?.cine_thumbnail_link && (
+                                <div className="bg-green-50 border-2 border-green-600 p-4">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <FileText className="w-5 h-5 text-green-800" />
+                                            <p className="text-sm font-bold uppercase text-green-800">✓ Thumbnail Link Submitted</p>
+                                        </div>
+                                        <a
+                                            href={localProject.data.cine_thumbnail_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block p-3 bg-white border-2 border-green-400 text-green-600 font-medium hover:bg-green-50 transition-colors break-all"
+                                        >
+                                            {localProject.data.cine_thumbnail_link}
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* Allow editing if user has permission, project hasn't completed footage upload, and thumbnail link hasn't been submitted */}
+                            {!localProject.video_link && canEdit && !localProject.data?.cine_thumbnail_link && (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700 uppercase">Thumbnail Link</label>
@@ -784,58 +828,81 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     {localProject.data?.writer_name || 'Writer name not available'}
                                 </p>
                             </div>
-                                            
-                            {/* Cinematographer can edit instructions */}
+                                                    
+                            {/* Fields that can be edited by cinematographer */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
+                                    {canEdit ? (
+                                        <input
+                                            type="text"
+                                            value={editingActorDetails}
+                                            onChange={(e) => setEditingActorDetails(e.target.value)}
+                                            placeholder="e.g. Female presenter, 30s, business attire"
+                                            className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    ) : (
+                                        <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                                            {localProject.data?.actor ?? 'Not specified'}
+                                        </p>
+                                    )}
+                                </div>
+                                                            
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
+                                    {canEdit ? (
+                                        <input
+                                            type="text"
+                                            value={editingLocationDetails}
+                                            onChange={(e) => setEditingLocationDetails(e.target.value)}
+                                            placeholder="e.g. Office, studio, outdoor street"
+                                            className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    ) : (
+                                        <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                                            {localProject.data?.location ?? 'Not specified'}
+                                        </p>
+                                    )}
+                                </div>
+                                                            
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
+                                    {canEdit ? (
+                                        <input
+                                            type="text"
+                                            value={editingLightingDetails}
+                                            onChange={(e) => setEditingLightingDetails(e.target.value)}
+                                            placeholder="e.g. Soft daylight, cinematic, low-key"
+                                            className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    ) : (
+                                        <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                                            {localProject.data?.lighting ?? 'Not specified'}
+                                        </p>
+                                    )}
+                                </div>
+                                                            
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
+                                    {canEdit ? (
+                                        <input
+                                            type="text"
+                                            value={editingCameraAngles}
+                                            onChange={(e) => setEditingCameraAngles(e.target.value)}
+                                            placeholder="e.g. Medium shot, close-up, over-the-shoulder"
+                                            className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
+                                        />
+                                    ) : (
+                                        <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                                            {localProject.data?.angles ?? 'Not specified'}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                                                    
+                            {/* Save button only when editing is allowed */}
                             {canEdit && (
-                                <div className="space-y-4 mt-6 pt-4 border-t-2 border-gray-200">
-                                    <h3 className="text-lg font-black uppercase text-slate-800">Edit Instructions</h3>
-                                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
-                                            <input
-                                                type="text"
-                                                value={editingActorDetails}
-                                                onChange={(e) => setEditingActorDetails(e.target.value)}
-                                                placeholder="e.g. Female presenter, 30s, business attire"
-                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
-                                            />
-                                        </div>
-                                                        
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
-                                            <input
-                                                type="text"
-                                                value={editingLocationDetails}
-                                                onChange={(e) => setEditingLocationDetails(e.target.value)}
-                                                placeholder="e.g. Office, studio, outdoor street"
-                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
-                                            />
-                                        </div>
-                                                        
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
-                                            <input
-                                                type="text"
-                                                value={editingLightingDetails}
-                                                onChange={(e) => setEditingLightingDetails(e.target.value)}
-                                                placeholder="e.g. Soft daylight, cinematic, low-key"
-                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
-                                            />
-                                        </div>
-                                                        
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
-                                            <input
-                                                type="text"
-                                                value={editingCameraAngles}
-                                                onChange={(e) => setEditingCameraAngles(e.target.value)}
-                                                placeholder="e.g. Medium shot, close-up, over-the-shoulder"
-                                                className="w-full p-2 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                                    
+                                <div className="pt-4">
                                     <button
                                         onClick={handleSaveCinematographyInstructions}
                                         className="px-4 py-2 bg-[#0085FF] text-white font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
