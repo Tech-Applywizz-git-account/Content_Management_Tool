@@ -30,10 +30,10 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
   const [datedProjects, setDatedProjects] = useState<Project[]>([]);
 
   /**
-   * Only keep projects that have POST dates
+   * Only keep projects that have any of the 3 target dates
    */
   useEffect(() => {
-    const filteredProjects = projects.filter(p => p.post_scheduled_date);
+    const filteredProjects = projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date);
     setDatedProjects(filteredProjects);
   }, [projects]);
 
@@ -42,24 +42,71 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   /**
-   * Get projects for a calendar day (POST date only)
+   * Get projects for a calendar day with date type info
    */
   const getProjectsForDay = (day: Date) => {
     const dayKey = format(day, 'yyyy-MM-dd');
+    const dayEntries: any[] = [];
 
-    return datedProjects
-      .filter(
-        project => {
-          const projectDate = toDateKey(project.post_scheduled_date);
-          return projectDate === dayKey;
-        }
-      )
-      .map(project => ({
-        id: project.id,
-        title: project.title,
-        niche: project.data?.niche as string,
-        niche_other: project.data?.niche_other as string
-      }));
+    datedProjects.forEach(project => {
+      // Check Shoot Date
+      if (toDateKey(project.shoot_date) === dayKey) {
+        dayEntries.push({
+          id: `${project.id}-shoot`,
+          projectId: project.id,
+          title: project.title,
+          type: 'SHOOT',
+          niche: project.data?.niche as string,
+          niche_other: project.data?.niche_other as string
+        });
+      }
+      // Check Delivery Date
+      if (toDateKey(project.delivery_date) === dayKey) {
+        dayEntries.push({
+          id: `${project.id}-delivery`,
+          projectId: project.id,
+          title: project.title,
+          type: 'DELIVERY',
+          niche: project.data?.niche as string,
+          niche_other: project.data?.niche_other as string
+        });
+      }
+      // Check Post Date
+      if (toDateKey(project.post_scheduled_date) === dayKey) {
+        dayEntries.push({
+          id: `${project.id}-post`,
+          projectId: project.id,
+          title: project.title,
+          type: 'POST',
+          niche: project.data?.niche as string,
+          niche_other: project.data?.niche_other as string
+        });
+      }
+    });
+
+    return dayEntries;
+  };
+
+  const getEntryStyles = (type: string) => {
+    switch (type) {
+      case 'SHOOT':
+        return 'bg-blue-600 from-blue-600 to-blue-700';
+      case 'DELIVERY':
+        return 'bg-emerald-600 from-emerald-600 to-emerald-700';
+      case 'POST':
+        return 'bg-purple-600 from-purple-600 to-indigo-700';
+      default:
+        return 'bg-slate-600';
+    }
+  };
+
+  const getLabel = (type: string) => {
+    switch (type) {
+      case 'SHOOT': return 'SHOOT';
+      case 'DELIVERY': return 'DELV';
+      case 'POST': return 'POST';
+      default: return '';
+    }
   };
 
   /**
@@ -81,9 +128,27 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <h1 className="text-4xl font-black uppercase text-slate-900">
-        Posting Calendar
-      </h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-4xl font-black uppercase text-slate-900">
+          Workflow Calendar
+        </h1>
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 bg-white border-2 border-black p-3 text-[10px] font-black uppercase">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-600 border border-black"></div>
+            <span>Shoot</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-emerald-600 border border-black"></div>
+            <span>Delivery</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-purple-600 border border-black"></div>
+            <span>Post</span>
+          </div>
+        </div>
+      </div>
 
       {/* Month Navigation */}
       <div className="flex items-center justify-between border-2 border-black p-4 bg-white">
@@ -123,13 +188,13 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
         {/* Calendar Days */}
         <div className="grid grid-cols-7">
           {daysInMonth.map(day => {
-            const dayProjects = getProjectsForDay(day);
+            const dayEntries = getProjectsForDay(day);
             const isToday = isSameDay(day, new Date());
 
             return (
               <div
                 key={day.toISOString()}
-                className={`min-h-[100px] p-2 border-r border-b border-black last:border-r-0
+                className={`min-h-[120px] p-2 border-r border-b border-black last:border-r-0
                   ${!isSameMonth(day, currentDate) ? 'bg-slate-50' : ''}
                   ${isToday ? 'bg-amber-50 border-amber-500' : ''}`}
               >
@@ -141,17 +206,18 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
                 </div>
 
                 <div className="space-y-1">
-                  {dayProjects.map(project => (
+                  {dayEntries.map(entry => (
                     <div
-                      key={project.id}
-                      className="text-xs p-1.5 bg-gradient-to-br from-purple-600 to-indigo-700 text-white font-bold rounded shadow-sm border border-black/10 hover:scale-[1.02] transition-transform cursor-default"
+                      key={entry.id}
+                      className={`text-[10px] p-1.5 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white font-bold rounded shadow-sm border border-black/10 hover:scale-[1.02] transition-transform cursor-default`}
                     >
-                      <div className="line-clamp-2 leading-tight">
-                        {project.title}
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="bg-white/20 px-1 rounded text-[8px] tracking-tighter">{getLabel(entry.type)}</span>
+                        <div className="line-clamp-1 flex-1 text-right">{entry.title}</div>
                       </div>
-                      {project.niche && (
-                        <div className="text-[9px] font-black uppercase tracking-wider mt-0.5 opacity-80 bg-white/20 px-1 py-0.5 rounded w-fit">
-                          {formatNiche(project.niche, project.niche_other)}
+                      {entry.niche && (
+                        <div className="text-[7px] font-black uppercase tracking-wider opacity-80 truncate">
+                          {formatNiche(entry.niche, entry.niche_other)}
                         </div>
                       )}
                     </div>

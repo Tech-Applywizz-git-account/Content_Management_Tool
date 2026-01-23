@@ -36,6 +36,7 @@ const MATRIX: Record<Role, Record<string, boolean>> = {
     [Role.WRITER]: { create: true, approve: false, work: true, publish: false, assign: false },
     [Role.CINE]: { create: false, approve: false, work: true, publish: false, assign: false },
     [Role.EDITOR]: { create: false, approve: false, work: true, publish: false, assign: false },
+    [Role.SUB_EDITOR]: { create: false, approve: false, work: true, publish: false, assign: false },
     [Role.DESIGNER]: { create: false, approve: false, work: true, publish: false, assign: false },
     [Role.CMO]: { create: false, approve: true, work: false, publish: false, assign: true },
     [Role.CEO]: { create: false, approve: true, work: false, publish: false, assign: true },
@@ -85,7 +86,7 @@ const RolesMatrix: React.FC = () => {
                                     className={`transition-colors hover:bg-blue-50/50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/80'}`}
                                 >
                                     <td className="px-10 py-8 font-semibold text-sm text-slate-900 flex items-center">
-                                        <span className={`w-2.5 h-2.5 rounded-full mr-4 ${MATRIX[role].approve ? 'bg-purple-500 shadow-sm shadow-purple-200' : MATRIX[role].publish ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-slate-300'}`}></span>
+                                        <span className={`w-2.5 h-2.5 rounded-full mr-4 ${MATRIX[role]?.approve ? 'bg-purple-500 shadow-sm shadow-purple-200' : MATRIX[role]?.publish ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-slate-300'}`}></span>
                                         {role}
                                     </td>
                                     {PERMISSIONS.map(p => {

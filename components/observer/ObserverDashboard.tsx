@@ -9,10 +9,33 @@ interface ObserverDashboardProps {
     onLogout: () => void;
 }
 
+import { useNavigate, useLocation } from 'react-router-dom';
+
 const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentView, setCurrentView] = useState<'overview' | 'projects' | 'approvals' | 'calendar'>('overview');
+
+    // Determine currentView from URL path
+    const getActiveViewFromPath = () => {
+        const path = location.pathname;
+        if (path.endsWith('/projects')) return 'projects';
+        if (path.endsWith('/approvals')) return 'approvals';
+        if (path.endsWith('/calendar')) return 'calendar';
+        return 'overview';
+    };
+
+    const currentView = getActiveViewFromPath();
+
+    const handleViewChange = (view: string) => {
+        const rolePath = user.role.toLowerCase();
+        if (view === 'overview') {
+            navigate(`/${rolePath}`);
+        } else {
+            navigate(`/${rolePath}/${view}`);
+        }
+    };
     const [projectFilter, setProjectFilter] = useState<'all' | 'pending' | 'approved' | 'inProduction' | 'posted'>('all');
 
     useEffect(() => {
@@ -28,7 +51,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
             })
             .subscribe();
 
-        return () => { try { supabase.removeChannel(subscription); } catch (e) {} };
+        return () => { try { supabase.removeChannel(subscription); } catch (e) { } };
     }, []);
 
     const loadData = async () => {
@@ -96,13 +119,13 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                             <p className="text-xs text-slate-500">{fullTitle}</p>
                         </div>
                         <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('Logout button clicked in ObserverDashboard');
-                            onLogout();
-                          }}
-                          className="px-6 py-2 bg-black text-white border-2 border-black font-bold uppercase text-sm hover:bg-slate-800 transition-colors shadow-[4px_4px_0px_0px_rgba(100,100,100,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('Logout button clicked in ObserverDashboard');
+                                onLogout();
+                            }}
+                            className="px-6 py-2 bg-black text-white border-2 border-black font-bold uppercase text-sm hover:bg-slate-800 transition-colors shadow-[4px_4px_0px_0px_rgba(100,100,100,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]"
                         >
                             Logout
                         </button>
@@ -125,7 +148,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                 {/* Navigation Tabs */}
                 <div className="flex space-x-2 mb-8">
                     <button
-                        onClick={() => setCurrentView('overview')}
+                        onClick={() => handleViewChange('overview')}
                         className={`px-6 py-3 font-bold uppercase text-sm border-2 border-black transition-all ${currentView === 'overview'
                             ? 'bg-purple-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                             : 'bg-white text-slate-900 hover:bg-slate-100'
@@ -134,7 +157,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                         📊 Overview
                     </button>
                     <button
-                        onClick={() => setCurrentView('projects')}
+                        onClick={() => handleViewChange('projects')}
                         className={`px-6 py-3 font-bold uppercase text-sm border-2 border-black transition-all ${currentView === 'projects'
                             ? 'bg-purple-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                             : 'bg-white text-slate-900 hover:bg-slate-100'
@@ -143,7 +166,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                         🗂️ All Projects
                     </button>
                     <button
-                        onClick={() => setCurrentView('approvals')}
+                        onClick={() => handleViewChange('approvals')}
                         className={`px-6 py-3 font-bold uppercase text-sm border-2 border-black transition-all ${currentView === 'approvals'
                             ? 'bg-purple-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                             : 'bg-white text-slate-900 hover:bg-slate-100'
@@ -152,7 +175,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                         ✅ Approvals
                     </button>
                     <button
-                        onClick={() => setCurrentView('calendar')}
+                        onClick={() => handleViewChange('calendar')}
                         className={`px-6 py-3 font-bold uppercase text-sm border-2 border-black transition-all ${currentView === 'calendar'
                             ? 'bg-purple-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                             : 'bg-white text-slate-900 hover:bg-slate-100'
@@ -170,7 +193,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                             <button
                                 onClick={() => {
                                     setProjectFilter('pending');
-                                    setCurrentView('projects');
+                                    handleViewChange('projects');
                                 }}
                                 className="bg-amber-400 border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-left w-full"
                             >
@@ -184,7 +207,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                             <button
                                 onClick={() => {
                                     setProjectFilter('approved');
-                                    setCurrentView('projects');
+                                    handleViewChange('projects');
                                 }}
                                 className="bg-green-400 border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-left w-full"
                             >
@@ -198,7 +221,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                             <button
                                 onClick={() => {
                                     setProjectFilter('inProduction');
-                                    setCurrentView('projects');
+                                    handleViewChange('projects');
                                 }}
                                 className="bg-blue-400 border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-left w-full"
                             >
@@ -212,7 +235,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                             <button
                                 onClick={() => {
                                     setProjectFilter('posted');
-                                    setCurrentView('projects');
+                                    handleViewChange('projects');
                                 }}
                                 className="bg-purple-400 border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-left w-full"
                             >

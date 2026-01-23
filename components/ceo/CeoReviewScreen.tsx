@@ -367,6 +367,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     };
 
     const getReworkOptions = () => {
+        // Check if this is a creative project (either designer-initiated or creative-only content type)
+        const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
+        
         // For designer-initiated projects, always send back to Designer
         if (project.data?.source === 'DESIGNER_INITIATED') {
             return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
@@ -385,6 +388,11 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
         // 2. Final Review Stage: Can go to CMO, Cine, Editor, or Designer. CANNOT go to Writer.
         if (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+            // For creative projects, only show Designer as an option
+            if (isCreativeProject) {
+                return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
+            }
+            
             const options = [
                 { value: WorkflowStage.FINAL_REVIEW_CMO, label: 'CMO (Review Feedback)' },
             ];

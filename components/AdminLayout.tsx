@@ -13,18 +13,44 @@ import {
 } from 'lucide-react';
 
 
+import { useNavigate, useLocation } from 'react-router-dom';
+
 export type AdminView = 'DASH' | 'USERS' | 'USER_ADD' | 'ROLES' | 'LOGS' | 'SETTINGS';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
   user: User;
-  currentView: AdminView;
-  onNavigate: (view: AdminView) => void;
   onLogout: () => void;
 }
 
-const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, currentView, onNavigate, onLogout }) => {
+const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, onLogout }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Determine currentView from URL path
+  const getActiveViewFromPath = (): AdminView => {
+    const path = location.pathname;
+    if (path.includes('/admin/users/add')) return 'USER_ADD';
+    if (path.includes('/admin/users')) return 'USERS';
+    if (path.includes('/admin/roles')) return 'ROLES';
+    if (path.includes('/admin/logs')) return 'LOGS';
+    if (path.includes('/admin/settings')) return 'SETTINGS';
+    return 'DASH';
+  };
+
+  const currentView = getActiveViewFromPath();
+
+  const handleNavigate = (view: AdminView) => {
+    switch (view) {
+      case 'DASH': navigate('/admin'); break;
+      case 'USERS': navigate('/admin/users'); break;
+      case 'USER_ADD': navigate('/admin/users/add'); break;
+      case 'ROLES': navigate('/admin/roles'); break;
+      case 'LOGS': navigate('/admin/logs'); break;
+      case 'SETTINGS': navigate('/admin/settings'); break;
+    }
+  };
 
   const navItems = [
     { id: 'DASH', label: 'Dashboard', icon: LayoutDashboard },
@@ -51,10 +77,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, currentView, 
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id as AdminView)}
+              onClick={() => handleNavigate(item.id as AdminView)}
               className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-md transition-colors ${currentView === item.id || (currentView === 'USER_ADD' && item.id === 'USERS')
-                  ? 'bg-red-600 text-white shadow-md shadow-red-900/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'bg-red-600 text-white shadow-md shadow-red-900/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
                 }`}
             >
               <item.icon className="w-5 h-5" />
@@ -72,7 +98,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, currentView, 
               <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
               <p className="text-xs text-slate-500 truncate">Administrator</p>
             </div>
-  
+
           </div>
           <button
             onClick={(e) => {
@@ -108,7 +134,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, currentView, 
             {navItems.map((item) => (
               <button
                 key={item.id}
-                onClick={() => { onNavigate(item.id as AdminView); setIsMobileMenuOpen(false); }}
+                onClick={() => { handleNavigate(item.id as AdminView); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-colors ${currentView === item.id ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
               >

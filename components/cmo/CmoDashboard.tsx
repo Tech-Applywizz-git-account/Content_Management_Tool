@@ -15,10 +15,11 @@ import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 
 interface Props {
-  user: { full_name: string; role: Role };
+  user: { id: string; full_name: string; role: Role };
   inboxProjects: Project[];
   historyProjects: Project[];
   onRefresh: () => void;
@@ -27,68 +28,54 @@ interface Props {
   allProjects?: Project[];
 }
 
-const STORAGE_KEY_PREFIX = 'cmo_dashboard_view_';
-
 const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout, allProjects }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
+
+  // Determine activeView from URL path
+  const getActiveViewFromPath = () => {
+    const path = location.pathname;
+    if (path.endsWith('/overview')) return 'overview';
+    if (path.endsWith('/calendar')) return 'calendar';
+    if (path.endsWith('/mywork')) return 'mywork';
+    return 'dashboard';
+  };
+
+  const activeView = getActiveViewFromPath();
+
   const [refreshKey, setRefreshKey] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
-  const viewStorageKey = `activeView:${user.role}`;
+
   // Use allProjects for dashboard view, fallback to inboxProjects
   // Deduplicate projects by ID to prevent duplicates
   const dashboardProjects = useMemo(() => {
     const projectsArray = allProjects || inboxProjects || [];
-    
+
     // Create a Map to deduplicate by project ID
     const uniqueProjects = new Map();
     projectsArray.forEach(project => {
       if (project && project.id) {
         // If project already exists, keep the one with more recent data
-        if (!uniqueProjects.has(project.id) || 
-            new Date(project.updated_at || project.created_at) > 
-            new Date(uniqueProjects.get(project.id).updated_at || uniqueProjects.get(project.id).created_at)) {
+        if (!uniqueProjects.has(project.id) ||
+          new Date(project.updated_at || project.created_at) >
+          new Date(uniqueProjects.get(project.id).updated_at || uniqueProjects.get(project.id).created_at)) {
           uniqueProjects.set(project.id, project);
         }
       }
     });
-    
-    console.log('CMO Dashboard - Raw data sources:');
-    console.log('  allProjects count:', allProjects?.length || 0);
-    console.log('  inboxProjects count:', inboxProjects?.length || 0);
-    console.log('  Deduplicated dashboardProjects count:', uniqueProjects.size);
-    
-    // Log duplicate projects if found
-    const projectIdCounts = new Map();
-    projectsArray.forEach(p => {
-      if (p && p.id) {
-        projectIdCounts.set(p.id, (projectIdCounts.get(p.id) || 0) + 1);
-      }
-    });
-    
-    const duplicates = Array.from(projectIdCounts.entries())
-      .filter(([_, count]) => count > 1)
-      .map(([id, count]) => ({ id, count }));
-    
-    if (duplicates.length > 0) {
-      console.log('⚠️ Found duplicate projects:', duplicates);
-      duplicates.forEach(({ id, count }) => {
-        const duplicateProjects = projectsArray.filter(p => p?.id === id);
-        console.log(`  Project ${id} appears ${count} times:`);
-        duplicateProjects.forEach((p, index) => {
-          console.log(`    ${index + 1}. Source: ${allProjects?.some(ap => ap?.id === id) ? 'allProjects' : 'inboxProjects'}, Title: ${p?.title}`);
-        });
-      });
-    }
-    
+
     return Array.from(uniqueProjects.values());
   }, [allProjects, inboxProjects]);
+
+
   const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY' | 'PROJECT_DETAILS'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());
   const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'SHOOT' | 'EDITOR'>('PENDING');
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
   const [isCreatingScript, setIsCreatingScript] = useState(false);
-  // State for counts
   const [approvedCount, setApprovedCount] = useState(0);
 
   // Helper function to check if rework was initiated by CMO
@@ -97,18 +84,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   };
 
   const handleInternalRefresh = async () => {
-    console.log('🔄 CMO Dashboard: Refresh button clicked');
-    console.log('🔄 CMO Dashboard: Calling onRefresh() to fetch data from Supabase');
-    await onRefresh(); // MUST refetch from Supabase
-    console.log('✅ CMO Dashboard: Data fetch completed');
-
-    console.log('🔄 CMO Dashboard: Reloading counts');
-    await loadCounts(); // Also reload counts
-    console.log('✅ CMO Dashboard: Counts reloaded');
-
-    console.log('🔄 CMO Dashboard: Updating refresh key to force UI re-render');
-    setRefreshKey(prev => prev + 1); // force UI re-render
-    console.log('✅ CMO Dashboard: Refresh completed');
+    await onRefresh();
+    await loadCounts();
+    setRefreshKey(prev => prev + 1);
   };
 
   // Popup state
@@ -116,32 +94,55 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
 
-  const getStoredView = () => {
-    if (typeof window === 'undefined') return 'dashboard';
-    return localStorage.getItem(viewStorageKey) || 'dashboard';
-  };
-  const [activeView, setActiveView] = useState<string>(getStoredView());
-  // Realtime: refresh CMO data when projects table changes
+  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
   useEffect(() => {
-    const subscription = supabase
-      .channel('public:projects:cmo_refresh')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
-        try { onRefresh(); } catch (e) { console.error('Failed to refresh CMO data', e); }
-      })
-      .subscribe();
+    const path = location.pathname;
+    const subPaths = path.split('/').filter(p => p !== '');
 
-    return () => { try { supabase.removeChannel(subscription); } catch (e) { } };
-  }, [onRefresh]);
+    // Pattern: /cmo/review/:id
+    const reviewIdx = subPaths.findIndex(p => p === 'review');
+    if (reviewIdx !== -1 && subPaths[reviewIdx + 1]) {
+      const id = subPaths[reviewIdx + 1];
+      const p = dashboardProjects.find(item => item.id === id);
+      if (p) {
+        setSelectedProject(p);
+        setViewMode('REVIEW');
+      }
+    }
+    // Pattern: /cmo/project/:id
+    else if (subPaths.findIndex(p => p === 'project') !== -1) {
+      const id = subPaths[subPaths.findIndex(p => p === 'project') + 1];
+      const p = dashboardProjects.find(item => item.id === id);
+      if (p) {
+        setSelectedProject(p);
+        setViewMode('PROJECT_DETAILS');
+      }
+    }
+    // Pattern: /cmo/history/:id
+    else if (subPaths.findIndex(p => p === 'history') !== -1) {
+      const id = subPaths[subPaths.findIndex(p => p === 'history') + 1];
+      const p = dashboardProjects.find(item => item.id === id);
+      if (p) {
+        setSelectedProject(p);
+        setSelectedHistory(historyMapRef.current.get(id));
+        setViewMode('HISTORY');
+      }
+    }
+    else if (dashboardProjects.length > 0) {
+      setSelectedProject(null);
+      setSelectedHistory(null);
+    }
+  }, [location.pathname, dashboardProjects]);
+
   const handleViewChange = (view: string) => {
-    setActiveView(view);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(viewStorageKey, view);
+    setSelectedProject(null);
+    const rolePath = user.role.toLowerCase();
+    if (view === 'dashboard') {
+      navigate(`/${rolePath}`);
+    } else {
+      navigate(`/${rolePath}/${view}`);
     }
   };
-
-  useEffect(() => {
-    setActiveView(getStoredView());
-  }, [viewStorageKey]);
 
   // Load filtered history projects
   useEffect(() => {
@@ -180,7 +181,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
       // Filter out idea projects (projects where data.source is 'IDEA_PROJECT')
       const filteredProjects = projects?.filter(project => project.data?.source !== 'IDEA_PROJECT') || [];
-      
+
       setFilteredHistoryProjects(filteredProjects);
     };
 
@@ -222,7 +223,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         console.error('Failed to fetch users:', error);
       }
     };
-    
+
     fetchUsers();
   }, []);
 
@@ -264,19 +265,19 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     // Prioritize final review projects (FINAL_REVIEW_CMO and POST_WRITER_REVIEW) at the top
     const isAFinalReview = a.current_stage === WorkflowStage.FINAL_REVIEW_CMO || a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
     const isBFinalReview = b.current_stage === WorkflowStage.FINAL_REVIEW_CMO || b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    
+
     if (isAFinalReview && !isBFinalReview) return -1;
     if (!isAFinalReview && isBFinalReview) return 1;
-    
+
     // If both are final review projects, prioritize POST_WRITER_REVIEW over FINAL_REVIEW_CMO
     if (isAFinalReview && isBFinalReview) {
       const isAPostWriterReview = a.current_stage === WorkflowStage.POST_WRITER_REVIEW;
       const isBPostWriterReview = b.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-      
+
       if (isAPostWriterReview && !isBPostWriterReview) return -1;
       if (!isAPostWriterReview && isBPostWriterReview) return 1;
     }
-    
+
     // For projects in the same category, sort by creation date (newest first)
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
@@ -316,13 +317,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
 
   const handleReview = (project: Project) => {
-    setViewMode('REVIEW');
-    setSelectedProject(project);
+    navigate(`/cmo/review/${project.id}`);
   };
 
   const handleBack = () => {
-    setSelectedProject(null);
-    setViewMode('REVIEW');
+    navigate('/cmo');
     onRefresh();
   };
 
@@ -545,9 +544,9 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
-                          {p.data?.source === 'DESIGNER_INITIATED' && (
+                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                             <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                              DESIGNER
+                              CREATIVE
                             </span>
                           )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -581,7 +580,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                               Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                             </div>
@@ -618,6 +617,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
+                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                              CREATIVE
+                            </span>
+                          )}
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                               'bg-[#D946EF] text-white'
@@ -648,7 +652,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                               Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                             </div>
@@ -685,7 +689,14 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                             </span>
                           )}
-                          <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                          {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                              CREATIVE
+                            </span>
+                          )}
+                          <span className={`text-xs font-black uppercase tracking-wider text-slate-400 ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'text-pink-500' : 'text-slate-400'}`}>
+                            {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
+                          </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
                               ? 'bg-red-500 text-white'
@@ -710,7 +721,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                               Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                             </div>
@@ -766,11 +777,21 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                 </span>
                               )}
-                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                              {p.data?.source === 'DESIGNER_INITIATED' && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                                  CREATIVE
+                                </span>
+                              )}
+                              {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                                  CREATIVE
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'bg-pink-500 text-white' : p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                   'bg-[#D946EF] text-white'
                                 }`}>
-                                {p.channel}
+                                {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -796,7 +817,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
-                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                                   Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                                 </div>
@@ -832,11 +853,21 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                 </span>
                               )}
-                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                              {p.data?.source === 'DESIGNER_INITIATED' && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                                  CREATIVE
+                                </span>
+                              )}
+                              {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
+                                  CREATIVE
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'bg-pink-500 text-white' : p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                   'bg-[#D946EF] text-white'
                                 }`}>
-                                {p.channel}
+                                {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.channel}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -862,7 +893,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 <Clock className="w-3 h-3 mr-1" />
                                 By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                               </div>
-                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                                   Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                                 </div>

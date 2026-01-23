@@ -9,6 +9,7 @@ import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import CeoCalendar from './CeoCalendar';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -19,7 +20,10 @@ interface Props {
 }
 
 const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
   const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'REWORK'>('PENDING');
 
   const [refreshKey, setRefreshKey] = useState(0);
@@ -33,7 +37,26 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [projectData, setProjectData] = useState<Project | null>(null);
   const [loadingProject, setLoadingProject] = useState(true);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());
-  const [activeView, setActiveView] = useState<'dashboard' | 'calendar'>('dashboard');
+
+  // Determine activeView from URL path
+  const getActiveViewFromPath = () => {
+    const path = location.pathname;
+    if (path.endsWith('/calendar')) return 'calendar';
+    return 'dashboard';
+  };
+
+  const activeView = getActiveViewFromPath();
+
+  const handleViewChange = (view: 'dashboard' | 'calendar') => {
+    setSelectedHistory(null);
+    setProjectData(null);
+    const rolePath = user.role.toLowerCase();
+    if (view === 'dashboard') {
+      navigate(`/${rolePath}`);
+    } else {
+      navigate(`/${rolePath}/${view}`);
+    }
+  };
   const [reworkProjects, setReworkProjects] = useState<Project[]>([]);
 
 
@@ -52,17 +75,17 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const isReworkProjectByCeo = (p: Project) => {
     // Check if this project has rework history caused by CEO
     if (!p.history) return false;
-    
+
     // Find rework/reject actions in the project history
     // To determine if CEO initiated rework, we check if the action was taken when the project was assigned to CEO
     return p.history.some(h => {
       const isReworkAction = h.action === 'REJECTED' || h.action === 'REWORK' || h.action?.startsWith('REWORK_');
-      
+
       // For rework projects, we need to check the from_stage to see if CEO was reviewing
       // CEO reviews at SCRIPT_REVIEW_L2 and FINAL_REVIEW_CEO stages
-      return isReworkAction && 
-             (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2 || 
-              h.from_stage === WorkflowStage.FINAL_REVIEW_CEO);
+      return isReworkAction &&
+        (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
+          h.from_stage === WorkflowStage.FINAL_REVIEW_CEO);
     });
   };
 
@@ -390,7 +413,37 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const inboxPendingCount = pendingApprovals.length;
   const filteredPendingCount = filteredPendingApprovals.length;
   const reworkProjectsCount = reworkProjects.length;
-  // Approved and rejected counts are loaded from workflow history
+
+  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
+  useEffect(() => {
+    const path = location.pathname;
+    const subPaths = path.split('/').filter(p => p !== '');
+
+    // Pattern: /ceo/review/:id
+    const reviewIdx = subPaths.findIndex(p => p === 'review');
+    if (reviewIdx !== -1 && subPaths[reviewIdx + 1]) {
+      const id = subPaths[reviewIdx + 1];
+      const p = [...inboxProjects, ...historyProjects, ...reworkProjects].find(item => item.id === id);
+      if (p) {
+        setSelectedProject(p);
+        setViewMode('REVIEW');
+      }
+    }
+    // Pattern: /ceo/history/:id
+    else if (subPaths.findIndex(p => p === 'history') !== -1) {
+      const id = subPaths[subPaths.findIndex(p => p === 'history') + 1];
+      const entry = filteredHistoryProjects.find(h => h.id === id || h.project_id === id);
+      if (entry) {
+        setSelectedProject(entry as any);
+        setSelectedHistory(historyMapRef.current.get(entry.id));
+        setViewMode('HISTORY');
+      }
+    }
+    else if (inboxProjects.length > 0 || historyProjects.length > 0) {
+      setSelectedProject(null);
+      setSelectedHistory(null);
+    }
+  }, [location.pathname, inboxProjects, historyProjects, reworkProjects, filteredHistoryProjects]);
 
   const handleReview = (project: Project) => {
     setSelectedProject(project);
@@ -407,8 +460,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       <CeoReviewScreen
         project={selectedProject}
         onBack={async () => {
-          setSelectedProject(null);
-          setViewMode('REVIEW');
+          navigate('/ceo');
           try {
             await handleInternalRefresh();
           } catch (e) {
@@ -416,8 +468,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           }
         }}
         onComplete={async () => {
-          setSelectedProject(null);
-          setViewMode('REVIEW');
+          navigate('/ceo');
           try {
             await handleInternalRefresh();
           } catch (e) {
@@ -470,8 +521,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           <div className="flex justify-between items-center">
             <button
               onClick={() => {
-                setSelectedProject(null);
-                setSelectedHistory(null);
+                navigate('/ceo');
               }}
               className="font-bold underline"
             >
@@ -491,7 +541,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       .select('*')
                       .eq('id', selectedProject.project_id)
                       .single();
-                    
+
                     if (data) {
                       setSelectedProject(data);
                     }
@@ -514,17 +564,17 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           {/* SCRIPT CONTENT */}
           <div className="border-2 border-black p-4 bg-slate-100">
             <h3 className="font-black uppercase mb-2">Script Content</h3>
-            {projectData.data?.script_content 
+            {projectData.data?.script_content
               ? (() => {
-                  let decodedContent = projectData.data.script_content
-                      .replace(/&lt;/g, '<')
-                      .replace(/&gt;/g, '>')
-                      .replace(/&amp;/g, '&')
-                      .replace(/&quot;/g, '"')
-                      .replace(/&#39;/g, "'")
-                      .replace(/&nbsp;/g, ' ');
-                  return <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                })()
+                let decodedContent = projectData.data.script_content
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&quot;/g, '"')
+                  .replace(/&#39;/g, "'")
+                  .replace(/&nbsp;/g, ' ');
+                return <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+              })()
               : <p>No script</p>
             }
           </div>
@@ -603,7 +653,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         onLogout={onLogout}
         onOpenCreate={() => { }}
         activeView={activeView}
-        onChangeView={setActiveView}
+        onChangeView={handleViewChange}
       >
         <CeoCalendar
           projects={[
@@ -623,7 +673,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       onLogout={onLogout}
       onOpenCreate={() => { }}
       activeView={activeView}
-      onChangeView={setActiveView}
+      onChangeView={handleViewChange}
     >
       <div key={refreshKey} className="space-y-10 animate-fade-in">
 
@@ -722,34 +772,9 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   key={project.id}
                   onClick={async () => {
                     if (activeTab === 'HISTORY') {
-                      setViewMode('HISTORY');
-                                      
-                      // For history entries, we need to get the full project data
-                      // Check if project already has full data, otherwise fetch it
-                      if (project.data && project.priority) {
-                        // Project already has full data
-                        setSelectedProject(project);
-                      } else {
-                        // Need to fetch full project data
-                        const { data: fullProject, error } = await supabase
-                          .from('projects')
-                          .select('*')
-                          .eq('id', project.project_id)
-                          .single();
-                                        
-                        if (fullProject) {
-                          setSelectedProject(fullProject);
-                        } else {
-                          // Fallback to the history entry if full data unavailable
-                          setSelectedProject(project);
-                        }
-                      }
-                                      
-                      // For history entries, we stored them by history entry ID
-                      setSelectedHistory(historyMapRef.current.get(project.id));
+                      navigate(`/ceo/history/${project.id}`);
                     } else {
-                      setViewMode('REVIEW');
-                      setSelectedProject(project);
+                      navigate(`/ceo/review/${project.id}`);
                     }
                   }}
 
@@ -761,9 +786,9 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                       </span>
                     )}
-                    {project.data?.source === 'DESIGNER_INITIATED' && (
+                    {(project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY') && (
                       <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
-                        DESIGNER
+                        CREATIVE
                       </span>
                     )}
                     {/* Show REWORK badge if project is in rework status initiated by CEO */}
@@ -773,8 +798,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       </span>
                     )}
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                        project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                          'bg-[#D946EF] text-white'
+                      project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                        'bg-[#D946EF] text-white'
                       }`}>
                       {project.channel}
                     </span>

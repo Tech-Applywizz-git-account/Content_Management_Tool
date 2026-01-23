@@ -4,12 +4,14 @@ import { Role, UserStatus } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { ArrowLeft, Save, User as UserIcon, Mail, Shield, Smartphone, Bell, Lock } from 'lucide-react';
 
+import { useNavigate } from 'react-router-dom';
+
 interface Props {
-    onBack: () => void;
     onUserAdded: () => void;
 }
 
-const AddUser: React.FC<Props> = ({ onBack, onUserAdded }) => {
+const AddUser: React.FC<Props> = ({ onUserAdded }) => {
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         full_name: '',
         email: '',
@@ -46,10 +48,10 @@ const AddUser: React.FC<Props> = ({ onBack, onUserAdded }) => {
             toast.success(`Invitation sent to ${formData.email}`, {
                 description: 'User has been created and invitation email sent.'
             });
-            
+
             // Navigate back to users list and refresh data
             onUserAdded();
-            onBack();
+            navigate('/admin/users');
         } catch (error: any) {
             console.error('Error creating user:', error);
             const msg = error.message || "Unknown error";
@@ -65,7 +67,7 @@ const AddUser: React.FC<Props> = ({ onBack, onUserAdded }) => {
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-fade-in-up">
             <div className="flex items-center space-x-4 mb-6">
-                <button onClick={onBack} className="p-2 rounded-full hover:bg-slate-200 transition-colors">
+                <button onClick={() => navigate('/admin/users')} className="p-2 rounded-full hover:bg-slate-200 transition-colors">
                     <ArrowLeft className="w-5 h-5 text-slate-600" />
                 </button>
                 <div>
@@ -225,7 +227,7 @@ const AddUser: React.FC<Props> = ({ onBack, onUserAdded }) => {
                     <div className="flex space-x-4 pt-2">
                         <button
                             type="button"
-                            onClick={onBack}
+                            onClick={() => navigate('/admin/users')}
                             className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-4 rounded-xl font-bold transition-colors"
                         >
                             Cancel

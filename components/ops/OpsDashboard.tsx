@@ -17,17 +17,46 @@ interface Props {
     onLogout: () => void;
 }
 
+import { useNavigate, useLocation } from 'react-router-dom';
+
 const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjects = [], onRefresh, onLogout }) => {
-    const viewStorageKey = `activeView:${user.role}`;
-    const getStoredView = () => {
-        if (typeof window === 'undefined') return 'dashboard';
-        return localStorage.getItem(viewStorageKey) || 'dashboard';
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    // Determine activeView from URL path
+    const getActiveViewFromPath = () => {
+        const path = location.pathname;
+        if (path.endsWith('/calendar')) return 'calendar';
+        if (path.endsWith('/mywork')) return 'mywork';
+        if (path.endsWith('/ceoapproved')) return 'ceoapproved';
+        return 'dashboard';
     };
-    const [activeView, setActiveView] = useState<string>(getStoredView);
-    const [selectedProject, setSelectedProject] = useState<{project: Project, source: 'ceoapproved' | 'mywork' | null} | null>(null);
+
+    const activeView = getActiveViewFromPath();
+    const [selectedProject, setSelectedProject] = useState<{ project: Project, source: 'ceoapproved' | 'mywork' | null } | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
     const [filterCategory, setFilterCategory] = useState<string>('all'); // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
-    
+
+    // SYNC STATE WITH URL ON REFRESH/NAVIGATE
+    useEffect(() => {
+        const path = location.pathname;
+        const subPaths = path.split('/').filter(p => p !== '');
+
+        // Pattern: /ops/project/:id
+        const projectIdx = subPaths.findIndex(p => p === 'project');
+        if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
+            const id = subPaths[projectIdx + 1];
+            const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
+            if (p) {
+                // Determine source for ops detail view
+                const isCeoApproved = p.current_stage !== WorkflowStage.OPS_SCHEDULING && p.current_stage !== WorkflowStage.POSTED;
+                setSelectedProject({ project: p, source: isCeoApproved ? 'ceoapproved' : 'mywork' });
+            }
+        } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
+            setSelectedProject(null);
+        }
+    }, [location.pathname, inboxProjects, historyProjects]);
+
     // Debug: Log the stages of inbox projects
     useEffect(() => {
         console.log('Ops Dashboard - inboxProjects stages:', (inboxProjects || []).map(p => ({
@@ -44,15 +73,14 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     };
 
     const handleViewChange = (view: string) => {
-        setActiveView(view);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(viewStorageKey, view);
+        setSelectedProject(null);
+        const rolePath = user.role.toLowerCase();
+        if (view === 'dashboard') {
+            navigate(`/${rolePath}`);
+        } else {
+            navigate(`/${rolePath}/${view}`);
         }
     };
-
-    useEffect(() => {
-        setActiveView(getStoredView());
-    }, [viewStorageKey]);
 
     // Realtime: refresh ops inbox when projects change
     useEffect(() => {
@@ -63,7 +91,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             })
             .subscribe();
 
-        return () => { try { supabase.removeChannel(subscription); } catch (e) {} };
+        return () => { try { supabase.removeChannel(subscription); } catch (e) { } };
     }, [onRefresh]);
 
     // Use inboxProjects for dashboard view (role-based filtering)
@@ -89,17 +117,17 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         const weekAgo = new Date(Date.now() - 7 * 86400000);
         return postedDate >= weekAgo;
     });
-    
+
     // CEO-approved projects (projects that have moved forward after CEO approval)
     const ceoApproved = (inboxProjects || []).filter(p =>
-  p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-  p.current_stage === WorkflowStage.VIDEO_EDITING ||
-  p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-  p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-  p.current_stage === WorkflowStage.OPS_SCHEDULING ||
-  p.current_stage === WorkflowStage.POSTED
-);
-    
+        p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
+        p.current_stage === WorkflowStage.VIDEO_EDITING ||
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
+        p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+        p.current_stage === WorkflowStage.OPS_SCHEDULING ||
+        p.current_stage === WorkflowStage.POSTED
+    );
+
 
     return (
         <Layout
@@ -113,28 +141,28 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                 selectedProject.source === 'ceoapproved' ? (
                     <OpsProjectDetailDetailed
                         project={selectedProject.project}
-                        onBack={() => setSelectedProject(null)}
+                        onBack={() => navigate('/ops')}
                         onUpdate={() => {
-                            setSelectedProject(null);
+                            navigate('/ops');
                             onRefresh();
                         }}
                     />
                 ) : (
                     <OpsProjectDetail
                         project={selectedProject.project}
-                        onBack={() => setSelectedProject(null)}
+                        onBack={() => navigate('/ops')}
                         onUpdate={() => {
-                            setSelectedProject(null);
+                            navigate('/ops');
                             onRefresh();
                         }}
                     />
                 )
             ) : activeView === 'mywork' ? (
-                <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={setSelectedProject} filterCategory={filterCategory} />
+                <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} filterCategory={filterCategory} />
             ) : activeView === 'calendar' ? (
                 <OpsCalendar projects={inboxProjects || []} />
             ) : activeView === 'ceoapproved' ? (
-                <OpsCeoApproved projects={inboxProjects || []} onSelectProject={setSelectedProject} />
+                <OpsCeoApproved projects={inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
             ) : (
                 <div key={refreshKey} className="space-y-8 animate-fade-in">
                     {/* Dashboard Content */}
@@ -155,10 +183,10 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
 
                     {/* Stats */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                        <div 
+                        <div
                             className="bg-[#8B5CF6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                setActiveView('ceoapproved'); // Navigate to dedicated CEO approved view
+                                handleViewChange('ceoapproved'); // Navigate to dedicated CEO approved view
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -166,11 +194,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">CEO Approved</div>
                         </div>
-                        <div 
+                        <div
                             className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                                 setFilterCategory('readytoschedule');
-                                setActiveView('mywork');
+                                handleViewChange('mywork');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -178,11 +206,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Ready to Schedule</div>
                         </div>
-                        <div 
+                        <div
                             className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                                 setFilterCategory('scheduled');
-                                setActiveView('mywork');
+                                handleViewChange('mywork');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -190,11 +218,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Scheduled</div>
                         </div>
-                        <div 
+                        <div
                             className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                                 setFilterCategory('postedthisweek');
-                                setActiveView('mywork');
+                                handleViewChange('mywork');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -202,11 +230,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">Posted This Week</div>
                         </div>
-                        <div 
+                        <div
                             className="bg-[#6B7280] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
                                 setFilterCategory('all');
-                                setActiveView('mywork');
+                                handleViewChange('mywork');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -223,7 +251,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         </h2>
                         <p className="text-slate-600">
                             You have {ceoApproved.length} CEO-approved {ceoApproved.length === 1 ? 'project' : 'projects'}, {readyToSchedule.length} ready to schedule, and {scheduled.length} scheduled for publishing. Total managed: {(inboxProjects || []).length - ceoApproved.length}.
-                            Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+                            Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
                         </p>
                     </div>
                 </div>

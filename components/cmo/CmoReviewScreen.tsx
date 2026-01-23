@@ -412,6 +412,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
     const getReworkOptions = () => {
+        // Check if this is a creative project (either designer-initiated or creative-only content type)
+        const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
+        
         // For designer-initiated projects, always send back to Designer
         if (project.data?.source === 'DESIGNER_INITIATED') {
             return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
@@ -429,6 +432,11 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
         // For Final Review CMO and POST_WRITER_REVIEW, can send back to various roles
         if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
+            // For creative projects, only show Designer as an option
+            if (isCreativeProject) {
+                return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
+            }
+            
             const options = [];
 
             // Always include all relevant roles for these final review stages

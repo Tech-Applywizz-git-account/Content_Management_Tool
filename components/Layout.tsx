@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Role, User } from '../types';
 import {
   LayoutDashboard,
@@ -24,11 +25,19 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate, activeView = 'dashboard', onChangeView }) => {
+  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  const handleCalendarView = () => {
-    onChangeView?.('calendar');  // Trigger the view change to 'calendar'
+
+  const handleNavigate = (view: string) => {
+    const rolePath = user.role === Role.SUB_EDITOR ? 'sub_editor' : user.role.toLowerCase();
+    if (view === 'dashboard') {
+      navigate(`/${rolePath}`);
+    } else {
+      navigate(`/${rolePath}/${view}`);
+    }
+    onChangeView?.(view);
   };
-  
+
   const getRoleIcon = (role: Role) => {
     switch (role) {
       case Role.WRITER: return <PenTool className="w-5 h-5" />;
@@ -55,7 +64,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
           <div className="space-y-3">
             {/* Dashboard Link */}
             <button
-              onClick={() => onChangeView?.('dashboard')}
+              onClick={() => handleNavigate('dashboard')}
               className={`w-full flex items-center space-x-3 px-4 py-4 border-2 border-black font-black uppercase transition-transform hover:-translate-y-1 hover:-translate-x-1 ${activeView === 'dashboard'
                 ? 'bg-[#D946EF] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                 : 'bg-white text-black hover:bg-slate-50'
@@ -68,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             {/* My Work - For CMO and Production Roles (not CEO/ADMIN) */}
             {user.role !== Role.CEO && user.role !== Role.ADMIN && (
               <button
-                onClick={() => onChangeView?.('mywork')}
+                onClick={() => handleNavigate('mywork')}
                 className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'mywork'
                   ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                   : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
@@ -79,24 +88,23 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               </button>
             )}
             {/* Overview - Only for CMO */}
-{user.role === Role.CMO && (
-  <button
-    onClick={() => onChangeView?.('overview')}
-    className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${
-      activeView === 'overview'
-        ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-        : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
-    }`}
-  >
-    <BarChart3 className="w-5 h-5" />
-    <span>Overview</span>
-  </button>
-)}
-  
+            {user.role === Role.CMO && (
+              <button
+                onClick={() => handleNavigate('overview')}
+                className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'overview'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                  }`}
+              >
+                <BarChart3 className="w-5 h-5" />
+                <span>Overview</span>
+              </button>
+            )}
+
             {/* Calendar - Visible for CMO, CEO, and other roles */}
             {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS) && (
               <button
-                onClick={() => onChangeView?.('calendar')}
+                onClick={() => handleNavigate('calendar')}
                 className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'calendar'
                   ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                   : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
@@ -118,7 +126,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-black uppercase truncate">{user.full_name}</p>
             </div>
-    
+
           </div>
           <button
             onClick={onLogout}
@@ -144,11 +152,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-white z-40 pt-24 px-6 md:hidden">
           <button onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log('Logout button clicked in Layout');
-              onLogout();
-            }} 
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Logout button clicked in Layout');
+            onLogout();
+          }}
             className="w-full bg-[#FF4F4F] text-white border-2 border-black p-4 font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center space-x-2 mt-8"
           >
             <LogOut className="w-5 h-5" />

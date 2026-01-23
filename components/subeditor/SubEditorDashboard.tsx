@@ -17,14 +17,21 @@ interface Props {
   onLogout: () => void;
 }
 
+import { useNavigate, useLocation } from 'react-router-dom';
+
 const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
-  const viewStorageKey = `activeView:${user.role}`;
-  const getStoredView = () => {
-    if (typeof window === 'undefined') return 'dashboard';
-    return localStorage.getItem(viewStorageKey) || 'dashboard';
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine activeView from URL path
+  const getActiveViewFromPath = () => {
+    const path = location.pathname;
+    if (path.endsWith('/calendar')) return 'calendar';
+    if (path.endsWith('/mywork')) return 'mywork';
+    return 'dashboard';
   };
-  
-  const [activeView, setActiveView] = useState<string>(getStoredView());
+
+  const activeView = getActiveViewFromPath();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -32,10 +39,27 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
+  useEffect(() => {
+    const path = location.pathname;
+    const subPaths = path.split('/').filter(p => p !== '');
+
+    // Pattern: /sub_editor/project/:id
+    const projectIdx = subPaths.findIndex(p => p === 'project');
+    if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
+      const id = subPaths[projectIdx + 1];
+      const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
+      if (p) setSelectedProject(p);
+    } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
+      setSelectedProject(null);
+    }
+  }, [location.pathname, inboxProjects, historyProjects]);
+
 
 
   const handleViewChange = (view: string) => {
-    setActiveView(view);
+    setSelectedProject(null);
+    const rolePath = user.role.toLowerCase();
 
     // ✅ IMPORTANT:
     // If user manually clicks "My Work",
@@ -44,8 +68,10 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
       setActiveFilter(null);
     }
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(viewStorageKey, view);
+    if (view === 'dashboard') {
+      navigate(`/${rolePath}`);
+    } else {
+      navigate(`/${rolePath}/${view}`);
     }
   };
 
@@ -55,18 +81,15 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     setRefreshKey(prev => prev + 1); // force UI re-render
   };
 
-  // Restore last active view on load
+  // Mount-only effect
   useEffect(() => {
-    const storedView = getStoredView();
-    setActiveView(storedView);
-
     // Safety: never restore dashboard filters on reload
     setActiveFilter(null);
-  }, [viewStorageKey]);
+  }, []);
 
   // Update projects state with inboxProjects that are assigned to this specific sub-editor
   useEffect(() => {
-    const subEditorProjects = (inboxProjects || []).filter(p => 
+    const subEditorProjects = (inboxProjects || []).filter(p =>
       p.assigned_to_role === Role.SUB_EDITOR &&
       p.assigned_to_user_id === user.id
     );
@@ -78,31 +101,31 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
  * - If user came from dashboard cards → filtered inbox projects
  * - If user clicked My Work manually → ALL projects the user has worked on (historyProjects)
  */
-const filteredProjects = useMemo(() => {
-  // No filter → show ALL sub-editor projects the user has worked on (history)
-  if (!activeFilter) {
-    return historyProjects || [];
-  }
-
-  // Filtered views (from dashboard cards)
-  switch (activeFilter) {
-    case 'NEEDS_DELIVERY':
-      return (historyProjects || []).filter(p => !p.delivery_date);
-    case 'IN_PROGRESS':
-      return (historyProjects || []).filter(
-        p => p.delivery_date && !p.edited_video_link
-      );
-    case 'COMPLETED':
-      return (historyProjects || []).filter(p => !!p.edited_video_link);
-    case 'SCRIPTS':
-      // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
-      return (historyProjects || []).filter(project => 
-        project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
-      );
-    default:
+  const filteredProjects = useMemo(() => {
+    // No filter → show ALL sub-editor projects the user has worked on (history)
+    if (!activeFilter) {
       return historyProjects || [];
-  }
-}, [activeFilter, historyProjects]);
+    }
+
+    // Filtered views (from dashboard cards)
+    switch (activeFilter) {
+      case 'NEEDS_DELIVERY':
+        return (historyProjects || []).filter(p => !p.delivery_date);
+      case 'IN_PROGRESS':
+        return (historyProjects || []).filter(
+          p => p.delivery_date && !p.edited_video_link
+        );
+      case 'COMPLETED':
+        return (historyProjects || []).filter(p => !!p.edited_video_link);
+      case 'SCRIPTS':
+        // For SCRIPTS filter, return all projects that have script_content or are from IDEA_PROJECT
+        return (historyProjects || []).filter(project =>
+          project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
+        );
+      default:
+        return historyProjects || [];
+    }
+  }, [activeFilter, historyProjects]);
 
   // Add state for counts
   const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
@@ -115,9 +138,9 @@ const filteredProjects = useMemo(() => {
     setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
     setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
     setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
-    
+
     // Count script projects
-    setScriptsCount((historyProjects || []).filter(project => 
+    setScriptsCount((historyProjects || []).filter(project =>
       project.data?.script_content || project.data?.source === 'IDEA_PROJECT'
     ).length);
   }, [historyProjects]);
@@ -150,22 +173,10 @@ const filteredProjects = useMemo(() => {
         userRole={Role.SUB_EDITOR}
         fromView={projectSource}
         onBack={() => {
-          setSelectedProject(null);
-          if (projectSource === 'SCRIPTS') {
-            setActiveFilter('SCRIPTS');
-            setActiveView('mywork');
-          } else {
-            setProjectSource(null);
-          }
+          navigate('/sub_editor');
         }}
         onUpdate={() => {
-          setSelectedProject(null);
-          if (projectSource === 'SCRIPTS') {
-            setActiveFilter('SCRIPTS');
-            setActiveView('mywork');
-          } else {
-            setProjectSource(null);
-          }
+          navigate('/sub_editor');
           onRefresh();
         }}
         onLogout={onLogout}
@@ -179,7 +190,7 @@ const filteredProjects = useMemo(() => {
     <Layout
       user={user}
       onLogout={onLogout}
-      onOpenCreate={() => {}}
+      onOpenCreate={() => { }}
       activeView={activeView}
       onChangeView={handleViewChange}
     >
@@ -192,19 +203,13 @@ const filteredProjects = useMemo(() => {
             setSelectedProject(null);
             if (projectSource === 'SCRIPTS') {
               setActiveFilter('SCRIPTS');
-              setActiveView('mywork');
+              handleViewChange('mywork');
             } else {
               setProjectSource(null);
             }
           }}
           onUpdate={() => {
-            setSelectedProject(null);
-            if (projectSource === 'SCRIPTS') {
-              setActiveFilter('SCRIPTS');
-              setActiveView('mywork');
-            } else {
-              setProjectSource(null);
-            }
+            navigate('/sub_editor');
             onRefresh();
           }}
           onLogout={onLogout}
@@ -212,12 +217,11 @@ const filteredProjects = useMemo(() => {
           activeView={activeView}
         />
       ) : activeView === 'mywork' ? (
-        <SubEditorMyWork 
+        <SubEditorMyWork
           user={user}
           projects={activeFilter ? filteredProjects : historyProjects}
           onSelectProject={(project) => {
-            setSelectedProject(project);
-            setProjectSource(activeFilter === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK');
+            navigate(`/sub_editor/project/${project.id}`);
           }}
           activeFilter={activeFilter}
           scriptProjects={scriptProjects}
@@ -248,7 +252,7 @@ const filteredProjects = useMemo(() => {
             <div
               onClick={() => {
                 setActiveFilter('NEEDS_DELIVERY');
-                setActiveView('mywork');
+                handleViewChange('mywork');
               }}
               className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -262,7 +266,7 @@ const filteredProjects = useMemo(() => {
             <div
               onClick={() => {
                 setActiveFilter('IN_PROGRESS');
-                setActiveView('mywork');
+                handleViewChange('mywork');
               }}
               className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -276,7 +280,7 @@ const filteredProjects = useMemo(() => {
             <div
               onClick={() => {
                 setActiveFilter('COMPLETED');
-                setActiveView('mywork');
+                handleViewChange('mywork');
               }}
               className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -285,12 +289,12 @@ const filteredProjects = useMemo(() => {
               </div>
               <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
             </div>
-            
+
             {/* SCRIPTS */}
             <div
               onClick={() => {
                 setActiveFilter('SCRIPTS');
-                setActiveView('mywork');
+                handleViewChange('mywork');
               }}
               className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
             >
@@ -308,7 +312,7 @@ const filteredProjects = useMemo(() => {
             </h2>
             <p className="text-slate-600">
               You have {(historyProjects || []).length} {(historyProjects || []).length === 1 ? 'project' : 'projects'} in sub-editing.
-              Click <button onClick={() => setActiveView('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+              Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
             </p>
           </div>
         </div>

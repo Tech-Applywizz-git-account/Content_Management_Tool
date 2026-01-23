@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { db } from './services/supabaseDb';
 import { supabase } from './src/integrations/supabase/client';
 import { User, Project, Channel, Role } from './types';
@@ -8,6 +8,7 @@ import Auth from './components/Auth';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import CreateProjectModal from './components/CreateProjectModal';
+import AppRoutes from './AppRoutes';
 
 // Admin Imports
 import AdminLayout, { AdminView } from './components/AdminLayout';
@@ -45,6 +46,33 @@ import OpsDashboard from './components/ops/OpsDashboard';
 // Observer Imports
 import ObserverDashboard from './components/observer/ObserverDashboard';
 
+// Sync user recovery from localStorage to prevent flash-loading-spinner on refresh
+const getUserSync = (): User | null => {
+  try {
+    const mock = localStorage.getItem('mock_session');
+    if (mock) return JSON.parse(mock);
+
+    // Try to find Supabase auth token
+    const tokenKey = Object.keys(localStorage).find(k => k.endsWith('-auth-token'));
+    if (tokenKey) {
+      const tokenData = JSON.parse(localStorage.getItem(tokenKey) || '{}');
+      if (tokenData && tokenData.user) {
+        const u = tokenData.user;
+        return {
+          id: u.id,
+          email: u.email,
+          full_name: u.user_metadata?.full_name || u.user_metadata?.name || 'User',
+          role: (u.user_metadata?.role as Role) || Role.OBSERVER,
+          status: 'ACTIVE',
+        } as User;
+      }
+    }
+  } catch (e) {
+    console.debug('Sync user recovery skipped:', e);
+  }
+  return null;
+};
+
 // Extend Project interface to include both inbox and history data
 interface DashboardData {
   inbox: Project[];
@@ -53,17 +81,17 @@ interface DashboardData {
 
 function App() {
   const location = useLocation();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialUser = getUserSync();
+  if (initialUser) {
+    db.setCurrentUser(initialUser);
+  }
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [loading, setLoading] = useState(!initialUser);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [projects, setProjects] = useState<DashboardData>({ inbox: [], history: [] });
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
 
   // Admin State
-  const [adminView, setAdminView] = useState<AdminView>(() => {
-    const saved = localStorage.getItem('admin_last_view') as AdminView;
-    return saved || 'DASH';
-  });
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminLogs, setAdminLogs] = useState<any[]>([]);
 
@@ -114,36 +142,59 @@ function App() {
     setLoading(false);
   };
 
-  // Simplified session restoration with proper error handling
+  // Enhanced session restoration with proper Supabase support
   const restoreSession = async () => {
     try {
-      console.log('🔄 Session Restore: Starting (Mock Mode)...');
+      console.log('🔄 Session Restore: Starting...');
 
-      // For mock mode, just check localStorage
+      // 1. Try Mock Session first (legacy/test support)
       const mockSession = localStorage.getItem('mock_session');
+      if (mockSession) {
+        try {
+          const mockUser = JSON.parse(mockSession);
+          console.log('✅ Session Restore: Mock session restored for:', mockUser.full_name);
+          setUser(mockUser);
+          db.setCurrentUser(mockUser);
+          await refreshData(mockUser);
+          return;
+        } catch (e) {
+          console.error('❌ Session Restore: Invalid mock session data');
+          localStorage.removeItem('mock_session');
+        }
+      }
 
-      if (!mockSession) {
-        console.log('✅ Session Restore: No saved session');
+      // 2. Try Supabase Session
+      console.log('🔄 Session Restore: Checking Supabase session...');
+      const { data: { user: supabaseUser }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !supabaseUser) {
+        console.log('✅ Session Restore: No Supabase session found or error');
         return;
       }
 
-      try {
-        const user = JSON.parse(mockSession);
-        console.log('✅ Session Restore: Session restored for:', user.full_name);
-        setUser(user);
-        db.setCurrentUser(user); // Set the current user in the database service
-        await refreshData(user);
-      } catch (error) {
-        console.error('❌ Session Restore: Invalid session data, clearing');
-        localStorage.removeItem('mock_session');
+      console.log('🔄 Session Restore: Supabase user found, fetching profile...', supabaseUser.id);
+
+      // Fetch user profile from database
+      const profile = await db.users.getById(supabaseUser.id);
+
+      if (profile) {
+        console.log('✅ Session Restore: Profile loaded for:', profile.full_name);
+        setUser(profile);
+        db.setCurrentUser(profile);
+        await refreshData(profile);
+      } else {
+        console.warn('⚠️ Session Restore: Supabase user exists but no database profile found');
+        // If we have a user but no profile, they might be partially registered
+        // We shouldn't clear tokens here, just let it fall through to login
       }
     } catch (error: any) {
       console.error('❌ Session Restore: Fatal error:', error);
-      localStorage.removeItem('mock_session');
+      // In case of fatal error during restoration, we don't necessarily want to clear everything 
+      // unless we're sure the session is invalid.
     }
   };
 
-  // Session restoration on mount - Simplified with guaranteed state update
+  // Session restoration on mount - Improved for reliable refresh handling
   useEffect(() => {
     console.log('App: Initializing auth...');
     let mounted = true;
@@ -151,93 +202,70 @@ function App() {
 
     const initializeAuth = async () => {
       console.log('App: initializeAuth called');
-      if (!mounted) {
-        console.log('App: Component unmounted, skipping initialization');
-        return;
-      }
+      if (!mounted) return;
 
-      // IMPORTANT: Skip session restoration on password reset/set-password pages
-      // These pages use recovery tokens, not regular sessions
-      // Check both pathname and hash-based recovery URLs
+      // Skip restoration on reset-password pages
       const isRecoveryFlow = location.pathname === '/set-password' ||
-        (location.hash && location.hash.includes('type=recovery')) ||
-        (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
-
-      console.log('App: Checking recovery flow in initializeAuth', { pathname: location.pathname, hash: location.hash, href: window.location.href, isRecoveryFlow });
+        window.location.hash.includes('type=recovery') ||
+        window.location.search.includes('recovery');
 
       if (isRecoveryFlow) {
-        console.log('On password reset page, checking for recovery session');
-        // During recovery flow, Supabase creates a valid session but user state is not populated
-        // We need to populate user state from the recovery session to avoid falling back to Auth
+        console.log('App: Recovery flow detected, handling separately');
         try {
           const { data } = await supabase.auth.getUser();
           if (data?.user) {
-            console.log('Recovery session found, populating user state', data.user);
             const profile = await db.users.getById(data.user.id);
             if (profile) {
               setUser(profile);
               db.setCurrentUser(profile);
-              console.log('User state populated from recovery session', profile);
             }
           }
-        } catch (error) {
-          console.error('Error populating user state from recovery session:', error);
+        } catch (e) {
+          console.error('Error in recovery session check:', e);
         }
-
-        if (mounted) {
-          setLoading(false);
-          setIsRestoringSession(false);
-        }
-        return;
-      }
-
-      // Check if there are any stored tokens FIRST
-      const hasStoredTokens = Object.keys(localStorage).some(key =>
-        key.startsWith('sb-') && key.includes('-auth-token')
-      );
-
-      // If no tokens, skip loading and go straight to login
-      if (!hasStoredTokens) {
-        console.log('No stored tokens found, skipping session restoration');
-        if (mounted) {
-          setLoading(false);
-          setIsRestoringSession(false);
-        }
+        setLoading(false);
+        setIsRestoringSession(false);
         return;
       }
 
       try {
-        console.log('Starting session initialization...');
-        await restoreSession();
+        // 1. Check for fast local session
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          console.log('App: Session found via getSession, restoring...');
+          await restoreSession();
+        } else {
+          // 2. Check for mock session explicitly
+          const mockSession = localStorage.getItem('mock_session');
+          if (mockSession) {
+            await restoreSession();
+          } else {
+            console.log('App: No local session found');
+          }
+        }
       } catch (error) {
-        console.error('Initialization error:', error);
-        // Don't clear tokens here - restoreSession handles it internally
+        console.error('App: Auth initialization error:', error);
       } finally {
-        // ALWAYS set these, even on error
         if (mounted) {
           setLoading(false);
           setIsRestoringSession(false);
-          console.log('Session initialization complete');
+          console.log('App: Auth initialization complete');
         }
       }
     };
 
-    // REMOVED: Global onAuthStateChange listener
-    // It was causing race conditions with manual login flow
-    // Auth state changes are now handled in SetPassword component only
-
-    // Start initialization with a safety timeout so UI never hangs on "Loading session..."
+    // Safety timeout to ensure app always loads, but WITHOUT clearing tokens unless essential
     fallbackTimer = setTimeout(() => {
       if (!mounted) return;
-      console.warn('Session initialization timed out; clearing tokens and returning to login.');
-      clearAllTokens();
-      setLoading(false);
-      setIsRestoringSession(false);
-    }, 8000);
+      if (loading) {
+        console.warn('App: Auth initialization timed out - forcing loading to false');
+        setLoading(false);
+        setIsRestoringSession(false);
+      }
+    }, 10000);
 
-    initializeAuth().finally(() => {
-      clearTimeout(fallbackTimer);
-    });
+    initializeAuth();
 
     return () => {
       mounted = false;
@@ -245,60 +273,7 @@ function App() {
     };
   }, []);
 
-  // Save admin view to localStorage when it changes
-  useEffect(() => {
-    if (user?.role === Role.ADMIN && adminView) {
-      localStorage.setItem('admin_last_view', adminView);
-    }
-  }, [adminView, user]);
 
-  // Block keyboard refresh shortcuts (F5, Ctrl+R) while allowing browser reload button with confirmation
-  useEffect(() => {
-    if (!user) return; // Only block when user is logged in
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // F5 key
-      if (e.key === 'F5') {
-        e.preventDefault();
-        e.stopPropagation();
-        alert('⚠️ Keyboard refresh is disabled.\n\nPlease use the browser reload button or logout.');
-        return false;
-      }
-      // Ctrl+Shift+R (Hard reload)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
-        e.preventDefault();
-        e.stopPropagation();
-        alert('❌ Hard reload is disabled.\n\nPlease logout if you need to refresh your session.');
-        return false;
-      }
-      // Ctrl+R
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
-        e.preventDefault();
-        e.stopPropagation();
-        alert('⚠️ Keyboard refresh is disabled.\n\nPlease use the browser reload button or logout.');
-        return false;
-      }
-    };
-
-    // Handler for browser reload button
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      // Modern browsers require returnValue to be set
-      e.returnValue = 'Are you sure you want to reload? Your session will be preserved.';
-      return e.returnValue;
-    };
-
-    // Add listeners
-    window.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('keydown', handleKeyDown, true);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [user]);
 
   // Effect to fetch all projects for CMO dashboard
   useEffect(() => {
@@ -480,6 +455,8 @@ function App() {
     };
   }, [user]);
 
+  const navigate = useNavigate();
+
   // handleLogin now receives user directly from Auth.tsx - no redundant fetch
   const handleLogin = async (user: User) => {
     try {
@@ -487,6 +464,10 @@ function App() {
       setUser(user);
       db.setCurrentUser(user); // Set the current user in the database service
       await refreshData(user);
+
+      // Redirect to role-based dashboard
+      const rolePath = user.role === Role.SUB_EDITOR ? 'sub_editor' : user.role.toLowerCase();
+      navigate(`/${rolePath}`);
     } catch (error) {
       console.error('Login callback failed:', error);
       // Re-throw so Auth.tsx can show error and re-enable button
@@ -500,11 +481,11 @@ function App() {
     try {
       // Clear UI immediately for instant response
       setUser(null);
-      setProjects([]);
+      setProjects({ inbox: [], history: [] });
       setAdminUsers([]);
       setAdminLogs([]);
-      setAdminView('DASH');
       localStorage.removeItem('admin_last_view');
+      localStorage.removeItem('mock_session'); // Also clear mock session
       console.log('✅ Logout: UI state cleared');
 
       // Ensure Supabase signout completes
@@ -524,11 +505,15 @@ function App() {
       } else {
         console.log('✅ Logout: All tokens cleared successfully');
       }
+
+      // Redirect to login
+      navigate('/login');
     } catch (error) {
       console.error('❌ Logout: Error during logout:', error);
       // Even on error, force clear tokens
       console.log('🧹 Logout: Force clearing tokens due to error...');
       clearAllTokens();
+      navigate('/login');
     }
 
     console.log('✅ Logout: Complete');
@@ -549,208 +534,33 @@ function App() {
     refreshData(user!);
   };
 
-  // Show loading state while initializing
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading session...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Handle Set Password Route (both path and hash-based)
-  // Supabase password reset links use hash fragments like /#access_token=...&type=recovery
-  const isPasswordResetFlow = location.pathname === '/set-password' ||
-    (location.hash && location.hash.includes('type=recovery')) ||
-    // Also check if we're in a recovery flow based on URL parameters
-    (window.location.href.includes('#') && window.location.href.includes('type=recovery'));
-
-  console.log('App: Checking if on password reset flow', {
-    pathname: location.pathname,
-    hash: location.hash,
-    href: window.location.href,
-    isPasswordResetFlow
-  });
-
-  if (isPasswordResetFlow) {
-    console.log('App: Rendering SetPassword component');
-    return <SetPassword />;
-  }
-
-  // Show login if no user
-  console.log('App: Checking if user exists', { user });
-  if (!user) {
-    console.log('App: Rendering Auth component');
-    return <Auth onLogin={handleLogin} isRestoringSession={isRestoringSession} />;
-  }
-
-  // --- ADMIN FLOW ---
-  if (user?.role === Role.ADMIN) {
-    return (
-      <AdminLayout
-        user={user}
-        currentView={adminView}
-        onNavigate={setAdminView}
-        onLogout={handleLogout}
-      >
-        {adminView === 'DASH' && <AdminDashboard users={adminUsers} logs={adminLogs} onNavigate={setAdminView} />}
-        {adminView === 'USERS' && <UserManagement users={adminUsers} logs={adminLogs} onRefresh={() => refreshData(user)} onNavigate={setAdminView} />}
-        {adminView === 'USER_ADD' && <AddUser onBack={() => setAdminView('USERS')} onUserAdded={() => { refreshData(user); setAdminView('USERS'); }} />}
-        {adminView === 'ROLES' && <RolesMatrix />}
-        {adminView === 'LOGS' && <AuditLogs logs={adminLogs} />}
-        {adminView === 'SETTINGS' && (
-          <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-            <div className="w-16 h-16 border-2 border-dashed border-slate-300 rounded-full flex items-center justify-center mb-4">
-              <div className="w-8 h-8 bg-slate-200 rounded-full animate-pulse"></div>
-            </div>
-            <h3 className="text-lg font-medium text-slate-600">Settings Module</h3>
-            <p>Coming in v1.2</p>
-          </div>
-        )}
-      </AdminLayout>
-    );
-  }
-
-  // --- CEO FLOW ---
-  if (user?.role === Role.CEO) {
-    return (
-      <CeoDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- CMO FLOW ---
-  if (user?.role === Role.CMO) {
-    return (
-      <CmoDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        allProjects={allProjects}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- WRITER FLOW ---
-  if (user?.role === Role.WRITER) {
-    return (
-      <WriterDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- CINEMATOGRAPHER FLOW ---
-  if (user?.role === Role.CINE) {
-    return (
-      <CineDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        scriptProjects={cineScriptProjects}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- EDITOR FLOW ---
-  if (user?.role === Role.EDITOR) {
-    return (
-      <EditorDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        scriptProjects={editorScriptProjects}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- SUB-EDITOR FLOW ---
-  if (user?.role === Role.SUB_EDITOR) {
-    return (
-      <SubEditorDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        scriptProjects={subEditorScriptProjects}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- DESIGNER FLOW ---
-  if (user?.role === Role.DESIGNER) {
-    return (
-      <DesignerDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        scriptProjects={designerScriptProjects}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- OPS FLOW ---
-  if (user?.role === Role.OPS) {
-    return (
-      <OpsDashboard
-        user={user}
-        inboxProjects={projects.inbox}
-        historyProjects={projects.history}
-        onRefresh={() => refreshData(user)}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // --- OBSERVER FLOW ---
-  if (user?.role === Role.OBSERVER) {
-    return <ObserverDashboard user={user} onLogout={handleLogout} />;
-  }
-
-  // --- STANDARD WORKFLOW FLOW (fallback) ---
+  // Main rendering logic - no more loading spinner block
   return (
-    <>
-      <Layout
+    <div className="app-container">
+      <AppRoutes
         user={user}
+        isRestoringSession={isRestoringSession}
+        projects={projects}
+        adminState={{
+          users: adminUsers,
+          logs: adminLogs
+        }}
+        cmoAllProjects={allProjects}
+        cineScriptProjects={cineScriptProjects}
+        editorScriptProjects={editorScriptProjects}
+        designerScriptProjects={designerScriptProjects}
+        subEditorScriptProjects={subEditorScriptProjects}
+        onLogin={handleLogin}
         onLogout={handleLogout}
-        onOpenCreate={() => setCreateModalOpen(true)}
-      >
-        <Dashboard
-          user={user}
-          projects={projects}
-          refreshData={() => refreshData(user)}
-        />
-      </Layout>
+        refreshData={refreshData}
+      />
 
       <CreateProjectModal
         isOpen={isCreateModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onSubmit={handleCreateProject}
       />
-
-
-    </>
+    </div>
   );
 }
 

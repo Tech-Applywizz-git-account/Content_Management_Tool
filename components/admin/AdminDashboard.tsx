@@ -2,17 +2,19 @@ import React from 'react';
 import { User, SystemLog, Role, UserStatus } from '../../types';
 import { Users, ShieldCheck, Activity, UserPlus, Clock } from 'lucide-react';
 
+import { useNavigate } from 'react-router-dom';
+
 interface Props {
     users: User[];
     logs: SystemLog[];
-    onNavigate: (view: any) => void;
 }
 
-const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
+const AdminDashboard: React.FC<Props> = ({ users, logs }) => {
+    const navigate = useNavigate();
     console.log('AdminDashboard received props:', { users, logs });
     console.log('AdminDashboard users length:', users?.length);
     console.log('AdminDashboard logs length:', logs?.length);
-    
+
     // Check if users or logs are undefined/null
     if (!users) {
         console.warn('AdminDashboard: users prop is undefined/null');
@@ -22,7 +24,7 @@ const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
         console.warn('AdminDashboard: logs prop is undefined/null');
         return <div>Loading logs data...</div>;
     }
-    
+
     const activeUsers = users.filter(u => u.status === UserStatus.ACTIVE).length;
     const inactiveUsers = users.length - activeUsers;
 
@@ -37,7 +39,7 @@ const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => onNavigate('USERS')}>
+                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => navigate('/admin/users')}>
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-sm text-gray-500">Total Users</p>
@@ -51,7 +53,7 @@ const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => onNavigate('ROLES')}>
+                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => navigate('/admin/roles')}>
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-sm text-gray-500">Roles Defined</p>
@@ -62,7 +64,7 @@ const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
                     <p className="mt-2 text-sm text-gray-500">Fixed System Roles</p>
                 </div>
 
-                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => onNavigate('LOGS')}>
+                <div className="bg-white p-4 rounded shadow cursor-pointer" onClick={() => navigate('/admin/logs')}>
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-sm text-gray-500">System Logs</p>
@@ -102,7 +104,7 @@ const AdminDashboard: React.FC<Props> = ({ users, logs, onNavigate }) => {
             <div className="bg-white p-4 rounded shadow mt-6">
                 <div className="flex justify-between items-center mb-3">
                     <h3 className="text-lg font-bold">Recent Admin Activity</h3>
-                    <button onClick={() => onNavigate('LOGS')} className="text-sm text-red-600 hover:underline">View All</button>
+                    <button onClick={() => navigate('/admin/logs')} className="text-sm text-red-600 hover:underline">View All</button>
                 </div>
                 <div className="space-y-2">
                     {logs.slice(0, 5).map(log => (

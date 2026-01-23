@@ -20,7 +20,11 @@ interface Props {
     onLogout: () => void;
 }
 
+import { useNavigate, useLocation } from 'react-router-dom';
+
 const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+    const navigate = useNavigate();
+    const location = useLocation();
     const [isCreating, setIsCreating] = useState(false);
     const [isCreatingIdea, setIsCreatingIdea] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -28,15 +32,75 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [reworkProject, setReworkProject] = useState<Project | null>(null);
     const [createScriptMode, setCreateScriptMode] = useState<'SCRIPT_FROM_APPROVED_IDEA' | undefined>(undefined);
     const [refreshKey, setRefreshKey] = useState(0);
-    const viewStorageKey = `activeView:${user.role}`;
-    const getStoredView = () => {
-        if (typeof window === 'undefined') return 'dashboard';
-        return localStorage.getItem(viewStorageKey) || 'dashboard';
+
+    // Determine activeView from URL path
+    const getActiveViewFromPath = () => {
+        const path = location.pathname;
+        if (path.endsWith('/calendar')) return 'calendar';
+        if (path.endsWith('/mywork')) return 'mywork';
+        return 'dashboard';
     };
-    const [activeView, setActiveView] = useState<string>(getStoredView);
+
+    const activeView = getActiveViewFromPath();
+
+    const handleViewChange = (view: string) => {
+        setEditingProject(null);
+        setViewingProject(null);
+        setReworkProject(null);
+        setVideoApprovalView(false);
+        setScriptFromIdea(null);
+
+        const rolePath = user.role.toLowerCase();
+        if (view === 'dashboard') {
+            navigate(`/${rolePath}`);
+        } else {
+            navigate(`/${rolePath}/${view}`);
+        }
+    };
     const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
     const [videoApprovalView, setVideoApprovalView] = useState(false); // New state for video approval view
     const [inReviewFilter, setInReviewFilter] = useState<'all' | 'ideas' | 'scripts'>('all'); // Filter for In Review column
+
+    // SYNC STATE WITH URL ON REFRESH/NAVIGATE
+    useEffect(() => {
+        const path = location.pathname;
+        const subPaths = path.split('/').filter(p => p !== '');
+        const rolePath = user.role.toLowerCase();
+
+        // Pattern: /writer/project/:id
+        const projectIdx = subPaths.findIndex(p => p === 'project');
+        if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
+            const id = subPaths[projectIdx + 1];
+            // Search in both inbox and history
+            const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
+            if (p) setViewingProject(p);
+        } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
+            setViewingProject(null);
+        }
+
+        // Handle specific sub-views
+        if (path.endsWith('/create-script')) setIsCreating(true);
+        else setIsCreating(false);
+
+        if (path.endsWith('/create-idea')) setIsCreatingIdea(true);
+        else setIsCreatingIdea(false);
+
+        if (path.endsWith('/video-approval')) setVideoApprovalView(true);
+        else setVideoApprovalView(false);
+
+        // Pattern: /writer/edit/:id
+        const editIdx = subPaths.findIndex(p => p === 'edit');
+        if (editIdx !== -1 && subPaths[editIdx + 1]) {
+            const id = subPaths[editIdx + 1];
+            const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
+            if (p) {
+                setEditingProject(p);
+                // Determine if idea or script
+                if (p.data?.source === 'IDEA_PROJECT') setIsCreatingIdea(true);
+                else setIsCreating(true);
+            }
+        }
+    }, [location.pathname, inboxProjects, historyProjects, user.role]);
 
 
     const handleInternalRefresh = async () => {
@@ -62,16 +126,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
 
-    const handleViewChange = (view: string) => {
-        setActiveView(view);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(viewStorageKey, view);
-        }
-    };
-
-    useEffect(() => {
-        setActiveView(getStoredView());
-    }, [viewStorageKey]);
 
     // Realtime: refresh writer data when projects table changes
     useEffect(() => {
@@ -118,13 +172,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             ].includes(p.current_stage)
         )
     );
-    
+
     const inReviewIdeas = allInReview.filter(p => p.data?.source === 'IDEA_PROJECT');
     const inReviewScripts = allInReview.filter(p => !p.data?.source || p.data?.source !== 'IDEA_PROJECT');
-    
-    const inReview = inReviewFilter === 'ideas' ? inReviewIdeas : 
-                     inReviewFilter === 'scripts' ? inReviewScripts : 
-                     allInReview;
+
+    const inReview = inReviewFilter === 'ideas' ? inReviewIdeas :
+        inReviewFilter === 'scripts' ? inReviewScripts :
+            allInReview;
 
     const inProduction = dashboardProjects.filter(p =>
         (p.created_by === user.id || p.created_by_user_id === user.id) &&
@@ -136,17 +190,17 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         ].includes(p.current_stage)
     );
 
-const drafts = dashboardProjects.filter(p =>
-  (
-    p.created_by_user_id === user.id ||
-    p.writer_id === user.id
-  ) &&
-  (
-    p.status === TaskStatus.TODO ||
-    p.status === TaskStatus.IN_PROGRESS ||
-    p.status === TaskStatus.REWORK
-  )
-);
+    const drafts = dashboardProjects.filter(p =>
+        (
+            p.created_by_user_id === user.id ||
+            p.writer_id === user.id
+        ) &&
+        (
+            p.status === TaskStatus.TODO ||
+            p.status === TaskStatus.IN_PROGRESS ||
+            p.status === TaskStatus.REWORK
+        )
+    );
 
 
     const rejectedProjects = dashboardProjects.filter(p =>
@@ -157,75 +211,72 @@ const drafts = dashboardProjects.filter(p =>
             WorkflowStage.SCRIPT_REVIEW_L2
         ].includes(p.current_stage)
     );
-    
+
     // Projects that need video approval by the writer - visible to all writers
     const videoApprovalProjects = dashboardProjects.filter(p =>
-        (p.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL || p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) &&
+        p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL &&
         p.assigned_to_role === Role.WRITER
     );
-   const convertedIdeaIds = new Set(
-  dashboardProjects
-    .filter(p => p.data?.parent_idea_id)
-    .map(p => p.data.parent_idea_id)
-);
+    const convertedIdeaIds = new Set(
+        dashboardProjects
+            .filter(p => p.data?.parent_idea_id)
+            .map(p => p.data.parent_idea_id)
+    );
 
-const approvedIdeas = dashboardProjects.filter(p =>
-  p.data?.source === 'IDEA_PROJECT' &&
-  p.current_stage === WorkflowStage.SCRIPT &&
-  p.assigned_to_role === Role.WRITER &&
-  p.status === TaskStatus.WAITING_APPROVAL &&
-  p.history?.some(
-    h =>
-      h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
-      h.action === 'APPROVED'
-  ) &&
-  // ✅ IMPORTANT: hide ideas that already became scripts
-  !convertedIdeaIds.has(p.id) &&
-  // ✅ IMPORTANT: only show ideas created by the current writer
-  (p.created_by === user.id || p.created_by_user_id === user.id)
-);
-const handleEdit = (project: Project) => {
-  const parsedData =
-    typeof project.data === 'string'
-      ? JSON.parse(project.data)
-      : project.data;
+    const approvedIdeas = dashboardProjects.filter(p =>
+        p.data?.source === 'IDEA_PROJECT' &&
+        p.current_stage === WorkflowStage.SCRIPT &&
+        p.assigned_to_role === Role.WRITER &&
+        p.status === TaskStatus.WAITING_APPROVAL &&
+        p.history?.some(
+            h =>
+                h.stage === WorkflowStage.FINAL_REVIEW_CEO &&
+                h.action === 'APPROVED'
+        ) &&
+        // ✅ IMPORTANT: hide ideas that already became scripts
+        !convertedIdeaIds.has(p.id) &&
+        // ✅ IMPORTANT: only show ideas created by the current writer
+        (p.created_by === user.id || p.created_by_user_id === user.id)
+    );
+    const handleEdit = (project: Project) => {
+        const parsedData =
+            typeof project.data === 'string'
+                ? JSON.parse(project.data)
+                : project.data;
 
-  const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
-  const isRework = project.status === 'REWORK';
+        const isIdeaProject = parsedData?.source === 'IDEA_PROJECT';
+        const isRework = project.status === 'REWORK';
 
-  // ✅ IDEA + REWORK → editable idea form
-  // Only for projects that are truly ideas (no script content)
-  if (isIdeaProject && isRework && !parsedData?.script_content) {
-    setEditingProject(project);
-    setIsCreatingIdea(true);
-    return;
-  }
+        // ✅ IDEA + REWORK → editable idea form
+        // Only for projects that are truly ideas (no script content)
+        if (isIdeaProject && isRework && !parsedData?.script_content) {
+            navigate(`/writer/edit/${project.id}`);
+            return;
+        }
 
-  // ✅ IDEA + APPROVED BY CEO (needs to be converted to script) → editable script form
-  if (isIdeaProject && project.current_stage === 'SCRIPT' && project.assigned_to_role === 'WRITER') {
-    setScriptFromIdea(project); // Open the script editor for approved idea
-    return;
-  }
+        // ✅ IDEA + APPROVED BY CEO (needs to be converted to script) → editable script form
+        if (isIdeaProject && project.current_stage === 'SCRIPT' && project.assigned_to_role === 'WRITER') {
+            setScriptFromIdea(project); // Open the script editor for approved idea
+            return;
+        }
 
-  // ❌ IDEA + REJECTED → read-only (do nothing)
-  if (isIdeaProject && project.status === 'REJECTED') {
-    return;
-  }
+        // ❌ IDEA + REJECTED → read-only (do nothing)
+        if (isIdeaProject && project.status === 'REJECTED') {
+            return;
+        }
 
-  // ✅ IDEA (not rework or rejected) → editable idea form
-  if (isIdeaProject && !isRework && project.status !== 'REJECTED') {
-    setEditingProject(project);
-    setIsCreatingIdea(true);
-    return;
-  }
+        // ✅ IDEA (not rework or rejected) → editable idea form
+        if (isIdeaProject && !isRework && project.status !== 'REJECTED') {
+            navigate(`/writer/edit/${project.id}`);
+            return;
+        }
 
-  // ✅ SCRIPT + REWORK → editable script form
-  if (!isIdeaProject && isRework) {
-    setEditingProject(project);
-    setIsCreating(true);
-    return;
-  }
-};
+        // ✅ SCRIPT + REWORK → editable script form
+        if (!isIdeaProject && isRework) {
+            navigate(`/writer/edit/${project.id}`);
+            return;
+        }
+    };
 
 
 
@@ -253,20 +304,12 @@ const handleEdit = (project: Project) => {
 
     const handleCloseWithoutAction = async () => {
         await onRefresh();
-
-        // Close all create/edit states
-        setIsCreating(false);
-        setEditingProject(null);
-        setScriptFromIdea(null);
-
-        // ✅ FORCE DASHBOARD VIEW
-        setActiveView('dashboard');
-        localStorage.setItem(viewStorageKey, 'dashboard');
+        navigate('/writer');
     };
 
     const handleCloseIdeaCreation = async () => {
         await onRefresh();
-        setIsCreatingIdea(false);
+        navigate('/writer');
         // Show popup after successful idea submission
         setPopupMessage('Idea has been submitted and is waiting for CMO review.');
         setStageName('Final Review (CMO)');
@@ -282,11 +325,11 @@ const handleEdit = (project: Project) => {
 
 
     const handleViewProject = (project: Project) => {
-        setViewingProject(project);
+        navigate(`/writer/project/${project.id}`);
     };
 
     const handleCloseDetail = async () => {
-        setViewingProject(null);
+        navigate('/writer');
         await onRefresh();
     };
     // ✅ FULL PAGE: Convert Approved Idea → Script
@@ -318,7 +361,7 @@ const handleEdit = (project: Project) => {
     if (reworkProject) {
         return <CreateScript project={reworkProject} onClose={() => setReworkProject(null)} onSuccess={handleCloseCreate} />;
     }
-    
+
     // Video Approval View
     if (videoApprovalView) {
         return <WriterVideoApproval projects={videoApprovalProjects} onBack={() => setVideoApprovalView(false)} refreshProjects={handleInternalRefresh} />;
@@ -333,8 +376,8 @@ const handleEdit = (project: Project) => {
             onChangeView={handleViewChange}
         >
             {activeView === 'mywork' && (
-  <WriterMyWork user={user} projects={allWriterProjects} />
-)}
+                <WriterMyWork user={user} projects={allWriterProjects} />
+            )}
             {activeView === 'calendar' && <WriterCalendar projects={inboxProjects} />}
             {activeView === 'dashboard' && (
                 <div key={refreshKey} className="space-y-8 animate-fade-in">
@@ -350,21 +393,21 @@ const handleEdit = (project: Project) => {
                             🔄 Refresh
                         </button>
                         <button
-                            onClick={() => setIsCreating(true)}
+                            onClick={() => navigate('/writer/create-script')}
                             className="w-full sm:w-auto bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
                         >
                             <Plus className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>New Script</span>
                         </button>
                         <button
-                            onClick={() => setIsCreatingIdea(true)}
+                            onClick={() => navigate('/writer/create-idea')}
                             className="w-full sm:w-auto bg-[#8B5CF6] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
                         >
                             <Lightbulb className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>New Idea</span>
                         </button>
                         <button
-                            onClick={() => setVideoApprovalView(true)}
+                            onClick={() => navigate('/writer/video-approval')}
                             className="w-full sm:w-auto bg-[#F59E0B] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
                         >
                             <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
@@ -441,27 +484,27 @@ const handleEdit = (project: Project) => {
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-black uppercase tracking-wide">In Review</h3>
                                     <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{
-                                      inReviewFilter === 'ideas' ? inReviewIdeas.length :
-                                      inReviewFilter === 'scripts' ? inReviewScripts.length :
-                                      allInReview.length
+                                        inReviewFilter === 'ideas' ? inReviewIdeas.length :
+                                            inReviewFilter === 'scripts' ? inReviewScripts.length :
+                                                allInReview.length
                                     }</span>
                                 </div>
                             </div>
                             {/* Tabs for Ideas and Scripts - outside the main box */}
                             <div className="flex border-b border-gray-300 bg-white border-2 border-t-0 border-black">
-                                <button 
+                                <button
                                     className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'all' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
                                     onClick={() => setInReviewFilter('all')}
                                 >
                                     All ({allInReview.length})
                                 </button>
-                                <button 
+                                <button
                                     className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'ideas' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
                                     onClick={() => setInReviewFilter('ideas')}
                                 >
                                     Ideas ({inReviewIdeas.length})
                                 </button>
-                                <button 
+                                <button
                                     className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${inReviewFilter === 'scripts' ? 'border-[#0085FF] text-[#0085FF]' : 'border-transparent text-gray-500'}`}
                                     onClick={() => setInReviewFilter('scripts')}
                                 >
@@ -469,58 +512,58 @@ const handleEdit = (project: Project) => {
                                 </button>
                             </div>
                             <div className="space-y-4">
-                                {(inReviewFilter === 'ideas' ? inReviewIdeas : 
-                                  inReviewFilter === 'scripts' ? inReviewScripts : 
-                                  allInReview).map(p => (
-                                    <div
-                                        key={p.id}
-                                        onClick={() => handleViewProject(p)}
-                                        className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
-                                            {/* Show IDEA badge for idea projects */}
-                                            {p.data?.source === 'IDEA_PROJECT' && (
-                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                                    {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                                                </span>
-                                            )}
-                                            <span
-                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                    ? 'bg-red-600 text-white font-black'
-                                                    : p.priority === 'NORMAL'
-                                                        ? 'bg-yellow-500 text-black'
-                                                        : 'bg-green-500 text-white'
-                                                    }`}
+                                {(inReviewFilter === 'ideas' ? inReviewIdeas :
+                                    inReviewFilter === 'scripts' ? inReviewScripts :
+                                        allInReview).map(p => (
+                                            <div
+                                                key={p.id}
+                                                onClick={() => handleViewProject(p)}
+                                                className={`bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${p.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                                             >
-                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
-                                            </span>
-                                            {/* Show Approved badge for idea projects that were returned to writer after CEO approval */}
-                                            {p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.SCRIPT && p.assigned_to_role === Role.WRITER && p.status === TaskStatus.WAITING_APPROVAL && (
-                                                <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
-                                                    Approved
-                                                </span>
-                                            )}
-                                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
-                                                {p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Script Review (CMO)' :
-                                                 p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ? 'Script Review (CEO)' :
-                                                 p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' :
-                                                 p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? 'Final Review (CEO)' :
-                                                 p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
-                                            </span>
-                                        </div>
-                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
+                                                    {/* Show IDEA badge for idea projects */}
+                                                    {p.data?.source === 'IDEA_PROJECT' && (
+                                                        <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                                            {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
+                                                        </span>
+                                                    )}
+                                                    <span
+                                                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                                            ? 'bg-red-600 text-white font-black'
+                                                            : p.priority === 'NORMAL'
+                                                                ? 'bg-yellow-500 text-black'
+                                                                : 'bg-green-500 text-white'
+                                                            }`}
+                                                    >
+                                                        {p.priority}{p.priority === 'HIGH' && ' ★'}
+                                                    </span>
+                                                    {/* Show Approved badge for idea projects that were returned to writer after CEO approval */}
+                                                    {p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.SCRIPT && p.assigned_to_role === Role.WRITER && p.status === TaskStatus.WAITING_APPROVAL && (
+                                                        <span className="bg-green-100 text-green-800 px-2 py-0.5 border-2 border-green-300 text-[10px] font-black uppercase">
+                                                            Approved
+                                                        </span>
+                                                    )}
+                                                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
+                                                        {p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Script Review (CMO)' :
+                                                            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ? 'Script Review (CEO)' :
+                                                                p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' :
+                                                                    p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? 'Final Review (CEO)' :
+                                                                        p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
+                                                    </span>
+                                                </div>
+                                                <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
 
-                                        <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
-                                            <Clock className="w-3 h-3 mr-1" />
-                                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                                        </div>
+                                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
+                                                    <Clock className="w-3 h-3 mr-1" />
+                                                    {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                                                </div>
 
-                                        <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden mt-2">
-                                            <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
-                                        </div>
-                                    </div>
-                                ))}
+                                                <div className="w-full bg-slate-100 h-2 border border-black overflow-hidden mt-2">
+                                                    <div className="bg-[#0085FF] h-full w-2/3 animate-pulse"></div>
+                                                </div>
+                                            </div>
+                                        ))}
                             </div>
                         </div>
 
@@ -537,7 +580,7 @@ const handleEdit = (project: Project) => {
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     'bg-[#D946EF] text-white'
-                                            }`}>
+                                                }`}>
                                                 {p.channel}
                                             </span>
                                             {/* Show IDEA badge for idea projects */}
@@ -552,14 +595,14 @@ const handleEdit = (project: Project) => {
                                                     : p.priority === 'NORMAL'
                                                         ? 'bg-yellow-500 text-black'
                                                         : 'bg-green-500 text-white'
-                                                }`}>
+                                                    }`}>
                                                 {p.priority}{p.priority === 'HIGH' && ' ★'}
                                             </span>
                                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                                                 p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
                                                     p.assigned_to_role === Role.DESIGNER ? 'bg-pink-100 text-pink-800' :
                                                         'bg-slate-100 text-slate-700'
-                                            }`}>
+                                                }`}>
                                                 {p.assigned_to_role === Role.CINE ? 'WITH CINE' :
                                                     p.assigned_to_role === Role.EDITOR ? 'WITH EDITOR' :
                                                         p.assigned_to_role === Role.DESIGNER ? 'CREATIVE DESIGN' :

@@ -6,14 +6,16 @@ import { Search, Plus, Filter, Edit2, Shield, Power, Key, X, User as UserIcon, A
 import { format } from 'date-fns';
 import { AdminView } from '../AdminLayout';
 
+import { useNavigate } from 'react-router-dom';
+
 interface Props {
     users: User[];
     logs: SystemLog[];
     onRefresh: () => void;
-    onNavigate: (view: AdminView) => void;
 }
 
-const UserManagement: React.FC<Props> = ({ users, logs, onRefresh, onNavigate }) => {
+const UserManagement: React.FC<Props> = ({ users, logs, onRefresh }) => {
+    const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState<Role | 'ALL'>('ALL');
     const [statusFilter, setStatusFilter] = useState<UserStatus | 'ALL'>('ALL');
@@ -33,7 +35,7 @@ const UserManagement: React.FC<Props> = ({ users, logs, onRefresh, onNavigate })
             <div className="flex flex-col gap-4">
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Users</h1>
                 <button
-                    onClick={() => onNavigate('USER_ADD')}
+                    onClick={() => navigate('/admin/users/add')}
                     className="bg-red-600 hover:bg-red-700 text-white px-4 py-3 sm:py-2 rounded-lg font-medium flex items-center justify-center shadow-md shadow-red-100 w-full sm:w-auto min-h-[48px]"
                 >
                     <Plus className="w-5 h-5 mr-2" />
