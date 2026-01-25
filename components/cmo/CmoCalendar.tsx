@@ -209,17 +209,17 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
                   {dayEntries.map(entry => (
                     <div
                       key={entry.id}
-                      className={`text-[10px] p-1.5 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white font-bold rounded shadow-sm border border-black/10 hover:scale-[1.02] transition-transform cursor-default`}
+                      className={`text-[10px] p-1.5 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white font-bold rounded shadow-sm border border-black/10 hover:scale-[1.02] transition-transform cursor-default overflow-hidden`}
                     >
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="bg-white/20 px-1 rounded text-[8px] tracking-tighter">{getLabel(entry.type)}</span>
-                        <div className="line-clamp-1 flex-1 text-right">{entry.title}</div>
+                      <div className="truncate mb-0.5">{entry.title}</div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="bg-white/20 px-1 rounded text-[8px] tracking-tighter uppercase">{entry.type}</span>
+                        {entry.niche && (
+                          <div className="text-[7px] font-black uppercase tracking-wider opacity-80 truncate">
+                            {formatNiche(entry.niche, entry.niche_other)}
+                          </div>
+                        )}
                       </div>
-                      {entry.niche && (
-                        <div className="text-[7px] font-black uppercase tracking-wider opacity-80 truncate">
-                          {formatNiche(entry.niche, entry.niche_other)}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>

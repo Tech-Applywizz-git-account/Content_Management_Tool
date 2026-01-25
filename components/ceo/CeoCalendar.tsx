@@ -3,9 +3,15 @@ import { Project } from '../../types';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 
+const toDateKey = (value?: string | null): string | null => {
+    if (!value) return null;
+    return value.split('T')[0].split(' ')[0];
+};
+
 const parseLocalDate = (dateStr?: string | null) => {
-    if (!dateStr) return null;
-    return new Date(`${dateStr}T00:00:00`);
+    const key = toDateKey(dateStr);
+    if (!key) return null;
+    return new Date(`${key}T00:00:00`);
 };
 
 interface Props {
@@ -19,8 +25,8 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     const monthEnd = endOfMonth(currentDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-    // Get all projects with any dates
-    const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date || p.designer_uploaded_at || p.created_at) : [];
+    // Get all projects with any of the requested dates
+    const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date) : [];
 
     const getProjectsForDay = (day: Date) => {
         const dayProjects = [];
@@ -61,30 +67,6 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                     });
                 }
             }
-
-            // Check designer delivery date
-            if (project.designer_uploaded_at) {
-                const designerDate = parseLocalDate(project.designer_uploaded_at);
-                if (isSameDay(designerDate, day)) {
-                    dayProjects.push({
-                        ...project,
-                        dateType: 'designer',
-                        displayDate: project.designer_uploaded_at
-                    });
-                }
-            }
-
-            // Check created date (when writer submits)
-            if (project.created_at) {
-                const createdDate = parseLocalDate(project.created_at);
-                if (isSameDay(createdDate, day)) {
-                    dayProjects.push({
-                        ...project,
-                        dateType: 'created',
-                        displayDate: project.created_at
-                    });
-                }
-            }
         });
 
         return dayProjects;
@@ -96,8 +78,6 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             case 'shoot': return 'Shoot';
             case 'delivery': return 'Delivery';
             case 'post': return 'Post';
-            case 'designer': return 'Designer';
-            case 'created': return 'Submitted';
             default: return 'Scheduled';
         }
     };
@@ -108,8 +88,6 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             case 'shoot': return 'bg-blue-500';
             case 'delivery': return 'bg-green-500';
             case 'post': return 'bg-purple-500';
-            case 'designer': return 'bg-pink-500';
-            case 'created': return 'bg-yellow-500';
             default: return 'bg-gray-500';
         }
     };
@@ -144,24 +122,6 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                 displayDate: project.post_scheduled_date
             });
         }
-
-        // Add designer delivery date
-        if (project.designer_uploaded_at) {
-            allDatedProjects.push({
-                ...project,
-                dateType: 'designer',
-                displayDate: project.designer_uploaded_at
-            });
-        }
-
-        // Add created date (when writer submits)
-        if (project.created_at) {
-            allDatedProjects.push({
-                ...project,
-                dateType: 'created',
-                displayDate: project.created_at
-            });
-        }
     });
 
     const getPlatformColor = (channel: string) => {
@@ -176,10 +136,14 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     // Get upcoming dates (next 7 days) for all date types
     const upcomingDates = allDatedProjects
         .filter((p: any) => {
-            const schedDate = p.displayDate ? new Date(p.displayDate) : null;
-            if (!schedDate) return false;
+            const dateStr = toDateKey(p.displayDate);
+            if (!dateStr) return false;
+            const schedDate = new Date(`${dateStr}T00:00:00`);
             const today = new Date();
-            const weekFromNow = new Date(Date.now() + 7 * 86400000);
+            today.setHours(0, 0, 0, 0);
+            const weekFromNow = new Date();
+            weekFromNow.setDate(today.getDate() + 7);
+            weekFromNow.setHours(23, 59, 59, 999);
             return schedDate >= today && schedDate <= weekFromNow;
         })
         .sort((a: any, b: any) => {
@@ -266,7 +230,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                                             {project.priority === 'HIGH' && (
                                                 <span className="ml-1 text-[8px] font-black text-red-200">★</span>
                                             )}
-                                            {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery' || project.dateType === 'designer' || project.dateType === 'created') && project.data?.niche && (
+                                            {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery') && project.data?.niche && (
                                                 <div className="text-[8px] font-normal mt-0.5 truncate" title={project.data.niche}>
                                                     [{project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                                         : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
@@ -299,7 +263,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                                     <div>
                                         <p className="font-bold text-slate-900">{project.title}</p>
                                         <p className="text-sm text-slate-600">{project.channel} - {getDateTypeLabel(project.dateType)}</p>
-                                        {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery' || project.dateType === 'designer' || project.dateType === 'created') && project.data?.niche && (
+                                        {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery') && project.data?.niche && (
                                             <p className="text-xs text-slate-500 font-bold">
                                                 Niche: {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                                     : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'

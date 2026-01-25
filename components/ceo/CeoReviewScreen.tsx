@@ -79,7 +79,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const getReworkRoleLabel = (stage: WorkflowStage) => {
         // Check if this is a creative project (either designer-initiated or creative-only content type)
         const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
-        
+
         switch (stage) {
             case WorkflowStage.SCRIPT:
                 return 'Writer';
@@ -427,33 +427,21 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
             {/* Header */}
-            <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
-                <div className="flex items-center space-x-6">
-                    <button onClick={onBack} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
-                        <ArrowLeft className="w-6 h-6 text-black" />
+            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center space-x-4">
+                    <button onClick={onBack} className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
+                        <ArrowLeft className="w-5 h-5 text-black" />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
-                            {project.title}
-                        </h1>
-                        <div className="flex items-center space-x-2 mt-1">
-                            {project.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                    {'SCRIPT'}
-                                </span>
-                            )}
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
                                 }`}>
                                 {project.channel}
                             </span>
-                            <span className="text-xs font-bold uppercase text-slate-500">
-                                Stage: {STAGE_LABELS[project.current_stage]}
-                            </span>
                             <span
-                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : project.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
@@ -463,11 +451,18 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.priority}
                             </span>
                             {previousScript && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-[#FFD952] text-black">
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-[#FFD952] text-black">
                                     REWORK
                                 </span>
                             )}
+                            <span className="text-xs font-bold uppercase text-slate-500">
+                                {STAGE_LABELS[project.current_stage]}
+                            </span>
                         </div>
+                        <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
+                            {project.title}
+                        </h1>
                     </div>
                 </div>
             </header>
@@ -503,10 +498,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <Check className="w-4 h-4 mr-1" /> Approved
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Due Date</label>
-                            <div className="font-bold text-slate-900 uppercase">Today</div>
-                        </div>
+
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Content Type</label>
                             <div className="font-bold text-slate-900 uppercase">
@@ -541,6 +533,33 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             </div>
                         )}
                     </div>
+
+                    {/* CMO Notes Section */}
+                    {(project as any).forwarded_comments && (project as any).forwarded_comments.length > 0 && (project as any).forwarded_comments.some((c: any) => c.from_role === 'CMO') && (
+                        <section className="space-y-4 pt-6 mt-6 border-t-4 border-black">
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">CMO Notes</h3>
+                            <div className="space-y-4">
+                                {(project as any).forwarded_comments
+                                    .filter((c: any) => c.from_role === 'CMO')
+                                    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                                    .map((comment: any, index: number) => (
+                                        <div key={index} className="border-2 border-black bg-[#FFFBEB] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="font-black text-slate-900 uppercase text-sm bg-yellow-400 px-2 py-1 border border-black">
+                                                    CMO Feedback
+                                                </span>
+                                                <span className="text-xs font-bold text-slate-500 uppercase">
+                                                    {new Date(comment.created_at).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                            <p className="font-bold text-slate-900 whitespace-pre-wrap">
+                                                {comment.comment}
+                                            </p>
+                                        </div>
+                                    ))}
+                            </div>
+                        </section>
+                    )}
 
                     {/* Script Reference Link - Additional Section for clarity */}
                     {project.data?.script_reference_link && (
@@ -618,7 +637,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                             Previous Version
                                         </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
+                                        <div className="font-serif text-xl leading-normal text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
                                             {(() => {
                                                 // Decode HTML entities in the previous script content
                                                 let decodedContent = previousScript
@@ -638,7 +657,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                             Writer Rework Submission
                                         </h4>
-                                        <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
+                                        <div className="font-serif text-xl leading-normal text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
                                             {project.data?.source === 'DESIGNER_INITIATED'
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
@@ -661,7 +680,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             ) : (
                                 // Show single script for non-rework projects
                                 <div
-                                    className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                    className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-xl leading-normal text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
                                     {project.data?.source === 'DESIGNER_INITIATED'
                                         ? project.data?.creative_link || 'No creative link available.'

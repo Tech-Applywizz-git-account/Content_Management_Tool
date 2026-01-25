@@ -9,11 +9,12 @@ interface ObserverDashboardProps {
     onLogout: () => void;
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -36,7 +37,14 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
             navigate(`/${rolePath}/${view}`);
         }
     };
-    const [projectFilter, setProjectFilter] = useState<'all' | 'pending' | 'approved' | 'inProduction' | 'posted'>('all');
+    const projectFilter = (searchParams.get('filter') as 'all' | 'pending' | 'approved' | 'inProduction' | 'posted') || 'all';
+
+    const setProjectFilter = (filter: string) => {
+        setSearchParams(prev => {
+            prev.set('filter', filter);
+            return prev;
+        }, { replace: true });
+    };
 
     useEffect(() => {
         loadData();

@@ -15,7 +15,7 @@ interface Props {
 
 const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
-    
+
     // Show all projects the designer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
@@ -23,7 +23,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
-        
+
         // Sort projects by priority for Designer role:
         // 1. Projects without delivery date (highest priority)
         // 2. Projects with delivery date but no creative assets uploaded
@@ -35,19 +35,19 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
             const isVideoB = b.content_type === 'VIDEO';
             const aHasCreative = isVideoA ? !!a.thumbnail_link : !!a.creative_link;
             const bHasCreative = isVideoB ? !!b.thumbnail_link : !!b.creative_link;
-            
+
             // Projects without delivery date come first
             if (aHasDeliveryDate && !bHasDeliveryDate) return 1;
             if (!aHasDeliveryDate && bHasDeliveryDate) return -1;
-            
+
             // Among projects with delivery date, those without creative come before those with creative
             if (aHasCreative && !bHasCreative) return 1;
             if (!aHasCreative && bHasCreative) return -1;
-            
+
             // If both have same status, maintain original order
             return 0;
         });
-        
+
         return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
@@ -76,12 +76,12 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                 {myTasks.map(project => {
                     const isVideo = project.content_type === 'VIDEO';
                     const isDelivered = isVideo ? !!project.thumbnail_link : !!project.creative_link;
-                    
+
                     // Use the centralized workflow state detection with role context
                     const workflowState = getWorkflowStateForRole(project, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
                     const isRejected = workflowState.isRejected;
-                    
+
                     return (
                         <div
                             key={project.id}
@@ -99,20 +99,20 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                 <div className="flex justify-between items-start">
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                ? 'bg-[#FF4F4F] text-white'
-                                                : project.channel === 'LINKEDIN'
-                                                    ? 'bg-[#0085FF] text-white'
-                                                    : 'bg-[#D946EF] text-white'
+                                            ? 'bg-[#FF4F4F] text-white'
+                                            : project.channel === 'LINKEDIN'
+                                                ? 'bg-[#0085FF] text-white'
+                                                : 'bg-[#D946EF] text-white'
                                             }`}
                                     >
                                         {project.channel}
                                     </span>
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                                ? 'bg-red-500 text-white'
-                                                : project.priority === 'NORMAL'
-                                                    ? 'bg-yellow-500 text-black'
-                                                    : 'bg-green-500 text-white'
+                                            ? 'bg-red-500 text-white'
+                                            : project.priority === 'NORMAL'
+                                                ? 'bg-yellow-500 text-black'
+                                                : 'bg-green-500 text-white'
                                             }`}
                                     >
                                         {project.priority}
@@ -165,12 +165,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                             <span className="font-bold text-slate-900">{project.delivery_date}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between">
-                                        <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-                                        <span className="font-bold text-slate-900">
-                                            {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-                                        </span>
-                                    </div>
+
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                                         <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
@@ -188,7 +183,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
                                         </div>
                                     )}
-                                    
+
                                     {/* Show live URL for completed projects */}
                                     {project.status === 'DONE' && project.data?.live_url && (
                                         <div className="pt-2 border-t border-slate-100 mt-2">

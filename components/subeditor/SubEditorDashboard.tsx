@@ -106,7 +106,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     if (activeFilter === 'SCRIPTS') {
       return scriptProjects || [];
     }
-    
+
     if (activeFilter === 'CINE') {
       return (scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY);
     }
@@ -146,7 +146,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
 
     // Count script projects from props
     setScriptsCount((scriptProjects || []).length);
-    
+
     // Count CINE projects from props
     setCineProjectsCount((scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY).length);
   }, [historyProjects, scriptProjects]);
@@ -205,7 +205,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
           scriptProjects={scriptProjects}
         />
       ) : activeView === 'calendar' ? (
-        <SubEditorCalendar projects={historyProjects} user={user} />
+        <SubEditorCalendar projects={[...inboxProjects, ...historyProjects]} user={user} />
       ) : (
         <div key={refreshKey} className="space-y-8 animate-fade-in">
           {/* Dashboard Content */}
@@ -281,7 +281,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               </div>
               <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
             </div>
-            
+
             {/* CINE PROJECTS */}
             <div
               onClick={() => {

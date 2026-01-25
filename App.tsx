@@ -275,16 +275,16 @@ function App() {
 
 
 
-  // Effect to fetch all projects for CMO dashboard
+  // Effect to fetch all projects for management and overview roles
   useEffect(() => {
-    // Only fetch for CMO users
-    if (user?.role === Role.CMO) {
+    // Fetch all projects for management and overview roles
+    if (user?.role === Role.CMO || user?.role === Role.CEO || user?.role === Role.OPS || user?.role === Role.ADMIN || user?.role === Role.OBSERVER) {
       const fetchAllProjects = async () => {
         try {
           const projects = await db.projects.getAll();
           setAllProjects(projects);
         } catch (error) {
-          console.error('Failed to fetch all projects for CMO:', error);
+          console.error('Failed to fetch all projects for management role:', error);
         }
       };
 
@@ -334,13 +334,13 @@ function App() {
     }
 
     // Only fetch for Sub-Editor users
-    if (user?.role === Role.SUB_EDITOR) {
+    if (user?.role === Role.SUB_EDITOR || user?.role === Role.WRITER) {
       const fetchSubEditorScriptProjects = async () => {
         try {
           const projects = await db.projects.getScriptProjects();
           setSubEditorScriptProjects(projects);
         } catch (error) {
-          console.error('Failed to fetch script projects for Sub-Editor:', error);
+          console.error('Failed to fetch script projects for role:', error);
         }
       };
 
@@ -377,15 +377,15 @@ function App() {
         setProjects({ inbox: inboxProjects, history: myWorkProjects });
         console.log('✅ App.tsx: Projects state updated');
 
-        // For CMO role, also refresh all projects (for calendar)
-        if (u.role === Role.CMO) {
+        // For management roles, also refresh all projects (for calendar)
+        if (u.role === Role.CMO || u.role === Role.CEO || u.role === Role.OPS || u.role === Role.OBSERVER) {
           try {
-            console.log('🔄 App.tsx: Refreshing all projects for CMO');
+            console.log('🔄 App.tsx: Refreshing all projects');
             const allProjectsData = await db.projects.getAll();
             setAllProjects(allProjectsData);
-            console.log('✅ App.tsx: CMO all projects refreshed:', allProjectsData.length);
+            console.log('✅ App.tsx: All projects refreshed:', allProjectsData.length);
           } catch (error) {
-            console.error('❌ App.tsx: Failed to refresh all projects for CMO:', error);
+            console.error('❌ App.tsx: Failed to refresh all projects:', error);
           }
         }
 
@@ -408,14 +408,14 @@ function App() {
           } catch (error) {
             console.error('❌ App.tsx: Failed to refresh script projects for Designer:', error);
           }
-        } else if (u.role === Role.SUB_EDITOR) {
+        } else if (u.role === Role.SUB_EDITOR || u.role === Role.WRITER) {
           try {
-            console.log('🔄 App.tsx: Refreshing script projects for Sub-Editor');
+            console.log('🔄 App.tsx: Refreshing script projects for role');
             const scriptProjects = await db.projects.getScriptProjects();
             setSubEditorScriptProjects(scriptProjects);
-            console.log('✅ App.tsx: Sub-Editor script projects refreshed:', scriptProjects.length);
+            console.log('✅ App.tsx: Script projects refreshed:', scriptProjects.length);
           } catch (error) {
-            console.error('❌ App.tsx: Failed to refresh script projects for Sub-Editor:', error);
+            console.error('❌ App.tsx: Failed to refresh script projects:', error);
           }
         }
       }
@@ -534,9 +534,46 @@ function App() {
     refreshData(user!);
   };
 
+  // Scroll Restoration Component
+  const ScrollRestorer = () => {
+    const { pathname, search } = useLocation();
+
+    useEffect(() => {
+      const container = document.querySelector('main');
+      if (!container) return;
+
+      // Restore scroll
+      const saved = sessionStorage.getItem(`scroll_${pathname}${search}`);
+      if (saved) {
+        // Use a small delay to ensure content is rendered
+        const timer = setTimeout(() => {
+          container.scrollTo(0, parseInt(saved, 10));
+        }, 50);
+        return () => clearTimeout(timer);
+      } else {
+        container.scrollTo(0, 0);
+      }
+    }, [pathname, search]);
+
+    useEffect(() => {
+      const container = document.querySelector('main');
+      if (!container) return;
+
+      const handleScroll = () => {
+        sessionStorage.setItem(`scroll_${pathname}${search}`, container.scrollTop.toString());
+      };
+
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }, [pathname, search]);
+
+    return null;
+  };
+
   // Main rendering logic - no more loading spinner block
   return (
     <div className="app-container">
+      <ScrollRestorer />
       <AppRoutes
         user={user}
         isRestoringSession={isRestoringSession}

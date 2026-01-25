@@ -26,6 +26,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@types/deno": "^2.5.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

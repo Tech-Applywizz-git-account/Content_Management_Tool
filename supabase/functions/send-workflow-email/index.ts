@@ -1,6 +1,4 @@
-// @ts-nocheck
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference lib="deno.ns" />
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -47,7 +45,7 @@ async function sendEmail(to: string[], subject: string, html: string) {
             message: {
                 subject,
                 body: { contentType: "HTML", content: html },
-                toRecipients: to.map(email => ({ emailAddress: { address: email } })),
+                toRecipients: to.map((email: string) => ({ emailAddress: { address: email } })),
             },
         }),
     });
@@ -63,10 +61,10 @@ async function getUserEmail(userId: string): Promise<string | null> {
 // Helper: Fetch emails for a specific role
 async function getRoleEmails(role: string): Promise<string[]> {
     const { data } = await supabaseAdmin.from("users").select("email").eq("role", role.toUpperCase()).eq("status", "ACTIVE");
-    return data?.map(u => u.email).filter(Boolean) || [];
+    return data?.map((u: any) => u.email).filter(Boolean) || [];
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
     // Safety check: Webhook Secret
@@ -351,7 +349,7 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({ ok: true, sentTo: recipientEmails }), { headers: corsHeaders });
 
-    } catch (err) {
+    } catch (err: any) {
         console.error("Critical Function Error:", err.message);
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
     }

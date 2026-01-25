@@ -17,7 +17,7 @@ interface Props {
 
 const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter, uploadedSubTab, onSetUploadedSubTab }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
-    
+
     // Show all projects the cinematographer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
@@ -25,7 +25,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
-        
+
         // Sort projects by priority for Cine role:
         // 1. Projects without shoot date (highest priority)
         // 2. Projects with shoot date but no video uploaded
@@ -35,19 +35,19 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
             const bHasShootDate = !!b.shoot_date;
             const aHasVideo = !!a.video_link;
             const bHasVideo = !!b.video_link;
-            
+
             // Projects without shoot date come first
             if (aHasShootDate && !bHasShootDate) return 1;
             if (!aHasShootDate && bHasShootDate) return -1;
-            
+
             // Among projects with shoot date, those without video come before those with video
             if (aHasVideo && !bHasVideo) return 1;
             if (!aHasVideo && bHasVideo) return -1;
-            
+
             // If both have same status, maintain original order
             return 0;
         });
-        
+
         return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
@@ -77,24 +77,24 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                 <div className="flex space-x-4 border-b-2 border-black pb-2">
                     <button
                         onClick={() => onSetUploadedSubTab('EDITOR')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'EDITOR' 
-                            ? 'bg-[#3B82F6] text-white' 
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'EDITOR'
+                            ? 'bg-[#3B82F6] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
                         Editor
                     </button>
                     <button
                         onClick={() => onSetUploadedSubTab('POST')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POST' 
-                            ? 'bg-[#10B981] text-white' 
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POST'
+                            ? 'bg-[#10B981] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
                         Post
                     </button>
                     <button
                         onClick={() => onSetUploadedSubTab('POSTED')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POSTED' 
-                            ? 'bg-[#EC4899] text-white' 
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POSTED'
+                            ? 'bg-[#EC4899] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
                         Posted
@@ -106,12 +106,12 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                 {myTasks.map(project => {
                     const isScheduled = !!project.shoot_date;
                     const isUploaded = !!project.video_link;
-                    
+
                     // Use the centralized workflow state detection with role context
                     const workflowState = getWorkflowStateForRole(project, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
                     const isRejected = workflowState.isRejected;
-                    
+
                     return (
                         <div
                             key={project.id}
@@ -129,20 +129,20 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                 <div className="flex justify-between items-start">
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                ? 'bg-[#FF4F4F] text-white'
-                                                : project.channel === 'LINKEDIN'
-                                                    ? 'bg-[#0085FF] text-white'
-                                                    : 'bg-[#D946EF] text-white'
+                                            ? 'bg-[#FF4F4F] text-white'
+                                            : project.channel === 'LINKEDIN'
+                                                ? 'bg-[#0085FF] text-white'
+                                                : 'bg-[#D946EF] text-white'
                                             }`}
                                     >
                                         {project.channel}
                                     </span>
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                                ? 'bg-red-500 text-white'
-                                                : project.priority === 'NORMAL'
-                                                    ? 'bg-yellow-500 text-black'
-                                                    : 'bg-green-500 text-white'
+                                            ? 'bg-red-500 text-white'
+                                            : project.priority === 'NORMAL'
+                                                ? 'bg-yellow-500 text-black'
+                                                : 'bg-green-500 text-white'
                                             }`}
                                     >
                                         {project.priority}
@@ -184,7 +184,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                         <span className="font-bold text-slate-900">{project.data.writer_name}</span>
                                     </div>
                                 )}
-                                
+
                                 {/* Editor Name - Show for UPLOADED filter */}
                                 {activeFilter === 'UPLOADED' && project.data?.editor_name && (
                                     <div className="flex justify-between text-sm">
@@ -192,7 +192,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                         <span className="font-bold text-slate-900">{project.data.editor_name}</span>
                                     </div>
                                 )}
-                                
+
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">
                                     {isScheduled && (
@@ -201,12 +201,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                             <span className="font-bold text-slate-900">{project.shoot_date}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between">
-                                        <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-                                        <span className="font-bold text-slate-900">
-                                            {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-                                        </span>
-                                    </div>
+
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Submitted</span>
                                         <span className="font-bold text-slate-900">
@@ -222,7 +217,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                             </span>
                                         </div>
                                     )}
-                                    
+
                                     {/* Show live URL for posted projects */}
                                     {(activeFilter === 'POSTED' || uploadedSubTab === 'POSTED') && project.data?.live_url && (
                                         <div className="pt-2">

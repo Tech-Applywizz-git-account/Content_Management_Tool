@@ -31,5 +31,8 @@
     "**/*.ts",
     "**/*.tsx",
     "vite-env.d.ts"
+  ],
+  "exclude": [
+    "supabase/functions"
   ]
 }

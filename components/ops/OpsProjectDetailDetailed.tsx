@@ -90,7 +90,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                             <FileText size={20} className="text-blue-600" />
                             Project Information
                         </h2>
-                        
+
                         <div className="space-y-3 text-sm">
                             <div className="flex justify-between">
                                 <span className="font-bold text-slate-500">Project ID:</span>
@@ -144,7 +144,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                                         .replace(/&#39;/g, "'")
                                         .replace(/&nbsp;/g, ' ');
                                     return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                  })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
+                                })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}
@@ -155,7 +155,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                             <User size={20} className="text-purple-600" />
                             Creator Information
                         </h2>
-                        
+
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <span className="font-bold text-slate-500">Writer:</span>
@@ -187,7 +187,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                             Project Timeline
                         </h2>
                         <div className="max-h-96 overflow-y-auto">
-                            <Timeline project={project} users={users} forRole="OPS" />
+                            <Timeline project={project} users={users} />
                         </div>
                     </div>
                 </div>

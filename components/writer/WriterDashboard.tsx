@@ -16,22 +16,20 @@ interface Props {
     user: { full_name: string; role: Role };
     inboxProjects: Project[];
     historyProjects: Project[];
+    scriptProjects?: Project[];
     onRefresh: () => Promise<void>;
     onLogout: () => void;
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
-const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [isCreating, setIsCreating] = useState(false);
     const [isCreatingIdea, setIsCreatingIdea] = useState(false);
-    const [editingProject, setEditingProject] = useState<Project | null>(null);
-    const [viewingProject, setViewingProject] = useState<Project | null>(null);
     const [reworkProject, setReworkProject] = useState<Project | null>(null);
     const [createScriptMode, setCreateScriptMode] = useState<'SCRIPT_FROM_APPROVED_IDEA' | undefined>(undefined);
-    const [refreshKey, setRefreshKey] = useState(0);
 
     // Determine activeView from URL path
     const getActiveViewFromPath = () => {
@@ -42,10 +40,17 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     };
 
     const activeView = getActiveViewFromPath();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const inReviewFilter = (searchParams.get('reviewFilter') as 'all' | 'ideas' | 'scripts') || 'all';
+
+    const setInReviewFilter = (filter: string) => {
+        setSearchParams(prev => {
+            prev.set('reviewFilter', filter);
+            return prev;
+        }, { replace: true });
+    };
 
     const handleViewChange = (view: string) => {
-        setEditingProject(null);
-        setViewingProject(null);
         setReworkProject(null);
         setVideoApprovalView(false);
         setScriptFromIdea(null);
@@ -57,26 +62,14 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             navigate(`/${rolePath}/${view}`);
         }
     };
+
     const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
     const [videoApprovalView, setVideoApprovalView] = useState(false); // New state for video approval view
-    const [inReviewFilter, setInReviewFilter] = useState<'all' | 'ideas' | 'scripts'>('all'); // Filter for In Review column
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
     useEffect(() => {
         const path = location.pathname;
         const subPaths = path.split('/').filter(p => p !== '');
-        const rolePath = user.role.toLowerCase();
-
-        // Pattern: /writer/project/:id
-        const projectIdx = subPaths.findIndex(p => p === 'project');
-        if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
-            const id = subPaths[projectIdx + 1];
-            // Search in both inbox and history
-            const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
-            if (p) setViewingProject(p);
-        } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
-            setViewingProject(null);
-        }
 
         // Handle specific sub-views
         if (path.endsWith('/create-script')) setIsCreating(true);
@@ -94,7 +87,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             const id = subPaths[editIdx + 1];
             const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
             if (p) {
-                setEditingProject(p);
                 // Determine if idea or script
                 if (p.data?.source === 'IDEA_PROJECT') setIsCreatingIdea(true);
                 else setIsCreating(true);
@@ -105,7 +97,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     const handleInternalRefresh = async () => {
         await onRefresh(); // MUST refetch from Supabase
-        setRefreshKey(prev => prev + 1); // force UI re-render
     };
     const isWriterProject = (p: Project) => {
         return (
@@ -284,7 +275,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const handleCloseCreate = async (action: 'draft_saved' | 'submitted' = 'submitted') => {
         await onRefresh();
         setIsCreating(false);
-        setEditingProject(null);
 
         if (action === 'draft_saved') {
             // Show popup for draft saved
@@ -345,16 +335,23 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     }
 
 
-    if (viewingProject) {
-        return <WriterProjectDetail project={viewingProject} onBack={handleCloseDetail} />;
-    }
 
     if (isCreating) {
-        return <CreateScript project={editingProject || undefined} onClose={handleCloseWithoutAction} onSuccess={handleCloseCreate} />;
+        const path = location.pathname;
+        const subPaths = path.split('/').filter(p => p !== '');
+        const editIdx = subPaths.findIndex(p => p === 'edit');
+        const editingId = editIdx !== -1 ? subPaths[editIdx + 1] : null;
+        const projectToEdit = editingId ? [...inboxProjects, ...historyProjects].find(p => p.id === editingId) : undefined;
+        return <CreateScript project={projectToEdit} onClose={handleCloseWithoutAction} onSuccess={handleCloseCreate} />;
     }
 
     if (isCreatingIdea) {
-        return <CreateIdeaProject project={editingProject || undefined} onClose={() => setIsCreatingIdea(false)} onSuccess={handleCloseIdeaCreation} />;
+        const path = location.pathname;
+        const subPaths = path.split('/').filter(p => p !== '');
+        const editIdx = subPaths.findIndex(p => p === 'edit');
+        const editingId = editIdx !== -1 ? subPaths[editIdx + 1] : null;
+        const projectToEdit = editingId ? [...inboxProjects, ...historyProjects].find(p => p.id === editingId) : undefined;
+        return <CreateIdeaProject project={projectToEdit} onClose={() => navigate('/writer')} onSuccess={handleCloseIdeaCreation} />;
     }
 
     // Handle rework projects with review comments and previous script
@@ -378,20 +375,15 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             {activeView === 'mywork' && (
                 <WriterMyWork user={user} projects={allWriterProjects} />
             )}
-            {activeView === 'calendar' && <WriterCalendar projects={inboxProjects} />}
+            {activeView === 'calendar' && <WriterCalendar projects={scriptProjects || inboxProjects} />}
             {activeView === 'dashboard' && (
-                <div key={refreshKey} className="space-y-8 animate-fade-in">
+                <div className="space-y-8 animate-fade-in">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
                             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">Writer Studio</h1>
                             <p className="font-bold text-base sm:text-lg text-slate-500">Welcome back, {user.full_name}</p>
                         </div>
-                        <button
-                            onClick={handleInternalRefresh}
-                            className="w-full sm:w-auto bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"
-                        >
-                            🔄 Refresh
-                        </button>
+
                         <button
                             onClick={() => navigate('/writer/create-script')}
                             className="w-full sm:w-auto bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2"

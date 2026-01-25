@@ -154,142 +154,142 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
         setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
         setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
-        
+
         // Count script projects from props
         setScriptsCount((scriptProjects || []).length);
-        
+
         // Count CINE projects from props
         setCineProjectsCount((scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY).length);
     }, [historyProjects, scriptProjects]);
 
-return (
-    <Layout
-        user={user as any}
-        onLogout={onLogout}
-        onOpenCreate={() => { }}
-        activeView={activeView}
-        onChangeView={handleViewChange}
-    >
-        {selectedProject ? (
-            // Navigate to the route-based project detail page instead of rendering inline
-            (() => {
-                navigate(`/editor/project/${selectedProject.id}`);
-                return null;
-            })()
-        ) : activeView === 'mywork' ? (
-            <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
-                onSelectProject={(project) => {
-                    // Navigate to the route-based project detail page with context
-                    const fromView = activeFilter === 'CINE' ? 'SCRIPTS' : 'MYWORK';
-                    navigate(`/editor/project/${project.id}?from=${fromView}`);
-                }} scriptProjects={scriptProjects} activeFilter={activeFilter} />
-        ) : activeView === 'calendar' ? (
-            <EditorCalendar projects={inboxProjects} />
-        ) : (
-            <div key={refreshKey} className="space-y-8 animate-fade-in">
-                {/* Dashboard Content */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                    <div>
-                        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
-                            Edit Suite
-                        </h1>
-                        <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
+    return (
+        <Layout
+            user={user as any}
+            onLogout={onLogout}
+            onOpenCreate={() => { }}
+            activeView={activeView}
+            onChangeView={handleViewChange}
+        >
+            {selectedProject ? (
+                // Navigate to the route-based project detail page instead of rendering inline
+                (() => {
+                    navigate(`/editor/project/${selectedProject.id}`);
+                    return null;
+                })()
+            ) : activeView === 'mywork' ? (
+                <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
+                    onSelectProject={(project) => {
+                        // Navigate to the route-based project detail page with context
+                        const fromView = activeFilter === 'CINE' ? 'SCRIPTS' : 'MYWORK';
+                        navigate(`/editor/project/${project.id}?from=${fromView}`);
+                    }} scriptProjects={scriptProjects} activeFilter={activeFilter} />
+            ) : activeView === 'calendar' ? (
+                <EditorCalendar projects={[...inboxProjects, ...historyProjects]} />
+            ) : (
+                <div key={refreshKey} className="space-y-8 animate-fade-in">
+                    {/* Dashboard Content */}
+                    <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                        <div>
+                            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+                                Edit Suite
+                            </h1>
+                            <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
+                        </div>
+                        <button
+                            onClick={handleInternalRefresh}
+                            className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
+                        >
+                            🔄 Refresh
+                        </button>
                     </div>
-                    <button
-                        onClick={handleInternalRefresh}
-                        className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
-                    >
-                        🔄 Refresh
-                    </button>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                        {/* NEEDS DELIVERY DATE */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('NEEDS_DELIVERY');
+                                handleViewChange('mywork', true);
+                            }}
+                            className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {needsDeliveryCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
+                        </div>
+
+                        {/* IN PROGRESS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('IN_PROGRESS');
+                                handleViewChange('mywork', true);
+                            }}
+                            className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {inProgressCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
+                        </div>
+
+                        {/* COMPLETED EDITS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('COMPLETED');
+                                handleViewChange('mywork', true);
+                            }}
+                            className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {completedEditsCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
+                        </div>
+
+                        {/* SCRIPTS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('SCRIPTS');
+                                handleViewChange('mywork', true);
+                            }}
+                            className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {scriptsCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
+                        </div>
+
+                        {/* CINE PROJECTS */}
+                        <div
+                            onClick={() => {
+                                setActiveFilter('CINE');
+                                handleViewChange('mywork', true);
+                            }}
+                            className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {cineProjectsCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Cine Projects</div>
+                        </div>
+                    </div>
+
+                    {/* Quick Overview */}
+                    <div className="space-y-4">
+                        <h2 className="text-2xl font-black uppercase text-slate-900 border-b-4 border-black inline-block pb-1">
+                            Quick Overview
+                        </h2>
+                        <p className="text-slate-600">
+                            You have {activeProjects.length} {activeProjects.length === 1 ? 'project' : 'projects'} in editing.
+                            Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+                        </p>
+                    </div>
                 </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                    {/* NEEDS DELIVERY DATE */}
-                    <div
-                        onClick={() => {
-                            setActiveFilter('NEEDS_DELIVERY');
-                            handleViewChange('mywork', true);
-                        }}
-                        className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    >
-                        <div className="text-4xl font-black text-white mb-1">
-                            {needsDeliveryCount}
-                        </div>
-                        <div className="text-sm font-bold uppercase text-white/80">Needs Delivery Date</div>
-                    </div>
-
-                    {/* IN PROGRESS */}
-                    <div
-                        onClick={() => {
-                            setActiveFilter('IN_PROGRESS');
-                            handleViewChange('mywork', true);
-                        }}
-                        className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    >
-                        <div className="text-4xl font-black text-white mb-1">
-                            {inProgressCount}
-                        </div>
-                        <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
-                    </div>
-
-                    {/* COMPLETED EDITS */}
-                    <div
-                        onClick={() => {
-                            setActiveFilter('COMPLETED');
-                            handleViewChange('mywork', true);
-                        }}
-                        className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    >
-                        <div className="text-4xl font-black text-white mb-1">
-                            {completedEditsCount}
-                        </div>
-                        <div className="text-sm font-bold uppercase text-white/80">Completed Edits</div>
-                    </div>
-
-                    {/* SCRIPTS */}
-                    <div
-                        onClick={() => {
-                            setActiveFilter('SCRIPTS');
-                            handleViewChange('mywork', true);
-                        }}
-                        className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    >
-                        <div className="text-4xl font-black text-white mb-1">
-                            {scriptsCount}
-                        </div>
-                        <div className="text-sm font-bold uppercase text-white/80">Scripts</div>
-                    </div>
-
-                    {/* CINE PROJECTS */}
-                    <div
-                        onClick={() => {
-                            setActiveFilter('CINE');
-                            handleViewChange('mywork', true);
-                        }}
-                        className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    >
-                        <div className="text-4xl font-black text-white mb-1">
-                            {cineProjectsCount}
-                        </div>
-                        <div className="text-sm font-bold uppercase text-white/80">Cine Projects</div>
-                    </div>
-                </div>
-
-                {/* Quick Overview */}
-                <div className="space-y-4">
-                    <h2 className="text-2xl font-black uppercase text-slate-900 border-b-4 border-black inline-block pb-1">
-                        Quick Overview
-                    </h2>
-                    <p className="text-slate-600">
-                        You have {activeProjects.length} {activeProjects.length === 1 ? 'project' : 'projects'} in editing.
-                        Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
-                    </p>
-                </div>
-            </div>
-        )}
-    </Layout>
-);
+            )}
+        </Layout>
+    );
 };
 
 export default EditorDashboard;

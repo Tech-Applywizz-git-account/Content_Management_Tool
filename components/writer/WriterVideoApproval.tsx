@@ -94,12 +94,7 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                                     {format(new Date(project.created_at), 'MMM dd, yyyy')}
                                                 </span>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-                                                <span className="font-bold text-slate-900">
-                                                    {format(new Date(project.due_date), 'MMM dd, yyyy')}
-                                                </span>
-                                            </div>
+
                                         </div>
 
                                         <div className="mt-4 pt-4 border-t-2 border-slate-100">

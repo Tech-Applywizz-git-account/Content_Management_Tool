@@ -1,4 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+/// <reference lib="deno.ns" />
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -6,7 +6,7 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
     // Only allow POST and OPTIONS methods
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -95,7 +95,7 @@ serve(async (req) => {
                         throw error // Re-throw original error
                     }
 
-                    const existingUser = userList?.users?.find(u => u.email === email)
+                    const existingUser = userList?.users?.find((u: any) => u.email === email)
 
                     if (existingUser) {
                         // Update the existing user's metadata
@@ -191,7 +191,7 @@ serve(async (req) => {
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Edge Function error:', error)
         return new Response(
             JSON.stringify({ error: error.message || 'Internal server error' }),

@@ -9,7 +9,7 @@ import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import CeoCalendar from './CeoCalendar';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -17,16 +17,23 @@ interface Props {
   historyProjects: Project[];
   onRefresh: () => void;
   onLogout: () => void;
+  allProjects?: Project[];
 }
 
-const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout }) => {
+const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout, allProjects }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as 'PENDING' | 'HISTORY' | 'REWORK') || 'PENDING';
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams(prev => {
+      prev.set('tab', tab);
+      return prev;
+    }, { replace: true });
+  };
+
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'REWORK'>('PENDING');
-
-  const [refreshKey, setRefreshKey] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [ceoPendingCount, setCeoPendingCount] = useState(0);
@@ -63,7 +70,6 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const handleInternalRefresh = async () => {
     await onRefresh(); // MUST refetch from Supabase
     await loadCounts(); // Also reload counts
-    setRefreshKey(prev => prev + 1); // force UI re-render
   };
 
 
@@ -414,238 +420,23 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const filteredPendingCount = filteredPendingApprovals.length;
   const reworkProjectsCount = reworkProjects.length;
 
-  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
   useEffect(() => {
     const path = location.pathname;
-    const subPaths = path.split('/').filter(p => p !== '');
-
-    // Pattern: /ceo/review/:id
-    const reviewIdx = subPaths.findIndex(p => p === 'review');
-    if (reviewIdx !== -1 && subPaths[reviewIdx + 1]) {
-      const id = subPaths[reviewIdx + 1];
-      const p = [...inboxProjects, ...historyProjects, ...reworkProjects].find(item => item.id === id);
-      if (p) {
-        setSelectedProject(p);
-        setViewMode('REVIEW');
-      }
+    if (path.includes('/history')) {
+      setActiveTab('HISTORY');
+    } else if (path.includes('/rework')) {
+      setActiveTab('REWORK');
+    } else {
+      setActiveTab('PENDING');
     }
-    // Pattern: /ceo/history/:id
-    else if (subPaths.findIndex(p => p === 'history') !== -1) {
-      const id = subPaths[subPaths.findIndex(p => p === 'history') + 1];
-      const entry = filteredHistoryProjects.find(h => h.id === id || h.project_id === id);
-      if (entry) {
-        setSelectedProject(entry as any);
-        setSelectedHistory(historyMapRef.current.get(entry.id));
-        setViewMode('HISTORY');
-      }
-    }
-    else if (inboxProjects.length > 0 || historyProjects.length > 0) {
-      setSelectedProject(null);
-      setSelectedHistory(null);
-    }
-  }, [location.pathname, inboxProjects, historyProjects, reworkProjects, filteredHistoryProjects]);
+  }, [location.pathname]);
 
   const handleReview = (project: Project) => {
     setSelectedProject(project);
   };
 
-  const handleBack = () => {
-    setSelectedProject(null);
-    onRefresh();
-  };
-
-  // ✅ REVIEW MODE (ONLY from PENDING tab)
-  if (selectedProject && viewMode === 'REVIEW') {
-    return (
-      <CeoReviewScreen
-        project={selectedProject}
-        onBack={async () => {
-          navigate('/ceo');
-          try {
-            await handleInternalRefresh();
-          } catch (e) {
-            console.error('Failed to refresh after back:', e);
-          }
-        }}
-        onComplete={async () => {
-          navigate('/ceo');
-          try {
-            await handleInternalRefresh();
-          } catch (e) {
-            console.error('Failed to refresh after complete:', e);
-          }
-        }}
-        user={user}
-      />
-    );
-  }
-
-  // ✅ HISTORY MODE (READ-ONLY)
-  if (selectedProject && viewMode === 'HISTORY') {
-    if (loadingProject) {
-      return (
-        <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => { }}>
-          <div className="p-8 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-8 h-8 border-4 border-slate-300 border-t-slate-900 rounded-full animate-spin mx-auto mb-4"></div>
-              <p>Loading project details...</p>
-            </div>
-          </div>
-        </Layout>
-      );
-    }
-
-    if (!projectData) {
-      return (
-        <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => { }}>
-          <div className="p-8">
-            <div className="bg-red-50 border-2 border-red-200 p-6 rounded-lg">
-              <h2 className="text-xl font-bold text-red-800 mb-2">Project Not Found</h2>
-              <p className="text-red-600">Unable to load project details.</p>
-            </div>
-          </div>
-        </Layout>
-      );
-    }
-
-    const creatorName =
-      projectData.data?.cmo_name ||
-      projectData.data?.writer_name ||
-      projectData.cmo_name ||
-      projectData.writer_name ||
-      'Unknown Creator';
-
-    return (
-      <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => { }}>
-        <div className="p-8 space-y-6">
-          <div className="flex justify-between items-center">
-            <button
-              onClick={() => {
-                navigate('/ceo');
-              }}
-              className="font-bold underline"
-            >
-              ← Back to History
-            </button>
-            {/* Edit button - only show if current user is the actor */}
-            {selectedHistory?.actor_id === user.id && (
-              <button
-                onClick={async () => {
-                  // Switch to review mode to edit, but use the full project data
-                  setViewMode('REVIEW');
-                  // We need to make sure the selectedProject is the actual project, not the history entry
-                  if (selectedProject.project_id && !selectedProject.data) {
-                    // Fetch the full project data if not already available
-                    const { data, error } = await supabase
-                      .from('projects')
-                      .select('*')
-                      .eq('id', selectedProject.project_id)
-                      .single();
-
-                    if (data) {
-                      setSelectedProject(data);
-                    }
-                  }
-                }}
-                className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-
-          <h1 className="text-3xl font-black uppercase">
-            {projectData.title} - Approved
-          </h1>
-          <p className="text-slate-600">
-            Approved on {selectedHistory?.timestamp ? new Date(selectedHistory.timestamp).toLocaleString() : 'Unknown date'}
-          </p>
-
-          {/* SCRIPT CONTENT */}
-          <div className="border-2 border-black p-4 bg-slate-100">
-            <h3 className="font-black uppercase mb-2">Script Content</h3>
-            {projectData.data?.script_content
-              ? (() => {
-                let decodedContent = projectData.data.script_content
-                  .replace(/&lt;/g, '<')
-                  .replace(/&gt;/g, '>')
-                  .replace(/&amp;/g, '&')
-                  .replace(/&quot;/g, '"')
-                  .replace(/&#39;/g, "'")
-                  .replace(/&nbsp;/g, ' ');
-                return <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-              })()
-              : <p>No script</p>
-            }
-          </div>
-
-          {/* CEO COMMENT */}
-          {selectedHistory?.comment && (
-            <div className="border-2 border-black p-4 bg-yellow-50">
-              <h3 className="font-black uppercase mb-2">CEO Comment</h3>
-              <p>{selectedHistory.comment}</p>
-            </div>
-          )}
-
-          {/* REJECTION REASON */}
-          {selectedHistory?.action === 'REJECTED' && selectedHistory?.comment && (
-            <div className="border-2 border-black p-4 bg-red-50">
-              <h3 className="font-black uppercase mb-2 text-red-800">Rejection Reason</h3>
-              <p className="text-red-700">{selectedHistory.comment}</p>
-            </div>
-          )}
-
-          {/* ACTION DETAILS */}
-          <div className="border-2 border-black p-4 flex justify-between">
-            <div>
-              <p><strong>Creator:</strong> {creatorName}</p>
-              <p><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
-              <p><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage] || selectedHistory?.stage}</p>
-            </div>
-            <div className="text-right">
-              <p className="font-black text-green-600">
-                Approved
-              </p>
-              <p className="text-sm text-slate-500">
-                {selectedHistory?.timestamp
-                  ? new Date(selectedHistory.timestamp).toLocaleString()
-                  : ''}
-              </p>
-            </div>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-
-  const handleTabChange = (tab: 'PENDING' | 'HISTORY') => {
-    setActiveTab(tab);
-  };
-  if (selectedProject && viewMode === 'REVIEW') {
-    return (
-      <CeoReviewScreen
-        project={selectedProject}
-        onBack={async () => {
-          setSelectedProject(null);
-          try {
-            await handleInternalRefresh();
-          } catch (e) {
-            console.error('Failed to refresh after back (secondary):', e);
-          }
-        }}
-        onComplete={async () => {
-          setSelectedProject(null);
-          try {
-            await handleInternalRefresh();
-          } catch (e) {
-            console.error('Failed to refresh after complete (secondary):', e);
-          }
-        }}
-        user={user}
-      />
-    );
-  }
+  // Dashboard components no longer handle project detail rendering directly
+  // AppRoutes handles this via /ceo/review/:id, etc.
   if (activeView === 'calendar') {
     return (
       <Layout
@@ -656,7 +447,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         onChangeView={handleViewChange}
       >
         <CeoCalendar
-          projects={[
+          projects={allProjects || [
             ...(inboxProjects || []),
             ...(filteredHistoryProjects || [])
           ]}
@@ -675,7 +466,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       activeView={activeView}
       onChangeView={handleViewChange}
     >
-      <div key={refreshKey} className="space-y-10 animate-fade-in">
+      <div className="space-y-10 animate-fade-in">
 
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -685,12 +476,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           </div>
 
           <div className="flex space-x-2">
-            <button
-              onClick={handleInternalRefresh}
-              className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
-            >
-              🔄 Refresh
-            </button>
+
             {/* CEO has no create button - Role is purely approval */}
             <div className="hidden md:block">
               <div className="bg-black text-white px-6 py-2 font-black uppercase border-2 border-black transform -rotate-2 shadow-[4px_4px_0px_0px_rgba(217,70,239,1)]">

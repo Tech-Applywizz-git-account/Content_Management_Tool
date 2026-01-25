@@ -1,6 +1,4 @@
-// @ts-nocheck
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference lib="deno.ns" />
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -55,7 +53,7 @@ async function sendGraphMail(
         message: {
             subject,
             body: { contentType: type, content },
-            toRecipients: toRecipients.map((email) => ({
+            toRecipients: toRecipients.map((email: string) => ({
                 emailAddress: { address: email },
             })),
         },
@@ -93,7 +91,7 @@ async function getRoleEmails(role: string): Promise<string[]> {
         .eq("role", role.toUpperCase())
         .eq("status", "ACTIVE");
     if (error || !data) return [];
-    return data.map((u) => u.email).filter(Boolean);
+    return data.map((u: any) => u.email).filter(Boolean);
 }
 
 // Helper: Type check for Supabase DB Webhook
@@ -106,7 +104,7 @@ function isDbWebhookPayload(body: any) {
     );
 }
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
     // CORS handling
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 

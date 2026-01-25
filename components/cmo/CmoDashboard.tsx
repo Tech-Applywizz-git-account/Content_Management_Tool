@@ -16,7 +16,7 @@ import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 
 interface Props {
@@ -49,7 +49,17 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
   const activeView = getActiveViewFromPath();
 
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = (searchParams.get('tab') as 'PENDING' | 'HISTORY' | 'SHOOT' | 'EDITOR') ||
+    (activeView === 'history' ? 'HISTORY' : 'PENDING');
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams(prev => {
+      prev.set('tab', tab);
+      return prev;
+    }, { replace: true });
+  };
+
   const [users, setUsers] = useState<User[]>([]);
 
   // Use allProjects for dashboard view, fallback to inboxProjects
@@ -74,10 +84,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   }, [allProjects, inboxProjects]);
 
 
-  const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY' | 'PROJECT_DETAILS'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   const historyMapRef = React.useRef<Map<string, any>>(new Map());
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'SHOOT' | 'EDITOR'>('PENDING');
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
   const [isCreatingScript, setIsCreatingScript] = useState(false);
   const [approvedCount, setApprovedCount] = useState(0);
@@ -90,7 +98,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const handleInternalRefresh = async () => {
     await onRefresh();
     await loadCounts();
-    setRefreshKey(prev => prev + 1);
   };
 
   // Popup state
@@ -98,68 +105,15 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
 
-  // SYNC STATE WITH URL ON REFRESH/NAVIGATE
   useEffect(() => {
     const path = location.pathname;
-    const subPaths = path.split('/').filter(p => p !== '');
 
-    // Reset some states initially
-    setIsCreatingScript(false);
-
-    // Handle create script route
     if (path.endsWith('/create')) {
       setIsCreatingScript(true);
-      return;
+    } else {
+      setIsCreatingScript(false);
     }
-
-    // Handle history tab route
-    if (path.endsWith('/history')) {
-      setActiveTab('HISTORY');
-    } else if (path.endsWith('/cmo')) {
-      setActiveTab('PENDING');
-    }
-
-    // Handle final-review route
-    if (path.endsWith('/final-review')) {
-      // Reset project selection for final review view
-      setSelectedProject(null);
-      return;
-    }
-
-    // Pattern: /cmo/review/:id
-    const reviewIdx = subPaths.findIndex(p => p === 'review');
-    if (reviewIdx !== -1 && subPaths[reviewIdx + 1]) {
-      const id = subPaths[reviewIdx + 1];
-      const p = dashboardProjects.find(item => item.id === id);
-      if (p) {
-        setSelectedProject(p);
-        setViewMode('REVIEW');
-      }
-    }
-    // Pattern: /cmo/project/:id
-    else if (subPaths.findIndex(p => p === 'project') !== -1) {
-      const id = subPaths[subPaths.findIndex(p => p === 'project') + 1];
-      const p = dashboardProjects.find(item => item.id === id);
-      if (p) {
-        setSelectedProject(p);
-        setViewMode('PROJECT_DETAILS');
-      }
-    }
-    // Pattern: /cmo/history/:id
-    else if (subPaths.findIndex(p => p === 'history_detail') !== -1) { // Renamed from 'history' to avoid conflict with history list view
-      const id = subPaths[subPaths.findIndex(p => p === 'history_detail') + 1];
-      const p = dashboardProjects.find(item => item.id === id);
-      if (p) {
-        setSelectedProject(p);
-        setSelectedHistory(historyMapRef.current.get(id));
-        setViewMode('HISTORY');
-      }
-    }
-    else if (dashboardProjects.length > 0) {
-      setSelectedProject(null);
-      setSelectedHistory(null);
-    }
-  }, [location.pathname, dashboardProjects]);
+  }, [location.pathname]);
 
   const handleViewChange = (view: string) => {
     setSelectedProject(null);
@@ -362,9 +316,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   };
 
   const handleHistoryDetail = (project: Project, history: any) => {
-    setSelectedProject(project);
-    setSelectedHistory(history);
-    setViewMode('HISTORY');
     navigate(`/cmo/history_detail/${project.id}`);
   };
 
@@ -377,39 +328,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     onRefresh();
   };
 
-  if (selectedProject && viewMode === 'REVIEW') {
-    return (
-      <CmoReviewScreen
-        project={selectedProject}
-        onBack={handleBack}
-        onComplete={handleBack}
-      />
-    );
-  }
-
-  if (selectedProject && viewMode === 'PROJECT_DETAILS') {
-    return (
-      <CmoProjectDetails
-        project={selectedProject}
-        onBack={handleBack}
-      />
-    );
-  }
-
-  if (selectedProject && viewMode === 'HISTORY') {
-    return (
-      <CmoHistoryDetail
-        project={selectedProject}
-        history={selectedHistory}
-        onBack={handleBack}
-        currentUser={user}
-        onEdit={() => {
-          // Set view mode to REVIEW to show the review screen
-          setViewMode('REVIEW');
-        }}
-      />
-    );
-  }
+  // Dashboard components no longer handle project detail rendering directly
+  // AppRoutes handles this via /cmo/project/:id, etc.
 
 
   return (
@@ -431,16 +351,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         ) : activeView === 'overview' ? (
           <CmoOverview user={user} />
         ) : activeView === 'final-review' ? (
-          <CmoFinalReview 
-            user={user} 
-            onBack={() => handleViewChange('dashboard')} 
-            onProjectSelect={setSelectedProject}
-            selectedProject={selectedProject}
+          <CmoFinalReview
+            user={user}
+            onBack={() => handleViewChange('dashboard')}
+            onProjectSelect={(project) => navigate(`/cmo/review/${project.id}`)}
+            selectedProject={null}
           />
         ) : activeView === 'calendar' ? (
           <CmoCalendar projects={allProjects || []} />
         ) : (
-          <div key={refreshKey} className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -483,15 +403,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   History
                 </button>
 
-                <button
-                  onClick={() => {
-                    console.log('MouseClicked: CMO Dashboard: Refresh button clicked');
-                    handleInternalRefresh();
-                  }}
-                  className="bg-[#D946EF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                >
-                  🔄 Refresh
-                </button>
+
               </div>
             </div>
 
@@ -590,10 +502,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   </div>
                   <div className="space-y-4">
                     {pendingApprovalProjects.map(p => (
-                      <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => {
-                        setViewMode('REVIEW');
-                        setSelectedProject(p);
-                      }}>
+                      <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigate(`/cmo/review/${p.id}`)}>
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -650,10 +559,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       <div
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                        onClick={() => {
-                          setViewMode('REVIEW');
-                          setSelectedProject(p);
-                        }}
+                        onClick={() => navigate(`/cmo/review/${p.id}`)}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -712,10 +618,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       <div
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                        onClick={() => {
-                          setViewMode('PROJECT_DETAILS');
-                          setSelectedProject(p);
-                        }}
+                        onClick={() => navigate(`/cmo/project/${p.id}`)}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -793,10 +696,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                            onClick={() => {
-                              setViewMode('PROJECT_DETAILS');
-                              setSelectedProject(p);
-                            }}
+                            onClick={() => navigate(`/cmo/project/${p.id}`)}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
                               <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -854,10 +754,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                            onClick={() => {
-                              setViewMode('PROJECT_DETAILS');
-                              setSelectedProject(p);
-                            }}
+                            onClick={() => navigate(`/cmo/project/${p.id}`)}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
                               <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :

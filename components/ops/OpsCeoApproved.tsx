@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 
 interface Props {
     projects: Project[];
-    onSelectProject: (project: {project: Project, source: 'ceoapproved'}) => void;
+    onSelectProject: (project: { project: Project, source: 'ceoapproved' }) => void;
 }
 
 const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
@@ -29,11 +29,11 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
 
     return (
         <div className="space-y-8 animate-fade-in">
-            <div>
-                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+            <div className="border-b-2 border-black pb-4">
+                <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 mb-2">
                     CEO Approved Scripts
                 </h1>
-                <p className="font-bold text-lg text-slate-500">
+                <p className="font-bold text-base text-slate-500">
                     {ceoApprovedProjects.length} CEO-approved {ceoApprovedProjects.length === 1 ? 'project' : 'projects'} ready for scheduling
                 </p>
             </div>
@@ -42,32 +42,28 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                 {ceoApprovedProjects.map(project => (
                     <div
                         key={project.id}
-                        className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group"
+                        className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all group"
                     >
                         <div className="p-6 space-y-4">
-                            {/* Channel and Priority Badges */}
-                            <div className="flex justify-between items-start">
+                            {/* Badges */}
+                            <div className="flex flex-wrap gap-2">
                                 <span
-                                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                            ? 'bg-[#FF4F4F] text-white'
-                                            : project.channel === 'LINKEDIN'
-                                                ? 'bg-[#0085FF] text-white'
-                                                : 'bg-[#D946EF] text-white'
+                                    className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                                            project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
+                                                'bg-[#D946EF]'
                                         }`}
                                 >
                                     {project.channel}
                                 </span>
                                 <span
-                                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                            ? 'bg-red-500 text-white'
-                                            : project.priority === 'NORMAL'
-                                                ? 'bg-yellow-500 text-black'
-                                                : 'bg-green-500 text-white'
-                                    }`}
+                                    className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH' ? 'bg-red-500 text-white' :
+                                            project.priority === 'NORMAL' ? 'bg-yellow-500 text-black' :
+                                                'bg-green-500 text-white'
+                                        }`}
                                 >
                                     {project.priority}
                                 </span>
-                                <span className="px-2 py-1 bg-green-100 text-green-800 border-2 border-green-600 text-[10px] font-black uppercase">
+                                <span className="px-2 py-0.5 bg-green-100 text-green-800 border-2 border-green-600 text-xs font-black uppercase">
                                     CEO Approved
                                 </span>
                             </div>
@@ -81,13 +77,13 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                                     <FileText size={16} className="text-slate-500" />
                                     <span className="font-bold text-slate-900">{project.content_type}</span>
                                 </div>
-                            
+
                                 {/* Writer Name */}
                                 <div className="flex items-center gap-2 text-sm">
                                     <FileText size={16} className="text-slate-500" />
                                     <span className="font-bold text-slate-900">Writer: {project.data?.writer_name || project.data?.cmo_name || 'Unknown'}</span>
                                 </div>
-                            
+
                                 {/* Thumbnail Required */}
                                 {project.data?.thumbnail_required && (
                                     <div className="flex items-center gap-2 text-sm">
@@ -95,7 +91,7 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                                         <span className="font-bold text-purple-700">Thumbnail Required: {project.data.thumbnail_required ? 'Yes' : 'No'}</span>
                                     </div>
                                 )}
-                            
+
                                 {/* Cinematographer Instructions */}
                                 {project.data?.brief && (
                                     <div className="flex items-center gap-2 text-sm">
@@ -103,14 +99,14 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                                         <span className="font-bold text-blue-700">Instructions: {project.data.brief.substring(0, 50)}{project.data.brief.length > 50 ? '...' : ''}</span>
                                     </div>
                                 )}
-                            
+
                                 {project.content_type === 'VIDEO' && project.video_link && (
                                     <div className="flex items-center gap-2 text-sm">
                                         <Video size={16} className="text-blue-500" />
                                         <span className="text-blue-700 font-bold">Video Ready</span>
                                     </div>
                                 )}
-                            
+
                                 {(project.content_type === 'VIDEO' && project.thumbnail_link) || (project.content_type === 'CREATIVE_ONLY' && project.creative_link) ? (
                                     <div className="flex items-center gap-2 text-sm">
                                         {project.content_type === 'VIDEO' ? (
@@ -123,7 +119,7 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                                         </span>
                                     </div>
                                 ) : null}
-                            
+
                                 {/* Status Info */}
                                 <div className="space-y-2 text-sm">
                                     <div className="flex items-center gap-2 text-slate-700">
@@ -136,8 +132,8 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
 
                             {/* Read-only view - no action button */}
                             <div className="border-t-2 border-slate-100 pt-3">
-                                <button 
-                                    onClick={() => onSelectProject({project, source: 'ceoapproved'})}
+                                <button
+                                    onClick={() => onSelectProject({ project, source: 'ceoapproved' })}
                                     className="w-full bg-[#8B5CF6] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
                                 >
                                     <Eye size={12} className="inline mr-1" /> View Details

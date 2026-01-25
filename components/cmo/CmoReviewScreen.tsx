@@ -84,19 +84,19 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
             console.log('CMO Review: Starting fetchPreviousScript for project:', project.id);
             console.log('CMO Review: Project cmo_rework_at:', project.cmo_rework_at);
             console.log('CMO Review: Project writer_submitted_at:', project.writer_submitted_at);
-            
+
             // Only fetch previous script if this is a rework scenario
-            const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
+            const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at &&
                 new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
-            
+
             console.log('CMO Review: Is rework scenario:', isReworkScenario);
-            
+
             if (!isReworkScenario) {
                 console.log('CMO Review: Not a rework scenario, clearing previous script');
                 setPreviousScript(null);
                 return;
             }
-            
+
             // Fetch previous script version and asset links for rework scenarios
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
@@ -109,26 +109,26 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 console.error('Error fetching previous script:', historyError);
                 return;
             }
-            
+
             if (!historyData || historyData.length === 0) {
                 console.log('CMO Review: No history data found for project:', project.id);
                 return;
             }
-            
+
             console.log('CMO Review: History data found:', historyData.length, 'entries');
             console.log('CMO Review: Looking for script before cmo_rework_at:', project.cmo_rework_at);
-            
+
             // Find the script content that existed when CMO sent for rework
             // This is the script content from the entry JUST BEFORE cmo_rework_at
             let previousScriptFound = null;
-            
+
             // Sort by timestamp ascending to process chronologically
-            const chronologicalHistory = [...historyData].sort((a, b) => 
+            const chronologicalHistory = [...historyData].sort((a, b) =>
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
             );
-            
+
             console.log('CMO Review: Chronological history processing...');
-            
+
             for (let i = 0; i < chronologicalHistory.length; i++) {
                 const entry = chronologicalHistory[i];
                 console.log(`Entry ${i}:`, {
@@ -137,31 +137,31 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     hasScript: !!entry.script_content,
                     isBeforeRework: new Date(entry.timestamp) < new Date(project.cmo_rework_at)
                 });
-                
+
                 // Look for the last script content that existed before the CMO rework request
                 if (entry.script_content && new Date(entry.timestamp) < new Date(project.cmo_rework_at)) {
                     console.log('CMO Review: Found candidate script before rework:', entry.timestamp);
                     previousScriptFound = entry.script_content;
                 }
-                
+
                 // Stop once we reach or pass the rework timestamp
                 if (new Date(entry.timestamp) >= new Date(project.cmo_rework_at)) {
                     console.log('CMO Review: Reached or passed cmo_rework_at, stopping search');
                     break;
                 }
             }
-            
+
             if (previousScriptFound) {
                 console.log('CMO Review: Setting previous script (first 100 chars):', previousScriptFound.substring(0, 100));
                 setPreviousScript(previousScriptFound);
             } else {
                 console.log('CMO Review: No previous script found before cmo_rework_at');
-                
+
                 // Fallback: try to find any REWORK or REJECTED action with script content
-                const reworkEntry = historyData.find(entry => 
+                const reworkEntry = historyData.find(entry =>
                     ['REJECTED', 'REWORK'].includes(entry.action) && entry.script_content
                 );
-                
+
                 if (reworkEntry) {
                     console.log('CMO Review: Using fallback - REWORK/REJECTED entry script');
                     setPreviousScript(reworkEntry.script_content);
@@ -235,10 +235,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
         try {
             if (decision === 'APPROVE') {
                 // CMO Approval -> Moves to next stage based on current stage
-                
+
                 // Use workflow.approve() for MULTI_WRITER_APPROVAL or POST_WRITER_REVIEW stages
                 // as these require special handling for multi-writer approval processes
-                if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL || 
+                if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
                     project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
                     // For these stages, determine the next stage according to the helpers.getNextStage function
                     const nextStageInfo = db.helpers.getNextStage(
@@ -247,13 +247,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         'APPROVED',
                         project.data
                     );
-                    
+
                     // Ensure we have a valid user ID
                     const currentUser = db.getCurrentUser();
                     if (!currentUser?.id) {
                         throw new Error('User not authenticated');
                     }
-                    
+
                     await db.workflow.approve(
                         project.id,
                         currentUser.id,
@@ -266,9 +266,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 } else {
                     // For rework projects and final review, ensure proper stage advancement
                     // Check if this is a rework scenario based on the presence of rework timestamps
-                    const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
+                    const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at &&
                         new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
-                    
+
                     if (isReworkScenario || project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
                         // For rework scenarios, use the standardized workflow advancement
                         const nextStageInfo = db.helpers.getNextStage(
@@ -277,13 +277,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             'APPROVED',
                             project.data
                         );
-                        
+
                         // Ensure we have a valid user ID
                         const currentUser = db.getCurrentUser();
                         if (!currentUser?.id) {
                             throw new Error('User not authenticated');
                         }
-                        
+
                         await db.workflow.approve(
                             project.id,
                             currentUser.id,
@@ -299,7 +299,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         if (!currentUser?.id) {
                             throw new Error('User not authenticated');
                         }
-                        
+
                         await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
                     }
                 }
@@ -324,7 +324,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     if (!fetchError) {
                         const existingComments = currentProject.forwarded_comments || [];
                         const updatedComments = [...existingComments, newComment];
-                        
+
                         await supabase
                             .from('projects')
                             .update({ forwarded_comments: updatedComments })
@@ -350,23 +350,23 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 setPopupMessage(message);
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
-                
+
                 // Show the popup immediately after successful approval
                 // This ensures immediate feedback to the user
                 setShowPopup(true);
-                
+
                 // The popup will handle the navigation back when closed
                 // No need to call onComplete here since it's handled in the popup onClose
             } else if (decision === 'REWORK') {
                 // Rework -> Send to the role selected by the user in the dropdown
                 // Respect the user's selection from the reworkStage dropdown
-                
+
                 // Ensure we have a valid user ID
                 const currentUser = db.getCurrentUser();
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
 
 
@@ -385,13 +385,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             } else if (decision === 'REJECT') {
                 // Full Reject - don't send back to a specific role, just reject the project
-                
+
                 // Ensure we have a valid user ID
                 const currentUser = db.getCurrentUser();
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
 
                 // Show popup for rejection
@@ -414,12 +414,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const getReworkOptions = () => {
         // Check if this is a creative project (either designer-initiated or creative-only content type)
         const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
-        
+
         // For designer-initiated projects, always send back to Designer
         if (project.data?.source === 'DESIGNER_INITIATED') {
             return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
         }
-        
+
         // For pure idea projects (without script content), always send back to Writer regardless of stage
         if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
@@ -436,7 +436,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
             if (isCreativeProject) {
                 return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
             }
-            
+
             const options = [];
 
             // Always include all relevant roles for these final review stages
@@ -448,13 +448,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             // Add Editor option
             options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
-            
+
             // Add Cinematographer option
             options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
-            
+
             // Add Writer option (in case script changes are needed)
             options.push({ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' });
-            
+
             return options;
         }
 
@@ -463,35 +463,23 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
     return (
-        <div className="min-h-screen bg-white font-sans flex flex-col">
+        <div className="bg-white font-sans flex flex-col h-screen fixed inset-0 z-50 overflow-y-auto">
             {/* Header */}
-            <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
-                <div className="flex items-center space-x-6">
-                    <button onClick={onBack} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
-                        <ArrowLeft className="w-6 h-6 text-black" />
+            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center space-x-4">
+                    <button onClick={onBack} className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
+                        <ArrowLeft className="w-5 h-5 text-black" />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
-                            {project.title}
-                        </h1>
-                        <div className="flex items-center space-x-2 mt-1">
-                            {project.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                    {'SCRIPT'}
-                                </span>
-                            )}
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
                                 }`}>
                                 {project.channel}
                             </span>
-                            <span className="text-xs font-bold uppercase text-slate-500">
-                                Stage: {STAGE_LABELS[project.current_stage]}
-                            </span>
                             <span
-                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : project.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
@@ -501,11 +489,18 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 {project.priority}
                             </span>
                             {previousScript && (
-                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-[#FFD952] text-black">
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-[#FFD952] text-black">
                                     REWORK
                                 </span>
                             )}
+                            <span className="text-xs font-bold uppercase text-slate-500">
+                                {STAGE_LABELS[project.current_stage]}
+                            </span>
                         </div>
+                        <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
+                            {project.title}
+                        </h1>
                     </div>
                 </div>
             </header>
@@ -541,10 +536,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Due Date</label>
-                            <div className="font-bold text-slate-900 uppercase">Today</div>
-                        </div>
+
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Content Type</label>
                             <div className="font-bold text-slate-900 uppercase">
@@ -568,13 +560,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.niche 
-                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                    : project.data.niche === 'OTHER' && project.data.niche_other 
-                                        ? project.data.niche_other 
-                                        : project.data.niche
+                                {project.data?.niche
+                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche
                                     : '—'}
                             </div>
                         </div>
@@ -598,9 +590,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Thumbnail Link</p>
-                                        <a 
-                                            href={project.data.thumbnail_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.thumbnail_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -621,9 +613,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Script Link</p>
-                                        <a 
-                                            href={project.data.script_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.script_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -661,19 +653,19 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 console.log('CMO Review: Render - isFinalReview:', isFinalReview);
                                 console.log('CMO Review: Render - cmo_rework_at:', project.cmo_rework_at);
                                 console.log('CMO Review: Render - writer_submitted_at:', project.writer_submitted_at);
-                                
+
                                 // For final review stages, always show only the current script
                                 if (isFinalReview) {
                                     console.log('CMO Review: Showing current script only for final review');
                                     return (
                                         <div
-                                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-xl leading-normal text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                         >
                                             {project.data?.source === 'DESIGNER_INITIATED'
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                     ? project.data.idea_description
-                                                    : project.data?.script_content 
+                                                    : project.data?.script_content
                                                         ? (() => {
                                                             // Comprehensive HTML entity decoding
                                                             let decodedContent = project.data.script_content
@@ -684,7 +676,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                                 .replace(/&#39;/g, "'")
                                                                 .replace(/&nbsp;/g, ' ');
                                                             return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                          })()
+                                                        })()
                                                         : 'No script content available.'}
                                         </div>
                                     );
@@ -692,10 +684,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     // For non-final review stages, show comparison if we have a previous script content
                                     if (previousScript && previousScript.trim() !== '') {
                                         console.log('CMO Review: Showing script comparison - has previous script');
-                                        
+
                                         // Use project's script content as current if available, otherwise use a placeholder
                                         const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
-                                        
+
                                         // Show comparison for rework scenarios
                                         return (
                                             <ScriptComparison
@@ -713,13 +705,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                         // Show single script for non-rework projects
                                         return (
                                             <div
-                                                className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                                className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-xl leading-normal text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                             >
                                                 {project.data?.source === 'DESIGNER_INITIATED'
                                                     ? project.data?.creative_link || 'No creative link available.'
                                                     : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                         ? project.data.idea_description
-                                                        : project.data?.script_content 
+                                                        : project.data?.script_content
                                                             ? (() => {
                                                                 // Comprehensive HTML entity decoding
                                                                 let decodedContent = project.data.script_content
@@ -730,7 +722,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                                     .replace(/&#39;/g, "'")
                                                                     .replace(/&nbsp;/g, ' ');
                                                                 return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                              })()
+                                                            })()
                                                             : 'No script content available.'}
                                             </div>
                                         );

@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus, Priority } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X } from 'lucide-react';
+import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X, SpellCheck } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
 
 const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRole, mode }) => {
   const editorRef = React.useRef<HTMLDivElement>(null);
-  
+
   const parsedProjectData: ProjectData | null = React.useMemo(() => {
     if (!project?.data) return null;
     if (typeof project.data === 'string') {
@@ -101,7 +101,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const [canEdit, setCanEdit] = useState(true);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [formData, setFormData] = useState<ProjectData>({ ...(parsedProjectData || {}), _workflow_script_loaded: false });
+  const [formData, setFormData] = useState<ProjectData>({
+    ...(parsedProjectData || {}),
+    script_content: parsedProjectData?.script_content || '',
+    _workflow_script_loaded: false
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reviewComment, setReviewComment] = useState<any>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -120,7 +124,124 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     priority: project?.priority || 'NORMAL'
   });
 
+  // Update newProjectDetails when project changes to handle reloads
+  useEffect(() => {
+    setNewProjectDetails({
+      title: project?.title || '',
+      channel: project?.channel || '',
+      contentType: project?.content_type || '',
+      dueDate: project?.due_date || new Date().toISOString().split('T')[0],
+      priority: project?.priority || 'NORMAL'
+    });
+  }, [project]);
+
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Corrections feature state
+  const [correctionsEnabled, setCorrectionsEnabled] = useState(false);
+  const [correctionsRunning, setCorrectionsRunning] = useState(false);
+  const [correctionErrors, setCorrectionErrors] = useState<any[]>([]);
+  const [lastCheckedContent, setLastCheckedContent] = useState<string>('');
+  const [isLimitExceeded, setIsLimitExceeded] = useState(false);
+
+  const scriptCharCount = React.useMemo(() => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = formData.script_content || '';
+    const text = tempDiv.textContent || '';
+    return text.length;
+  }, [formData.script_content]);
+
+  // Add CSS styles for grammar errors
+  useEffect(() => {
+    let styleElement = document.getElementById('grammar-error-styles') as HTMLStyleElement;
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'grammar-error-styles';
+      styleElement.textContent = `
+        .grammar-error {
+          text-decoration: underline wavy red !important;
+          text-decoration-skip-ink: none;
+          cursor: pointer;
+          position: relative;
+          display: inline !important;
+        }
+        .grammar-error.spelling { text-decoration-color: #ef4444 !important; }
+        .grammar-error.grammar { text-decoration-color: #f59e0b !important; }
+        .grammar-error.formation { text-decoration-color: #f59e0b !important; }
+        .grammar-error.enhancement { text-decoration-color: #3b82f6 !important; }
+
+        .grammar-error:hover {
+          background-color: rgba(255, 0, 0, 0.05);
+        }
+        .grammar-error.spelling:hover { background-color: rgba(239, 68, 68, 0.1); }
+        .grammar-error.grammar:hover { background-color: rgba(245, 158, 11, 0.1); }
+
+        .grammar-error::after {
+          content: attr(data-label) ": " attr(data-suggestion);
+          position: absolute;
+          bottom: 100%;
+          left: 50%;
+          transform: translateX(-50%) translateY(-10px);
+          background: #1e293b !important;
+          color: #ffffff !important;
+          padding: 8px 16px;
+          border-radius: 6px;
+          white-space: pre-wrap;
+          max-width: 250px;
+          z-index: 2147483647 !important;
+          font-size: 13px;
+          font-weight: 600;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border: 1px solid #334155;
+          text-align: center;
+          line-height: 1.4;
+        }
+        
+        .grammar-error.spelling::after { border-bottom: 3px solid #ef4444; }
+        .grammar-error.grammar::after { border-bottom: 3px solid #f59e0b; }
+
+        .grammar-error::before {
+          content: "";
+          position: absolute;
+          bottom: 100%;
+          left: 50%;
+          transform: translateX(-50%) translateY(0);
+          border: 6px solid transparent;
+          border-top-color: #1e293b;
+          z-index: 2147483647 !important;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          margin-bottom: -2px;
+        }
+        .grammar-error:hover::after,
+        .grammar-error:focus::after {
+          opacity: 1 !important;
+          visibility: visible !important;
+          transform: translateX(-50%) translateY(-14px);
+        }
+        .grammar-error:hover::before,
+        .grammar-error:focus::before {
+          opacity: 1 !important;
+          visibility: visible !important;
+          transform: translateX(-50%) translateY(-2px);
+        }
+      `;
+      document.head.appendChild(styleElement);
+    }
+
+    // Cleanup function to remove style when component unmounts
+    return () => {
+      if (styleElement && document.head.contains(styleElement)) {
+        document.head.removeChild(styleElement);
+      }
+    };
+  }, []);
 
   // Helper function to decode HTML entities
   const decodeHtmlEntities = (html) => {
@@ -130,10 +251,309 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     return txt.value;
   };
 
+  // Function to check grammar and spelling using OpenAI API
+  const checkGrammarAndSpelling = async (text: string) => {
+    try {
+      // Normalize text: clean whitespace but preserve structure
+      const normalizedText = text.replace(/\s+/g, ' ').trim();
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Add AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      let data;
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/openai-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'apikey': supabaseAnonKey,
+          },
+          body: JSON.stringify({ text: normalizedText }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Service error: ${response.status}`);
+        }
+
+        data = await response.json();
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') throw new Error('Correction request timed out. Please try again.');
+        throw fetchErr;
+      }
+
+      const issues = data.issues || [];
+      const errors: any[] = [];
+      const usedRanges: { start: number; end: number }[] = [];
+
+      // String-based matching for frontend reliability
+      issues.forEach((issue: any) => {
+        const incorrect = issue.incorrect;
+        if (!incorrect) return;
+
+        // Find all occurrences of the incorrect string in the ORIGINAL text
+        let searchIndex = 0;
+        while ((searchIndex = text.indexOf(incorrect, searchIndex)) !== -1) {
+          const startIndex = searchIndex;
+          const endIndex = startIndex + incorrect.length;
+
+          // Check if this range overlaps with already identified errors
+          const isOverlapping = usedRanges.some(range =>
+            (startIndex >= range.start && startIndex < range.end) ||
+            (endIndex > range.start && endIndex <= range.end)
+          );
+
+          if (!isOverlapping) {
+            errors.push({
+              offset: startIndex,
+              length: incorrect.length,
+              message: `${issue.type}: ${incorrect} -> ${issue.suggestion}`,
+              type: issue.type,
+              suggestions: [issue.suggestion],
+            });
+            usedRanges.push({ start: startIndex, end: endIndex });
+            break; // Just pick the first non-overlapping match for this issue
+          }
+          searchIndex++;
+        }
+      });
+
+      return errors.sort((a, b) => a.offset - b.offset);
+    } catch (error: any) {
+      console.error('Correction failed:', error);
+      setError(error.message || 'Correction failed');
+      return [];
+    }
+  };
+
+  // Function to apply corrections to the editor content
+  const applyCorrections = async () => {
+    if (!editorRef.current) return;
+
+    // Extract plain text content to check length and caching
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = editorRef.current.innerHTML;
+    // Remove existing correction spans to get clean plain text
+    tempDiv.querySelectorAll('.grammar-error').forEach(span => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
+
+    // Check character limit (OpenAI mini models usually handle context well, but we keep a safe limit)
+    if (plainText.length > 6000) {
+      setIsLimitExceeded(true);
+      setError('Script is too long for automated correction (max 6000 chars).');
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+
+    // Check caching: if content hasn't changed since last check, don't call API again
+    if (plainText === lastCheckedContent && correctionErrors.length > 0) {
+      // Re-apply existing highlights if they were cleared
+      const highlightsApplied = editorRef.current.querySelectorAll('.grammar-error').length > 0;
+      if (!highlightsApplied) {
+        processHighlights(editorRef.current, correctionErrors);
+        setCorrectionsEnabled(true);
+      }
+      return;
+    }
+
+    setCorrectionsRunning(true);
+    setIsLimitExceeded(false);
+
+    try {
+      // Check grammar and spelling
+      const errors = await checkGrammarAndSpelling(plainText);
+      setCorrectionErrors(errors);
+      setLastCheckedContent(plainText);
+
+      // Apply highlights
+      processHighlights(editorRef.current, errors);
+      setCorrectionsEnabled(true);
+    } catch (error) {
+      console.error('Error applying corrections:', error);
+    } finally {
+      setCorrectionsRunning(false);
+    }
+  };
+
+  // Helper function to process highlights
+  const processHighlights = (container: HTMLElement, errors: any[]) => {
+    // Process content to add error highlights
+    const editorClone = document.createElement('div');
+    editorClone.innerHTML = container.innerHTML;
+
+    // Clear any existing highlights first
+    editorClone.querySelectorAll('.grammar-error').forEach(span => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+
+    // Sort errors by offset in descending order to avoid index shifting issues
+    const sortedErrors = [...errors].sort((a, b) => b.offset - a.offset);
+
+    // Process each error from last to first
+    for (const error of sortedErrors) {
+      const { offset, length, message, suggestions } = error;
+      wrapTextAtPosition(editorClone, offset, length, message, suggestions, error.type);
+    }
+
+    // Update the editor with processed content
+    if (editorRef.current) {
+      editorRef.current.innerHTML = editorClone.innerHTML;
+    }
+  };
+
+  // Helper function to wrap text at specific position
+  const wrapTextAtPosition = (container: HTMLElement, offset: number, length: number, message: string, suggestions: string[], type: string) => {
+    let currentOffset = 0;
+    let remainingLength = length;
+    let currentTargetOffset = offset;
+
+    // Walk through all text nodes to find the one containing our target position
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT
+    );
+
+    let node: Node | null;
+    const nodesToReplace: { node: Node; start: number; end: number }[] = [];
+
+    while (node = walker.nextNode()) {
+      const nodeValue = node.nodeValue || '';
+      const nodeLength = nodeValue.length;
+
+      // If we haven't reached the start of the error yet
+      if (currentOffset + nodeLength <= currentTargetOffset) {
+        currentOffset += nodeLength;
+        continue;
+      }
+
+      // This node contains at least part of the error
+      const startInNode = Math.max(0, currentTargetOffset - currentOffset);
+      // Safety check for length
+      const actualRemainingLength = Math.min(remainingLength, nodeLength - startInNode);
+      const endInNode = startInNode + actualRemainingLength;
+
+      if (startInNode < nodeLength && actualRemainingLength > 0) {
+        nodesToReplace.push({
+          node: node,
+          start: startInNode,
+          end: endInNode
+        });
+
+        remainingLength -= actualRemainingLength;
+        currentTargetOffset += actualRemainingLength;
+      }
+
+      if (remainingLength <= 0) break;
+      currentOffset += nodeLength;
+    }
+
+    // Process the collected nodes
+    for (const item of nodesToReplace) {
+      const { node, start, end } = item;
+      const nodeValue = node.nodeValue || '';
+
+      const beforeText = nodeValue.substring(0, start);
+      const errorText = nodeValue.substring(start, end);
+      const afterText = nodeValue.substring(end);
+
+      const fragment = document.createDocumentFragment();
+
+      if (beforeText) {
+        fragment.appendChild(document.createTextNode(beforeText));
+      }
+
+      const errorSpan = document.createElement('span');
+      const typeClass = type?.toLowerCase() || 'grammar';
+      errorSpan.className = `grammar-error ${typeClass}`;
+
+      const labelMap: Record<string, string> = {
+        'spelling': 'Spelling',
+        'grammar': 'Grammar',
+        'formation': 'Formation',
+        'enhancement': 'Enhancement'
+      };
+
+      errorSpan.setAttribute('data-label', labelMap[typeClass] || 'Correction');
+      errorSpan.setAttribute('data-suggestion', suggestions && suggestions.length > 0 ? suggestions[0] : 'Correction available');
+      errorSpan.setAttribute('title', message); // Fallback title
+      errorSpan.setAttribute('tabindex', '0'); // Allow focus for click behavior
+      errorSpan.textContent = errorText;
+      fragment.appendChild(errorSpan);
+
+      if (afterText) {
+        fragment.appendChild(document.createTextNode(afterText));
+      }
+
+      node.parentNode?.replaceChild(fragment, node);
+    }
+  };
+
+  // Function to clear corrections
+  const clearCorrections = () => {
+    if (!editorRef.current) return;
+
+    // Remove all grammar-error spans and restore original text
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = editorRef.current.innerHTML;
+
+    const errorSpans = tempDiv.querySelectorAll('.grammar-error');
+    errorSpans.forEach(span => {
+      // Replace the span with its text content
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+
+    // Update the editor
+    if (editorRef.current) {
+      editorRef.current.innerHTML = tempDiv.innerHTML;
+    }
+
+    setCorrectionsEnabled(false);
+    setCorrectionErrors([]);
+  };
+
+  // Function to apply a specific correction
+  const applyCorrection = (spanElement: HTMLElement) => {
+    const suggestion = spanElement.getAttribute('data-suggestion');
+    if (!suggestion || suggestion === 'Correction available') return;
+
+    // Save cursor position to restore it after replacement
+    const position = saveCursorPosition();
+
+    // Create text node with suggestion
+    const textNode = document.createTextNode(suggestion);
+    const parent = spanElement.parentNode;
+    if (parent) {
+      parent.replaceChild(textNode, spanElement);
+
+      // Sync state and formData
+      if (editorRef.current) {
+        const newContent = editorRef.current.innerHTML;
+        setFormData(prev => ({ ...prev, script_content: newContent }));
+      }
+
+      // Restore cursor
+      if (position !== null) {
+        setTimeout(() => restoreCursorPosition(position), 0);
+      }
+    }
+  };
+
   // Sync editor state when project changes
 
 
-  // Initialize formData once when component mounts and project is available
+  // Initialize formData when component mounts or when project/parsedProjectData changes
   useEffect(() => {
     if (project && parsedProjectData) {
       setFormData(prevFormData => ({
@@ -141,7 +561,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ...parsedProjectData
       }));
     }
-  }, []); // Empty dependency array to run only once
+  }, [project, parsedProjectData]); // Depend on project and parsedProjectData
 
   // Popup state for submit
   const [showPopup, setShowPopup] = useState(false);
@@ -175,38 +595,38 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Function to save selection before updating content
   const saveSelection = () => {
     if (!editorRef.current) return null;
-    
+
     const selection = window.getSelection();
     if (!selection.rangeCount) return null;
-    
+
     const range = selection.getRangeAt(0);
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(editorRef.current);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
     const start = preCaretRange.toString().length;
-    
+
     return {
       start,
       end: start + range.toString().length
     };
   };
-  
+
   // Function to restore selection after updating content
   const restoreSelection = (savedSelection: { start: number; end: number } | null) => {
     if (!savedSelection || !editorRef.current) return;
-    
+
     let charIndex = 0;
     const walker = document.createTreeWalker(
       editorRef.current,
       NodeFilter.SHOW_TEXT
     );
-    
+
     let node;
     let foundStart = false;
     let range = document.createRange();
     range.setStart(editorRef.current, 0);
     range.collapse(true);
-    
+
     while ((node = walker.nextNode())) {
       const nextCharIndex = charIndex + node.textContent!.length;
       if (!foundStart && savedSelection.start >= charIndex && savedSelection.start <= nextCharIndex) {
@@ -219,21 +639,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       }
       charIndex = nextCharIndex;
     }
-    
+
     const selection = window.getSelection();
     if (selection) {
       selection.removeAllRanges();
       selection.addRange(range);
     }
   };
-  
+
   // Function to apply color to selected text
   const applyColor = (color: string) => {
     if (!canEdit || !editorRef.current) return;
-    
+
     const selection = window.getSelection();
     if (!selection || selection.toString().trim() === '') return;
-    
+
     // Map color names to bolder/darker hex values for better contrast
     const colorMap: Record<string, string> = {
       'red': '#990000', // bold dark red
@@ -243,47 +663,47 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       'orange': '#cc6600', // bold dark orange
       'black': '#000000', // black
     };
-    
+
     const darkColor = colorMap[color] || color;
-    
+
     // Save selection before applying color
     const savedSelection = saveSelection();
-    
+
     document.execCommand('styleWithCSS', false, 'true');
     document.execCommand('foreColor', false, darkColor);
-    
+
     // Update the form data with the new content
     const content = editorRef.current.innerHTML;
     setFormData({ ...formData, script_content: content });
-    
+
     // Restore selection after updating state
     setTimeout(() => {
       restoreSelection(savedSelection);
     }, 0);
   };
-  
+
   // Function to apply bold formatting
   const applyBold = () => {
     if (!canEdit || !editorRef.current) return;
-    
+
     const selection = window.getSelection();
     if (!selection || selection.toString().trim() === '') return;
-    
+
     // Save selection before applying bold
     const savedSelection = saveSelection();
-    
+
     document.execCommand('bold', false, null);
-    
+
     // Update the form data with the new content
     const content = editorRef.current.innerHTML;
     setFormData({ ...formData, script_content: content });
-    
+
     // Restore selection after updating state
     setTimeout(() => {
       restoreSelection(savedSelection);
     }, 0);
   };
-  
+
   // Function to handle text selection events
   const handleTextSelection = () => {
     // We can add logic here to show/hide the toolbar based on selection
@@ -311,7 +731,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     loadUser();
   }, []);
 
-  // Initialize form data once when component mounts and project is available
+  // Initialize form data when project changes
   useEffect(() => {
     if (!project) return;
 
@@ -320,19 +740,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
-    // Only initialize formData if it's empty or doesn't have script content
-    setFormData(prev => {
-      // If we already have script content, don't overwrite it
-      if (prev && prev.script_content) {
-        return prev;
-      }
-      
-      return {
-        ...prev,
-        ...parsed,
-        script_content: parsed?.script_content || ''
-      };
-    });
+    // Always update formData when project changes to ensure content is preserved
+    setFormData(prev => ({
+      ...prev,
+      ...parsed,
+      script_content: parsed?.script_content || prev?.script_content || ''
+    }));
 
     setNewProjectDetails({
       title: project.title || '',
@@ -341,7 +754,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       dueDate: project.due_date || new Date().toISOString().split('T')[0],
       priority: project.priority || 'NORMAL'
     });
-  }, []); // Only run once when component mounts
+  }, [project]); // Run when project changes
 
 
   // Check edit permissions after user is loaded
@@ -455,51 +868,51 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Function to save current cursor position
   const saveCursorPosition = () => {
     if (!editorRef.current) return null;
-    
+
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return null;
-    
+
     const range = selection.getRangeAt(0);
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(editorRef.current);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
-    
+
     return preCaretRange.toString().length;
   };
-  
+
   // Function to restore cursor position
   const restoreCursorPosition = (position: number | null) => {
     if (!editorRef.current || position === null) return;
-    
+
     let charIndex = 0;
     const walker = document.createTreeWalker(
       editorRef.current,
       NodeFilter.SHOW_TEXT
     );
-    
+
     let node;
     let foundStart = false;
     let range = document.createRange();
     const selection = window.getSelection();
-    
+
     if (!selection) return;
-    
+
     while ((node = walker.nextNode())) {
       const nextCharIndex = charIndex + node.textContent!.length;
-      
+
       if (!foundStart && position >= charIndex && position <= nextCharIndex) {
         range.setStart(node, position - charIndex);
         foundStart = true;
       }
-      
+
       if (foundStart && position >= charIndex && position <= nextCharIndex) {
         range.setEnd(node, position - charIndex);
         break;
       }
-      
+
       charIndex = nextCharIndex;
     }
-    
+
     selection.removeAllRanges();
     selection.addRange(range);
   };
@@ -509,12 +922,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Helper function to format content for the editor with proper line breaks
   const formatContentForEditor = (content) => {
     if (!content) return '';
-    
+
     // If content doesn't contain HTML tags but has line breaks, wrap paragraphs in <p> tags
     if (!content.includes('<p>') && !content.includes('<br>')) {
       return content.split('\n\n').map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`).join('');
     }
-    
+
     return content;
   };
 
@@ -523,11 +936,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     if (editorRef.current && formData._workflow_script_loaded && formData.script_content) {
       // Save cursor position before updating content
       const cursorPosition = saveCursorPosition();
-      
+
       // Format content for proper display in editor
       const formattedContent = formatContentForEditor(formData.script_content);
       editorRef.current.innerHTML = formattedContent;
-      
+
       // Restore cursor position after updating content
       if (cursorPosition !== null) {
         setTimeout(() => {
@@ -535,29 +948,37 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         }, 0);
       }
     }
-  }, [formData._workflow_script_loaded, formData.script_content]);
+  }, [formData._workflow_script_loaded, formData.script_content, editorRef]);
 
   // This effect ensures the editor content is initialized with the script content when available
   useEffect(() => {
     if (editorRef.current && formData.script_content !== undefined && !formData._workflow_script_loaded) {
       // Only initialize if the editor is currently empty or has default content
-      if (!editorRef.current.innerHTML || editorRef.current.innerHTML === '' || editorRef.current.innerHTML === 'Start writing your script here...') {
+      if (!editorRef.current.innerHTML ||
+        editorRef.current.innerHTML === '' ||
+        editorRef.current.innerHTML === 'Start writing your script here...') {
         // Format content for proper display in editor, preserving formatting
         const formattedContent = formatContentForEditor(formData.script_content);
         editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
       }
     }
-  }, [formData.script_content, formData._workflow_script_loaded]);
+  }, [formData.script_content, formData._workflow_script_loaded, editorRef]);
 
-  // Initialize editor content when component mounts
-    useEffect(() => {
-      if (editorRef.current && !editorRef.current.innerHTML) {
-        // Initialize with an empty string or placeholder if no content exists yet
-        editorRef.current.innerHTML = formData.script_content || 'Start writing your script here...';
+  // Initialize editor content when formData.script_content changes or when component mounts
+  useEffect(() => {
+    if (editorRef.current && formData.script_content !== undefined) {
+      // Initialize if the editor is empty, has default content, or component just mounted
+      if (!editorRef.current.innerHTML ||
+        editorRef.current.innerHTML === '' ||
+        editorRef.current.innerHTML === 'Start writing your script here...') {
+        // Format content for proper display in editor, preserving formatting
+        const formattedContent = formatContentForEditor(formData.script_content);
+        editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
       }
-    }, []); // Run once on mount
-  
-  
+    }
+  }, [formData.script_content, editorRef]); // Run when script_content or editorRef changes
+
+
   // Fetch reviewer comments and previous script for rework/rejected projects
   useEffect(() => {
     const fetchReviewData = async () => {
@@ -588,11 +1009,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           // We'll try both REWORK and REJECTED actions to find the most recent script content
           let scriptData = null;
           let scriptError = null;
-          
+
           // First, try to get the most recent script based on workflow state
           if (workflowState?.isRework || workflowState?.isRejected) {
             let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
-            
+
             const { data, error } = await supabase
               .from('workflow_history')
               .select('script_content')
@@ -600,7 +1021,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               .eq('action', scriptAction)
               .order('timestamp', { ascending: false })
               .limit(1);
-              
+
             if (!error && data && data.length > 0 && data[0].script_content) {
               scriptData = data;
               scriptError = error;
@@ -614,14 +1035,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 .eq('action', fallbackAction)
                 .order('timestamp', { ascending: false })
                 .limit(1);
-                
+
               if (!fallbackError && fallbackData && fallbackData.length > 0 && fallbackData[0].script_content) {
                 scriptData = fallbackData;
                 scriptError = fallbackError;
               }
             }
           }
-          
+
           // If we still don't have script content from rework/reject, try to get the most recent script content regardless of action
           if (!scriptData || (scriptData.length === 0 || !scriptData[0].script_content)) {
             const { data: fallbackData, error: fallbackError } = await supabase
@@ -632,7 +1053,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               .neq('script_content', '')
               .order('timestamp', { ascending: false })
               .limit(1);
-              
+
             if (!fallbackError && fallbackData && fallbackData.length > 0) {
               scriptData = fallbackData;
               scriptError = fallbackError;
@@ -652,7 +1073,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               if (prev._workflow_script_loaded) {
                 return prev;
               }
-              
+
               return {
                 ...prev,
                 script_content: script,
@@ -844,7 +1265,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const handleSubmitForReview = async () => {
     setIsSubmitting(true);
     console.log('🚀 Starting submit process');
-    
+
     // Check if project is in rejected state and not in the resubmit flow
     if (project && getWorkflowState(project).isRejected && returnType !== 'reject') {
       setIsSubmitting(false);
@@ -1239,7 +1660,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         /* =========================
            DETERMINE REWORK REVIEWER IF NEEDED
            ========================= */
-        
+
         // For rework cases, we need to determine who originally sent for rework
         let reworkReviewer: string | null = null;
         if (workflowState?.isRework) {
@@ -1251,8 +1672,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
           if (fullHistory && fullHistory.length > 0) {
             const originalReworkHistory = fullHistory
-  .filter(h => h.action === 'REWORK')
-  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+              .filter(h => h.action === 'REWORK')
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
             if (originalReworkHistory) {
               const { data: reviewerData, error: reviewerError } = await supabase
@@ -1260,7 +1681,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 .select('role')
                 .eq('id', originalReworkHistory.actor_id)
                 .single();
-              
+
               if (reviewerData && reviewerData.role === Role.CEO) {
                 reworkReviewer = 'CEO';
               } else {
@@ -1601,7 +2022,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     </div>
                   )}
                 </div>
-                
+
                 {/* Script Reference Link */}
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
@@ -1833,40 +2254,69 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   <span className="font-black uppercase text-xs text-slate-400">
                     Rich Text Editor
                   </span>
+                  <div className="flex items-center space-x-3">
+                    {canEdit && (
+                      <div className="text-[10px] font-black uppercase text-slate-400 mr-2">
+                        {scriptCharCount} / 6000 chars
+                      </div>
+                    )}
+                    {canEdit && (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={applyCorrections}
+                          disabled={correctionsRunning}
+                          className={`px-4 py-2 border-2 border-black font-black uppercase text-sm flex items-center transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${correctionsRunning ? 'bg-slate-200 text-slate-500 border-slate-400 shadow-none' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                          title="Check grammar and spelling"
+                        >
+                          {correctionsRunning ? 'Checking...' : 'Corrections'}
+                          <SpellCheck className="w-4 h-4 ml-2" />
+                        </button>
+                        {correctionsEnabled && (
+                          <button
+                            onClick={clearCorrections}
+                            className="px-4 py-2 border-2 border-black font-black uppercase text-sm bg-white hover:bg-slate-100 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            title="Clear corrections"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {/* Color picker toolbar - appears when text is selected */}
                   {canEdit && (
                     <div className="flex space-x-2">
-                      <button 
+                      <button
                         onClick={() => applyColor('red')}
                         className="w-6 h-6 bg-red-800 border border-black rounded-sm"
                         title="Red"
                         disabled={!canEdit}
                       />
-                      <button 
+                      <button
                         onClick={() => applyColor('blue')}
                         className="w-6 h-6 bg-blue-800 border border-black rounded-sm"
                         title="Blue"
                         disabled={!canEdit}
                       />
-                      <button 
+                      <button
                         onClick={() => applyColor('green')}
                         className="w-6 h-6 bg-green-800 border border-black rounded-sm"
                         title="Green"
                         disabled={!canEdit}
                       />
-                      <button 
+                      <button
                         onClick={() => applyColor('purple')}
                         className="w-6 h-6 bg-purple-800 border border-black rounded-sm"
                         title="Purple"
                         disabled={!canEdit}
                       />
-                      <button 
+                      <button
                         onClick={() => applyColor('orange')}
                         className="w-6 h-6 bg-orange-700 border border-black rounded-sm"
                         title="Orange"
                         disabled={!canEdit}
                       />
-                      <button 
+                      <button
                         onClick={() => applyColor('black')}
                         className="w-6 h-6 bg-black border border-black rounded-sm"
                         title="Black"
@@ -1893,11 +2343,31 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       const content = e.currentTarget.innerHTML;
                       if (formData.script_content !== content) {
                         setFormData({ ...formData, script_content: content });
+                        // Clear corrections when user manually edits content
+                        if (correctionsEnabled) {
+                          clearCorrections();
+                        }
                       }
+                    }
+                  }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.classList.contains('grammar-error')) {
+                      applyCorrection(target);
                     }
                   }}
                   onMouseUp={handleTextSelection}
                   onKeyDown={(e) => {
+                    // Handle Tab key to apply next correction
+                    if (e.key === 'Tab' && correctionsEnabled) {
+                      const firstError = editorRef.current?.querySelector('.grammar-error') as HTMLElement;
+                      if (firstError) {
+                        e.preventDefault();
+                        applyCorrection(firstError);
+                        return;
+                      }
+                    }
+
                     // Prevent certain keys from triggering unwanted behavior
                     if (e.key === 'Enter' && e.shiftKey) {
                       // Allow shift+enter for line breaks

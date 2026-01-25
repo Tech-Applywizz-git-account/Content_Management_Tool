@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
 import Popup from '../Popup';
+import Timeline from '../Timeline';
 
 interface Props {
     project: Project;
@@ -20,13 +21,13 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
         timestamp: string;
         actor_id?: string;
     }
-    
+
     const [comments, setComments] = useState<WorkflowHistoryEntry[]>([]);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
     const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
-    
+
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
@@ -43,7 +44,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     comment,
                     actor_name,
                     actor_id,
-                    timestamp
+                    timestamp,
+                    stage,
+                    actor_role
                 `)
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false });
@@ -61,34 +64,34 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         ])
                     ).values()
                 ) as WorkflowHistoryEntry[];
-                
+
                 // Show all unique events regardless of status
                 // This addresses the issue where the same workflow events were appearing multiple times
                 setComments(uniqueComments);
-                
+
                 // Get current user session to check if this writer has already acted
                 const { data: { session } } = await supabase.auth.getSession();
                 const user = session?.user;
-                
+
                 // Check if current writer has already approved or rejected this project
-                const currentUserAction = uniqueComments?.find(comment => 
-                    comment.actor_id === user?.id && 
+                const currentUserAction = uniqueComments?.find(comment =>
+                    comment.actor_id === user?.id &&
                     (comment.action === 'APPROVED' || comment.action === 'REJECTED')
                 );
-                
+
                 setWriterAlreadyActed(!!currentUserAction);
             }
 
             // Use the new workflow state logic to determine the latest action
             const workflowState = getWorkflowState(project);
-            
+
             // Determine return type based on the latest action
             if (workflowState.isRejected) {
                 setReturnType('reject');
             } else if (workflowState.isRework) {
                 setReturnType('rework');
             }
-            
+
             // Fetch the most recent workflow history entry to get script content
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
@@ -125,7 +128,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         setPreviousScript(historyData[0].script_content);
                     }
                 }
-                
+
                 // Fetch rejection reason from project
                 if (project.rejected_reason) {
                     setRejectionReason(project.rejected_reason);
@@ -154,8 +157,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     </button>
                     <h1 className="text-xl font-black uppercase text-slate-900">{project.title}</h1>
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                            project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                'bg-[#D946EF] text-white'
+                        project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                            'bg-[#D946EF] text-white'
                         }`}>
                         {project.channel}
                     </span>
@@ -166,67 +169,67 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 <div className="max-w-5xl mx-auto p-8 space-y-8">
 
                     {showWorkflowStatus && (
-                    /* Current Status Card */
-                    <div className="bg-gradient-to-br from-blue-50 to-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="flex items-start justify-between mb-6">
-                            <div>
-                                <h2 className="text-2xl font-black uppercase text-slate-900 mb-2">Current Status</h2>
-                                <p className="text-sm font-bold text-slate-500 uppercase">Submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
+                        /* Current Status Card */
+                        <div className="bg-gradient-to-br from-blue-50 to-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="flex items-start justify-between mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-black uppercase text-slate-900 mb-2">Current Status</h2>
+                                    <p className="text-sm font-bold text-slate-500 uppercase">Submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
+                                </div>
+                                <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                                    {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
+                                </div>
                             </div>
-                            <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                                {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white p-6 border-2 border-black">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <User className="w-5 h-5 text-blue-600" />
+                                        <span className="text-xs font-bold uppercase text-slate-500">Current Reviewer</span>
+                                    </div>
+                                    <p className="font-black text-lg uppercase">
+                                        {project.assigned_to_role === Role.CMO ?
+                                            (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' : 'Script Review (CMO)') :
+                                            project.assigned_to_role === Role.CEO ?
+                                                (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? 'Final Review (CEO)' : 'Script Review (CEO)') :
+                                                STAGE_LABELS[project.current_stage]}
+                                    </p>
+                                </div>
+
+                                <div className="bg-white p-6 border-2 border-black">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <Clock className="w-5 h-5 text-blue-600" />
+                                        <span className="text-xs font-bold uppercase text-slate-500">Stage</span>
+                                    </div>
+                                    <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
+                                </div>
+
+                                <div className="bg-white p-6 border-2 border-black">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                        <FileText className="w-5 h-5 text-blue-600" />
+                                        <span className="text-xs font-bold uppercase text-slate-500">Status</span>
+                                    </div>
+                                    <p className="font-black text-lg uppercase">{isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : project.status}</p>
+                                </div>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="mt-6">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold uppercase text-slate-500">Workflow Progress</span>
+                                    <span className="text-xs font-bold uppercase text-slate-900">
+                                        {project.assigned_to_role === Role.CMO ? 'Level 1 Review' :
+                                            project.assigned_to_role === Role.CEO ? 'Level 2 Review' : 'Processing'}
+                                    </span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-3 border-2 border-black overflow-hidden">
+                                    <div
+                                        className="bg-blue-600 h-full transition-all duration-500"
+                                        style={{ width: project.assigned_to_role === Role.CEO ? '75%' : '50%' }}
+                                    ></div>
+                                </div>
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <User className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Current Reviewer</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">
-                                    {project.assigned_to_role === Role.CMO ? 
-                                        (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' : 'Script Review (CMO)') :
-                                    project.assigned_to_role === Role.CEO ? 
-                                        (project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? 'Final Review (CEO)' : 'Script Review (CEO)') :
-                                        STAGE_LABELS[project.current_stage]}
-                                </p>
-                            </div>
-
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <Clock className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Stage</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
-                            </div>
-
-                            <div className="bg-white p-6 border-2 border-black">
-                                <div className="flex items-center space-x-2 mb-2">
-                                    <FileText className="w-5 h-5 text-blue-600" />
-                                    <span className="text-xs font-bold uppercase text-slate-500">Status</span>
-                                </div>
-                                <p className="font-black text-lg uppercase">{isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : project.status}</p>
-                            </div>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="mt-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs font-bold uppercase text-slate-500">Workflow Progress</span>
-                                <span className="text-xs font-bold uppercase text-slate-900">
-                                    {project.assigned_to_role === Role.CMO ? 'Level 1 Review' :
-                                        project.assigned_to_role === Role.CEO ? 'Level 2 Review' : 'Processing'}
-                                </span>
-                            </div>
-                            <div className="w-full bg-slate-200 h-3 border-2 border-black overflow-hidden">
-                                <div
-                                    className="bg-blue-600 h-full transition-all duration-500"
-                                    style={{ width: project.assigned_to_role === Role.CEO ? '75%' : '50%' }}
-                                ></div>
-                            </div>
-                        </div>
-                    </div>
                     )}
 
                     {/* Cinematographer Comments - Show if cine_comments exist */}
@@ -247,7 +250,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">
                             {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
                         </h3>
-                        
+
                         {isRejected && previousScript ? (
                             // Show both old and new content side by side for rework projects
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -270,14 +273,14 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         })()}
                                     </div>
                                 </div>
-                                
+
                                 {/* Current Content */}
                                 <div className="bg-white border-2 border-slate-300 p-6">
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Updated Idea' : 'Updated Script'}
                                     </h4>
                                     <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {project.data?.source === 'IDEA_PROJECT' 
+                                        {project.data?.source === 'IDEA_PROJECT'
                                             ? (() => {
                                                 // Decode HTML entities to properly display the content
                                                 let decodedContent = project.data.idea_description || 'No idea description available';
@@ -309,7 +312,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             // Show single content for non-rework projects
                             <div className="prose prose-slate max-w-none">
                                 <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
-                                    {project.data?.source === 'IDEA_PROJECT' 
+                                    {project.data?.source === 'IDEA_PROJECT'
                                         ? (() => {
                                             // Decode HTML entities to properly display the content
                                             let decodedContent = project.data.idea_description || 'No idea description available';
@@ -359,12 +362,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 <div>
                                     <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
                                     <p className="text-slate-700 font-medium uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                        : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                        : project.data.niche === 'OTHER' && project.data.niche_other 
-                                            ? project.data.niche_other 
-                                            : project.data.niche}
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                    : project.data.niche === 'OTHER' && project.data.niche_other
+                                                        ? project.data.niche_other
+                                                        : project.data.niche}
                                     </p>
                                 </div>
                             )}
@@ -373,54 +376,21 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
                     {/* Review History */}
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="flex items-center space-x-2 mb-6">
-                            <MessageSquare className="w-6 h-6" />
-                            <h3 className="text-xl font-black uppercase text-slate-900">Review History</h3>
-                        </div>
+                        <Timeline project={{ ...project, history: comments }} />
 
-                        <div className="space-y-4">
-                            {/* Timeline */}
-                            <div className="flex items-start space-x-4">
-                                <div className="w-3 h-3 bg-blue-600 border-2 border-black rounded-full mt-2"></div>
-                                <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
-                                    <span className="text-xs font-bold uppercase text-slate-500">
-                                        {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
-                                    </span>
-                                    <p className="font-black text-slate-900 uppercase mt-1">Script Submitted</p>
-                                    <p className="text-sm text-slate-600 mt-2">Script submitted for review by Writer</p>
-                                </div>
-                            </div>
-
-
-
-                            {/* Render all workflow history events */}
-                            {comments.map((comment, index) => (
-                                <div key={index} className="flex items-start space-x-4">
-                                    <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${comment.action === 'APPROVED' ? 'bg-green-600' : 'bg-red-600'}`}></div>
-                                    <div className="flex-1 pb-8 border-l-2 border-dashed border-slate-300 pl-6">
-                                        <span className="text-xs font-bold uppercase text-slate-500">
-                                            {format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}
-                                        </span>
-                                        <p className="font-black text-slate-900 uppercase mt-1">{comment.action} by {comment.actor_name}</p>
-                                        <p className="text-sm text-slate-600 mt-2">{comment.comment || 'No comment provided'}</p>
-                                    </div>
-                                </div>
-                            ))}
-
-                            {/* Current Status */}
-                            <div className="flex items-start space-x-4">
-                                <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
-                                <div className="flex-1 pl-6">
-                                    <span className="text-xs font-bold uppercase text-slate-500">Current</span>
-                                    <p className="font-black text-slate-900 uppercase mt-1">
-                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
-                                            project.assigned_to_role === Role.CMO ? 'With CMO' :
+                        {/* Current Status Footer */}
+                        <div className="flex items-start space-x-4 mt-8 pt-6 border-t-2 border-dashed border-slate-300">
+                            <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
+                            <div className="flex-1 pl-6">
+                                <span className="text-xs font-bold uppercase text-slate-500">Current</span>
+                                <p className="font-black text-slate-900 uppercase mt-1">
+                                    {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
+                                        project.assigned_to_role === Role.CMO ? 'With CMO' :
                                             project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
-                                    </p>
-                                    <p className="text-sm text-slate-600 mt-2">
-                                        {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
-                                    </p>
-                                </div>
+                                </p>
+                                <p className="text-sm text-slate-600 mt-2">
+                                    {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -435,9 +405,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 {project.edited_video_link && (
                                     <div className="bg-white p-4 border-2 border-orange-300">
                                         <h4 className="font-bold text-orange-800 mb-2">Edited Video</h4>
-                                        <a 
-                                            href={project.edited_video_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.edited_video_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 underline break-all"
                                         >
@@ -448,9 +418,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 {project.thumbnail_link && (
                                     <div className="bg-white p-4 border-2 border-orange-300">
                                         <h4 className="font-bold text-orange-800 mb-2">Thumbnail</h4>
-                                        <a 
-                                            href={project.thumbnail_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.thumbnail_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 underline break-all"
                                         >
@@ -460,38 +430,38 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 )}
                                 {!writerAlreadyActed ? (
                                     <div className="flex space-x-4 pt-4">
-                                        <button 
+                                        <button
                                             onClick={async () => {
                                                 try {
                                                     // Get user session
                                                     const { data: { session } } = await supabase.auth.getSession();
                                                     const user = session?.user;
-                                                    
+
                                                     if (!user) {
                                                         alert('User not authenticated');
                                                         return;
                                                     }
-                                                    
+
                                                     // Use the centralized db service to approve the project
                                                     const { db } = await import('../../services/supabaseDb');
                                                     // Set the current user in the db service with proper User interface
-                                                    db.setCurrentUser({ 
-                                                        id: user.id, 
-                                                        email: user.email || '', 
-                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+                                                    db.setCurrentUser({
+                                                        id: user.id,
+                                                        email: user.email || '',
+                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
                                                         role: Role.WRITER,
                                                         status: UserStatus.ACTIVE
                                                     });
-                                                    
+
                                                     // Call the workflow advance function to move to next stage
                                                     await db.advanceWorkflow(project.id, 'Writer approved the final video');
-                                                    
+
                                                     // Show success popup
                                                     setPopupMessage('Video approved successfully! The project has been sent to the ops team.');
                                                     setStageName('Ops Scheduling');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
-                                                    
+
                                                     // Navigate back after popup duration + small buffer
                                                     setTimeout(() => {
                                                         onBack(); // Navigate back to previous page
@@ -509,38 +479,38 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         >
                                             Approve Video
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={async () => {
                                                 try {
                                                     // Get user session
                                                     const { data: { session } } = await supabase.auth.getSession();
                                                     const user = session?.user;
-                                                    
+
                                                     if (!user) {
                                                         alert('User not authenticated');
                                                         return;
                                                     }
-                                                    
+
                                                     // Use the centralized db service to reject the project
                                                     const { db } = await import('../../services/supabaseDb');
                                                     // Set the current user in the db service with proper User interface
-                                                    db.setCurrentUser({ 
-                                                        id: user.id, 
-                                                        email: user.email || '', 
-                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User', 
+                                                    db.setCurrentUser({
+                                                        id: user.id,
+                                                        email: user.email || '',
+                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
                                                         role: Role.WRITER,
                                                         status: UserStatus.ACTIVE
                                                     });
-                                                    
+
                                                     // Call the workflow reject function to send project back to editor
                                                     await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, 'Writer rejected the video - needs rework');
-                                                    
+
                                                     // Show rejection popup
                                                     setPopupMessage('Video rejected. Sent back to editor for rework.');
                                                     setStageName('Video Editing');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
-                                                    
+
                                                     // Navigate back after popup duration + small buffer
                                                     setTimeout(() => {
                                                         onBack(); // Navigate back to previous page
@@ -573,11 +543,11 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             </div>
                         </div>
                     )}
-                    
+
                     {/* Info Note */}
                     <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
-                            <strong className="uppercase">Note:</strong> 
+                            <strong className="uppercase">Note:</strong>
                             {isRejected || project.status === 'REWORK'
                                 ? returnType === 'reject'
                                     ? 'This project has been rejected. The rejection reason is displayed above. You can make changes and resubmit for review.'
@@ -594,7 +564,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
                 </div>
             </div>
-            
+
             {/* Popup */}
             {showPopup && (
                 <Popup

@@ -21,8 +21,14 @@ import EditorProjectDetailPage from './components/editor/EditorProjectDetailPage
 import SubEditorDashboard from './components/subeditor/SubEditorDashboard';
 import SubEditorProjectDetailPage from './components/subeditor/SubEditorProjectDetailPage';
 import DesignerDashboard from './components/designer/DesignerDashboard';
+import DesignerProjectDetailPage from './components/designer/DesignerProjectDetailPage';
 import OpsDashboard from './components/ops/OpsDashboard';
+import OpsProjectDetailPage from './components/ops/OpsProjectDetailPage';
 import ObserverDashboard from './components/observer/ObserverDashboard';
+import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
+import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
+import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
+import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
 import Auth from './components/Auth';
 import SetPassword from './components/SetPassword';
 
@@ -93,25 +99,41 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
             {/* Role-based Routes */}
             <Route path="/writer/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.WRITER]}>
-                    <WriterDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<WriterProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="edit/:projectId" element={<WriterDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                        <Route path="*" element={<WriterDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={subEditorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
             <Route path="/cmo/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.CMO]}>
-                    <CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="review/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="history_detail/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
             <Route path="/ceo/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.CEO]}>
-                    <CeoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="review/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="history/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<CeoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
             <Route path="/cine/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.CINE]}>
-                    <CineDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={cineScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<CineProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<CineDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={cineScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
@@ -135,13 +157,19 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
 
             <Route path="/designer/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.DESIGNER]}>
-                    <DesignerDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={designerScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<DesignerProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<DesignerDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={designerScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 
             <Route path="/ops/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.OPS]}>
-                    <OpsDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} onRefresh={() => refreshData(user!)} onLogout={onLogout} />
+                    <Routes>
+                        <Route path="project/:projectId" element={<OpsProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="*" element={<OpsDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 

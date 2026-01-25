@@ -236,7 +236,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
         />
 
       ) : activeView === 'calendar' ? (
-        <CineCalendar projects={inboxProjects} />
+        <CineCalendar projects={[...inboxProjects, ...historyProjects]} />
       ) : (
         <div key={refreshKey} className="space-y-8 animate-fade-in">
           {/* Dashboard Content */}

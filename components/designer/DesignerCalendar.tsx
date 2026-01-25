@@ -3,6 +3,11 @@ import { Project } from '../../types';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday } from 'date-fns';
 import { ChevronLeft, ChevronRight, Palette, Video, Calendar as CalendarIconLucide } from 'lucide-react';
 
+const toDateKey = (value?: string | null): string | null => {
+    if (!value) return null;
+    return value.split('T')[0].split(' ')[0];
+};
+
 interface Props {
     projects: Project[];
 }
@@ -24,7 +29,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
 
     const hasDeliveryOnDate = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return deliveryDates.find(dd => dd.date === dateStr);
+        return deliveryDates.find(dd => toDateKey(dd.date) === dateStr);
     };
 
     const previousMonth = () => {
@@ -89,23 +94,29 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                             <div
                                 key={date.toISOString()}
                                 className={`aspect-square border-2 border-black p-2 flex flex-col items-center justify-center transition-all ${isCurrentDay
-                                        ? 'bg-yellow-200 font-black'
-                                        : delivery
-                                            ? isVideo
-                                                ? `bg-blue-100 hover:bg-blue-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
-                                                : `bg-purple-100 hover:bg-purple-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
-                                            : 'bg-white hover:bg-slate-50'
+                                    ? 'bg-yellow-200 font-black'
+                                    : delivery
+                                        ? isVideo
+                                            ? `bg-blue-100 hover:bg-blue-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
+                                            : `bg-purple-100 hover:bg-purple-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
+                                        : 'bg-white hover:bg-slate-50'
                                     }`}
                                 title={delivery ? delivery.project.title : undefined}
                             >
                                 <div className="text-sm font-bold">{format(date, 'd')}</div>
                                 {delivery && (
-                                    <div className="mt-1">
-                                        {isVideo ? (
-                                            <Video className="w-3 h-3 text-blue-600" />
-                                        ) : (
-                                            <Palette className="w-3 h-3 text-purple-600" />
-                                        )}
+                                    <div className="mt-1 flex flex-col items-center">
+                                        <div className={`text-[8px] text-white px-1 py-0.5 rounded font-black uppercase mb-1 truncate max-w-full ${isVideo ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                                            {delivery.project.title}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            {isVideo ? (
+                                                <Video className="w-3 h-3 text-blue-600" />
+                                            ) : (
+                                                <Palette className="w-3 h-3 text-purple-600" />
+                                            )}
+                                            <span className={`text-[8px] font-black uppercase ${isVideo ? 'text-blue-600' : 'text-purple-600'}`}>Delivery</span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -144,10 +155,10 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                                             <div className="flex gap-2 mt-1">
                                                 <span
                                                     className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                            ? 'bg-[#FF4F4F] text-white'
-                                                            : project.channel === 'LINKEDIN'
-                                                                ? 'bg-[#0085FF] text-white'
-                                                                : 'bg-[#D946EF] text-white'
+                                                        ? 'bg-[#FF4F4F] text-white'
+                                                        : project.channel === 'LINKEDIN'
+                                                            ? 'bg-[#0085FF] text-white'
+                                                            : 'bg-[#D946EF] text-white'
                                                         }`}
                                                 >
                                                     {project.channel}

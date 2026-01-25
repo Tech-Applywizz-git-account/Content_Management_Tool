@@ -15,11 +15,12 @@ interface Props {
     historyProjects: Project[];
     onRefresh: () => void;
     onLogout: () => void;
+    allProjects?: Project[];
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
-const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjects = [], onRefresh, onLogout }) => {
+const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjects = [], onRefresh, onLogout, allProjects }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -32,30 +33,18 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         return 'dashboard';
     };
 
+    const [searchParams, setSearchParams] = useSearchParams();
+    const filterCategory = searchParams.get('category') || 'all';
+    const setFilterCategory = (category: string) => {
+        setSearchParams(prev => {
+            prev.set('category', category);
+            return prev;
+        }, { replace: true });
+    };
+
     const activeView = getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<{ project: Project, source: 'ceoapproved' | 'mywork' | null } | null>(null);
-    const [refreshKey, setRefreshKey] = useState(0);
-    const [filterCategory, setFilterCategory] = useState<string>('all'); // 'all', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
 
-    // SYNC STATE WITH URL ON REFRESH/NAVIGATE
-    useEffect(() => {
-        const path = location.pathname;
-        const subPaths = path.split('/').filter(p => p !== '');
-
-        // Pattern: /ops/project/:id
-        const projectIdx = subPaths.findIndex(p => p === 'project');
-        if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
-            const id = subPaths[projectIdx + 1];
-            const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
-            if (p) {
-                // Determine source for ops detail view
-                const isCeoApproved = p.current_stage !== WorkflowStage.OPS_SCHEDULING && p.current_stage !== WorkflowStage.POSTED;
-                setSelectedProject({ project: p, source: isCeoApproved ? 'ceoapproved' : 'mywork' });
-            }
-        } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
-            setSelectedProject(null);
-        }
-    }, [location.pathname, inboxProjects, historyProjects]);
 
     // Debug: Log the stages of inbox projects
     useEffect(() => {
@@ -69,7 +58,6 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
 
     const handleInternalRefresh = async () => {
         await onRefresh(); // MUST refetch from Supabase
-        setRefreshKey(prev => prev + 1); // force UI re-render
     };
 
     const handleViewChange = (view: string) => {
@@ -137,34 +125,14 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             activeView={activeView}
             onChangeView={handleViewChange}
         >
-            {selectedProject ? (
-                selectedProject.source === 'ceoapproved' ? (
-                    <OpsProjectDetailDetailed
-                        project={selectedProject.project}
-                        onBack={() => navigate('/ops')}
-                        onUpdate={() => {
-                            navigate('/ops');
-                            onRefresh();
-                        }}
-                    />
-                ) : (
-                    <OpsProjectDetail
-                        project={selectedProject.project}
-                        onBack={() => navigate('/ops')}
-                        onUpdate={() => {
-                            navigate('/ops');
-                            onRefresh();
-                        }}
-                    />
-                )
-            ) : activeView === 'mywork' ? (
+            {activeView === 'mywork' ? (
                 <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} filterCategory={filterCategory} />
             ) : activeView === 'calendar' ? (
-                <OpsCalendar projects={inboxProjects || []} />
+                <OpsCalendar projects={allProjects || inboxProjects || []} />
             ) : activeView === 'ceoapproved' ? (
                 <OpsCeoApproved projects={inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
             ) : (
-                <div key={refreshKey} className="space-y-8 animate-fade-in">
+                <div className="space-y-8 animate-fade-in">
                     {/* Dashboard Content */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                         <div>
@@ -173,12 +141,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             </h1>
                             <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
                         </div>
-                        <button
-                            onClick={handleInternalRefresh}
-                            className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
-                        >
-                            🔄 Refresh
-                        </button>
+
                     </div>
 
                     {/* Stats */}

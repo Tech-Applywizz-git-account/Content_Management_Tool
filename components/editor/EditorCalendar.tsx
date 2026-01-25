@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { Project } from '../../types';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Film, Calendar as CalendarIconLucide } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isSameMonth } from 'date-fns';
+import { ChevronLeft, ChevronRight, Film } from 'lucide-react';
+
+const toDateKey = (value?: string | null): string | null => {
+    if (!value) return null;
+    return value.split('T')[0].split(' ')[0];
+};
 
 interface Props {
     projects: Project[];
@@ -24,7 +29,7 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
 
     const hasDeliveryOnDate = (date: Date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return deliveryDates.find(dd => dd.date === dateStr);
+        return deliveryDates.find(dd => toDateKey(dd.date) === dateStr);
     };
 
     const previousMonth = () => {
@@ -39,7 +44,7 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
         <div className="space-y-8 animate-fade-in">
             <div>
                 <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
-                    Delivery Calendar
+                    Editor Calendar
                 </h1>
                 <p className="font-bold text-lg text-slate-500">Track your delivery deadlines</p>
             </div>
@@ -88,17 +93,23 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
                             <div
                                 key={date.toISOString()}
                                 className={`aspect-square border-2 border-black p-2 flex flex-col items-center justify-center transition-all ${isCurrentDay
-                                        ? 'bg-yellow-200 font-black'
-                                        : delivery
-                                            ? `bg-orange-100 hover:bg-orange-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
-                                            : 'bg-white hover:bg-slate-50'
-                                    }`}
+                                    ? 'bg-yellow-200 font-black'
+                                    : delivery
+                                        ? `bg-orange-100 hover:bg-orange-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
+                                        : 'bg-white hover:bg-slate-50'
+                                    } ${!isSameMonth(date, currentDate) ? 'opacity-40' : ''}`}
                                 title={delivery ? delivery.project.title : undefined}
                             >
                                 <div className="text-sm font-bold">{format(date, 'd')}</div>
                                 {delivery && (
-                                    <div className="mt-1">
-                                        <Film className="w-3 h-3 text-orange-600" />
+                                    <div className="mt-1 flex flex-col items-center">
+                                        <div className="bg-orange-600 text-[8px] text-white px-1 py-0.5 rounded font-black uppercase mb-1 truncate max-w-full">
+                                            {delivery.project.title}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Film className="w-3 h-3 text-orange-600" />
+                                            <span className="text-[8px] font-black uppercase text-orange-600">Due</span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -132,10 +143,10 @@ const EditorCalendar: React.FC<Props> = ({ projects = [] }) => {
                                         <div className="flex gap-2 mt-1">
                                             <span
                                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                        ? 'bg-[#FF4F4F] text-white'
-                                                        : project.channel === 'LINKEDIN'
-                                                            ? 'bg-[#0085FF] text-white'
-                                                            : 'bg-[#D946EF] text-white'
+                                                    ? 'bg-[#FF4F4F] text-white'
+                                                    : project.channel === 'LINKEDIN'
+                                                        ? 'bg-[#0085FF] text-white'
+                                                        : 'bg-[#D946EF] text-white'
                                                     }`}
                                             >
                                                 {project.channel}

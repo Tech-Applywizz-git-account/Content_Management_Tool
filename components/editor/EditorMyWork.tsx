@@ -15,7 +15,7 @@ interface Props {
 
 const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
-    
+
     // Show all projects the editor has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
@@ -23,7 +23,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
             // Use the script projects passed from parent when SCRIPTS filter is active
             return scriptProjects || [];
         }
-        
+
         // Sort projects by priority:
         // 1. Projects without delivery date (highest priority)
         // 2. Projects in progress without uploaded video
@@ -33,19 +33,19 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
             const bHasDeliveryDate = !!b.delivery_date;
             const aHasVideo = !!a.edited_video_link;
             const bHasVideo = !!b.edited_video_link;
-            
+
             // Projects without delivery date come first
             if (aHasDeliveryDate && !bHasDeliveryDate) return 1;
             if (!aHasDeliveryDate && bHasDeliveryDate) return -1;
-            
+
             // Among projects with delivery date, those without video come before those with video
             if (aHasVideo && !bHasVideo) return 1;
             if (!aHasVideo && bHasVideo) return -1;
-            
+
             // If both have same status, maintain original order
             return 0;
         });
-        
+
         return sortedProjects;
     }, [projects, scriptProjects, activeFilter]);
 
@@ -73,12 +73,12 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
                     const isDelivered = !!project.edited_video_link;
-                    
+
                     // Use the centralized workflow state detection with role context
                     const workflowState = getWorkflowStateForRole(project, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
                     const isRejected = workflowState.isRejected;
-                    
+
                     return (
                         <div
                             key={project.id}
@@ -96,20 +96,20 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                 <div className="flex justify-between items-start">
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                                                ? 'bg-[#FF4F4F] text-white'
-                                                : project.channel === 'LINKEDIN'
-                                                    ? 'bg-[#0085FF] text-white'
-                                                    : 'bg-[#D946EF] text-white'
+                                            ? 'bg-[#FF4F4F] text-white'
+                                            : project.channel === 'LINKEDIN'
+                                                ? 'bg-[#0085FF] text-white'
+                                                : 'bg-[#D946EF] text-white'
                                             }`}
                                     >
                                         {project.channel}
                                     </span>
                                     <span
                                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                                                ? 'bg-red-500 text-white'
-                                                : project.priority === 'NORMAL'
-                                                    ? 'bg-yellow-500 text-black'
-                                                    : 'bg-green-500 text-white'
+                                            ? 'bg-red-500 text-white'
+                                            : project.priority === 'NORMAL'
+                                                ? 'bg-yellow-500 text-black'
+                                                : 'bg-green-500 text-white'
                                             }`}
                                     >
                                         {project.priority}
@@ -157,12 +157,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                             <span className="font-bold text-slate-900">{project.delivery_date}</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between">
-                                        <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-                                        <span className="font-bold text-slate-900">
-                                            {format(new Date(project.due_date), 'MMM dd, yyyy h:mm a')}
-                                        </span>
-                                    </div>
+
                                     <div className="flex justify-between">
                                         <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                                         <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
@@ -173,7 +168,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
                                         </div>
                                     )}
-                                    
+
                                     {/* Show live URL for completed projects */}
                                     {project.status === 'DONE' && project.data?.live_url && (
                                         <div className="pt-2 border-t border-slate-100 mt-2">

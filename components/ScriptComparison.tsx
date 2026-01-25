@@ -15,14 +15,14 @@ const decodeHtmlEntities = (html: string) => {
   const txt = document.createElement('textarea');
   txt.innerHTML = html;
   let decoded = txt.value;
-  
+
   // Remove Tailwind CSS inline styles
   decoded = decoded.replace(/style="[^"]*"/g, '');
-  
+
   // Remove empty span and div tags that might remain
   decoded = decoded.replace(/<span\s*>/g, '').replace(/<\/span>/g, '');
   decoded = decoded.replace(/<div\s*>/g, '').replace(/<\/div>/g, '');
-  
+
   return decoded;
 };
 
@@ -31,7 +31,7 @@ const getTextDifferences = (oldText: string, newText: string) => {
   // Decode HTML entities before comparison
   const decodedOldText = decodeHtmlEntities(oldText);
   const decodedNewText = decodeHtmlEntities(newText);
-  
+
   const oldLines = decodedOldText.split('\n');
   const newLines = decodedNewText.split('\n');
   const maxLength = Math.max(oldLines.length, newLines.length);
@@ -41,7 +41,7 @@ const getTextDifferences = (oldText: string, newText: string) => {
   for (let i = 0; i < maxLength; i++) {
     const oldLine = oldLines[i] || '';
     const newLine = newLines[i] || '';
-    
+
     if (oldLine === newLine) {
       differences.push({ type: 'unchanged', content: newLine, lineNumber: i + 1 });
     } else if (!oldLine) {
@@ -62,27 +62,27 @@ const getTextDifferences = (oldText: string, newText: string) => {
 const highlightAddedContent = (oldText: string, newText: string) => {
   const decodedOldText = decodeHtmlEntities(oldText);
   const decodedNewText = decodeHtmlEntities(newText);
-  
+
   const oldLines = decodedOldText.split('\n');
   const newLines = decodedNewText.split('\n');
-  
+
   const highlightedLines = [];
-  
+
   // Compare line by line
   for (let i = 0; i < newLines.length; i++) {
     const newLine = newLines[i];
     const oldLine = oldLines[i] || '';
-    
+
     // Clean the line content by removing Tailwind CSS inline styles
     const cleanNewLine = newLine.replace(/style="[^"]*"/g, '').replace(/<[^>]*>/g, match => {
       // Preserve the tag but remove style attributes
       return match.replace(/style="[^"]*"/g, '');
     });
-    
+
     const cleanOldLine = oldLine.replace(/style="[^"]*"/g, '').replace(/<[^>]*>/g, match => {
       return match.replace(/style="[^"]*"/g, '');
     });
-    
+
     if (cleanNewLine === cleanOldLine) {
       // Line unchanged
       highlightedLines.push({ type: 'unchanged', content: cleanNewLine });
@@ -95,7 +95,7 @@ const highlightAddedContent = (oldText: string, newText: string) => {
       highlightedLines.push({ type: 'changed', content: highlightedContent });
     }
   }
-  
+
   return highlightedLines;
 };
 
@@ -104,16 +104,16 @@ const highlightWordDifferences = (oldLine: string, newLine: string) => {
   // Split lines into words (split by spaces and punctuation)
   const oldWords = oldLine.split(/(\s+)/);
   const newWords = newLine.split(/(\s+)/);
-  
+
   let result = '';
-  
+
   // Compare word by word
   const maxLength = Math.max(oldWords.length, newWords.length);
-  
+
   for (let i = 0; i < maxLength; i++) {
     const oldWord = oldWords[i] || '';
     const newWord = newWords[i] || '';
-    
+
     if (oldWord === newWord) {
       // Word unchanged
       result += newWord;
@@ -132,7 +132,7 @@ const highlightWordDifferences = (oldLine: string, newLine: string) => {
       }
     }
   }
-  
+
   return result;
 };
 
@@ -144,21 +144,21 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
   previousTimestamp,
   currentTimestamp
 }) => {
-  const [highlightedLines, setHighlightedLines] = useState<Array<{type: string, content: string}>>([]);
+  const [highlightedLines, setHighlightedLines] = useState<Array<{ type: string, content: string }>>([]);
 
   useEffect(() => {
     const highlighted = highlightAddedContent(previousScript || '', currentScript || '');
     setHighlightedLines(highlighted);
   }, [previousScript, currentScript]);
 
-  const renderHighlightedLine = (line: {type: string, content: string}, index: number) => {
-    const baseClasses = "py-1 px-2 font-serif text-base";
-    
+  const renderHighlightedLine = (line: { type: string, content: string }, index: number) => {
+    const baseClasses = "py-1 px-2 font-serif text-xl";
+
     switch (line.type) {
       case 'added':
         return (
-          <div 
-            key={`added-${index}`} 
+          <div
+            key={`added-${index}`}
             className={`${baseClasses} bg-green-100 border-l-4 border-green-500`}
           >
             <div dangerouslySetInnerHTML={{ __html: line.content }} />
@@ -166,8 +166,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
         );
       case 'changed':
         return (
-          <div 
-            key={`changed-${index}`} 
+          <div
+            key={`changed-${index}`}
             className={`${baseClasses} bg-yellow-100 border-l-4 border-yellow-500`}
           >
             <div dangerouslySetInnerHTML={{ __html: line.content }} />
@@ -175,8 +175,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
         );
       default:
         return (
-          <div 
-            key={`unchanged-${index}`} 
+          <div
+            key={`unchanged-${index}`}
             className={`${baseClasses} bg-white`}
           >
             <div dangerouslySetInnerHTML={{ __html: line.content }} />
@@ -185,14 +185,14 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
     }
   };
 
-  const renderLine = (diff: {type: string, content: string, lineNumber: number}) => {
+  const renderLine = (diff: { type: string, content: string, lineNumber: number }) => {
     const baseClasses = "py-1 px-2 font-mono text-sm border-l-4";
-    
+
     switch (diff.type) {
       case 'added':
         return (
-          <div 
-            key={`${diff.lineNumber}-${diff.type}`} 
+          <div
+            key={`${diff.lineNumber}-${diff.type}`}
             className={`${baseClasses} border-green-500 bg-green-50 text-green-800`}
           >
             <span className="text-gray-400 mr-2">+{diff.lineNumber}</span>
@@ -201,8 +201,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
         );
       case 'removed':
         return (
-          <div 
-            key={`${diff.lineNumber}-${diff.type}`} 
+          <div
+            key={`${diff.lineNumber}-${diff.type}`}
             className={`${baseClasses} border-red-500 bg-red-50 text-red-800 line-through`}
           >
             <span className="text-gray-400 mr-2">-{diff.lineNumber}</span>
@@ -211,8 +211,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
         );
       default:
         return (
-          <div 
-            key={`${diff.lineNumber}-${diff.type}`} 
+          <div
+            key={`${diff.lineNumber}-${diff.type}`}
             className={`${baseClasses} border-gray-300 bg-white text-gray-700`}
           >
             <span className="text-gray-400 mr-2"> {diff.lineNumber}</span>
@@ -231,11 +231,11 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
           <div className="bg-red-500 text-white p-3 font-bold uppercase text-sm">
             Previous Script
           </div>
-          <div className="font-serif text-gray-800 leading-relaxed max-h-96 overflow-y-auto">
+          <div className="font-serif text-xl text-gray-800 leading-normal max-h-96 overflow-y-auto">
             <div className="p-4">
               {(() => {
                 if (!previousScript) return 'No previous script available';
-                
+
                 const decodedContent = decodeHtmlEntities(previousScript);
                 return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
               })()}
@@ -248,8 +248,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
           <div className="bg-green-500 text-white p-3 font-bold uppercase text-sm">
             Current Script
           </div>
-          <div className="font-serif text-gray-800 leading-relaxed max-h-96 overflow-y-auto">
-            <div className="p-4 text-base">
+          <div className="font-serif text-gray-800 leading-normal max-h-96 overflow-y-auto">
+            <div className="p-4 text-xl">
               {highlightedLines.length > 0 ? (
                 <div className="space-y-0">
                   {highlightedLines.map((line, index) => renderHighlightedLine(line, index))}
@@ -258,7 +258,7 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
                 <div className="text-gray-500 italic">
                   {(() => {
                     if (!currentScript) return 'No script content available';
-                    
+
                     const decodedContent = decodeHtmlEntities(currentScript);
                     return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
                   })()}

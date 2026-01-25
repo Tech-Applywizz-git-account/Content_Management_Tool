@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Video, Upload } from 'lucide-react';
-import { db } from '../../services/supabaseDb';
+import React, { useState } from 'react';
 import { Project, Role } from '../../types';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isSameMonth } from 'date-fns';
+import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+
+const toDateKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  return value.split('T')[0].split(' ')[0];
+};
 
 interface Props {
   projects: Project[];
@@ -10,186 +15,159 @@ interface Props {
 
 const SubEditorCalendar: React.FC<Props> = ({ projects = [], user }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  
-  // Filter projects to only show those assigned to this sub-editor
-  const subEditorProjects = projects.filter(p => 
-    p.assigned_to_role === Role.SUB_EDITOR &&
-    p.assigned_to_user_id === user.id
-  );
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // Filter projects relevant to sub-editor delivery
+  const deliveryDates = (projects || [])
+    .filter(p => p.delivery_date)
+    .map(p => ({
+      date: p.delivery_date!,
+      project: p
+    }));
 
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-
-    const days = [];
-    
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null);
-    }
-
-    // Add actual days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(new Date(year, month, day));
-    }
-
-    return days;
+  const hasDeliveryOnDate = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return deliveryDates.find(dd => toDateKey(dd.date) === dateStr);
   };
 
-  const goToPreviousMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  const previousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
   };
 
-  const goToNextMonth = () => {
-    setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toISOString().split('T')[0];
-  };
-
-  const getProjectsForDate = (date: Date | null) => {
-    if (!date) return [];
-    
-    const dateString = formatDate(date);
-    return subEditorProjects.filter(project => 
-      project.delivery_date === dateString || project.due_date === dateString
-    );
-  };
-
-  const isToday = (date: Date | null) => {
-    if (!date) return false;
-    const today = new Date();
-    return date.getDate() === today.getDate() &&
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
-  };
-
-  const isCurrentMonth = (date: Date | null) => {
-    if (!date) return false;
-    return date.getMonth() === currentDate.getMonth() &&
-           date.getFullYear() === currentDate.getFullYear();
+  const nextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-black uppercase text-slate-900">Sub-Editor Calendar</h1>
-              <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={goToPreviousMonth}
-                className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <h2 className="text-xl font-black uppercase text-slate-900">
-                {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-              </h2>
-              <button
-                onClick={goToNextMonth}
-                className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+    <div className="space-y-8 animate-fade-in">
+      <div>
+        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+          Sub-Editor Calendar
+        </h1>
+        <p className="font-bold text-lg text-slate-500">Track your delivery deadlines</p>
+      </div>
 
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {dayNames.map(day => (
-              <div key={day} className="p-3 text-center font-black uppercase text-slate-500 text-sm">
-                {day}
+      {/* Calendar */}
+      <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={previousMonth}
+            className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-2xl font-black uppercase">{format(currentDate, 'MMMM yyyy')}</h2>
+          <button
+            onClick={nextMonth}
+            className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="text-center text-xs font-black uppercase text-slate-400 py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {/* Empty cells for days before month starts */}
+          {Array.from({ length: monthStart.getDay() }).map((_, i) => (
+            <div key={`empty-${i}`} className="aspect-square"></div>
+          ))}
+
+          {/* Days */}
+          {daysInMonth.map(date => {
+            const delivery = hasDeliveryOnDate(date);
+            const isCurrentDay = isToday(date);
+
+            return (
+              <div
+                key={date.toISOString()}
+                className={`aspect-square border-2 border-black p-2 flex flex-col items-center justify-center transition-all ${isCurrentDay
+                  ? 'bg-yellow-200 font-black'
+                  : delivery
+                    ? `bg-purple-100 hover:bg-purple-200 cursor-pointer ${delivery.project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`
+                    : 'bg-white hover:bg-slate-50'
+                  } ${!isSameMonth(date, currentDate) ? 'opacity-40' : ''}`}
+                title={delivery ? delivery.project.title : undefined}
+              >
+                <div className="text-sm font-bold">{format(date, 'd')}</div>
+                {delivery && (
+                  <div className="mt-1 flex flex-col items-center">
+                    <div className="bg-purple-600 text-[8px] text-white px-1 py-0.5 rounded font-black uppercase mb-1 truncate max-w-full">
+                      {delivery.project.title}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <FileText className="w-3 h-3 text-purple-600" />
+                      <span className="text-[8px] font-black uppercase text-purple-600">Due</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Upcoming Deliveries */}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-black uppercase text-slate-900 border-b-4 border-black inline-block pb-1">
+          Upcoming Deliveries
+        </h2>
+
+        {deliveryDates.length > 0 ? (
+          <div className="space-y-3">
+            {deliveryDates.map(({ date, project }) => (
+              <div
+                key={project.id}
+                className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 flex items-center justify-between ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-purple-100 border-2 border-black px-3 py-2">
+                    <div className="text-xs font-bold text-slate-500 uppercase">
+                      {format(new Date(date), 'MMM')}
+                    </div>
+                    <div className="text-2xl font-black">{format(new Date(date), 'd')}</div>
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-900 uppercase">{project.title}</h3>
+                    <div className="flex gap-2 mt-1">
+                      <span
+                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
+                          ? 'bg-[#FF4F4F] text-white'
+                          : project.channel === 'LINKEDIN'
+                            ? 'bg-[#0085FF] text-white'
+                            : 'bg-[#D946EF] text-white'
+                          }`}
+                      >
+                        {project.channel}
+                      </span>
+                      {project.status === 'DONE' && (
+                        <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-green-600 bg-green-100 text-green-800">
+                          ✓ Completed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-
-          <div className="grid grid-cols-7 gap-1">
-            {getDaysInMonth(currentDate).map((date, index) => {
-              const dayProjects = getProjectsForDate(date);
-              const today = isToday(date);
-              const currentMonth = isCurrentMonth(date);
-
-              return (
-                <div
-                  key={index}
-                  className={`
-                    min-h-24 p-2 border border-slate-200
-                    ${today ? 'bg-yellow-100 border-yellow-400' : ''}
-                    ${currentMonth ? 'bg-white' : 'bg-slate-50 text-slate-400'}
-                  `}
-                >
-                  <div className="text-right mb-1">
-                    <span className={`
-                      inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold
-                      ${today ? 'bg-black text-white' : ''}
-                    `}>
-                      {date ? date.getDate() : ''}
-                    </span>
-                  </div>
-                  <div className="space-y-1 max-h-20 overflow-y-auto">
-                    {dayProjects.slice(0, 2).map(project => (
-                      <div
-                        key={project.id}
-                        className={`
-                          p-1 text-xs font-bold rounded truncate
-                          ${
-                            project.status === 'DONE' ? 'bg-green-500 text-white' :
-                            project.status === 'IN_PROGRESS' ? 'bg-blue-500 text-white' :
-                            project.status === 'WAITING_APPROVAL' ? 'bg-yellow-500 text-black' :
-                            'bg-gray-500 text-white'
-                          }
-                        `}
-                      >
-                        <div className="truncate">{project.title}</div>
-                      </div>
-                    ))}
-                    {dayProjects.length > 2 && (
-                      <div className="text-xs font-bold text-slate-500">
-                        +{dayProjects.length - 2} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        ) : (
+          <div className="border-2 border-dashed border-black p-8 text-center bg-slate-50">
+            <p className="text-slate-400 font-bold uppercase">No deliveries scheduled</p>
           </div>
-        </div>
-
-        {/* Legend */}
-        <div className="mt-6 bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-4">
-          <h3 className="text-lg font-black uppercase mb-3">Legend</h3>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-500"></div>
-              <span className="font-bold text-sm">Completed</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-500"></div>
-              <span className="font-bold text-sm">In Progress</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-yellow-500"></div>
-              <span className="font-bold text-sm">Waiting Approval</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-gray-500"></div>
-              <span className="font-bold text-sm">Other</span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

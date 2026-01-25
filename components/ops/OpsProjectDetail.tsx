@@ -134,28 +134,40 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center gap-4">
-                <button
-                    onClick={onBack}
-                    className="p-2 border-2 border-black hover:bg-slate-100"
-                >
-                    <ArrowLeft size={24} />
-                </button>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 text-xs font-bold border-2 border-black ${project.channel === 'LINKEDIN' ? 'bg-blue-100 text-blue-800' :
-                            project.channel === 'YOUTUBE' ? 'bg-red-100 text-red-800' :
-                                'bg-purple-100 text-purple-800'
-                            }`}>
-                            {project.channel}
-                        </span>
-                        <span className="text-sm text-slate-600">
-                            {isVideo ? '🎬 VIDEO' : '🎨 CREATIVE'}
-                        </span>
+            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 bg-white shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all"
+                    >
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                                    project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
+                                        'bg-[#D946EF]'
+                                }`}>
+                                {project.channel}
+                            </span>
+                            <span className="text-xs font-bold uppercase text-slate-500">
+                                {isVideo ? '🎬 VIDEO' : '🎨 CREATIVE'}
+                            </span>
+                            {isPosted && (
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-green-100 text-green-800">
+                                    POSTED
+                                </span>
+                            )}
+                            {!isPosted && project.post_scheduled_date && (
+                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-blue-100 text-blue-800">
+                                    SCHEDULED
+                                </span>
+                            )}
+                        </div>
+                        <h1 className="text-lg font-black uppercase text-slate-900">{project.title}</h1>
                     </div>
-                    <h1 className="text-3xl font-black uppercase text-slate-900">{project.title}</h1>
                 </div>
-            </div>
+            </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Content Preview */}
@@ -237,7 +249,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                         .replace(/&#39;/g, "'")
                                         .replace(/&nbsp;/g, ' ');
                                     return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                  })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
+                                })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}
@@ -248,7 +260,10 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     {/* Approval Status Indicator */}
                     <ApprovalStatusIndicator project={project} />
 
-
+                    {/* Timeline */}
+                    <div className="border-2 border-black p-6 bg-white">
+                        <Timeline project={project} users={users} />
+                    </div>
                 </div>
 
                 {/* Right Column - Scheduling Actions */}
