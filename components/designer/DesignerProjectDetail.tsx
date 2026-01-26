@@ -30,8 +30,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
-    const [thumbnailLink, setThumbnailLink] = useState(processedlocalProject.thumbnail_link || '');
-    const [creativeLink, setCreativeLink] = useState(processedlocalProject.creative_link || processedlocalProject.data?.creative_link || '');
+    const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
+    const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO';
     // Use the new workflow state logic with role context
@@ -42,15 +42,15 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     // Determine if current user can edit based on role and workflow state
     // Additional check for role-based access: if the current stage is THUMBNAIL_DESIGN/CREATIVE_DESIGN and user role is DESIGNER,
     // and the project is assigned to DESIGNER role, then allow access regardless of other factors
-    const roleBasedAccess = ((locallocalProject.current_stage === 'THUMBNAIL_DESIGN' || locallocalProject.current_stage === 'CREATIVE_DESIGN') && 
+    const roleBasedAccess = ((localProject.current_stage === 'THUMBNAIL_DESIGN' || localProject.current_stage === 'CREATIVE_DESIGN') && 
                              userRole === 'DESIGNER' && 
                              localProject.assigned_to_role === 'DESIGNER');
     
-    const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, locallocalProject.current_stage);
+    const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
     const hasAsset = isVideo
-        ? !!locallocalProject.thumbnail_link
-        : !!locallocalProject.creative_link || !!locallocalProject.data?.creative_link;
+        ? !!localProject.thumbnail_link
+        : !!localProject.creative_link || !!localProject.data?.creative_link;
 
 
     // Reset form fields when project changes
@@ -58,8 +58,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         // For rework projects, keep existing data
         const processedProject = { ...project };
         setDeliveryDate(processedProject.delivery_date || '');
-        setThumbnailLink(processedlocalProject.thumbnail_link || '');
-        setCreativeLink(processedlocalProject.creative_link || '');
+        setThumbnailLink(processedProject.thumbnail_link || '');
+        setCreativeLink(processedProject.creative_link || '');
         setLocalProject(project); // Update localProject when the prop changes
     }, [project]);
 
@@ -207,7 +207,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 localProject.id,
                                 'ASSET_UPLOADED',
                                 'New Thumbnail/Creative Available',
-                                `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedlocalProject.current_stage] || updatedlocalProject.current_stage.replace(/_/g, ' ')}.`
+                                `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
                             );
                         } catch (notificationError) {
                             console.error('Failed to send notification:', notificationError);
