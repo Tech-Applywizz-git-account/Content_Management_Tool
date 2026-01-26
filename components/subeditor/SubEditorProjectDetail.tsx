@@ -36,7 +36,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   // Reset form fields when project changes
   useEffect(() => {
@@ -200,10 +200,20 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         nextRole // to_role - Designer if thumbnail required, Writer (for multi-writer approval) if not
       );
 
+      // Prepare the sub-editor video links history array
+      const updatedSubEditorVideoLinksHistory = [
+        ...(localProject.sub_editor_video_links_history || []),
+        // Add the previous video link if it exists and is different from the new one
+        ...(localProject.edited_video_link && localProject.edited_video_link !== editedVideoLink 
+          ? [localProject.edited_video_link] 
+          : [])
+      ];
+
       // Update the project with the edited video link and preserve who actually edited the video
       // Don't update assigned_to_role here since advanceWorkflow will handle proper role assignment based on thumbnail_required
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
+        sub_editor_video_links_history: updatedSubEditorVideoLinksHistory, // Store the history of video links
         editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail
         sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name
         edited_by_role: 'SUB_EDITOR', // Track who actually edited

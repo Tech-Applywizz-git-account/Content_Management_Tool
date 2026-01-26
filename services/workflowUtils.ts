@@ -90,7 +90,25 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
   let isTargetedRework = false;
   let isRejected = false;
 
-  if (project?.history && project.history.length > 0) {
+  // First, check if the project status is REWORK and the user's role matches the assigned role in the current stage
+  if (project?.status === 'REWORK' && userRole === 'EDITOR' && project.assigned_to_role === 'EDITOR' && project.current_stage === 'VIDEO_EDITING') {
+    isRework = true;
+    isTargetedRework = true;
+  }
+  else if (project?.status === 'REWORK' && userRole === 'CINE' && project.assigned_to_role === 'CINE' && project.current_stage === 'CINEMATOGRAPHY') {
+    isRework = true;
+    isTargetedRework = true;
+  }
+  else if (project?.status === 'REWORK' && userRole === 'DESIGNER' && project.assigned_to_role === 'DESIGNER' && (project.current_stage === 'THUMBNAIL_DESIGN' || project.current_stage === 'CREATIVE_DESIGN')) {
+    isRework = true;
+    isTargetedRework = true;
+  }
+  else if (project?.status === 'REWORK' && userRole === 'SUB_EDITOR' && project.assigned_to_role === 'SUB_EDITOR' && (project.current_stage === 'SUB_EDITOR_ASSIGNMENT' || project.current_stage === 'SUB_EDITOR_PROCESSING')) {
+    isRework = true;
+    isTargetedRework = true;
+  }
+
+  if (project?.history && project.history.length > 0 && !isTargetedRework) { // Only check history if we haven't already identified it as targeted rework
     // Sort history by timestamp descending to find the most recent actions
     const sortedHistory = [...project.history].sort((a, b) =>
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -117,8 +135,21 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
         return isSubmissionAction && actionTimestamp > reworkTimestamp;
       });
 
-      // Only show rework if there's no later submission/approval
-      if (!hasLaterSubmission) {
+      // Check if project has moved to a later stage after the rework action
+      const hasLaterStageTransition = sortedHistory.some(h => {
+        const stageChangeActions = [
+          'EDITOR_VIDEO_UPLOADED',
+          'SUB_EDITOR_ASSIGNED',
+          'SUB_EDITOR_COMPLETED',
+          'DESIGN_COMPLETED',
+          'THUMBNAIL_COMPLETED'
+        ];
+        const actionTimestamp = new Date(h.timestamp).getTime();
+        return stageChangeActions.includes(h.action) && actionTimestamp > reworkTimestamp;
+      });
+
+      // Only show rework if there's no later submission/approval AND no later stage transition
+      if (!hasLaterSubmission && !hasLaterStageTransition) {
         isRework = true;
         isTargetedRework = true;
       }
@@ -132,8 +163,21 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
         return isSubmissionAction && actionTimestamp > rejectedTimestamp;
       });
 
-      // Only show rejected if there's no later submission/approval
-      if (!hasLaterSubmission) {
+      // Check if project has moved to a later stage after the reject action
+      const hasLaterStageTransition = sortedHistory.some(h => {
+        const stageChangeActions = [
+          'EDITOR_VIDEO_UPLOADED',
+          'SUB_EDITOR_ASSIGNED',
+          'SUB_EDITOR_COMPLETED',
+          'DESIGN_COMPLETED',
+          'THUMBNAIL_COMPLETED'
+        ];
+        const actionTimestamp = new Date(h.timestamp).getTime();
+        return stageChangeActions.includes(h.action) && actionTimestamp > rejectedTimestamp;
+      });
+
+      // Only show rejected if there's no later submission/approval AND no later stage transition
+      if (!hasLaterSubmission && !hasLaterStageTransition) {
         isRejected = true;
         isRework = true; // Rejected projects are also considered in rework state
         isTargetedRework = true;
@@ -159,20 +203,54 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
 /**
  * Determine if user can edit based on role and workflow state
  */
-export function canUserEdit(role: string, workflowState: WorkflowState, assignedRole?: string): boolean {
+export function canUserEdit(role: string, workflowState: WorkflowState, assignedRole?: string, currentStage?: string): boolean {
   const { isRework, isRejected, isApproved, isInReview, latestAction } = workflowState;
+
+  // Primary check: if the current stage matches the user's role and assigned role, allow access
+  // This handles the most common case where a user should be able to edit in their assigned stage
+  if ((currentStage === 'VIDEO_EDITING' && role === Role.EDITOR && assignedRole === Role.EDITOR) ||
+      (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
+      (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
+      (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
+      (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
+      (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE && assignedRole === Role.CINE)) {
+    return true;
+  }
 
   // For rework scenarios, implement hierarchical access based on the assigned role
   if (!isRework) {
-    // If not in rework state, only the assigned role can edit
-    return role === assignedRole;
+    // If not in rework state, check if the role matches the assigned role OR the current stage
+    // This handles cases where the assigned_role might not be properly set but the stage indicates who should work
+    return role === assignedRole || 
+           (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
+           (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
+           (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
+           (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
+           (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
+           (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
   }
 
-  // When in rework state, implement the hierarchical access rules:
-  // - If assigned to CINE: CINE, EDITOR, and DESIGNER can edit
-  // - If assigned to EDITOR: EDITOR and DESIGNER can edit
-  // - If assigned to SUB_EDITOR: SUB_EDITOR and EDITOR can edit
-  // - If assigned to DESIGNER: only DESIGNER can edit
+  // When in rework state, we need to balance hierarchical access rules with current stage assignments
+  // If the project has moved to a new stage and is assigned to a new role, that role should be able to work on it
+  // regardless of the historical rework state
+  const currentStagePermission = 
+         (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
+         (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
+         (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
+         (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
+         (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
+         (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
+
+  // If the current stage permits the role, allow access even if in rework state
+  if (currentStagePermission && role === assignedRole) {
+    return true;
+  }
+
+  // Otherwise, fall back to hierarchical access rules based on the original assigned role at rework time:
+  // - If originally assigned to CINE: CINE, EDITOR, and DESIGNER can edit
+  // - If originally assigned to EDITOR: EDITOR and DESIGNER can edit
+  // - If originally assigned to SUB_EDITOR: SUB_EDITOR and EDITOR can edit
+  // - If originally assigned to DESIGNER: only DESIGNER can edit
   if (assignedRole === Role.CINE) {
     return role === Role.CINE || role === Role.EDITOR || role === Role.DESIGNER;
   } else if (assignedRole === Role.EDITOR) {
@@ -189,13 +267,82 @@ export function canUserEdit(role: string, workflowState: WorkflowState, assigned
 
 /**
  * Get the most recent rework/reject comment from project history for a specific role
- * Only returns comments where:
- * - action = 'REWORK' or 'REJECTED'
- * - to_role = current_user_role
- * - and no resubmission has happened after the rework request
+ * Returns comments based on two criteria:
+ * 1. From workflow history: action = 'REWORK' or 'REJECTED' where to_role = current_user_role
+ * 2. From current project state: project.status = 'REWORK' and assigned_to_role = current_user_role
+ * Only returns comments if no resubmission has happened after the rework request
  */
 export function getLatestReworkRejectComment(project: Project | undefined, userRole?: string): { comment: string | null; actor_name: string | null } | null {
-  if (!project || !project.history || project.history.length === 0) {
+  if (!project) {
+    return null;
+  }
+
+  // Check if the project is currently in REWORK status and assigned to the user's role
+  if (project.status === 'REWORK' && userRole && project.assigned_to_role === userRole) {
+    // If the project is currently assigned for rework to this user, show the rework comments
+    // First, look for the most recent rework/reject action in history
+    if (project.history && project.history.length > 0) {
+      // Sort by timestamp to get the most recent actions
+      const sortedHistory = [...project.history].sort((a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+
+      // Find the most recent REWORK or REJECTED action
+      const reworkRejectAction = sortedHistory.find(h => {
+        const isReworkOrRejected = h.action === 'REWORK' || h.action === 'REJECTED';
+        return isReworkOrRejected;
+      });
+
+      // If we found a rework/reject action, check if there was a resubmission after it
+      if (reworkRejectAction) {
+        // Find any resubmission action that happened after this rework/reject action
+        const reworkRejectTimestamp = new Date(reworkRejectAction.timestamp).getTime();
+
+        // Look for resubmission actions that happened after the rework/reject
+        const hasResubmissionAfterRework = sortedHistory.some(h => {
+          // Actions that indicate resubmission after rework
+          const isResubmissionAction = [
+            'SUBMITTED',           // General submission
+            'REWORK_VIDEO_SUBMITTED',
+            'REWORK_EDIT_SUBMITTED',
+            'REWORK_DESIGN_SUBMITTED',
+            'DIRECT_UPLOAD'
+          ].includes(h.action);
+
+          const actionTimestamp = new Date(h.timestamp).getTime();
+
+          // Check if this resubmission happened after the rework/reject action
+          return isResubmissionAction && actionTimestamp > reworkRejectTimestamp;
+        });
+
+        // If there was a resubmission after the rework, don't show the old rework comment
+        if (hasResubmissionAfterRework) {
+          return null;
+        }
+
+        return {
+          comment: reworkRejectAction.comment || null,
+          actor_name: reworkRejectAction.actor_name || null
+        };
+      }
+    }
+
+    // If we couldn't find a rework/reject action in history, check forwarded_comments
+    if (project.forwarded_comments && Array.isArray(project.forwarded_comments) && project.forwarded_comments.length > 0) {
+      const latestComment = project.forwarded_comments[project.forwarded_comments.length - 1];
+      if (latestComment && typeof latestComment === 'object' && latestComment.comment) {
+        return {
+          comment: latestComment.comment,
+          actor_name: latestComment.actor_name || null
+        };
+      }
+    }
+
+
+  }
+
+  // Fall back to the original logic for historical rework/reject comments
+  if (!project.history || project.history.length === 0) {
     return null;
   }
 

@@ -34,12 +34,18 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
   // Use the new workflow state logic with role context
-  const workflowState = getWorkflowStateForRole(project, userRole);
+  const workflowState = getWorkflowStateForRole(localProject, userRole);
   const isRework = workflowState.isTargetedRework || workflowState.isRework;
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, project.assigned_to_role);
+  // Additional check for role-based access: if the current stage is VIDEO_EDITING and user role is EDITOR,
+  // and the project is assigned to EDITOR role, then allow access regardless of other factors
+  const roleBasedAccess = (localProject.current_stage === 'VIDEO_EDITING' && 
+                           userRole === 'EDITOR' && 
+                           localProject.assigned_to_role === 'EDITOR');
+  
+  const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   const hasEditedVideo = !!localProject.edited_video_link;
 
@@ -141,12 +147,6 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       return;
     }
 
-    // Check if user has permission to edit
-    if (!canEdit) {
-      alert('You do not have permission to edit this project');
-      return;
-    }
-
     try {
       // Get user session
       const { data: { session } } = await supabase.auth.getSession();
@@ -172,10 +172,20 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         comment
       );
 
+      // Prepare the editor video links history array
+      const updatedEditorVideoLinksHistory = [
+        ...(project.editor_video_links_history || []),
+        // Add the previous video link if it exists and is different from the new one
+        ...(project.edited_video_link && project.edited_video_link !== editedVideoLink 
+          ? [project.edited_video_link] 
+          : [])
+      ];
+
       // Update the project with the edited video link and advance the workflow
       // This will properly check thumbnail_required and route to correct stage
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
+        editor_video_links_history: updatedEditorVideoLinksHistory, // Store the history of video links
         editor_uploaded_at: new Date().toISOString(),
         editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
         edited_by_role: 'EDITOR', // Track who actually edited

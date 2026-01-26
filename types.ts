@@ -106,12 +106,17 @@ export interface Project {
   edited_video_link?: string; // Editor uploads edited video
   thumbnail_link?: string; // Designer uploads (video path)
   creative_link?: string; // Designer uploads (creative-only path)
+  cine_video_links_history?: string[]; // Array of all video links uploaded by cinematographer, including previous versions for rework scenarios
+  editor_video_links_history?: string[]; // Array of all edited video links uploaded by editor, including previous versions for rework scenarios
+  sub_editor_video_links_history?: string[]; // Array of all edited video links uploaded by sub-editor, including previous versions for rework scenarios
+  designer_video_links_history?: string[]; // Array of all creative/thumbnail links uploaded by designer, including previous versions for rework scenarios
   data: ProjectData; // Flexible JSON blob for form inputs
   history: HistoryEvent[];
   rework_target_role?: Role;
   rework_initiator_role?: Role;
   rework_initiator_stage?: WorkflowStage;
   visible_to_roles?: string[]; // Roles that can view this project
+  forwarded_comments?: Array<{ comment: string; actor_name: string }>; // Comments forwarded with rework requests
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }

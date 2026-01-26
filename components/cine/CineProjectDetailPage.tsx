@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CineProjectDetail from './CineProjectDetail';
+import Layout from '../Layout';
 
 const CineProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
     const { projectId } = useParams<{ projectId: string }>();
-    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const [project, setProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
-    const fromView = searchParams.get('from') as 'MYWORK' | 'SCRIPTS' | null;
-    const activeFilter = searchParams.get('filter') as any;
 
     useEffect(() => {
         const loadProject = async () => {
@@ -27,7 +24,7 @@ const CineProjectDetailPage: React.FC<{ user: { full_name: string; role: Role };
                 setLoading(true);
                 const { data, error } = await supabase
                     .from('projects')
-                    .select('*')
+                    .select('*, workflow_history(*)')
                     .eq('id', projectId)
                     .single();
 
@@ -37,7 +34,13 @@ const CineProjectDetailPage: React.FC<{ user: { full_name: string; role: Role };
                     return;
                 }
 
-                setProject(data as Project);
+                // Map workflow_history to history property expected by Timeline
+                const projectWithHistory = {
+                    ...data,
+                    history: data.workflow_history
+                };
+
+                setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
                 setError('Failed to load project');
@@ -75,16 +78,25 @@ const CineProjectDetailPage: React.FC<{ user: { full_name: string; role: Role };
     }
 
     return (
-        <CineProjectDetail
-            project={project}
-            userRole={user.role}
-            fromView={fromView}
-            activeFilter={activeFilter}
-            onBack={() => navigate(-1)}
-            onUpdate={() => {
-                navigate(-1);
+        <Layout
+            user={user as any}
+            onLogout={onLogout}
+            onOpenCreate={() => { }}
+            activeView="mywork"
+            onChangeView={(view) => {
+                if (view === 'dashboard') navigate('/cine');
+                else navigate(`/cine/${view}`);
             }}
-        />
+        >
+            <CineProjectDetail
+                project={project}
+                onBack={() => navigate(-1)}
+                onUpdate={() => {
+                    // Refresh the current page after update
+                    window.location.reload();
+                }}
+            />
+        </Layout>
     );
 };
 

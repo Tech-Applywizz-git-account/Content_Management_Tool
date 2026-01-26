@@ -35,7 +35,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     const isRejected = workflowState.isRejected;
 
     // Determine if current user can edit based on role and workflow state
-    const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+    // Additional check for role-based access: if the current stage is CINEMATOGRAPHY and user role is CINE,
+    // and the project is assigned to CINE role, then allow access regardless of other factors
+    const roleBasedAccess = (localProject.current_stage === 'CINEMATOGRAPHY' && 
+                             userRole === 'CINE' && 
+                             localProject.assigned_to_role === 'CINE');
+    
+    const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
     // Check if this project is currently assigned to the Cine role
     const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
@@ -193,12 +199,6 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             return;
         }
 
-        // Check if user has permission to edit
-        if (!canEdit) {
-            alert('You do not have permission to edit this project');
-            return;
-        }
-
         try {
             // Get user session
             const { data: { session } } = await supabase.auth.getSession();
@@ -246,40 +246,42 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 comment
             );
 
-            // Update the project with the video link and advance the workflow
-            // This will properly route to the correct next stage
-
-
-            // Update project data to persist any changes made during this session
-            // Include video_link in the update so timestamp logic can detect the upload
-            // Also clear any rework metadata to ensure proper routing from CINEMATOGRAPHY to VIDEO_EDITING
+            // Prepare the cine video links history array
+            const updatedCineVideoLinksHistory = [
+                ...(localProject.cine_video_links_history || []),
+                // Add the previous video link if it exists and is different from the new one
+                ...(localProject.video_link && localProject.video_link !== videoLink 
+                    ? [localProject.video_link] 
+                    : [])
+            ];
+            
+            // Prepare comprehensive update data
             const updatedProjectData = {
                 ...localProject.data,
-                video_link: videoLink,
-                cine_uploaded_at: new Date().toISOString(),
                 cine_comments: cineComments.trim() || undefined, // Store cinematographer comments
                 // Clear rework metadata to ensure normal workflow routing
                 rework_initiator_role: undefined,
                 rework_initiator_stage: undefined,
                 rework_target_role: undefined
             };
-
+            
             // Clear comments after storing them
             setCineComments('');
-
-            // Update the existing updatedProjectData to clear comments after upload
-            updatedProjectData.cine_comments = undefined; // Clear comments after upload
-
+            
+            // Consolidated update to avoid multiple sequential calls
             await db.projects.update(localProject.id, {
                 video_link: videoLink,
                 cine_uploaded_at: new Date().toISOString(),
-                status: TaskStatus.WAITING_APPROVAL
+                current_stage: WorkflowStage.MULTI_WRITER_APPROVAL,
+                assigned_to_role: Role.WRITER,
+                assigned_to_user_id: null,
+                status: TaskStatus.WAITING_APPROVAL,
+                visible_to_roles: ['WRITER', 'OPS'],
+                cine_video_links_history: updatedCineVideoLinksHistory, // Store the history of video links
+                data: updatedProjectData
             });
-
-            // Update the project data separately to clear rework metadata
-            await db.updateProjectData(localProject.id, updatedProjectData);
-
-            // Update project stage directly to VIDEO_EDITING since cine uploaded the video
+            
+            // Record the workflow action after the project is updated
             await db.workflow.recordAction(
                 localProject.id,
                 WorkflowStage.CINEMATOGRAPHY, // Current stage
@@ -288,15 +290,6 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 'CINE_VIDEO_UPLOADED', // specific action
                 `Raw video uploaded: ${videoLink}`
             );
-
-            // Update project to move to MULTI_WRITER_APPROVAL stage for Writer review
-            await db.projects.update(localProject.id, {
-                current_stage: WorkflowStage.MULTI_WRITER_APPROVAL,
-                assigned_to_role: Role.WRITER,
-                assigned_to_user_id: null,
-                status: TaskStatus.WAITING_APPROVAL,
-                visible_to_roles: ['WRITER', 'OPS']
-            });
 
             // ✅ Update local state ONLY after success
             setLocalProject(prev => ({

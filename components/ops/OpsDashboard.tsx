@@ -6,6 +6,7 @@ import OpsCalendar from './OpsCalendar';
 import OpsProjectDetail from './OpsProjectDetail';
 import OpsProjectDetailDetailed from './OpsProjectDetailDetailed';
 import OpsCeoApproved from './OpsCeoApproved';
+import OpsFilteredProjects from './OpsFilteredProjects';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
 
@@ -16,11 +17,12 @@ interface Props {
     onRefresh: () => void;
     onLogout: () => void;
     allProjects?: Project[];
+    activeViewOverride?: string;
 }
 
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
-const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjects = [], onRefresh, onLogout, allProjects }) => {
+const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjects = [], onRefresh, onLogout, allProjects, activeViewOverride }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -30,19 +32,26 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         if (path.endsWith('/calendar')) return 'calendar';
         if (path.endsWith('/mywork')) return 'mywork';
         if (path.endsWith('/ceoapproved')) return 'ceoapproved';
+        if (path.endsWith('/ready-to-schedule')) return 'ready-to-schedule';
+        if (path.endsWith('/scheduled-projects')) return 'scheduled-projects';
+        if (path.endsWith('/posted-this-week')) return 'posted-this-week';
         return 'dashboard';
     };
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const filterCategory = searchParams.get('category') || 'all';
+    const filterCategory = searchParams.get('category') || 'pending';
     const setFilterCategory = (category: string) => {
         setSearchParams(prev => {
-            prev.set('category', category);
+            if (category === 'pending') {
+                prev.delete('category');
+            } else {
+                prev.set('category', category);
+            }
             return prev;
         }, { replace: true });
     };
 
-    const activeView = getActiveViewFromPath();
+    const activeView = activeViewOverride || getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<{ project: Project, source: 'ceoapproved' | 'mywork' | null } | null>(null);
 
 
@@ -64,8 +73,14 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         setSelectedProject(null);
         const rolePath = user.role.toLowerCase();
         if (view === 'dashboard') {
+            // Clear category filter when going to dashboard
+            setSearchParams(prev => {
+                prev.delete('category');
+                return prev;
+            }, { replace: true });
             navigate(`/${rolePath}`);
         } else {
+            // Navigate to specific view without fallback to mywork
             navigate(`/${rolePath}/${view}`);
         }
     };
@@ -86,22 +101,27 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     // Use historyProjects for MyWork view (participation-based filtering)
     const projects = activeView === 'mywork' ? (historyProjects || []) : (inboxProjects || []);
 
-    // Categorize projects
+    // Categorize projects with proper filtering
     const readyToSchedule = (inboxProjects || []).filter(p =>
+        // Strict filter for ready to schedule projects
+        p.assigned_to_role === 'OPS' &&
         p.current_stage === WorkflowStage.OPS_SCHEDULING &&
+        p.status !== 'COMPLETED' &&
+        p.status !== 'REJECTED' &&
         !p.post_scheduled_date
     );
 
     const scheduled = (inboxProjects || []).filter(p =>
-        p.current_stage === WorkflowStage.OPS_SCHEDULING &&
+        // Have a post_scheduled_date but not yet posted
         p.post_scheduled_date &&
-        !p.data?.live_url
+        !p.data?.live_url &&
+        p.status !== TaskStatus.DONE
     );
 
     const postedThisWeek = (inboxProjects || []).filter(p => {
-        if (p.current_stage !== WorkflowStage.POSTED) return false;
-        const postedDate = p.post_scheduled_date ? new Date(p.post_scheduled_date) : null;
-        if (!postedDate) return false;
+        // Completed projects posted this week
+        if (!(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)) return false;
+        const postedDate = p.post_scheduled_date ? new Date(p.post_scheduled_date) : new Date(p.updated_at || p.created_at);
         const weekAgo = new Date(Date.now() - 7 * 86400000);
         return postedDate >= weekAgo;
     });
@@ -113,7 +133,8 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
         p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
         p.current_stage === WorkflowStage.OPS_SCHEDULING ||
-        p.current_stage === WorkflowStage.POSTED
+        p.current_stage === WorkflowStage.POSTED ||
+        p.ceo_approved_at
     );
 
 
@@ -131,6 +152,30 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                 <OpsCalendar projects={allProjects || inboxProjects || []} />
             ) : activeView === 'ceoapproved' ? (
                 <OpsCeoApproved projects={inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
+            ) : activeView === 'ready-to-schedule' ? (
+                <OpsFilteredProjects 
+                    user={user} 
+                    projects={inboxProjects || []} 
+                    viewMode="ready-to-schedule" 
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
+                    onBack={() => handleViewChange('dashboard')} 
+                />
+            ) : activeView === 'scheduled-projects' ? (
+                <OpsFilteredProjects 
+                    user={user} 
+                    projects={inboxProjects || []} 
+                    viewMode="scheduled-projects" 
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
+                    onBack={() => handleViewChange('dashboard')} 
+                />
+            ) : activeView === 'posted-this-week' ? (
+                <OpsFilteredProjects 
+                    user={user} 
+                    projects={inboxProjects || []} 
+                    viewMode="posted-this-week" 
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
+                    onBack={() => handleViewChange('dashboard')} 
+                />
             ) : (
                 <div className="space-y-8 animate-fade-in">
                     {/* Dashboard Content */}
@@ -149,7 +194,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         <div
                             className="bg-[#8B5CF6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                handleViewChange('ceoapproved'); // Navigate to dedicated CEO approved view
+                                handleViewChange('ceoapproved');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -160,8 +205,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         <div
                             className="bg-[#F59E0B] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                setFilterCategory('readytoschedule');
-                                handleViewChange('mywork');
+                                handleViewChange('ready-to-schedule');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -172,8 +216,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         <div
                             className="bg-[#3B82F6] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                setFilterCategory('scheduled');
-                                handleViewChange('mywork');
+                                handleViewChange('scheduled-projects');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -184,8 +227,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         <div
                             className="bg-[#10B981] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                setFilterCategory('postedthisweek');
-                                handleViewChange('mywork');
+                                handleViewChange('posted-this-week');
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
@@ -196,7 +238,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                         <div
                             className="bg-[#6B7280] border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:opacity-90 transition-opacity"
                             onClick={() => {
-                                setFilterCategory('all');
+                                setFilterCategory('pending');
                                 handleViewChange('mywork');
                             }}
                         >
@@ -213,8 +255,8 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             Quick Overview
                         </h2>
                         <p className="text-slate-600">
-                            You have {ceoApproved.length} CEO-approved {ceoApproved.length === 1 ? 'project' : 'projects'}, {readyToSchedule.length} ready to schedule, and {scheduled.length} scheduled for publishing. Total managed: {(inboxProjects || []).length - ceoApproved.length}.
-                            Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
+                            You have {ceoApproved.length} CEO-approved {ceoApproved.length === 1 ? 'project' : 'projects'}, {readyToSchedule.length} ready to schedule, and {scheduled.length} scheduled for publishing. Total pending: {(historyProjects || []).filter(p => !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)).length}.
+                            Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage pending tasks.
                         </p>
                     </div>
                 </div>

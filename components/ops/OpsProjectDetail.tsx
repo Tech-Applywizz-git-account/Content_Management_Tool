@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../types';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle, Eye, Clock, ExternalLink, Play, EyeOff, AlertTriangle } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
@@ -119,17 +119,17 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
-            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 bg-white shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 bg-white shadow-[0px_4px_0px_0px_rgba(0,0,0,0.1)]">
                 <div className="flex items-center space-x-4">
                     <button
                         onClick={onBack}
-                        className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all"
+                        className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all flex items-center justify-center"
                     >
                         <ArrowLeft size={20} />
                     </button>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
                                 }`}>
@@ -139,42 +139,56 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 {isVideo ? '🎬 VIDEO' : '🎨 CREATIVE'}
                             </span>
                             {isPosted && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-green-100 text-green-800">
+                                <span className="px-2 py-1 text-xs font-black uppercase border-2 border-black bg-green-100 text-green-800 flex items-center gap-1">
+                                    <CheckCircle size={12} />
                                     POSTED
                                 </span>
                             )}
                             {!isPosted && project.post_scheduled_date && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-blue-100 text-blue-800">
+                                <span className="px-2 py-1 text-xs font-black uppercase border-2 border-black bg-blue-100 text-blue-800 flex items-center gap-1">
+                                    <Calendar size={12} />
                                     SCHEDULED
                                 </span>
                             )}
+                            {!isPosted && !project.post_scheduled_date && (
+                                <span className="px-2 py-1 text-xs font-black uppercase border-2 border-black bg-amber-100 text-amber-800 flex items-center gap-1">
+                                    <Clock size={12} />
+                                    READY
+                                </span>
+                            )}
                         </div>
-                        <h1 className="text-lg font-black uppercase text-slate-900">{project.title}</h1>
+                        <h1 className="text-xl font-black uppercase text-slate-900 max-w-3xl truncate" title={project.title}>{project.title}</h1>
                     </div>
                 </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Content Preview */}
-                <div className="space-y-6">
+                <div className="lg:col-span-2 space-y-6">
                     {/* Final Content */}
-                    <div className="border-2 border-black p-6 bg-white">
-                        <h2 className="text-xl font-black uppercase mb-4 text-slate-900">Final Content</h2>
+                    <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Eye size={24} className="text-slate-700" />
+                            <h2 className="text-xl font-black uppercase text-slate-900">Final Content</h2>
+                        </div>
 
                         {isVideo ? (
-                            <>
+                            <div className="space-y-4">
                                 {/* Edited Video */}
                                 {project.edited_video_link && (
-                                    <div className="space-y-2 mb-4">
-                                        <label className="block text-sm font-bold text-slate-700">Edited Video:</label>
-                                        <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-300">
-                                            <Video size={20} className="text-blue-600" />
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Play size={16} className="text-blue-600" />
+                                            <label className="text-sm font-bold text-slate-700">Edited Video:</label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
                                             <a
                                                 href={project.edited_video_link}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-blue-600 underline text-sm truncate"
+                                                className="text-blue-600 underline text-sm truncate flex-1 flex items-center gap-2"
                                             >
+                                                <ExternalLink size={14} />
                                                 {project.edited_video_link}
                                             </a>
                                         </div>
@@ -183,48 +197,64 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                                 {/* Thumbnail */}
                                 {project.thumbnail_link && (
-                                    <div className="space-y-2">
-                                        <label className="block text-sm font-bold text-slate-700">Thumbnail:</label>
-                                        <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-300">
-                                            <Image size={20} className="text-green-600" />
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Image size={16} className="text-green-600" />
+                                            <label className="text-sm font-bold text-slate-700">Thumbnail:</label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
                                             <a
                                                 href={project.thumbnail_link}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-blue-600 underline text-sm truncate"
+                                                className="text-blue-600 underline text-sm truncate flex-1 flex items-center gap-2"
                                             >
+                                                <ExternalLink size={14} />
                                                 {project.thumbnail_link}
                                             </a>
                                         </div>
                                     </div>
                                 )}
-                            </>
+                            </div>
                         ) : (
                             /* Creative */
                             project.creative_link && (
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-slate-700">Creative Design:</label>
-                                    <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-300">
-                                        <Image size={20} className="text-purple-600" />
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Image size={16} className="text-purple-600" />
+                                        <label className="text-sm font-bold text-slate-700">Creative Design:</label>
+                                    </div>
+                                    <div className="flex items-center gap-2">
                                         <a
                                             href={project.creative_link}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-blue-600 underline text-sm truncate"
+                                            className="text-blue-600 underline text-sm truncate flex-1 flex items-center gap-2"
                                         >
+                                            <ExternalLink size={14} />
                                             {project.creative_link}
                                         </a>
                                     </div>
                                 </div>
                             )
                         )}
+                        
+                        {!project.edited_video_link && !project.thumbnail_link && !project.creative_link && (
+                            <div className="text-center py-8 text-slate-500">
+                                <EyeOff size={48} className="mx-auto mb-2 text-slate-300" />
+                                <p>No content assets available yet</p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Script/Caption */}
                     {project.data?.script_content && (
-                        <div className="border-2 border-black p-6 bg-white">
-                            <h2 className="text-xl font-black uppercase mb-4 text-slate-900">Script / Caption</h2>
-                            <div className="p-4 bg-slate-50 border border-slate-300 rounded">
+                        <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                            <div className="flex items-center gap-2 mb-4">
+                                <FileText size={24} className="text-slate-700" />
+                                <h2 className="text-xl font-black uppercase text-slate-900">Script / Caption</h2>
+                            </div>
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg max-h-60 overflow-y-auto">
                                 {project.data.script_content ? (() => {
                                     let decodedContent = project.data.script_content
                                         .replace(/&lt;/g, '<')
@@ -233,171 +263,202 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                         .replace(/&quot;/g, '"')
                                         .replace(/&#39;/g, "'")
                                         .replace(/&nbsp;/g, ' ');
-                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} className="prose max-w-none" />;
                                 })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Middle Column - Approval Status */}
+                {/* Right Column - Approval Status and Actions */}
                 <div className="space-y-6">
                     {/* Approval Status Indicator */}
-                    <ApprovalStatusIndicator project={project} />
-                </div>
+                    <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                        <div className="flex items-center gap-2 mb-4">
+                            <AlertTriangle size={24} className="text-slate-700" />
+                            <h2 className="text-xl font-black uppercase text-slate-900">Approval Status</h2>
+                        </div>
+                        <ApprovalStatusIndicator project={project} />
+                    </div>
 
-                {/* Right Column - Scheduling Actions */}
-                <div className="space-y-6">
-                    {/* Schedule Post - Show only after CMO and CEO final review have approved */}
-                    {!isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
-                        <div className="border-2 border-black p-6 bg-white">
-                            <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
-                                📅 Schedule Post
-                            </h2>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                                        Post Scheduled Date:
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={postDate}
-                                        onChange={(e) => setPostDate(e.target.value)}
-                                        className="w-full px-4 py-3 border-2 border-black font-mono"
-                                    />
+                    {/* Scheduling Actions */}
+                    <div className="space-y-6">
+                        {/* Schedule Post - Show only after CMO and CEO final review have approved */}
+                        {!isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
+                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <Calendar size={24} className="text-slate-700" />
+                                    <h2 className="text-xl font-black uppercase text-slate-900">
+                                        Schedule Post
+                                    </h2>
                                 </div>
 
-                                <button
-                                    onClick={handleSetPostDate}
-                                    disabled={!postDate}
-                                    className="w-full bg-blue-500 text-white py-3 font-bold border-2 border-black 
-                                             hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed
-                                             shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                >
-                                    {project.post_scheduled_date ? 'UPDATE SCHEDULE' : 'SET SCHEDULE'}
-                                </button>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                                            Post Scheduled Date:
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={postDate}
+                                            onChange={(e) => setPostDate(e.target.value)}
+                                            className="w-full px-4 py-3 border-2 border-black font-mono rounded"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleSetPostDate}
+                                        disabled={!postDate}
+                                        className="w-full bg-blue-500 text-white py-3 font-bold border-2 border-black 
+                                                 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed
+                                                 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded"
+                                    >
+                                        {project.post_scheduled_date ? 'UPDATE SCHEDULE' : 'SET SCHEDULE'}
+                                    </button>
+
+                                    {project.post_scheduled_date && (
+                                        <div className="p-3 bg-blue-50 border-2 border-blue-500 text-blue-800 rounded">
+                                            <p className="text-sm font-bold">
+                                                ✓ Scheduled for {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy, EEEE')}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Add Live URL (after posting) */}
+                        {project.post_scheduled_date && !isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
+                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <LinkIcon size={24} className="text-slate-700" />
+                                    <h2 className="text-xl font-black uppercase text-slate-900">
+                                        Mark as Posted
+                                    </h2>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                                            Live URL:
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={liveUrl}
+                                            onChange={(e) => setLiveUrl(e.target.value)}
+                                            placeholder="https://linkedin.com/posts/..."
+                                            className="w-full px-4 py-3 border-2 border-black font-mono rounded"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                                            Caption / Description:
+                                        </label>
+                                        <textarea
+                                            value={caption}
+                                            onChange={(e) => setCaption(e.target.value)}
+                                            placeholder="Enter caption or description for the post..."
+                                            className="w-full px-4 py-3 border-2 border-black font-mono h-24 rounded"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={handleAddLiveUrl}
+                                        disabled={!liveUrl}
+                                        className="w-full bg-green-500 text-white py-3 font-bold border-2 border-black 
+                                                 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed
+                                                 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all
+                                                 flex items-center justify-center gap-2 rounded"
+                                    >
+                                        <CheckCircle size={20} />
+                                        MARK AS POSTED
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Posted Confirmation */}
+                        {isPosted && (
+                            <div className="border-2 border-green-500 p-6 bg-green-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <CheckCircle size={32} className="text-green-600" />
+                                    <h2 className="text-xl font-black uppercase text-green-800">
+                                        Content Posted ✅
+                                    </h2>
+                                </div>
 
                                 {project.post_scheduled_date && (
-                                    <div className="p-3 bg-blue-50 border-2 border-blue-500 text-blue-800">
-                                        <p className="text-sm font-bold">
-                                            ✓ Scheduled for {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy, EEEE')}
-                                        </p>
+                                    <p className="text-sm text-green-700 mb-2">
+                                        Posted on: {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy')}
+                                    </p>
+                                )}
+
+                                {project.data?.live_url && (
+                                    <div className="flex items-center gap-2 p-3 bg-white border border-green-300 rounded">
+                                        <LinkIcon size={16} className="text-green-600" />
+                                        <a
+                                            href={project.data.live_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline text-sm truncate flex items-center gap-1"
+                                        >
+                                            <ExternalLink size={12} />
+                                            View Post
+                                        </a>
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Add Live URL (after posting) */}
-                    {project.post_scheduled_date && !isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
-                        <div className="border-2 border-black p-6 bg-white">
-                            <h2 className="text-xl font-black uppercase mb-4 text-slate-900">
-                                🔗 Mark as Posted
-                            </h2>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                                        Live URL:
-                                    </label>
-                                    <input
-                                        type="url"
-                                        value={liveUrl}
-                                        onChange={(e) => setLiveUrl(e.target.value)}
-                                        placeholder="https://linkedin.com/posts/..."
-                                        className="w-full px-4 py-3 border-2 border-black font-mono"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-2">
-                                        Caption / Description:
-                                    </label>
-                                    <textarea
-                                        value={caption}
-                                        onChange={(e) => setCaption(e.target.value)}
-                                        placeholder="Enter caption or description for the post..."
-                                        className="w-full px-4 py-3 border-2 border-black font-mono h-24"
-                                    />
-                                </div>
-
-                                <button
-                                    onClick={handleAddLiveUrl}
-                                    disabled={!liveUrl}
-                                    className="w-full bg-green-500 text-white py-3 font-bold border-2 border-black 
-                                             hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed
-                                             shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all
-                                             flex items-center justify-center gap-2"
-                                >
-                                    <CheckCircle size={20} />
-                                    MARK AS POSTED
-                                </button>
+                        {/* Project Info */}
+                        <div className="border-2 border-black p-6 bg-slate-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                            <div className="flex items-center gap-2 mb-3">
+                                <FileText size={16} className="text-slate-700" />
+                                <h3 className="font-black uppercase text-sm text-slate-700">Project Info</h3>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Posted Confirmation */}
-                    {isPosted && (
-                        <div className="border-2 border-green-500 p-6 bg-green-50">
-                            <div className="flex items-center gap-3 mb-4">
-                                <CheckCircle size={32} className="text-green-600" />
-                                <h2 className="text-xl font-black uppercase text-green-800">
-                                    Content Posted ✅
-                                </h2>
-                            </div>
-
-                            {project.post_scheduled_date && (
-                                <p className="text-sm text-green-700 mb-2">
-                                    Posted on: {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy')}
-                                </p>
-                            )}
-
-                            {project.data?.live_url && (
-                                <div className="flex items-center gap-2 p-3 bg-white border border-green-300">
-                                    <LinkIcon size={16} className="text-green-600" />
-                                    <a
-                                        href={project.data.live_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline text-sm truncate"
-                                    >
-                                        {project.data.live_url}
-                                    </a>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Project Info */}
-                    <div className="border-2 border-black p-6 bg-slate-50">
-                        <h3 className="font-black uppercase text-sm text-slate-700 mb-3">Project Info</h3>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Priority:</span>
-                                <span className={`font-bold ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
-                                    {project.priority}
-                                </span>
-                            </div>
-
-                            <div className="flex justify-between">
-                                <span className="text-slate-600">Status:</span>
-                                <span className={`font-bold ${isPosted ? 'text-green-600' : 'text-amber-600'}`}>
-                                    {isPosted ? 'POSTED' : project.post_scheduled_date ? 'SCHEDULED' : 'READY'}
-                                </span>
-                            </div>
-                            {project.data?.niche && (
-                                <div className="flex justify-between mt-2">
-                                    <span className="text-slate-600">Niche:</span>
-                                    <span className="font-bold text-slate-900 uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche}
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Priority:</span>
+                                    <span className={`font-bold ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
+                                        {project.priority}
                                     </span>
                                 </div>
-                            )}
+
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Status:</span>
+                                    <span className={`font-bold ${isPosted ? 'text-green-600' : 'text-amber-600'}`}>
+                                        {isPosted ? 'POSTED' : project.post_scheduled_date ? 'SCHEDULED' : 'READY'}
+                                    </span>
+                                </div>
+                                
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Content Type:</span>
+                                    <span className="font-bold text-slate-900">
+                                        {project.content_type}
+                                    </span>
+                                </div>
+                                
+                                {project.data?.niche && (
+                                    <div className="flex justify-between">
+                                        <span className="text-slate-600">Niche:</span>
+                                        <span className="font-bold text-slate-900 uppercase">
+                                            {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                                : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                        : project.data.niche === 'OTHER' && project.data.niche_other
+                                                            ? project.data.niche_other
+                                                            : project.data.niche}
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                <div className="flex justify-between mt-2 pt-2 border-t border-slate-300">
+                                    <span className="text-slate-600">Created:</span>
+                                    <span className="font-bold text-slate-900">
+                                        {format(new Date(project.created_at), 'MMM dd, yyyy')}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

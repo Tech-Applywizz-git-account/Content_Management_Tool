@@ -24,7 +24,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   const [cinematographyInstructions, setCinematographyInstructions] = useState(processedProject.data?.cinematography_instructions || '');
   const [rawVideoLink, setRawVideoLink] = useState(processedProject.video_link || '');

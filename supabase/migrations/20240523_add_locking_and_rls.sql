@@ -21,7 +21,7 @@ CREATE POLICY "Enable insert for authenticated users" ON public.projects FOR INS
 -- 3. UPDATE Policy for Non-Writers (Admin, CMO, CEO, etc.)
 DROP POLICY IF EXISTS "Non-writers can update everything" ON public.projects;
 CREATE POLICY "Non-writers can update everything" ON public.projects FOR UPDATE USING (
-  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role != 'WRITER')
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('ADMIN', 'CMO', 'CEO'))
 );
 
 -- 4. UPDATE Policy for Writers (Restricted)
@@ -29,8 +29,36 @@ CREATE POLICY "Non-writers can update everything" ON public.projects FOR UPDATE 
 DROP POLICY IF EXISTS "Writers can update own unlocked projects" ON public.projects;
 CREATE POLICY "Writers can update own unlocked projects" ON public.projects FOR UPDATE USING (
   EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'WRITER')
-  AND created_by_user_id = auth.uid()
+  AND (created_by_user_id = auth.uid() OR assigned_to_role = 'WRITER')
   AND first_review_opened_at IS NULL
+);
+
+-- 5. UPDATE Policy for CINE users: can update projects assigned to CINE role
+DROP POLICY IF EXISTS "Cine users can update cine-assigned projects" ON public.projects;
+CREATE POLICY "Cine users can update cine-assigned projects" ON public.projects FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'CINE')
+  AND (assigned_to_role = 'CINE' OR current_stage = 'CINEMATOGRAPHY')
+);
+
+-- 6. UPDATE Policy for EDITOR users: can update projects assigned to EDITOR role
+DROP POLICY IF EXISTS "Editor users can update editor-assigned projects" ON public.projects;
+CREATE POLICY "Editor users can update editor-assigned projects" ON public.projects FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'EDITOR')
+  AND (assigned_to_role = 'EDITOR' OR current_stage = 'VIDEO_EDITING')
+);
+
+-- 7. UPDATE Policy for SUB_EDITOR users: can update projects assigned to SUB_EDITOR role
+DROP POLICY IF EXISTS "Sub-editor users can update sub-editor-assigned projects" ON public.projects;
+CREATE POLICY "Sub-editor users can update sub-editor-assigned projects" ON public.projects FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'SUB_EDITOR')
+  AND (assigned_to_role = 'SUB_EDITOR' OR current_stage IN ('SUB_EDITOR_ASSIGNMENT', 'SUB_EDITOR_PROCESSING'))
+);
+
+-- 8. UPDATE Policy for DESIGNER users: can update projects assigned to DESIGNER role
+DROP POLICY IF EXISTS "Designer users can update designer-assigned projects" ON public.projects;
+CREATE POLICY "Designer users can update designer-assigned projects" ON public.projects FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'DESIGNER')
+  AND (assigned_to_role = 'DESIGNER' OR current_stage IN ('THUMBNAIL_DESIGN', 'CREATIVE_DESIGN'))
 );
 
 -- 5. DELETE Policy for Non-Writers

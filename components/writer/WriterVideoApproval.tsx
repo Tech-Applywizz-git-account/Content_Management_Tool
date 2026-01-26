@@ -430,6 +430,28 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
 
                         <div className="space-y-6">
                             {/* Show all available asset links */}
+                            {/* Show cinematographer video links history */}
+                            {project.cine_video_links_history && project.cine_video_links_history.length > 0 && (
+                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Raw Videos (from Cinematographer)</h4>
+                                    <div className="space-y-2">
+                                        {project.cine_video_links_history.map((link, index) => (
+                                            <div key={`prev-cine-${index}`} className="flex items-center">
+                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
+                                                <a
+                                                    href={link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all"
+                                                >
+                                                    {link}
+                                                </a>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Raw Video (from Cinematographer)</h4>
@@ -444,6 +466,28 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
+                            {/* Show edited video links history */}
+                            {project.editor_video_links_history && project.editor_video_links_history.length > 0 && (
+                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Edited Videos (from Editor)</h4>
+                                    <div className="space-y-2">
+                                        {project.editor_video_links_history.map((link, index) => (
+                                            <div key={`prev-edited-${index}`} className="flex items-center">
+                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
+                                                <a
+                                                    href={link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all"
+                                                >
+                                                    {link}
+                                                </a>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {project.edited_video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Edited Video (from Editor)</h4>
@@ -455,6 +499,28 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     >
                                         {project.edited_video_link}
                                     </a>
+                                </div>
+                            )}
+
+                            {/* Show thumbnail links history */}
+                            {project.designer_video_links_history && project.designer_video_links_history.length > 0 && (
+                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Thumbnails/Creatives (from Designer)</h4>
+                                    <div className="space-y-2">
+                                        {project.designer_video_links_history.map((link, index) => (
+                                            <div key={`prev-design-${index}`} className="flex items-center">
+                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
+                                                <a
+                                                    href={link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all"
+                                                >
+                                                    {link}
+                                                </a>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
@@ -486,7 +552,9 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
-                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link) && (
+                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link && 
+                              !(project.editor_video_links_history && project.editor_video_links_history.length > 0) && 
+                              !(project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
                                 <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
                                     <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
                                 </div>

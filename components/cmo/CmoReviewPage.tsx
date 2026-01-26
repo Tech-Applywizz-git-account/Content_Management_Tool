@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
-import OpsCeoApprovedView from './OpsCeoApprovedView';
+import CmoReviewScreen from './CmoReviewScreen';
 import Layout from '../Layout';
 
-const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const CmoReviewPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const [project, setProject] = useState<Project | null>(null);
@@ -34,7 +34,7 @@ const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role
                     return;
                 }
 
-                // Map workflow_history to history property
+                // Map workflow_history to history property expected by Timeline
                 const projectWithHistory = {
                     ...data,
                     history: data.workflow_history
@@ -52,6 +52,15 @@ const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role
         loadProject();
     }, [projectId]);
 
+    const handleBack = () => {
+        navigate('/cmo');
+    };
+
+    const handleComplete = () => {
+        // Refresh the parent dashboard to reflect changes
+        navigate('/cmo');
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -67,10 +76,10 @@ const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role
                     <h1 className="text-2xl font-black text-slate-900 mb-4 uppercase">Error</h1>
                     <p className="text-slate-600 mb-6 font-bold">{error || 'Project not found'}</p>
                     <button
-                        onClick={() => navigate('/ops/ceoapproved')}
+                        onClick={() => navigate('/cmo')}
                         className="w-full bg-[#D946EF] border-2 border-black px-6 py-3 text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                     >
-                        Back to List
+                        Back to Dashboard
                     </button>
                 </div>
             </div>
@@ -78,22 +87,14 @@ const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role
     }
 
     return (
-        <Layout
-            user={user as any}
-            onLogout={onLogout}
-            onOpenCreate={() => { }}
-            activeView="ceoapproved"
-            onChangeView={(view) => {
-                if (view === 'dashboard') navigate('/ops');
-                else navigate(`/ops/${view}`);
-            }}
-        >
-            <OpsCeoApprovedView
+        <div className="min-h-screen bg-white">
+            <CmoReviewScreen
                 project={project}
-                onBack={() => navigate('/ops/ceoapproved')}
+                onBack={handleBack}
+                onComplete={handleComplete}
             />
-        </Layout>
+        </div>
     );
 };
 
-export default OpsCeoApprovedDetailPage;
+export default CmoReviewPage;

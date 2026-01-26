@@ -133,7 +133,7 @@ const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Ro
     const workflowState = project ? getWorkflowStateForRole(project, user.role) : null;
     const isRework = workflowState?.isTargetedRework || workflowState?.isRework || false;
     const isRejected = workflowState?.isRejected || false;
-    const canEdit = project ? canUserEdit(user.role, workflowState!, project.assigned_to_role) : false;
+    const canEdit = project ? canUserEdit(user.role, workflowState!, project.assigned_to_role, project.current_stage) : false;
 
     // If there's an error or no project, show error message (no loading state)
     if (loading) {

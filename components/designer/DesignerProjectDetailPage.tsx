@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import DesignerProjectDetail from './DesignerProjectDetail';
+import Layout from '../Layout';
 
 const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
     const { projectId } = useParams<{ projectId: string }>();
@@ -23,7 +24,7 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
                 setLoading(true);
                 const { data, error } = await supabase
                     .from('projects')
-                    .select('*')
+                    .select('*, workflow_history(*)')
                     .eq('id', projectId)
                     .single();
 
@@ -33,7 +34,13 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
                     return;
                 }
 
-                setProject(data as Project);
+                // Map workflow_history to history property expected by Timeline
+                const projectWithHistory = {
+                    ...data,
+                    history: data.workflow_history
+                };
+
+                setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
                 setError('Failed to load project');
@@ -60,10 +67,10 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
                     <h1 className="text-2xl font-black text-slate-900 mb-4 uppercase">Error</h1>
                     <p className="text-slate-600 mb-6 font-bold">{error || 'Project not found'}</p>
                     <button
-                        onClick={() => navigate(-1)}
+                        onClick={() => navigate('/designer')}
                         className="w-full bg-[#D946EF] border-2 border-black px-6 py-3 text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                     >
-                        Back
+                        Back to Dashboard
                     </button>
                 </div>
             </div>
@@ -71,14 +78,25 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
     }
 
     return (
-        <DesignerProjectDetail
-            project={project}
-            userRole={user.role}
-            onBack={() => navigate(-1)}
-            onUpdate={() => {
-                navigate(-1);
+        <Layout
+            user={user as any}
+            onLogout={onLogout}
+            onOpenCreate={() => { }}
+            activeView="mywork"
+            onChangeView={(view) => {
+                if (view === 'dashboard') navigate('/designer');
+                else navigate(`/designer/${view}`);
             }}
-        />
+        >
+            <DesignerProjectDetail
+                project={project}
+                onBack={() => navigate(-1)}
+                onUpdate={() => {
+                    // Refresh the current page after update
+                    window.location.reload();
+                }}
+            />
+        </Layout>
     );
 };
 

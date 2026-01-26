@@ -24,7 +24,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   // Fetch comments and user details
   useEffect(() => {

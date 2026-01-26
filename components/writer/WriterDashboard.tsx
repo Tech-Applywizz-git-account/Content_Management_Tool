@@ -361,7 +361,10 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     // Video Approval View
     if (videoApprovalView) {
-        return <WriterVideoApproval projects={videoApprovalProjects} onBack={() => setVideoApprovalView(false)} refreshProjects={handleInternalRefresh} />;
+        return <WriterVideoApproval projects={videoApprovalProjects} onBack={() => {
+            setVideoApprovalView(false);
+            navigate('/writer');  // Navigate back to main dashboard
+        }} refreshProjects={handleInternalRefresh} />;
     }
 
     return (

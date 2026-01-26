@@ -760,9 +760,32 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     )}
 
                                     {/* Edited Video Assets */}
-                                    {isVideo && (project.edited_video_link || previousAssets?.edited_video_link) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Edited Video */}
+                                    {isVideo && (project.edited_video_link || previousAssets?.edited_video_link || (project.editor_video_links_history && project.editor_video_links_history.length > 0)) && (
+                                        <div className="space-y-6">
+                                            {/* Previous Edited Videos from history */}
+                                            {project.editor_video_links_history && project.editor_video_links_history.length > 0 && (
+                                                <div className="grid grid-cols-2 gap-6">
+                                                    {project.editor_video_links_history.map((link, index) => (
+                                                        <div key={`prev-edited-${index}`} className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                            <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
+                                                                <h4 className="font-black text-slate-900 text-sm uppercase text-center">Old Edited Video #{index + 1}</h4>
+                                                            </div>
+                                                            <div className="aspect-video bg-black flex items-center justify-center text-white">
+                                                                <Video className="w-16 h-16 opacity-50" />
+                                                            </div>
+                                                            <div className="p-4 flex justify-between items-center bg-white">
+                                                                <div>
+                                                                    <p className="font-black text-slate-900 text-sm uppercase">Edited_Video_Old_#{index + 1}.mp4</p>
+                                                                    <p className="text-xs text-slate-500 font-bold">Previous version</p>
+                                                                </div>
+                                                                <a href={link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Previous Edited Video (from workflow history) */}
                                             {previousAssets?.edited_video_link && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                                     <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
@@ -803,9 +826,32 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     )}
 
                                     {/* Thumbnail/Creative Assets */}
-                                    {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || (previousScript && project.data?.creative_link)) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Thumbnail/Creative */}
+                                    {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || (previousScript && project.data?.creative_link) || (project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
+                                        <div className="space-y-6">
+                                            {/* Previous Thumbnails/Creatives from history */}
+                                            {project.designer_video_links_history && project.designer_video_links_history.length > 0 && (
+                                                <div className="grid grid-cols-2 gap-6">
+                                                    {project.designer_video_links_history.map((link, index) => (
+                                                        <div key={`prev-design-${index}`} className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                                            <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
+                                                                <h4 className="font-black text-slate-900 text-sm uppercase text-center">Old Creative #{index + 1}</h4>
+                                                            </div>
+                                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
+                                                                <ImageIcon className="w-16 h-16" />
+                                                            </div>
+                                                            <div className="p-4 flex justify-between items-center bg-white">
+                                                                <div>
+                                                                    <p className="font-black text-slate-900 text-sm uppercase">Creative_Old_#{index + 1}.png</p>
+                                                                    <p className="text-xs text-slate-500 font-bold">Previous version</p>
+                                                                </div>
+                                                                <a href={link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Previous Thumbnail/Creative (from workflow history) */}
                                             {(previousAssets?.thumbnail_link || previousAssets?.creative_link) && (
                                                 <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                                     <div className="p-3 bg-slate-100 border-b-2 border-slate-300">

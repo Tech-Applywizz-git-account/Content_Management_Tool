@@ -10,8 +10,7 @@ interface Props {
 
 const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
     const navigate = useNavigate();
-    // We keep the role filter as it's useful for Ops, but removed the Idea/Script tabs
-    const [activeRoleFilter, setActiveRoleFilter] = useState<'ALL' | 'POSTED' | Role>('ALL');
+    const [activeRoleFilter, setActiveRoleFilter] = useState<'ALL' | 'WRITER' | 'CMO' | 'CEO' | 'CINE' | 'EDITOR' | 'DESIGNER' | 'OPS' | 'POSTED'>('ALL');
 
     const ceoApprovedProjectsBase = projects.filter(p =>
         p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
@@ -22,24 +21,23 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
         p.current_stage === WorkflowStage.POSTED
     );
 
-    // Filter to show only Scripts (or Ideas that have become Scripts/Production ready)
+    // Show only script projects - exclude all idea projects completely
     // "I need only the scripts i donot need the idea"
     const scriptProjects = ceoApprovedProjectsBase.filter(p =>
-        p.data?.source !== 'IDEA_PROJECT' || p.data?.script_content
+        p.data?.source !== 'IDEA_PROJECT'
     );
 
     const projectsToShow = scriptProjects.filter(p => {
         if (activeRoleFilter === 'ALL') return true;
         if (activeRoleFilter === 'POSTED') {
-            return p.current_stage === WorkflowStage.POSTED || p.status === TaskStatus.DONE;
+            return p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED;
         }
         return p.assigned_to_role === activeRoleFilter;
     });
 
     const handleProjectClick = (projectId: string) => {
-        // Navigate to the same review page used in CMO Overview
-        navigate(`/ops/ceo-approved-project/${projectId}`);
-
+        // Navigate to the OpsCeoApprovedView page
+        navigate(`/ops/ceo-approved-view/${projectId}`);
     };
 
     return (
@@ -49,28 +47,44 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                     CEO Approved Projects
                 </h1>
                 <p className="font-bold text-base text-slate-500">
-                    {projectsToShow.length} projects ready for scheduling
+                    {projectsToShow.length} script projects ready for scheduling
                 </p>
             </div>
 
             {/* Role Filter Tabs */}
-            <div className="flex flex-col space-y-4 border-b border-gray-200 pb-4">
-                <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-                    <span className="text-xs font-bold uppercase text-slate-500 mr-2">Filter By:</span>
-                    {['ALL', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.EDITOR, Role.DESIGNER, Role.OPS, 'POSTED'].map((role) => (
-                        <button
-                            key={role}
-                            onClick={() => setActiveRoleFilter(role as any)}
-                            className={`px-3 py-1 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
-                                ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
-                                : 'bg-white text-slate-600 hover:bg-slate-50'
-                                }`}
-                        >
-                            {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
-                        </button>
-                    ))}
-                </div>
+            <div className="flex flex-wrap gap-2 py-4 border-b border-gray-200">
+                <span className="text-sm font-bold text-slate-700 uppercase mr-2 pt-2">Filter by role:</span>
+                {[
+                    { key: 'ALL', label: 'All', color: 'bg-gray-500' },
+                    { key: 'WRITER', label: 'Writer', color: 'bg-blue-500' },
+                    { key: 'CMO', label: 'CMO', color: 'bg-orange-500' },
+                    { key: 'CEO', label: 'CEO', color: 'bg-red-600' },
+                    { key: 'CINE', label: 'Cine', color: 'bg-yellow-500' },
+                    { key: 'EDITOR', label: 'Editor', color: 'bg-purple-500' },
+                    { key: 'DESIGNER', label: 'Designer', color: 'bg-pink-500' },
+                    { key: 'OPS', label: 'Ops', color: 'bg-green-600' },
+                    { key: 'POSTED', label: 'Posted', color: 'bg-emerald-600' }
+                ].map(filter => (
+                    <button
+                        key={filter.key}
+                        onClick={() => setActiveRoleFilter(filter.key as any)}
+                        className={`px-3 py-1 text-xs font-black uppercase border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
+                            activeRoleFilter === filter.key
+                                ? `${filter.color} text-white`
+                                : 'bg-white text-slate-900 hover:bg-slate-100'
+                        }`}
+                    >
+                        {filter.label} ({
+                            filter.key === 'ALL' ? scriptProjects.length :
+                            filter.key === 'POSTED' ? 
+                                scriptProjects.filter(p => p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED).length :
+                                scriptProjects.filter(p => p.assigned_to_role === filter.key).length
+                        })
+                    </button>
+                ))}
             </div>
+
+
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {projectsToShow.map(project => (
@@ -82,11 +96,6 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                         <div className="p-6 flex-grow space-y-4">
                             {/* Badges */}
                             <div className="flex flex-wrap gap-2 mb-4">
-                                {project.data?.source === 'IDEA_PROJECT' && (
-                                    <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                                        {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                                    </span>
-                                )}
                                 <span
                                     className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                         project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
@@ -182,7 +191,7 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                             No projects found
                         </h3>
                         <p className="text-slate-500 mt-2">
-                            {activeRoleFilter !== 'ALL' ? `No projects matching filter: ${activeRoleFilter}` : 'No CEO approved projects available'}
+                            {activeRoleFilter !== 'ALL' ? `No projects found for ${activeRoleFilter.toLowerCase()} role` : 'No CEO approved script projects available'}
                         </p>
                     </div>
                 )}

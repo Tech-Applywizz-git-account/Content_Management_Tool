@@ -1,116 +1,114 @@
 import React from 'react';
-import { Project, WorkflowStage, Role, TaskStatus } from '../../types';
-import { Calendar, FileText, Video, Image, Link as LinkIcon, Eye, Clock, CheckCircle, AlertTriangle, CalendarCheck } from 'lucide-react';
+import { Project, TaskStatus, WorkflowStage } from '../../types';
+import { FileText, Video, Image, Link as LinkIcon, Eye, Clock, CheckCircle, AlertTriangle, CalendarCheck, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Props {
     user: { full_name: string };
     projects: Project[];
-    onSelectProject: (project: { project: Project, source: 'mywork' }) => void;
-    filterCategory?: string; // 'pending', 'completed', 'ceoapproved', 'readytoschedule', 'scheduled', 'postedthisweek'
+    viewMode: 'ceo-approved-ideas' | 'ready-to-schedule' | 'scheduled-projects' | 'posted-this-week';
+    onSelectProject: (project: { project: Project, source: string }) => void;
+    onBack: () => void;
 }
 
-const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory = 'pending' }) => {
-    // Filter projects to show only pending works by default
+const OpsFilteredProjects: React.FC<Props> = ({ user, projects, viewMode, onSelectProject, onBack }) => {
+    // Apply specific filtering based on view mode
     const filteredProjects = projects.filter(project => {
-        // Check if project is completed/posted
-        const isCompleted = project.status === TaskStatus.DONE || 
-                           project.data?.live_url || 
-                           project.current_stage === WorkflowStage.POSTED;
-        
-        switch (filterCategory) {
-            case 'pending':
-                // Show only pending/active projects (not completed)
-                return !isCompleted;
-            case 'completed':
-                // Show only completed/posted projects
-                return isCompleted;
-            case 'ceoapproved':
-                // CEO approved projects - must be approved by CEO and not completed
+        switch (viewMode) {
+            case 'ceo-approved-ideas':
+                // CEO approved projects that are not yet scheduled
                 return (
-                    project.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-                    project.current_stage === WorkflowStage.VIDEO_EDITING ||
-                    project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                    project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                    project.current_stage === WorkflowStage.OPS_SCHEDULING ||
-                    project.current_stage === WorkflowStage.POSTED ||
-                    project.ceo_approved_at
-                ) && !isCompleted;
-            case 'readytoschedule':
+                    (project.ceo_approved_at || 
+                     project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
+                     project.current_stage === WorkflowStage.OPS_SCHEDULING ||
+                     project.current_stage === WorkflowStage.POSTED) &&
+                    !project.post_scheduled_date &&
+                    !(project.status === TaskStatus.DONE || project.data?.live_url)
+                );
+            
+            case 'ready-to-schedule':
                 // Strict filter for ready to schedule projects
                 return (
                     project.assigned_to_role === 'OPS' &&
                     project.current_stage === WorkflowStage.OPS_SCHEDULING &&
                     project.status !== 'COMPLETED' &&
                     project.status !== 'REJECTED' &&
-                    !project.post_scheduled_date &&
-                    !isCompleted
+                    !project.post_scheduled_date
                 );
-            case 'scheduled':
-                // Have a post_scheduled_date but not yet posted/completed
-                return project.post_scheduled_date &&
+            
+            case 'scheduled-projects':
+                // Projects with scheduled date but not yet posted
+                return (
+                    project.post_scheduled_date &&
                     !project.data?.live_url &&
-                    project.status !== TaskStatus.DONE &&
-                    !isCompleted;
-            case 'postedthisweek':
-                // Show only completed projects posted this week
+                    project.status !== TaskStatus.DONE
+                );
+            
+            case 'posted-this-week':
+                // Completed projects posted this week
                 if (!(project.status === TaskStatus.DONE || project.data?.live_url || project.current_stage === WorkflowStage.POSTED)) return false;
                 const postedDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : new Date(project.updated_at || project.created_at);
                 const weekAgo = new Date(Date.now() - 7 * 86400000);
                 return postedDate >= weekAgo;
+            
             default:
-                // 'pending' case - show only pending/active projects (not completed)
-                return !isCompleted;
+                return false;
         }
     });
 
-    // Show filtered projects based on the selected category
-    const myTasks = filteredProjects || [];
-
-    const getHeaderText = () => {
-        switch (filterCategory) {
-            case 'pending':
-                return 'pending project' + (myTasks.length !== 1 ? 's' : '');
-            case 'completed':
-                return 'completed project' + (myTasks.length !== 1 ? 's' : '');
-            case 'ceoapproved':
-                return 'CEO-approved project' + (myTasks.length !== 1 ? 's' : '');
-            case 'readytoschedule':
-                return 'ready to schedule project' + (myTasks.length !== 1 ? 's' : '');
-            case 'scheduled':
-                return 'scheduled project' + (myTasks.length !== 1 ? 's' : '');
-            case 'postedthisweek':
-                return 'posted this week project' + (myTasks.length !== 1 ? 's' : '');
-            default:
-                return 'pending project' + (myTasks.length !== 1 ? 's' : '');
+    const getViewTitle = () => {
+        switch (viewMode) {
+            case 'ceo-approved-ideas': return 'CEO Approved Projects';
+            case 'ready-to-schedule': return 'Ready to Schedule';
+            case 'scheduled-projects': return 'Scheduled Projects';
+            case 'posted-this-week': return 'Posted This Week';
+            default: return 'Projects';
         }
     };
 
-    const getPlatformColor = (channel: string) => {
-        switch (channel) {
-            case 'LINKEDIN': return 'bg-blue-100 text-blue-800 border-blue-300';
-            case 'YOUTUBE': return 'bg-red-100 text-red-800 border-red-300';
-            case 'INSTAGRAM': return 'bg-purple-100 text-purple-800 border-purple-300';
-            default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    const getViewDescription = () => {
+        switch (viewMode) {
+            case 'ceo-approved-ideas': 
+                return `${filteredProjects.length} CEO-approved projects ready for scheduling`;
+            case 'ready-to-schedule': 
+                return `${filteredProjects.length} projects ready to be scheduled`;
+            case 'scheduled-projects': 
+                return `${filteredProjects.length} projects scheduled for posting`;
+            case 'posted-this-week': 
+                return `${filteredProjects.length} projects posted this week`;
+            default: 
+                return `${filteredProjects.length} projects`;
         }
     };
 
     return (
-        <div className="space-y-8 animate-fade-in">
-            <div>
-                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
-                    My Work
-                </h1>
-                <p className="font-bold text-lg text-slate-500">
-                    {myTasks.length} {getHeaderText()} needing attention
-                </p>
+        <div className="space-y-6 animate-fade-in">
+            {/* Back button and header */}
+            <div className="border-b-2 border-black pb-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <button
+                            onClick={onBack}
+                            className="flex items-center text-sm font-black text-slate-700 hover:text-slate-900 py-2 px-4 bg-gray-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all mb-4"
+                        >
+                            ← Back to Dashboard
+                        </button>
+                        <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 mb-2">
+                            {getViewTitle()}
+                        </h1>
+                        <p className="font-bold text-base text-slate-500">
+                            {getViewDescription()}
+                        </p>
+                    </div>
+                </div>
             </div>
 
+            {/* Projects grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myTasks.map(project => (
+                {filteredProjects.map(project => (
                     <div
                         key={project.id}
-                        onClick={() => onSelectProject({ project, source: 'mywork' })}
+                        onClick={() => onSelectProject({ project, source: viewMode })}
                         className={`bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group ${project.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
                     >
                         <div className="p-6">
@@ -233,7 +231,6 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                         {project.history && project.history.length > 0 && (
                                             <p className="text-xs text-red-600">
                                                 {(() => {
-                                                    // Find the most recent REWORK or REJECTED action for the comment
                                                     const reworkHistory = project.history.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
                                                     return reworkHistory?.comment || 'No comment provided';
                                                 })()}
@@ -275,11 +272,15 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                     </div>
                 ))}
 
-                {myTasks.length === 0 && (
+                {filteredProjects.length === 0 && (
                     <div className="col-span-full border-2 border-dashed border-black p-12 text-center bg-slate-50 rounded-lg">
-                        <h3 className="text-xl font-black uppercase text-slate-400">All Caught Up!</h3>
-                        <p className="text-slate-500 mt-2">No pending projects requiring your attention</p>
-                        <div className="mt-4 text-4xl">🎉</div>
+                        <h3 className="text-xl font-black uppercase text-slate-400">No Projects Found</h3>
+                        <p className="text-slate-500 mt-2">
+                            {viewMode === 'ceo-approved-ideas' && 'No CEO-approved projects available'}
+                            {viewMode === 'ready-to-schedule' && 'No projects ready to schedule'}
+                            {viewMode === 'scheduled-projects' && 'No scheduled projects found'}
+                            {viewMode === 'posted-this-week' && 'No projects posted this week'}
+                        </p>
                     </div>
                 )}
             </div>
@@ -287,4 +288,4 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
     );
 };
 
-export default OpsMyWork;
+export default OpsFilteredProjects;

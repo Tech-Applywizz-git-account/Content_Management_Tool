@@ -24,7 +24,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role);
+  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
   const [cinematographyInstructions, setCinematographyInstructions] = useState(processedProject.data?.cinematography_instructions || '');
