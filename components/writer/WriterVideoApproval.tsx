@@ -237,8 +237,8 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             let popupMsg, stageName;
             if (newApprovedCount >= totalWriters) {
                 // All writers have approved, moving to next stage
-                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to the ops team.`;
-                stageName = 'Ops Scheduling';
+                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to Video Editing.`;
+                stageName = 'Video Editing';
             } else {
                 // Still need more approvals
                 popupMsg = `You approved the video. ${newApprovedCount} of ${totalWriters} writers have approved so far.`;
@@ -399,6 +399,28 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                                 <p className="font-black text-lg uppercase">AWAITING APPROVAL</p>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Script Content */}
+                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="flex items-center gap-2 mb-6">
+                            <FileText className="w-6 h-6" />
+                            <h3 className="text-xl font-black uppercase text-slate-900">Script Content</h3>
+                        </div>
+                        <div className="bg-slate-50 border-2 border-slate-200 p-6 font-serif text-slate-900 leading-relaxed max-h-96 overflow-y-auto">
+                            {project.data.script_content ? (() => {
+                                let decodedContent = project.data.script_content
+                                    .replace(/&lt;/g, '<')
+                                    .replace(/&gt;/g, '>')
+                                    .replace(/&amp;/g, '&')
+                                    .replace(/&quot;/g, '"')
+                                    .replace(/&#39;/g, "'")
+                                    .replace(/&nbsp;/g, ' ');
+                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                            })() : (
+                                <p className="text-slate-500 italic">No script content available</p>
+                            )}
                         </div>
                     </div>
 

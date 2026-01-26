@@ -35,6 +35,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     const activeView = getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'DELIVERED' | 'SCRIPTS' | null>(null);
+    const [completedSubTab, setCompletedSubTab] = useState<'POST' | 'POSTED' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
@@ -114,7 +115,17 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                     return p.delivery_date && !p.thumbnail_link && isNotDone;
                 });
             case 'DELIVERED':
-                return (historyProjects || []).filter(p => p.creative_link || p.thumbnail_link);
+                let deliveredProjects = (historyProjects || []).filter(p => p.creative_link || p.thumbnail_link);
+
+                // Sub-filter
+                if (completedSubTab === 'POST') {
+                    // Show projects that are not yet fully posted (live)
+                    return deliveredProjects.filter(p => !p.data?.live_url);
+                } else if (completedSubTab === 'POSTED') {
+                    // Show posted projects
+                    return deliveredProjects.filter(p => p.status === TaskStatus.DONE && !!p.data?.live_url);
+                }
+                return deliveredProjects;
             default:
                 return historyProjects || [];
         }
@@ -188,7 +199,12 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                     }}
                 />
             ) : activeView === 'mywork' ? (
-                <DesignerMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects} onSelectProject={(project) => navigate(`/designer/project/${project.id}`)} scriptProjects={scriptProjects} activeFilter={activeFilter} />
+                <DesignerMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
+                    onSelectProject={(project) => navigate(`/designer/project/${project.id}`)}
+                    scriptProjects={scriptProjects} activeFilter={activeFilter}
+                    completedSubTab={completedSubTab}
+                    onSetCompletedSubTab={setCompletedSubTab}
+                />
             ) : activeView === 'calendar' ? (
                 <DesignerCalendar projects={inboxProjects} />
             ) : (

@@ -5,8 +5,8 @@ import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, 
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import Timeline from '../Timeline';
 import ApprovalStatusIndicator from '../ApprovalStatusIndicator';
+import Timeline from '../Timeline';
 
 interface Props {
     project: Project;
@@ -18,26 +18,11 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
     const [postDate, setPostDate] = useState(project.post_scheduled_date || '');
     const [liveUrl, setLiveUrl] = useState(project.data?.live_url || '');
     const [caption, setCaption] = useState(project.data?.captions || '');
-    const [users, setUsers] = useState<any[]>([]);
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
-
-    // Fetch users for timeline
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const usersData = await db.getUsers();
-                setUsers(usersData);
-            } catch (error) {
-                console.error('Failed to fetch users:', error);
-            }
-        };
-
-        fetchUsers();
-    }, []);
 
     // Listen for beforeLogout event to close detail view automatically
     useEffect(() => {
@@ -145,8 +130,8 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
-                                    project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
-                                        'bg-[#D946EF]'
+                                project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
+                                    'bg-[#D946EF]'
                                 }`}>
                                 {project.channel}
                             </span>
@@ -255,15 +240,10 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                     )}
                 </div>
 
-                {/* Middle Column - Approval Status and Timeline */}
+                {/* Middle Column - Approval Status */}
                 <div className="space-y-6">
                     {/* Approval Status Indicator */}
                     <ApprovalStatusIndicator project={project} />
-
-                    {/* Timeline */}
-                    <div className="border-2 border-black p-6 bg-white">
-                        <Timeline project={project} users={users} />
-                    </div>
                 </div>
 
                 {/* Right Column - Scheduling Actions */}
@@ -421,6 +401,11 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="border-t-2 border-black pt-6">
+                <Timeline project={project} />
             </div>
             {showPopup && (
                 <Popup

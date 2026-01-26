@@ -672,10 +672,10 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
               <div className="flex justify-between items-start mb-4">
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.channel === 'YOUTUBE'
-                      ? 'bg-[#FF4F4F] text-white'
-                      : task.channel === 'LINKEDIN'
-                        ? 'bg-[#0085FF] text-white'
-                        : 'bg-[#D946EF] text-white'
+                    ? 'bg-[#FF4F4F] text-white'
+                    : task.channel === 'LINKEDIN'
+                      ? 'bg-[#0085FF] text-white'
+                      : 'bg-[#D946EF] text-white'
                     }`}
                 >
                   {task.channel}
@@ -787,6 +787,11 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                     </p>
                   </div>
                 )}
+
+                <div className="flex items-center font-bold text-slate-500 uppercase">
+                  <span className="mr-2 text-lg leading-none">📌</span>
+                  Stage: <span className="text-slate-900 ml-1">{task.current_stage ? task.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
+                </div>
 
                 <div className="flex items-center font-bold text-slate-500 uppercase">
                   <Clock className="w-4 h-4 mr-2" />

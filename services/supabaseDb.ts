@@ -630,7 +630,7 @@ export const projects = {
                     WorkflowStage.OPS_SCHEDULING,
                     WorkflowStage.POSTED
                 ];
-                
+
                 // Combine the conditions properly for Supabase OR query
                 const stageCondition = `current_stage.in.(${opsStages.join(',')})`;
                 const roleCondition = `assigned_to_role.eq.${Role.OPS}`;
@@ -1099,8 +1099,9 @@ export const workflow = {
             'REJECTED': 'REJECTED',
             'PUBLISHED': 'PUBLISHED',
             'SUB_EDITOR_ASSIGNED': 'SUB_EDITOR_ASSIGNED',
-            'SUB_EDITOR_VIDEO_UPLOADED': 'SUB_EDITOR_VIDEO_UPLOADED',
-            'EDITOR_VIDEO_UPLOADED': 'EDITOR_VIDEO_UPLOADED',
+            'SUB_EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
+            'EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
+            'CINE_VIDEO_UPLOADED': 'SUBMITTED',
             'VIDEO_REWORK_ROUTED_TO_SUB_EDITOR': 'VIDEO_REWORK_ROUTED_TO_SUB_EDITOR',
             'VIDEO_REWORK_ROUTED_TO_EDITOR': 'VIDEO_REWORK_ROUTED_TO_EDITOR'
         };
@@ -1595,15 +1596,15 @@ export const workflow = {
             console.log(`🎯 Approval Progress: ${approvedCount}/${totalWritersRequired}`);
 
             if (totalWritersRequired > 0 && approvedCount >= totalWritersRequired) {
-                console.log('🚀 All writers have approved, advancing to POST_WRITER_REVIEW stage');
+                console.log('🚀 All writers have approved, advancing to VIDEO_EDITING stage');
 
-                // Update project to move to POST_WRITER_REVIEW stage
+                // Update project to move to VIDEO_EDITING stage (Assigned to Editor)
                 const updateData: any = {
-                    current_stage: WorkflowStage.POST_WRITER_REVIEW,
-                    assigned_to_role: Role.CMO,
+                    current_stage: WorkflowStage.VIDEO_EDITING,
+                    assigned_to_role: Role.EDITOR,
                     assigned_to_user_id: null,
                     status: TaskStatus.WAITING_APPROVAL,
-                    visible_to_roles: ['CMO', 'OPS'],
+                    visible_to_roles: ['EDITOR', 'WRITER'],
                     updated_at: new Date().toISOString()
                 };
 
@@ -1613,39 +1614,49 @@ export const workflow = {
                     .eq('id', projectId);
 
                 if (updateError) {
-                    console.error('❌ Failed to update project to CMO stage:', updateError);
+                    console.error('❌ Failed to update project to EDITOR stage:', updateError);
                     throw updateError;
                 }
 
-                // Record the final TRANSITION action for CMO - this triggers the email to CMO
+                // Record the final TRANSITION action for EDITOR
                 await this.recordAction(
                     projectId,
                     WorkflowStage.MULTI_WRITER_APPROVAL,
                     userId,
                     userName,
                     'SUBMITTED', // Using SUBMITTED for the arrival notification
-                    'All writers have approved - Project advanced to post-writer review stage.',
+                    'All writers have approved - Project advanced to video editing.',
                     undefined,
                     Role.WRITER, // fromRole
-                    Role.CMO,    // toRole
+                    Role.EDITOR,    // toRole
                     Role.WRITER  // actorRole
                 );
 
-                // Record the final TRANSITION action for OPS - this triggers the email to OPS
-                await this.recordAction(
-                    projectId,
-                    WorkflowStage.MULTI_WRITER_APPROVAL,
-                    userId,
-                    userName,
-                    'SUBMITTED', // Using SUBMITTED for the arrival notification
-                    'All writers have approved - Project advanced to post-writer review stage.',
-                    undefined,
-                    Role.WRITER, // fromRole
-                    Role.OPS,    // toRole
-                    Role.WRITER  // actorRole
-                );
+                // Notify Editors
+                const { data: editorUsers } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', Role.EDITOR)
+                    .eq('status', 'ACTIVE');
 
-                console.log('✅ Workflow successfully transitioned to POST_WRITER_REVIEW stage.');
+                if (editorUsers && editorUsers.length > 0) {
+                    for (const editor of editorUsers) {
+                        try {
+                            const dbWithNotifications = db as any;
+                            await dbWithNotifications.notifications.create(
+                                editor.id,
+                                projectId,
+                                'PROJECT_ASSIGNED',
+                                'New Project Ready for Editing',
+                                `Writers have approved the footage for: ${currentProject.title}. Please begin video editing.`
+                            );
+                        } catch (notificationError) {
+                            console.error('Failed to send notification to editor:', notificationError);
+                        }
+                    }
+                }
+
+                console.log('✅ Workflow successfully transitioned to VIDEO_EDITING stage.');
                 return await projects.getById(projectId);
             } else {
                 console.log('⏳ Approval incomplete. Staying in MULTI_WRITER_APPROVAL.');
@@ -2343,42 +2354,54 @@ export const helpers = {
                 stage: contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN,
                 role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
             },
-            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            // ✅ CHANGED: Cine now goes to Multi-Writer Approval instead of Editor
+            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
             [WorkflowStage.VIDEO_EDITING]: {
                 // When editor uploads video, check routing based on needs_sub_editor flag
                 // If needs_sub_editor is true -> route to SUB_EDITOR_ASSIGNMENT
-                // If needs_sub_editor is false or undefined -> route to DESIGNER or WRITER based on thumbnail requirement
+                // If needs_sub_editor is false or undefined -> route to DESIGNER or POST_WRITER_REVIEW based on thumbnail requirement
                 // For rework scenarios, prioritize routing back to the original requester
                 stage: projectData?.needs_sub_editor === true
                     ? WorkflowStage.SUB_EDITOR_ASSIGNMENT  // Route to sub-editor assignment
                     : (projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
                         ? projectData.rework_initiator_stage as WorkflowStage  // Go back to original route for rework
                         : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                            ? WorkflowStage.MULTI_WRITER_APPROVAL  // Go to multi-writer approval if no thumbnail needed
+                            ? WorkflowStage.POST_WRITER_REVIEW  // ✅ CHANGED: Go to Post Review (CMO) if no thumbnail needed
                             : WorkflowStage.THUMBNAIL_DESIGN)),  // Go to designer for normal scripts with thumbnail required
                 role: projectData?.needs_sub_editor === true
                     ? Role.EDITOR  // Editor handles sub-editor assignment
                     : (projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
                         ? projectData.rework_initiator_role as Role  // Go back to original role for rework
                         : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                            ? Role.WRITER  // Writers handle approval if no thumbnail needed
+                            ? Role.CMO  // ✅ CHANGED: CMO handles Post Review
                             : Role.DESIGNER))  // Designer handles thumbnail creation for normal scripts with thumbnail required
             },
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                // After sub-editor completes work, go to multi-writer approval stage
-                // The assigned role should be WRITER for multi-writer approval regardless of rework status
-                stage: WorkflowStage.MULTI_WRITER_APPROVAL,  // Always go to multi-writer approval after sub-editor completes work
-                role: Role.WRITER,  // Assign to WRITER role for multi-writer approval
+                // After sub-editor, go back to Editor? Or behave like Editor?
+                // Usually Sub-Editor -> Editor for confirmation? Or directly next?
+                // Assuming Sub-Editor flow merges back to Editor workflow or proceeds.
+                // The existing code sent to MULTI_WRITER_APPROVAL.
+                // New flow: Editor -> Designer/CMO. So Sub-Editor -> Designer/CMO is likely safer to skip back to Editor or proceed.
+                // Let's assume Sub-Editor finishes -> Editor for final verification? Or proceed?
+                // Based on "editor->designer", if Sub-Editor is done, it's effectively "Editor Done".
+                // So route to Designer/CMO.
+                stage: projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
+                    ? WorkflowStage.POST_WRITER_REVIEW
+                    : WorkflowStage.THUMBNAIL_DESIGN,
+                role: projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
+                    ? Role.CMO
+                    : Role.DESIGNER,
             },
             [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
                 ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }  // Go back to original route for rework
-                : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, // After designer completes thumbnail, send to multi-writer approval for normal scenarios
+                : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }, // ✅ CHANGED: Designer -> Post Review (CMO)
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },  // After CEO final approval, send to ops for scheduling
-            // ❌ MULTI_WRITER_APPROVAL removed from here as per instructions
-            [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO }, // After post-writer review, send to CEO for final approval before ops scheduling
+
+            // ✅ CHANGED: Post Writer Review -> Final Review CEO
+            [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },

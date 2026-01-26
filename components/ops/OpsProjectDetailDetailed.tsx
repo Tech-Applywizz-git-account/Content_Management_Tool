@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../types';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle, Clock, User, Eye } from 'lucide-react';
+import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle, User, Eye } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
@@ -11,27 +11,14 @@ interface Props {
     project: Project;
     onBack: () => void;
     onUpdate: () => void;
+    hideCreatorInfo?: boolean;
+    hideProjectMeta?: boolean;
 }
 
-const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }) => {
-    const [users, setUsers] = useState<any[]>([]);
+const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, hideCreatorInfo, hideProjectMeta }) => {
     const [showPopup, setShowPopup] = useState(false);
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
-
-    // Fetch users for timeline
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const usersData = await db.getUsers();
-                setUsers(usersData);
-            } catch (error) {
-                console.error('Failed to fetch users:', error);
-            }
-        };
-
-        fetchUsers();
-    }, []);
 
     // Listen for beforeLogout event to close detail view automatically
     useEffect(() => {
@@ -81,7 +68,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column - Project Details and Content */}
                 <div className="space-y-6">
                     {/* Project Information */}
@@ -92,18 +79,22 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                         </h2>
 
                         <div className="space-y-3 text-sm">
-                            <div className="flex justify-between">
-                                <span className="font-bold text-slate-500">Project ID:</span>
-                                <span className="font-mono text-slate-900">{project.id.substring(0, 8)}...</span>
-                            </div>
+                            {!hideProjectMeta && (
+                                <div className="flex justify-between">
+                                    <span className="font-bold text-slate-500">Project ID:</span>
+                                    <span className="font-mono text-slate-900">{project.id.substring(0, 8)}...</span>
+                                </div>
+                            )}
                             <div className="flex justify-between">
                                 <span className="font-bold text-slate-500">Created:</span>
                                 <span className="text-slate-900">{format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</span>
                             </div>
-                            <div className="flex justify-between">
-                                <span className="font-bold text-slate-500">Due Date:</span>
-                                <span className="text-slate-900">{format(new Date(project.due_date), 'MMM dd, yyyy')}</span>
-                            </div>
+                            {!hideProjectMeta && (
+                                <div className="flex justify-between">
+                                    <span className="font-bold text-slate-500">Due Date:</span>
+                                    <span className="text-slate-900">{format(new Date(project.due_date), 'MMM dd, yyyy')}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between">
                                 <span className="font-bold text-slate-500">Current Stage:</span>
                                 <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
@@ -150,47 +141,38 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                     )}
 
                     {/* Creator Information */}
-                    <div className="border-2 border-black p-6 bg-white">
-                        <h2 className="text-xl font-black uppercase mb-4 text-slate-900 flex items-center gap-2">
-                            <User size={20} className="text-purple-600" />
-                            Creator Information
-                        </h2>
+                    {!hideCreatorInfo && (
+                        <div className="border-2 border-black p-6 bg-white">
+                            <h2 className="text-xl font-black uppercase mb-4 text-slate-900 flex items-center gap-2">
+                                <User size={20} className="text-purple-600" />
+                                Creator Information
+                            </h2>
 
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="font-bold text-slate-500">Writer:</span>
-                                <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
-                            </div>
-                            {project.data?.cmo_name && (
+                            <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
-                                    <span className="font-bold text-slate-500">CMO:</span>
-                                    <span className="font-bold text-slate-900">{project.data.cmo_name}</span>
+                                    <span className="font-bold text-slate-500">Writer:</span>
+                                    <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
                                 </div>
-                            )}
-                            {project.data?.brief && (
-                                <div>
-                                    <span className="font-bold text-slate-500 block mb-1">Brief/Instructions:</span>
-                                    <p className="text-slate-700 text-sm bg-slate-50 p-2 rounded">
-                                        {project.data.brief}
-                                    </p>
-                                </div>
-                            )}
+                                {project.data?.cmo_name && (
+                                    <div className="flex justify-between">
+                                        <span className="font-bold text-slate-500">CMO:</span>
+                                        <span className="font-bold text-slate-900">{project.data.cmo_name}</span>
+                                    </div>
+                                )}
+                                {project.data?.brief && (
+                                    <div>
+                                        <span className="font-bold text-slate-500 block mb-1">Brief/Instructions:</span>
+                                        <p className="text-slate-700 text-sm bg-slate-50 p-2 rounded">
+                                            {project.data.brief}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
-                {/* Middle Column - Timeline */}
-                <div className="space-y-6">
-                    <div className="border-2 border-black p-6 bg-white">
-                        <h2 className="text-xl font-black uppercase mb-4 text-slate-900 flex items-center gap-2">
-                            <Clock size={20} className="text-amber-600" />
-                            Project Timeline
-                        </h2>
-                        <div className="max-h-96 overflow-y-auto">
-                            <Timeline project={project} users={users} />
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Right Column - Media Content */}
                 <div className="space-y-6">
@@ -324,6 +306,11 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate }
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="border-t-2 border-black pt-6">
+                <Timeline project={project} />
             </div>
 
             {showPopup && (

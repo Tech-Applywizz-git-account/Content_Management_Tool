@@ -111,6 +111,7 @@ export interface Project {
   rework_target_role?: Role;
   rework_initiator_role?: Role;
   rework_initiator_stage?: WorkflowStage;
+  visible_to_roles?: string[]; // Roles that can view this project
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }
@@ -197,11 +198,11 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.SUB_EDITOR_PROCESSING]: 'Sub-Editor Processing',
   [WorkflowStage.THUMBNAIL_DESIGN]: 'Thumbnail Design',
   [WorkflowStage.CREATIVE_DESIGN]: 'Creative Design',
-  [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review (CMO)',
+  [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review',
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
   [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: 'Final Review (CEO) Post Approval',
   [WorkflowStage.MULTI_WRITER_APPROVAL]: 'Multi-Writer Approval',
-  [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review (CMO)',
+  [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',

@@ -4,6 +4,7 @@ import { Project, Role, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import OpsProjectDetail from './OpsProjectDetail';
 import OpsProjectDetailDetailed from './OpsProjectDetailDetailed';
+import Layout from '../Layout';
 
 const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
     const { projectId } = useParams<{ projectId: string }>();
@@ -81,24 +82,46 @@ const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; 
 
     if (isCeoApproved) {
         return (
-            <OpsProjectDetailDetailed
+            <Layout
+                user={user as any}
+                onLogout={onLogout}
+                onOpenCreate={() => { }}
+                activeView="mywork"
+                onChangeView={(view) => {
+                    if (view === 'dashboard') navigate('/ops');
+                    else navigate(`/ops/${view}`);
+                }}
+            >
+                <OpsProjectDetailDetailed
+                    project={project}
+                    onBack={() => navigate(-1)}
+                    onUpdate={() => {
+                        navigate(-1);
+                    }}
+                />
+            </Layout>
+        );
+    }
+
+    return (
+        <Layout
+            user={user as any}
+            onLogout={onLogout}
+            onOpenCreate={() => { }}
+            activeView="mywork"
+            onChangeView={(view) => {
+                if (view === 'dashboard') navigate('/ops');
+                else navigate(`/ops/${view}`);
+            }}
+        >
+            <OpsProjectDetail
                 project={project}
                 onBack={() => navigate(-1)}
                 onUpdate={() => {
                     navigate(-1);
                 }}
             />
-        );
-    }
-
-    return (
-        <OpsProjectDetail
-            project={project}
-            onBack={() => navigate(-1)}
-            onUpdate={() => {
-                navigate(-1);
-            }}
-        />
+        </Layout>
     );
 };
 

@@ -17,6 +17,7 @@ import CreateScript from '../writer/CreateScript';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 
 
 interface Props {
@@ -32,6 +33,7 @@ interface Props {
 const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, onRefresh, onLogout, allProjects }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { navigateWithScroll } = useScrollRestoration();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
 
@@ -312,11 +314,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
 
   const handleReview = (project: Project) => {
-    navigate(`/cmo/review/${project.id}`);
+    navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project });
   };
 
   const handleHistoryDetail = (project: Project, history: any) => {
-    navigate(`/cmo/history_detail/${project.id}`);
+    navigateWithScroll(`/cmo/history_detail/${project.id}`, { initialProject: project });
   };
 
   const handleBack = () => {
@@ -354,7 +356,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           <CmoFinalReview
             user={user}
             onBack={() => handleViewChange('dashboard')}
-            onProjectSelect={(project) => navigate(`/cmo/review/${project.id}`)}
+            onProjectSelect={(project) => navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project })}
             selectedProject={null}
           />
         ) : activeView === 'calendar' ? (
@@ -502,7 +504,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   </div>
                   <div className="space-y-4">
                     {pendingApprovalProjects.map(p => (
-                      <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigate(`/cmo/review/${p.id}`)}>
+                      <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}>
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -559,7 +561,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       <div
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                        onClick={() => navigate(`/cmo/review/${p.id}`)}
+                        onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -618,7 +620,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       <div
                         key={p.id}
                         className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                        onClick={() => navigate(`/cmo/project/${p.id}`)}
+                        onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                       >
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -696,7 +698,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                            onClick={() => navigate(`/cmo/project/${p.id}`)}
+                            onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
                               <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -754,7 +756,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           <div
                             key={p.id}
                             className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                            onClick={() => navigate(`/cmo/project/${p.id}`)}
+                            onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                           >
                             <div className="flex flex-wrap gap-2 mb-4">
                               <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Project, Role, TaskStatus, WorkflowStage, User } from '../../types';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { db } from '../../services/supabaseDb';
 import Timeline from '../Timeline';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 
 // Helper function to format date to DD-MM-YYYY
 const formatDateDDMMYYYY = (dateString: string | undefined): string => {
@@ -27,13 +28,23 @@ interface Props {
 
 const CmoOverview: React.FC<Props> = ({ user }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'IDEA' | 'SCRIPT'>('IDEA');
+  const { navigateWithScroll } = useScrollRestoration();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab = (searchParams.get('tab') as 'IDEA' | 'SCRIPT') || 'IDEA';
+
+  const setActiveTab = (tab: 'IDEA' | 'SCRIPT') => {
+    setSearchParams(prev => {
+      prev.set('tab', tab);
+      return prev;
+    }, { replace: true });
+  };
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILS'>('OVERVIEW');
   const [userDetails, setUserDetails] = useState<Record<string, User>>({});
-  const [activeStatusFilter, setActiveStatusFilter] = useState<'ALL' | 'IN_PROGRESS' | 'WAITING_APPROVAL' | 'DONE'>('ALL');
+  const [activeRoleFilter, setActiveRoleFilter] = useState<'ALL' | 'POSTED' | Role>('ALL');
 
   interface WorkflowHistoryEntry {
     action: string;
@@ -102,10 +113,14 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
     )
   ).length;
 
-  // Get projects based on active tab and status filter
+  // Get projects based on active tab and role filter
   const projectsToShow = (activeTab === 'IDEA' ? ideaProjects : scriptProjects).filter(p => {
-    if (activeStatusFilter === 'ALL') return true;
-    return p.status === activeStatusFilter;
+    if (activeRoleFilter === 'ALL') return true;
+    if (activeRoleFilter === 'POSTED') {
+      // Show completed/posted projects
+      return p.current_stage === WorkflowStage.POSTED || p.status === TaskStatus.DONE;
+    }
+    return p.assigned_to_role === activeRoleFilter;
   });
 
   // Effect to fetch comments when selectedProject changes
@@ -296,6 +311,28 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
     fetchComments();
   }, [selectedProject?.id]);
 
+  const handleProjectNavigation = (project: Project) => {
+    // Define stages where CMO needs to review
+    const reviewStages: WorkflowStage[] = [
+      WorkflowStage.SCRIPT_REVIEW_L1,
+      WorkflowStage.FINAL_REVIEW_CMO,
+      WorkflowStage.POST_WRITER_REVIEW
+    ];
+
+    // Check if project needs review based on stage
+    const needsReview = project.current_stage && reviewStages.includes(project.current_stage as WorkflowStage);
+
+    // Check if project is done or posted
+    const isDone = project.status === TaskStatus.DONE || project.current_stage === WorkflowStage.POSTED;
+
+    // Determine target route
+    if (needsReview && !isDone) {
+      navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project });
+    } else {
+      navigateWithScroll(`/cmo/project/${project.id}`, { initialProject: project });
+    }
+  };
+
   const renderProjectDetails = (project: Project) => (
     <div className="space-y-6">
       {/* Back button */}
@@ -474,19 +511,19 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
           </button>
         </div>
 
-        {/* Status Filter Tabs */}
+        {/* Role Filter Tabs */}
         <div className="flex items-center space-x-2 overflow-x-auto pb-1">
-          <span className="text-xs font-bold uppercase text-slate-500 mr-2">Status:</span>
-          {['ALL', 'IN_PROGRESS', 'WAITING_APPROVAL', 'DONE'].map((status) => (
+          <span className="text-xs font-bold uppercase text-slate-500 mr-2">Filter By:</span>
+          {['ALL', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.EDITOR, Role.DESIGNER, Role.OPS, 'POSTED'].map((role) => (
             <button
-              key={status}
-              onClick={() => setActiveStatusFilter(status as any)}
-              className={`px-3 py-1 text-xs font-black uppercase border-2 border-black transition-all ${activeStatusFilter === status
+              key={role}
+              onClick={() => setActiveRoleFilter(role as any)}
+              className={`px-3 py-1 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
                 ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
                 : 'bg-white text-slate-600 hover:bg-slate-50'
                 }`}
             >
-              {status.replace(/_/g, ' ')}
+              {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
             </button>
           ))}
         </div>
@@ -503,7 +540,8 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
             {projectsToShow.map((project) => (
               <div
                 key={project.id}
-                className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] h-full flex flex-col"
+                onClick={() => handleProjectNavigation(project)}
+                className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer h-full flex flex-col"
               >
                 <div className="p-6 flex-grow">
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -546,6 +584,9 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                     <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
                       Created: {new Date(project.created_at).toLocaleDateString()}
                     </div>
+                    <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                      Stage: {project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}
+                    </div>
 
                     {/* Show live URL for completed projects */}
                     {project.status === 'DONE' && project.data?.live_url && (
@@ -556,6 +597,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                             href={project.data.live_url}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[100px]"
                             title={project.data.live_url}
                           >
@@ -589,7 +631,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                       className="flex-1 bg-purple-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-purple-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/cmo/review/${project.id}`);
+                        handleProjectNavigation(project);
                       }}
                     >
                       View Idea
@@ -601,7 +643,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                       className="flex-1 bg-blue-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/cmo/review/${project.id}`);
+                        handleProjectNavigation(project);
                       }}
                     >
                       View Script
@@ -611,8 +653,9 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                   {!project.data?.idea_description && !project.data?.script_content && (
                     <button
                       className="flex-1 bg-gray-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => {
-                        navigate(`/cmo/review/${project.id}`);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleProjectNavigation(project);
                       }}
                     >
                       View Details

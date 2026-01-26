@@ -64,12 +64,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         const subEditorList = await db.users.getSubEditors();
         console.log('Raw sub-editors data:', subEditorList);
         console.log('Number of sub-editors fetched:', subEditorList.length);
-        
+
         // Check for duplicates or filtering issues
         const uniqueIds = [...new Set(subEditorList.map(se => se.id))];
         console.log('Unique sub-editor IDs:', uniqueIds);
         console.log('Duplicate check - original length:', subEditorList.length, 'unique length:', uniqueIds.length);
-        
+
         setSubEditors(subEditorList);
 
         // No more direct DOM manipulation - the options will be rendered in JSX
@@ -87,7 +87,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       alert('Please select a delivery date');
       return;
     }
-    
+
     // Check if delivery date is already set
     if (project.delivery_date) {
       alert('Delivery date is already set and cannot be changed');
@@ -118,7 +118,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       // The stage only changes when the edited video is uploaded
       const updatedProject = await db.projects.update(project.id, { delivery_date: deliveryDate });
       console.log(`Delivery date set: ${deliveryDate}`);
-      
+
       // Update local state
       setLocalProject(updatedProject);
 
@@ -176,7 +176,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       // This will properly check thumbnail_required and route to correct stage
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
-        editor_uploaded_at: new Date().toISOString(), 
+        editor_uploaded_at: new Date().toISOString(),
         editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
         edited_by_role: 'EDITOR', // Track who actually edited
         edited_by_user_id: user.id, // Track the specific user
@@ -291,7 +291,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       </div>
 
       {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
-      {(isRework || isRejected) && project.assigned_to_role === Role.EDITOR && project.history?.length > 0 && (
+      {(isRework || isRejected) && project.history?.length > 0 && (
         <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
 
           {/* Header */}
@@ -322,7 +322,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project, userRole)?.actor_name || 'Reviewer'}
               </p>
             </div>
-            
+
             {/* Display forwarded comments from CMO and CEO */}
             {project?.forwarded_comments && project.forwarded_comments.length > 0 && (
               <div className="mb-4">
@@ -332,7 +332,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
                     .map((comment, index) => {
                       const timestamp = new Date(comment.created_at).toLocaleString();
-                      
+
                       return (
                         <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
                           <div className="flex items-center">
@@ -352,7 +352,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 </div>
               </div>
             )}
-            
+
             {/* Existing Project Data (READ-ONLY) */}
             <div className="bg-white border-2 border-gray-300 p-4">
               <h4 className="font-bold text-gray-800 mb-3">
@@ -459,10 +459,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           </div>
           <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
             {localProject.data?.script_content ? (
-              <div 
-                dangerouslySetInnerHTML={{ 
-                  __html: localProject.data.script_content 
-                }} 
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: localProject.data.script_content
+                }}
               />
             ) : (
               'No script content available'
@@ -485,7 +485,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                   {localProject.data?.writer_name || 'Writer name not available'}
                 </p>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
@@ -493,21 +493,21 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     {localProject.data?.actor ?? 'Not specified'}
                   </p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
                   <p className="p-2 border-2 border-black font-medium bg-slate-50">
                     {localProject.data?.location ?? 'Not specified'}
                   </p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
                   <p className="p-2 border-2 border-black font-medium bg-slate-50">
                     {localProject.data?.lighting ?? 'Not specified'}
                   </p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
                   <p className="p-2 border-2 border-black font-medium bg-slate-50">
@@ -515,7 +515,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                   </p>
                 </div>
               </div>
-              
+
               {/* Cinematographer Comments */}
               {localProject.data?.cine_comments && (
                 <div className="space-y-2">
@@ -551,8 +551,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               <div className="bg-white border-2 border-blue-300 p-4">
                 <p className="text-sm font-bold uppercase text-blue-800 mb-1">Assigned To</p>
                 <p className="text-lg font-bold text-blue-900">
-                  {localProject.assigned_to_user_id 
-                    ? (subEditors.find(se => se.id === localProject.assigned_to_user_id)?.full_name || 'Sub-Editor') 
+                  {localProject.assigned_to_user_id
+                    ? (subEditors.find(se => se.id === localProject.assigned_to_user_id)?.full_name || 'Sub-Editor')
                     : 'Sub-Editor'}
                 </p>
               </div>
@@ -796,42 +796,42 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
         {/* Project Info */}
         {fromView !== 'SCRIPTS' && (
-        <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-          <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-              <p className="font-bold text-slate-900 mt-1">
-                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-              </p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-            </div>
-            {localProject.data?.niche && (
-              <div className="col-span-2">
-                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                <p className="font-bold text-slate-900 mt-1 uppercase">
-                  {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                      : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                        : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                          ? localProject.data.niche_other
-                          : localProject.data.niche}
+          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+            <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                <p className="font-bold text-slate-900 mt-1">
+                  {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
                 </p>
               </div>
-            )}
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+              </div>
+              {localProject.data?.niche && (
+                <div className="col-span-2">
+                  <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                  <p className="font-bold text-slate-900 mt-1 uppercase">
+                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                      : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                        : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                            ? localProject.data.niche_other
+                            : localProject.data.niche}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
         )}
       </div>
       {showPopup && (

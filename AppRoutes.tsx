@@ -24,6 +24,7 @@ import DesignerDashboard from './components/designer/DesignerDashboard';
 import DesignerProjectDetailPage from './components/designer/DesignerProjectDetailPage';
 import OpsDashboard from './components/ops/OpsDashboard';
 import OpsProjectDetailPage from './components/ops/OpsProjectDetailPage';
+import OpsCeoApprovedDetailPage from './components/ops/OpsCeoApprovedDetailPage';
 import ObserverDashboard from './components/observer/ObserverDashboard';
 import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
@@ -168,6 +169,8 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.OPS]}>
                     <Routes>
                         <Route path="project/:projectId" element={<OpsProjectDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="ceo-approved-project/:projectId" element={<OpsCeoApprovedDetailPage user={user!} onLogout={onLogout} />} />
+                        <Route path="review/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} />} />
                         <Route path="*" element={<OpsDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
                 </ProtectedRoute>

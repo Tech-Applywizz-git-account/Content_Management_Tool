@@ -11,17 +11,34 @@ interface Props {
     scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
     activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null;
+    completedSubTab?: 'POST' | 'POSTED' | null;
+    onSetCompletedSubTab?: (tab: 'POST' | 'POSTED' | null) => void;
 }
 
-const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter }) => {
+const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter, completedSubTab, onSetCompletedSubTab }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
+    const [activeRoleFilter, setActiveRoleFilter] = React.useState<Role | 'ALL' | 'POSTED'>('ALL');
+
 
     // Show all projects the editor has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
         if (activeFilter === 'SCRIPTS') {
-            // Use the script projects passed from parent when SCRIPTS filter is active
-            return scriptProjects || [];
+            let filtered = scriptProjects || [];
+
+            if (activeRoleFilter !== 'ALL') {
+                if (activeRoleFilter === 'POSTED') {
+                    filtered = filtered.filter(p => p.status === 'DONE' && p.data?.live_url);
+                } else {
+                    filtered = filtered.filter(p => {
+                        if (activeRoleFilter === Role.SUB_EDITOR) {
+                            return p.assigned_to_role === Role.SUB_EDITOR || p.assigned_to_role === Role.EDITOR;
+                        }
+                        return p.assigned_to_role === activeRoleFilter;
+                    });
+                }
+            }
+            return filtered;
         }
 
         // Sort projects by priority:
@@ -47,7 +64,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
         });
 
         return sortedProjects;
-    }, [projects, scriptProjects, activeFilter]);
+    }, [projects, scriptProjects, activeFilter, activeRoleFilter]);
 
     if (selectedProject && activeFilter === 'SCRIPTS') {
         return (
@@ -69,6 +86,56 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                     {myTasks.length} editing {myTasks.length === 1 ? 'project' : 'projects'} awaiting action
                 </p>
             </div>
+
+            {/* Sub-tabs for COMPLETED filter */}
+            {activeFilter === 'COMPLETED' && onSetCompletedSubTab && (
+                <div className="flex space-x-4 border-b-2 border-black pb-2">
+                    <button
+                        onClick={() => onSetCompletedSubTab('POST')}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${completedSubTab === 'POST'
+                            ? 'bg-[#3B82F6] text-white'
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        Post
+                    </button>
+                    <button
+                        onClick={() => onSetCompletedSubTab('POSTED')}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${completedSubTab === 'POSTED'
+                            ? 'bg-[#10B981] text-white'
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        Posted
+                    </button>
+                    <button
+                        onClick={() => onSetCompletedSubTab(null)}
+                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${completedSubTab === null
+                            ? 'bg-black text-white'
+                            : 'bg-white text-black hover:bg-slate-100'}`}
+                    >
+                        All
+                    </button>
+                </div>
+            )}
+
+            {/* Role Filters for SCRIPTS view */}
+            {activeFilter === 'SCRIPTS' && (
+                <div className="overflow-x-auto pb-4">
+                    <div className="flex space-x-2 min-w-max">
+                        {['ALL', 'POSTED', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.SUB_EDITOR, Role.DESIGNER, Role.OPS].map((role) => (
+                            <button
+                                key={role}
+                                onClick={() => setActiveRoleFilter(role as Role | 'ALL' | 'POSTED')}
+                                className={`px-4 py-2 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
+                                    ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
+                                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {

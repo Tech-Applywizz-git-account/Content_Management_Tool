@@ -225,7 +225,8 @@ Deno.serve(async (req: Request) => {
     `;
 
         // Send Email
-        await sendGraphMail(recipients, `[${action}] ${project.title}`, htmlBody);
+        console.log(`[Temporary] Email sending disabled. Would have sent to: ${recipients.join(', ')}`);
+        // await sendGraphMail(recipients, `[${action}] ${project.title}`, htmlBody);
 
         return new Response(JSON.stringify({ ok: true, sentTo: recipients }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },

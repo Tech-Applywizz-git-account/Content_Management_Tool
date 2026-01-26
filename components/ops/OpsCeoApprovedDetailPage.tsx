@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
-import WriterProjectDetail from './WriterProjectDetail';
+import OpsCeoApprovedView from './OpsCeoApprovedView';
+import Layout from '../Layout';
 
-const WriterProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const OpsCeoApprovedDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const [project, setProject] = useState<Project | null>(null);
@@ -23,7 +24,7 @@ const WriterProjectDetailPage: React.FC<{ user: { full_name: string; role: Role 
                 setLoading(true);
                 const { data, error } = await supabase
                     .from('projects')
-                    .select('*')
+                    .select('*, workflow_history(*)')
                     .eq('id', projectId)
                     .single();
 
@@ -33,7 +34,13 @@ const WriterProjectDetailPage: React.FC<{ user: { full_name: string; role: Role 
                     return;
                 }
 
-                setProject(data as Project);
+                // Map workflow_history to history property
+                const projectWithHistory = {
+                    ...data,
+                    history: data.workflow_history
+                };
+
+                setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
                 setError('Failed to load project');
@@ -60,10 +67,10 @@ const WriterProjectDetailPage: React.FC<{ user: { full_name: string; role: Role 
                     <h1 className="text-2xl font-black text-slate-900 mb-4 uppercase">Error</h1>
                     <p className="text-slate-600 mb-6 font-bold">{error || 'Project not found'}</p>
                     <button
-                        onClick={() => navigate('/writer')}
+                        onClick={() => navigate('/ops/ceoapproved')}
                         className="w-full bg-[#D946EF] border-2 border-black px-6 py-3 text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                     >
-                        Back to Dashboard
+                        Back to List
                     </button>
                 </div>
             </div>
@@ -71,11 +78,22 @@ const WriterProjectDetailPage: React.FC<{ user: { full_name: string; role: Role 
     }
 
     return (
-        <WriterProjectDetail
-            project={project}
-            onBack={() => navigate(-1)}
-        />
+        <Layout
+            user={user as any}
+            onLogout={onLogout}
+            onOpenCreate={() => { }}
+            activeView="ceoapproved"
+            onChangeView={(view) => {
+                if (view === 'dashboard') navigate('/ops');
+                else navigate(`/ops/${view}`);
+            }}
+        >
+            <OpsCeoApprovedView
+                project={project}
+                onBack={() => navigate('/ops/ceoapproved')}
+            />
+        </Layout>
     );
 };
 
-export default WriterProjectDetailPage;
+export default OpsCeoApprovedDetailPage;

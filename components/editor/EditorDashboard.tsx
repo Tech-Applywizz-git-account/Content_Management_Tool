@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Upload, Video, Film } from 'lucide-react';
+import { getWorkflowStateForRole } from '../../services/workflowUtils';
 import EditorMyWork from './EditorMyWork';
 import EditorCalendar from './EditorCalendar';
 import EditorProjectDetail from './EditorProjectDetail';
@@ -34,6 +35,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const activeView = getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | 'CINE' | null>(null);
+    const [completedSubTab, setCompletedSubTab] = useState<'POST' | 'POSTED' | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
@@ -126,11 +128,24 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             case 'NEEDS_DELIVERY':
                 return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
             case 'IN_PROGRESS':
-                return (historyProjects || []).filter(
-                    p => p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE
-                );
+                return (historyProjects || []).filter(p => {
+                    const workflowState = getWorkflowStateForRole(p, user.role);
+                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
+                    return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
+                });
             case 'COMPLETED':
-                return (historyProjects || []).filter(p => !!p.edited_video_link);
+                // Base completed projects (have processed video)
+                let completedProjects = (historyProjects || []).filter(p => !!p.edited_video_link);
+
+                // Sub-filter
+                if (completedSubTab === 'POST') {
+                    // Show projects that are not yet fully posted (live)
+                    return completedProjects.filter(p => !p.data?.live_url);
+                } else if (completedSubTab === 'POSTED') {
+                    // Show posted projects
+                    return completedProjects.filter(p => p.status === TaskStatus.DONE && !!p.data?.live_url);
+                }
+                return completedProjects;
             default:
                 return historyProjects || [];
         }
@@ -182,7 +197,10 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         // Navigate to the route-based project detail page with context
                         const fromView = activeFilter === 'CINE' ? 'SCRIPTS' : 'MYWORK';
                         navigate(`/editor/project/${project.id}?from=${fromView}`);
-                    }} scriptProjects={scriptProjects} activeFilter={activeFilter} />
+                    }} scriptProjects={scriptProjects} activeFilter={activeFilter}
+                    completedSubTab={completedSubTab}
+                    onSetCompletedSubTab={setCompletedSubTab}
+                />
             ) : activeView === 'calendar' ? (
                 <EditorCalendar projects={[...inboxProjects, ...historyProjects]} />
             ) : (

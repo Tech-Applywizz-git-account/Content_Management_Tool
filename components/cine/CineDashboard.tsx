@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Upload, Video } from 'lucide-react';
+import { getWorkflowStateForRole } from '../../services/workflowUtils';
 import CineMyWork from './CineMyWork';
 import CineCalendar from './CineCalendar';
 import CineProjectDetail from './CineProjectDetail';
@@ -89,7 +90,11 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
           return !project.shoot_date;
 
         case 'SCHEDULED':
-          return project.shoot_date && !project.video_link;
+          {
+            const workflowState = getWorkflowStateForRole(project, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return (project.shoot_date && !project.video_link) || isRework;
+          }
 
         case 'UPLOADED':
           return (

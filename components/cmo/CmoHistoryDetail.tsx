@@ -25,6 +25,48 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
     project.data?.writer_name ||
     'Unknown Writer';
 
+  // Check if history is null or undefined
+  if (!history) {
+    return (
+      <div className="min-h-screen bg-white font-sans flex flex-col">
+        <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+          <div className="flex items-center space-x-6">
+            <button
+              onClick={onBack}
+              className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+              History Not Available
+            </h1>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-12">
+          <div className="text-center max-w-md">
+            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-12 h-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">No History Data</h2>
+            <p className="text-slate-600 mb-6">
+              History information for this project is not available. This might be because the project hasn't been reviewed yet.
+            </p>
+            <button
+              onClick={onBack}
+              className="px-6 py-3 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              ← Back to History
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Check if current user is the actor who made the decision
   const isActor = currentUser?.id === history.actor_id;
 
@@ -90,7 +132,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
               {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Details: ' : 'Script Details: '}
               {project.title}
             </h1>
-            
+
             <div className="flex items-center space-x-2 mt-2">
               {project.data?.source === 'DESIGNER_INITIATED' && (
                 <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-pink-100 text-pink-900">
@@ -118,7 +160,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             </div>
           </div>
         </div>
-        
+
         {isActor && onEdit && (
           <button
             onClick={onEdit}
@@ -179,23 +221,23 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             <h3 className="text-2xl font-black text-slate-900 uppercase">
               {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' : 'Script Content'}
             </h3>
-            
+
             <div className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
               {project.data?.source === 'DESIGNER_INITIATED'
                 ? project.data?.creative_link || 'No creative link available.'
-                : project.data?.script_content 
-                    ? (() => {
-                        // Decode HTML entities to properly display the content
-                        let decodedContent = project.data.script_content
-                            .replace(/&lt;/g, '<')
-                            .replace(/&gt;/g, '>')
-                            .replace(/&amp;/g, '&')
-                            .replace(/&quot;/g, '"')
-                            .replace(/&#39;/g, "'")
-                            .replace(/&nbsp;/g, ' ');
-                        return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                      })()
-                    : 'No script content available.'}
+                : project.data?.script_content
+                  ? (() => {
+                    // Decode HTML entities to properly display the content
+                    let decodedContent = project.data.script_content
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#39;/g, "'")
+                      .replace(/&nbsp;/g, ' ');
+                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                  })()
+                  : 'No script content available.'}
             </div>
           </section>
 

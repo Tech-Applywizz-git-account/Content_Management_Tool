@@ -85,14 +85,14 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       setLocalProject(updatedProject);
 
       console.log(`Delivery date set: ${deliveryDate}`);
-      
+
       // Show popup notification
       const stageLabel = STAGE_LABELS[WorkflowStage.SUB_EDITOR_PROCESSING] || 'Sub-Editor Processing';
       setPopupMessage(`Delivery date set for ${localProject.title} on ${deliveryDate}.`);
       setStageName(stageLabel);
       setPopupDuration(5000); // 5 seconds
       setShowPopup(true);
-      
+
       onUpdate();
     } catch (error) {
       console.error('Failed to set delivery date:', error);
@@ -138,14 +138,14 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       setDeliveryDate(''); // Clear the local delivery date state
 
       console.log('Delivery date cleared for rescheduling');
-      
+
       // Show popup notification
       const stageLabel = STAGE_LABELS[WorkflowStage.SUB_EDITOR_PROCESSING] || 'Sub-Editor Processing';
       setPopupMessage(`Delivery date cleared for ${localProject.title}. Ready for rescheduling.`);
       setStageName(stageLabel);
       setPopupDuration(5000); // 5 seconds
       setShowPopup(true);
-      
+
       onUpdate();
     } catch (error) {
       console.error('Failed to clear delivery date:', error);
@@ -187,7 +187,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
 
       // Determine the correct to_role based on thumbnail_required
       const nextRole = localProject.data?.thumbnail_required === true ? 'DESIGNER' : 'WRITER';
-      
+
       await db.workflow.recordAction(
         localProject.id,
         localProject.current_stage!, // Record action at current stage
@@ -211,9 +211,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         edited_by_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Track the name
         edited_at: new Date().toISOString(), // Track when edited
         status: TaskStatus.WAITING_APPROVAL, // Set appropriate status
-        data: { 
+        data: {
           ...localProject.data, // Preserve all existing data
-          needs_sub_editor: false, 
+          needs_sub_editor: false,
           thumbnail_required: localProject.data?.thumbnail_required
         } // Mark that sub-editor work is complete
       });
@@ -234,26 +234,26 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       setLocalProject(updatedProject);
 
       console.log(`${isRework ? 'Rework edited' : 'Edited'} video uploaded: ${editedVideoLink}`);
-      
+
       // Show success popup notification immediately after DB update succeeds
       // Get the actual next stage from the updated project
       const actualNextStage = updatedProject.current_stage;
       const updatedNextStageLabel = STAGE_LABELS[actualNextStage] || actualNextStage.replace(/_/g, ' ');
-      
+
       const popupMessageText = isRework
-          ? `Rework edited video uploaded successfully for ${localProject.title}. Waiting for ${updatedNextStageLabel}.`
-          : `Edited video uploaded successfully for ${localProject.title}. Waiting for ${updatedNextStageLabel}.`;
+        ? `Rework edited video uploaded successfully for ${localProject.title}. Waiting for ${updatedNextStageLabel}.`
+        : `Edited video uploaded successfully for ${localProject.title}. Waiting for ${updatedNextStageLabel}.`;
 
       setPopupMessage(popupMessageText);
       setStageName(updatedNextStageLabel);
       // For rework scenarios, use longer duration to ensure visibility
       setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
       setShowPopup(true);
-      
+
       // The project has already been updated to MULTI_WRITER_APPROVAL stage, 
       // so no further workflow advancement is needed here.
       // The MULTI_WRITER_APPROVAL stage is handled by the writers themselves.
-      
+
       // Get updated project to update UI
       const postWorkflowProject = await db.getProjectById(localProject.id);
       setLocalProject(postWorkflowProject);
@@ -320,7 +320,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 : 'bg-white text-black hover:bg-slate-50'
                 }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
               <span>Dashboard</span>
             </button>
 
@@ -335,10 +335,10 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                 }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10" /></svg>
               <span>My Work</span>
             </button>
-            
+
             {/* Calendar */}
             <button
               onClick={() => {
@@ -350,7 +350,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                 }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></svg>
               <span>Calendar</span>
             </button>
           </div>
@@ -360,7 +360,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         <div className="p-6 border-t-2 border-black bg-slate-50">
           <div className="flex items-center space-x-3 mb-4">
             <div className="w-10 h-10 bg-[#4ADE80] border-2 border-black rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M12 22s7-4 7-10V5l-7-3-7 3v7c0 6 7 10 7 10" /></svg>
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-black uppercase truncate">Sub-Editor</p>
@@ -370,7 +370,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             onClick={onLogout}
             className="w-full flex items-center justify-center space-x-2 p-3 bg-[#FF4F4F] text-white border-2 border-black font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[4px] active:translate-x-[4px] transition-all"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></svg>
             <span>Logout</span>
           </button>
         </div>
@@ -393,10 +393,10 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 <div className="flex items-center gap-3 mt-1">
                   <span
                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
-                        ? 'bg-[#FF4F4F] text-white'
-                        : localProject.channel === 'LINKEDIN'
-                          ? 'bg-[#0085FF] text-white'
-                          : 'bg-[#D946EF] text-white'
+                      ? 'bg-[#FF4F4F] text-white'
+                      : localProject.channel === 'LINKEDIN'
+                        ? 'bg-[#0085FF] text-white'
+                        : 'bg-[#D946EF] text-white'
                       }`}
                   >
                     {localProject.channel}
@@ -404,10 +404,10 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
 
                   <span
                     className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
-                        ? 'bg-red-500 text-white'
-                        : localProject.priority === 'NORMAL'
-                          ? 'bg-yellow-500 text-black'
-                          : 'bg-green-500 text-white'
+                      ? 'bg-red-500 text-white'
+                      : localProject.priority === 'NORMAL'
+                        ? 'bg-yellow-500 text-black'
+                        : 'bg-green-500 text-white'
                       }`}
                   >
                     {localProject.priority}
@@ -417,111 +417,111 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             </div>
           </div>
 
-        {/* Rework Information Box (Shown for all rework projects assigned to Sub-Editor) */}
-        {(isRework || isRejected) && localProject.assigned_to_role === Role.SUB_EDITOR && localProject.history && localProject.history.length > 0 && (
-          <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+          {/* Rework Information Box (Shown for all rework projects assigned to Sub-Editor) */}
+          {(isRework || isRejected) && localProject.history && localProject.history.length > 0 && (
+            <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
 
-            {/* Header */}
-            <div className="flex items-center space-x-2 mb-4">
-              <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-sm">!</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-black uppercase text-red-800">
-                  {isRejected ? 'Project Rejected' : 'Rework Required'}
-                </h2>
-                <p className="text-sm font-bold text-red-600">
-                  {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-
-              {/* Reviewer Comment */}
-              <div className="p-4 bg-white border-l-4 border-red-500">
-                <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
-                <p className="text-red-700">
-                  {getLatestReworkRejectComment(localProject, userRole)?.comment ||
-                    'No specific reason provided. Please review your submission and make necessary changes.'}
-                </p>
-                <p className="text-sm text-red-600 mt-2">
-                  {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
-                </p>
-              </div>
-
-              {/* Existing Project Data (READ-ONLY) */}
-              <div className="bg-white border-2 border-gray-300 p-4">
-                <h4 className="font-bold text-gray-800 mb-3">
-                  Existing Project Data
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                  {(localProject.delivery_date || isRework) && (
-
-                    <div>
-                      <span className="text-sm font-bold text-gray-600 block mb-1">
-                        Current Delivery Date
-                      </span>
-                      <p className="font-medium">{localProject.delivery_date}</p>
-                    </div>
-                  )}
-
-                  {localProject.edited_video_link && (
-                    <div>
-                      <span className="text-sm font-bold text-gray-600 block mb-1">
-                        Previous Edited Video
-                      </span>
-                      <a
-                        href={localProject.edited_video_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline break-all"
-                      >
-                        {localProject.edited_video_link}
-                      </a>
-                    </div>
-                  )}
-
-                  {localProject.video_link && (
-                    <div>
-                      <span className="text-sm font-bold text-gray-600 block mb-1">
-                        Raw Video Link
-                      </span>
-                      <a
-                        href={localProject.video_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 underline break-all"
-                      >
-                        {localProject.video_link}
-                      </a>
-                    </div>
-                  )}
-
-                  {localProject.shoot_date && (
-                    <div>
-                      <span className="text-sm font-bold text-gray-600 block mb-1">
-                        Shoot Date
-                      </span>
-                      <p className="font-medium">{localProject.shoot_date}</p>
-                    </div>
-                  )}
-
+              {/* Header */}
+              <div className="flex items-center space-x-2 mb-4">
+                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">!</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-red-800">
+                    {isRejected ? 'Project Rejected' : 'Rework Required'}
+                  </h2>
+                  <p className="text-sm font-bold text-red-600">
+                    {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+                  </p>
                 </div>
               </div>
 
-              {/* Instruction */}
-              <div className="bg-red-100 border-2 border-red-200 p-3">
-                <p className="text-sm text-red-800 font-bold">
-                  Please review the feedback above and submit a new edited video in the section below.
-                </p>
-              </div>
+              <div className="space-y-4">
 
+                {/* Reviewer Comment */}
+                <div className="p-4 bg-white border-l-4 border-red-500">
+                  <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+                  <p className="text-red-700">
+                    {getLatestReworkRejectComment(localProject, userRole)?.comment ||
+                      'No specific reason provided. Please review your submission and make necessary changes.'}
+                  </p>
+                  <p className="text-sm text-red-600 mt-2">
+                    {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
+                  </p>
+                </div>
+
+                {/* Existing Project Data (READ-ONLY) */}
+                <div className="bg-white border-2 border-gray-300 p-4">
+                  <h4 className="font-bold text-gray-800 mb-3">
+                    Existing Project Data
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {(localProject.delivery_date || isRework) && (
+
+                      <div>
+                        <span className="text-sm font-bold text-gray-600 block mb-1">
+                          Current Delivery Date
+                        </span>
+                        <p className="font-medium">{localProject.delivery_date}</p>
+                      </div>
+                    )}
+
+                    {localProject.edited_video_link && (
+                      <div>
+                        <span className="text-sm font-bold text-gray-600 block mb-1">
+                          Previous Edited Video
+                        </span>
+                        <a
+                          href={localProject.edited_video_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 underline break-all"
+                        >
+                          {localProject.edited_video_link}
+                        </a>
+                      </div>
+                    )}
+
+                    {localProject.video_link && (
+                      <div>
+                        <span className="text-sm font-bold text-gray-600 block mb-1">
+                          Raw Video Link
+                        </span>
+                        <a
+                          href={localProject.video_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 underline break-all"
+                        >
+                          {localProject.video_link}
+                        </a>
+                      </div>
+                    )}
+
+                    {localProject.shoot_date && (
+                      <div>
+                        <span className="text-sm font-bold text-gray-600 block mb-1">
+                          Shoot Date
+                        </span>
+                        <p className="font-medium">{localProject.shoot_date}</p>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+                {/* Instruction */}
+                <div className="bg-red-100 border-2 border-red-200 p-3">
+                  <p className="text-sm text-red-800 font-bold">
+                    Please review the feedback above and submit a new edited video in the section below.
+                  </p>
+                </div>
+
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
           {/* Raw Video from Cinematographer */}
           {localProject.video_link && (fromView !== 'SCRIPTS') && (
@@ -554,10 +554,10 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             </div>
             <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
               {localProject.data?.script_content ? (
-                <div 
-                  dangerouslySetInnerHTML={{ 
-                    __html: localProject.data.script_content 
-                  }} 
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: localProject.data.script_content
+                  }}
                 />
               ) : (
                 'No script content available'
@@ -580,7 +580,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                     {localProject.data?.writer_name || 'Writer name not available'}
                   </p>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
@@ -588,21 +588,21 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                       {localProject.data?.actor ?? 'Not specified'}
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
                     <p className="p-2 border-2 border-black font-medium bg-slate-50">
                       {localProject.data?.location ?? 'Not specified'}
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
                     <p className="p-2 border-2 border-black font-medium bg-slate-50">
                       {localProject.data?.lighting ?? 'Not specified'}
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
                     <p className="p-2 border-2 border-black font-medium bg-slate-50">
@@ -610,7 +610,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                     </p>
                   </div>
                 </div>
-                
+
                 {/* Cinematographer Comments */}
                 {localProject.data?.cine_comments && (
                   <div className="space-y-2">
@@ -758,45 +758,45 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
 
           {/* Project Info */}
           {fromView !== 'SCRIPTS' && (
-          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-            <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                <p className="font-bold text-slate-900 mt-1">
-                  {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-                </p>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-              </div>
-              {localProject.data?.niche && (
-                <div className="col-span-2">
-                  <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                  <p className="font-bold text-slate-900 mt-1 uppercase">
-                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                      : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                        : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                            ? localProject.data.niche_other
-                            : localProject.data.niche}
+            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+              <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                  <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                  <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                  <p className="font-bold text-slate-900 mt-1">
+                    {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
                   </p>
                 </div>
-              )}
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                  <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+                </div>
+                {localProject.data?.niche && (
+                  <div className="col-span-2">
+                    <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                    <p className="font-bold text-slate-900 mt-1 uppercase">
+                      {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                        : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                          : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                            : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                              ? localProject.data.niche_other
+                              : localProject.data.niche}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
           )}
-      </div>
-    </main>
+        </div>
+      </main>
       <div className="fixed inset-0 pointer-events-none z-50">
         {showPopup && (
           <Popup

@@ -17,13 +17,27 @@ interface Props {
 
 const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectProject, activeFilter, uploadedSubTab, onSetUploadedSubTab }) => {
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
+    const [activeRoleFilter, setActiveRoleFilter] = React.useState<Role | 'ALL' | 'POSTED'>('ALL');
 
     // Show all projects the cinematographer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
     const myTasks = React.useMemo(() => {
         if (activeFilter === 'SCRIPTS') {
-            // Use the script projects passed from parent when SCRIPTS filter is active
-            return scriptProjects || [];
+            let filtered = scriptProjects || [];
+
+            if (activeRoleFilter !== 'ALL') {
+                if (activeRoleFilter === 'POSTED') {
+                    filtered = filtered.filter(p => p.status === 'DONE' && p.data?.live_url);
+                } else {
+                    filtered = filtered.filter(p => {
+                        if (activeRoleFilter === Role.SUB_EDITOR) {
+                            return p.assigned_to_role === Role.SUB_EDITOR || p.assigned_to_role === Role.EDITOR;
+                        }
+                        return p.assigned_to_role === activeRoleFilter;
+                    });
+                }
+            }
+            return filtered;
         }
 
         // Sort projects by priority for Cine role:
@@ -49,7 +63,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
         });
 
         return sortedProjects;
-    }, [projects, scriptProjects, activeFilter]);
+    }, [projects, scriptProjects, activeFilter, activeRoleFilter]);
 
     if (selectedProject && activeFilter === 'SCRIPTS') {
         return (
@@ -71,6 +85,26 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     {myTasks.length} {myTasks.length === 1 ? 'project' : 'projects'} awaiting action
                 </p>
             </div>
+
+            {/* Role Filters for SCRIPTS view */}
+            {activeFilter === 'SCRIPTS' && (
+                <div className="overflow-x-auto pb-4">
+                    <div className="flex space-x-2 min-w-max">
+                        {['ALL', 'POSTED', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.SUB_EDITOR, Role.DESIGNER, Role.OPS].map((role) => (
+                            <button
+                                key={role}
+                                onClick={() => setActiveRoleFilter(role as Role | 'ALL' | 'POSTED')}
+                                className={`px-4 py-2 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
+                                        ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
+                                        : 'bg-white text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Sub-tabs for UPLOADED filter */}
             {activeFilter === 'UPLOADED' && onSetUploadedSubTab && (

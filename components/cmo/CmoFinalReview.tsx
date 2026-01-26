@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, Role, WorkflowStage } from '../../types';
 import { format } from 'date-fns';
-import { Eye, Calendar, FileText, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Eye, Calendar, FileText, CheckCircle, Clock } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoReviewScreen from './CmoReviewScreen';
@@ -15,15 +15,11 @@ interface Props {
 
 const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, selectedProject }) => {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadFinalReviewProjects = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        
+
         // Fetch projects where current_stage is FINAL_REVIEW_CMO or POST_WRITER_REVIEW
         const { data, error } = await supabase
           .from('projects')
@@ -91,36 +87,13 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
         }
       } catch (err) {
         console.error('Error loading final review projects:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load projects');
-      } finally {
-        setLoading(false);
       }
     };
 
     loadFinalReviewProjects();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#D946EF]"></div>
-      </div>
-    );
-  }
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
-        <div className="flex items-center">
-          <XCircle className="w-6 h-6 text-red-500 mr-3" />
-          <div>
-            <h3 className="font-bold text-red-800">Error Loading Projects</h3>
-            <p className="text-red-600 mt-1">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (selectedProject) {
     return (
@@ -178,20 +151,18 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                     </h3>
                     <div className="flex items-center gap-2 mt-2">
                       <span
-                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${
-                          project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                           project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                          'bg-[#D946EF] text-white'
-                        }`}
+                            'bg-[#D946EF] text-white'
+                          }`}
                       >
                         {project.channel}
                       </span>
                       <span
-                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${
-                          project.priority === 'HIGH' ? 'bg-red-500 text-white' :
+                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH' ? 'bg-red-500 text-white' :
                           project.priority === 'NORMAL' ? 'bg-yellow-500 text-black' :
-                          'bg-green-500 text-white'
-                        }`}
+                            'bg-green-500 text-white'
+                          }`}
                       >
                         {project.priority}
                       </span>
@@ -204,9 +175,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                   <div className="flex items-center gap-2">
                     <Eye className="w-4 h-4 text-slate-600" />
                     <span className="text-sm font-bold text-slate-700 uppercase">
-                      {project.current_stage === WorkflowStage.FINAL_REVIEW_CMO 
-                        ? 'Final Review CMO' 
-                        : 'Post Writer Review'}
+                      Final Review
                     </span>
                   </div>
                 </div>
@@ -217,29 +186,22 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                     <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                     <span className="font-bold text-slate-900">{project.writer_name || 'Unknown'}</span>
                   </div>
-                  
+
                   {project.editor_name && (
                     <div className="flex justify-between">
                       <span className="font-bold text-slate-400 uppercase text-xs">Editor</span>
                       <span className="font-bold text-slate-900">{project.editor_name}</span>
                     </div>
                   )}
-                  
+
                   <div className="flex justify-between">
                     <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
                     <span className="font-bold text-slate-900">
                       {format(new Date(project.created_at), 'MMM dd, yyyy')}
                     </span>
                   </div>
-                  
-                  {project.due_date && (
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-400 uppercase text-xs">Due</span>
-                      <span className="font-bold text-slate-900">
-                        {format(new Date(project.due_date), 'MMM dd, yyyy')}
-                      </span>
-                    </div>
-                  )}
+
+
                 </div>
 
                 {/* Action Button */}

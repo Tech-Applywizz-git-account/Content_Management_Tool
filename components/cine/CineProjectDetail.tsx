@@ -219,7 +219,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             let comment = isRework
                 ? `Rework video uploaded: ${videoLink}`
                 : `Raw video uploaded: ${videoLink}`;
-            
+
             // Add cinematographer comments if provided
             if (cineComments.trim()) {
                 comment += `\n\nCinematographer Comments: ${cineComments}`;
@@ -263,19 +263,19 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 rework_initiator_stage: undefined,
                 rework_target_role: undefined
             };
-            
+
             // Clear comments after storing them
             setCineComments('');
-                        
+
             // Update the existing updatedProjectData to clear comments after upload
             updatedProjectData.cine_comments = undefined; // Clear comments after upload
-                        
+
             await db.projects.update(localProject.id, {
                 video_link: videoLink,
                 cine_uploaded_at: new Date().toISOString(),
                 status: TaskStatus.WAITING_APPROVAL
             });
-            
+
             // Update the project data separately to clear rework metadata
             await db.updateProjectData(localProject.id, updatedProjectData);
 
@@ -288,12 +288,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 'CINE_VIDEO_UPLOADED', // specific action
                 `Raw video uploaded: ${videoLink}`
             );
-            
-            // Update project to move to VIDEO_EDITING stage
+
+            // Update project to move to MULTI_WRITER_APPROVAL stage for Writer review
             await db.projects.update(localProject.id, {
-                current_stage: WorkflowStage.VIDEO_EDITING,
-                assigned_to_role: Role.EDITOR,
-                status: TaskStatus.WAITING_APPROVAL
+                current_stage: WorkflowStage.MULTI_WRITER_APPROVAL,
+                assigned_to_role: Role.WRITER,
+                assigned_to_user_id: null,
+                status: TaskStatus.WAITING_APPROVAL,
+                visible_to_roles: ['WRITER', 'OPS']
             });
 
             // ✅ Update local state ONLY after success
@@ -393,13 +395,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 ...prev,
                 data: updatedData
             }));
-            
+
             // Update editing states to match saved values
             setEditingActorDetails(updatedData.actor ?? '');
             setEditingLocationDetails(updatedData.location ?? '');
             setEditingLightingDetails(updatedData.lighting ?? '');
             setEditingCameraAngles(updatedData.angles ?? '');
-            
+
             setPopupMessage('Cinematographer instructions updated successfully');
             setStageName('Instructions Updated');
             setShowPopup(true);
@@ -452,7 +454,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             </div>
 
             {/* Rework Information Box (Shown for rework projects assigned to Cine) */}
-            {(isRework || isRejected) && localProject.assigned_to_role === Role.CINE && localProject.history && localProject.history.length > 0 && (
+            {(isRework || isRejected) && localProject.history && localProject.history.length > 0 && (
                 <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center space-x-2 mb-4">
                         <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
@@ -477,7 +479,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
                             </p>
                         </div>
-                        
+
                         {/* Display forwarded comments from CMO and CEO - Hide when in footage upload tab */}
                         {activeFilter !== 'UPLOADED' && localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
                             <div className="mb-4">
@@ -487,7 +489,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
                                         .map((comment, index) => {
                                             const timestamp = new Date(comment.created_at).toLocaleString();
-                                            
+
                                             return (
                                                 <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
                                                     <div className="flex items-center">
@@ -507,7 +509,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 </div>
                             </div>
                         )}
-                        
+
                         {/* Existing Data Display */}
                         <div className="bg-white border-2 border-gray-300 p-4">
                             <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
@@ -623,7 +625,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             ...localProject.data,
                                             script_content: content
                                         };
-                                        
+
                                         await db.updateProjectData(localProject.id, updatedData);
 
                                         // Update local state to reflect the saved changes
@@ -643,7 +645,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         setStageName('Updated');
                                         setShowPopup(true);
                                         setPopupDuration(3000);
-                                        
+
                                         // Don't call onUpdate() here to prevent navigation back
                                     } catch (error) {
                                         console.error('Error updating script content:', error);
@@ -661,10 +663,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             />
                         ) : (
                             <>
-                                {localProject.data.script_content 
+                                {localProject.data.script_content
                                     ? <div className="prose max-w-none text-lg" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
                                     : 'No script content available'}
-                                
+
                                 {canEdit && (
                                     <div className="mt-4 flex justify-end">
                                         <button
@@ -723,7 +725,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     </a>
                                 </div>
                             )}
-                            
+
                             {/* Show thumbnail link if already submitted */}
                             {localProject.data?.cine_thumbnail_link && (
                                 <div className="bg-green-50 border-2 border-green-600 p-4">
@@ -743,7 +745,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     </div>
                                 </div>
                             )}
-                            
+
                             {/* Allow editing if user has permission, project hasn't completed footage upload, and thumbnail link hasn't been submitted */}
                             {!localProject.video_link && canEdit && !localProject.data?.cine_thumbnail_link && (
                                 <div className="space-y-4">
@@ -759,7 +761,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     ...localProject.data,
                                                     cine_thumbnail_link: newValue
                                                 };
-                                                
+
                                                 setLocalProject(prev => ({
                                                     ...prev,
                                                     data: updatedData
@@ -789,7 +791,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     };
 
                                                     await db.updateProjectData(localProject.id, updatedData);
-                                                    
+
                                                     setPopupMessage('Thumbnail link submitted successfully');
                                                     setStageName('Thumbnail Submitted');
                                                     setShowPopup(true);
@@ -828,7 +830,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     {localProject.data?.writer_name || 'Writer name not available'}
                                 </p>
                             </div>
-                                                    
+
                             {/* Fields that can be edited by cinematographer */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -847,7 +849,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         </p>
                                     )}
                                 </div>
-                                                            
+
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
                                     {canEdit ? (
@@ -864,7 +866,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         </p>
                                     )}
                                 </div>
-                                                            
+
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
                                     {canEdit ? (
@@ -881,7 +883,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         </p>
                                     )}
                                 </div>
-                                                            
+
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
                                     {canEdit ? (
@@ -899,7 +901,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     )}
                                 </div>
                             </div>
-                                                    
+
                             {/* Save button only when editing is allowed */}
                             {canEdit && (
                                 <div className="pt-4">
@@ -914,7 +916,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         </div>
                     </div>
                 )}
-                                
+
                 {/* Cinematographer Comments Section - Hidden for UPLOADED filter */}
                 {activeFilter !== 'UPLOADED' && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -930,7 +932,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             ) : (
                                 <p className="text-slate-500 italic">No cinematographer notes added yet</p>
                             )}
-                                            
+
                             {canEdit && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 uppercase">Add Comments</label>
@@ -947,17 +949,17 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                 alert('Please enter some comments');
                                                 return;
                                             }
-                                                            
+
                                             try {
                                                 // Get user session for workflow history
                                                 const { data: { session } } = await supabase.auth.getSession();
                                                 const user = session?.user;
-                
+
                                                 if (!user) {
                                                     alert('User not authenticated');
                                                     return;
                                                 }
-                                                                
+
                                                 // Record the action in workflow history
                                                 await db.workflow.recordAction(
                                                     localProject.id,
@@ -967,15 +969,15 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     'CINE_COMMENTS_ADDED', // Use appropriate action value
                                                     `Cinematographer added comments: ${cineComments.trim()}`
                                                 );
-                                                                
+
                                                 // Update project data with comments
                                                 const updatedData = {
                                                     ...localProject.data,
                                                     cine_comments: cineComments.trim()
                                                 };
-                                                                
+
                                                 await db.updateProjectData(localProject.id, updatedData);
-                                                                
+
                                                 setLocalProject(prev => ({
                                                     ...prev,
                                                     data: updatedData
@@ -1049,7 +1051,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : 'Upload Video'}
                                         </button>
                                     </div>
-                                    
+
                                     <p className="text-sm text-slate-500">
                                         🎬 Once uploaded, the Editor will be automatically notified
                                     </p>
@@ -1140,7 +1142,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 const ceoComments = localProject.forwarded_comments?.filter(comment => comment.from_role === 'CEO') || [];
                                 return ceoComments.map((comment, index) => {
                                     const timestamp = new Date(comment.created_at).toLocaleString();
-                                    
+
                                     return (
                                         <div key={`ceo-forwarded-${comment.id || index}`} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                             <div className="flex items-center mb-2">
