@@ -26,7 +26,7 @@ import OpsDashboard from './components/ops/OpsDashboard';
 import OpsProjectDetailPage from './components/ops/OpsProjectDetailPage';
 import OpsCeoApprovedDetailPage from './components/ops/OpsCeoApprovedDetailPage';
 import ObserverDashboard from './components/observer/ObserverDashboard';
-import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
+import WriterProjectDetailPage from './components/writer/WriterProjectDetail';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
 import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
 import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
