@@ -126,15 +126,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         return postedDate >= weekAgo;
     });
 
-    // CEO-approved projects (projects that have moved forward after CEO approval)
+    // CEO-approved projects (projects that have moved forward after CEO approval, but not yet completed)
+    // Updated to strictly use timestamp
     const ceoApproved = (inboxProjects || []).filter(p =>
-        p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-        p.current_stage === WorkflowStage.VIDEO_EDITING ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-        p.current_stage === WorkflowStage.OPS_SCHEDULING ||
-        p.current_stage === WorkflowStage.POSTED ||
-        p.ceo_approved_at
+        p.ceo_approved_at &&
+        !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)
     );
 
 
@@ -153,28 +149,28 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             ) : activeView === 'ceoapproved' ? (
                 <OpsCeoApproved projects={inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
             ) : activeView === 'ready-to-schedule' ? (
-                <OpsFilteredProjects 
-                    user={user} 
-                    projects={inboxProjects || []} 
-                    viewMode="ready-to-schedule" 
-                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
-                    onBack={() => handleViewChange('dashboard')} 
+                <OpsFilteredProjects
+                    user={user}
+                    projects={inboxProjects || []}
+                    viewMode="ready-to-schedule"
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)}
+                    onBack={() => handleViewChange('dashboard')}
                 />
             ) : activeView === 'scheduled-projects' ? (
-                <OpsFilteredProjects 
-                    user={user} 
-                    projects={inboxProjects || []} 
-                    viewMode="scheduled-projects" 
-                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
-                    onBack={() => handleViewChange('dashboard')} 
+                <OpsFilteredProjects
+                    user={user}
+                    projects={inboxProjects || []}
+                    viewMode="scheduled-projects"
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)}
+                    onBack={() => handleViewChange('dashboard')}
                 />
             ) : activeView === 'posted-this-week' ? (
-                <OpsFilteredProjects 
-                    user={user} 
-                    projects={inboxProjects || []} 
-                    viewMode="posted-this-week" 
-                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} 
-                    onBack={() => handleViewChange('dashboard')} 
+                <OpsFilteredProjects
+                    user={user}
+                    projects={inboxProjects || []}
+                    viewMode="posted-this-week"
+                    onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)}
+                    onBack={() => handleViewChange('dashboard')}
                 />
             ) : (
                 <div className="space-y-8 animate-fade-in">

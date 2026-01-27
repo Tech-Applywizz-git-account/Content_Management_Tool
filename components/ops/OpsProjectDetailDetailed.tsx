@@ -79,22 +79,6 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, 
                         </h2>
 
                         <div className="space-y-3 text-sm">
-                            {!hideProjectMeta && (
-                                <div className="flex justify-between">
-                                    <span className="font-bold text-slate-500">Project ID:</span>
-                                    <span className="font-mono text-slate-900">{project.id.substring(0, 8)}...</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between">
-                                <span className="font-bold text-slate-500">Created:</span>
-                                <span className="text-slate-900">{format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</span>
-                            </div>
-                            {!hideProjectMeta && (
-                                <div className="flex justify-between">
-                                    <span className="font-bold text-slate-500">Due Date:</span>
-                                    <span className="text-slate-900">{format(new Date(project.due_date), 'MMM dd, yyyy')}</span>
-                                </div>
-                            )}
                             <div className="flex justify-between">
                                 <span className="font-bold text-slate-500">Current Stage:</span>
                                 <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
@@ -114,6 +98,14 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, 
                                     }`}>
                                     {project.status}
                                 </span>
+                            </div>
+                            <div className="flex justify-between pt-2 border-t border-slate-200">
+                                <span className="font-bold text-slate-500">Writer:</span>
+                                <span className="font-bold text-slate-900">{project.writer_name || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-bold text-slate-500">Editor:</span>
+                                <span className="font-bold text-slate-900">{project.editor_name || 'N/A'}</span>
                             </div>
                         </div>
                     </div>
@@ -140,36 +132,7 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, 
                         </div>
                     )}
 
-                    {/* Creator Information */}
-                    {!hideCreatorInfo && (
-                        <div className="border-2 border-black p-6 bg-white">
-                            <h2 className="text-xl font-black uppercase mb-4 text-slate-900 flex items-center gap-2">
-                                <User size={20} className="text-purple-600" />
-                                Creator Information
-                            </h2>
 
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="font-bold text-slate-500">Writer:</span>
-                                    <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
-                                </div>
-                                {project.data?.cmo_name && (
-                                    <div className="flex justify-between">
-                                        <span className="font-bold text-slate-500">CMO:</span>
-                                        <span className="font-bold text-slate-900">{project.data.cmo_name}</span>
-                                    </div>
-                                )}
-                                {project.data?.brief && (
-                                    <div>
-                                        <span className="font-bold text-slate-500 block mb-1">Brief/Instructions:</span>
-                                        <p className="text-slate-700 text-sm bg-slate-50 p-2 rounded">
-                                            {project.data.brief}
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
 
 

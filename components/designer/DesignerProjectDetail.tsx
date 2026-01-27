@@ -42,10 +42,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     // Determine if current user can edit based on role and workflow state
     // Additional check for role-based access: if the current stage is THUMBNAIL_DESIGN/CREATIVE_DESIGN and user role is DESIGNER,
     // and the project is assigned to DESIGNER role, then allow access regardless of other factors
-    const roleBasedAccess = ((localProject.current_stage === 'THUMBNAIL_DESIGN' || localProject.current_stage === 'CREATIVE_DESIGN') && 
-                             userRole === 'DESIGNER' && 
-                             localProject.assigned_to_role === 'DESIGNER');
-    
+    const roleBasedAccess = ((localProject.current_stage === 'THUMBNAIL_DESIGN' || localProject.current_stage === 'CREATIVE_DESIGN') &&
+        userRole === 'DESIGNER' &&
+        localProject.assigned_to_role === 'DESIGNER');
+
     const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
     const hasAsset = isVideo
@@ -144,9 +144,9 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             const updatedDesignerVideoLinksHistory = [
                 ...(project.designer_video_links_history || []),
                 // Add the previous asset link if it exists and is different from the new one
-                ...(currentAssetLink && currentAssetLink !== link 
-                  ? [currentAssetLink] 
-                  : [])
+                ...(currentAssetLink && currentAssetLink !== link
+                    ? [currentAssetLink]
+                    : [])
             ];
 
             // Update the project with the file link and advance the workflow
@@ -159,13 +159,30 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 updates.creative_link = link;
             }
 
+            // Prepare update for cmo_rework_context
+            let updatedCmoReworkContext = localProject.data?.cmo_rework_context;
+
+            if (isRework && updatedCmoReworkContext?.before) {
+                updatedCmoReworkContext = {
+                    ...updatedCmoReworkContext,
+                    after: {
+                        video_link: localProject.video_link || null,
+                        edited_video_link: localProject.edited_video_link || null,
+                        thumbnail_link: isVideo ? link : (localProject.thumbnail_link || null),
+                        creative_link: !isVideo ? link : (localProject.data?.creative_link || localProject.creative_link || null),
+                        script_content: localProject.data?.script_content || null
+                    }
+                };
+            }
+
             await db.projects.update(localProject.id, {
                 ...updates,
                 designer_video_links_history: updatedDesignerVideoLinksHistory, // Store the history of video links
                 designer_uploaded_at: new Date().toISOString(), // Store timestamp
                 designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
                 data: {
-                    ...localProject.data
+                    ...localProject.data,
+                    cmo_rework_context: updatedCmoReworkContext
                 }
             });
 
@@ -688,8 +705,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             </div>
                         )}
 
-                        {/* FINAL STATE — ONLY IF NOT REWORK */}
-                        {hasAsset && !isRework && (
+                        {/* FINAL STATE — ONLY IF NOT REWORK - Check status explicitly to override historical data */}
+                        {hasAsset && !isRework && localProject.status !== 'REWORK' && (
                             <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
                                 <p className="text-sm font-bold uppercase text-green-800">
                                     ✓ {isVideo ? 'Thumbnail' : 'Creative'} Delivered

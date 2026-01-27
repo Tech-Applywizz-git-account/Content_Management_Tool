@@ -47,6 +47,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
+
     // Reset comment inputs when action changes
     useEffect(() => {
         setApproveComment('');
@@ -98,74 +99,110 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     };
 
 
+    const [reworkTargetRole, setReworkTargetRole] = useState<Role | null>(null);
+
     useEffect(() => {
-        const fetchPreviousScript = async () => {
-            // Identify if the project is returning from rework
-            // The key condition is that there's a ceo_rework_at timestamp and writer_submitted_at is after it
-            const isReturnFromRework = project.ceo_rework_at && project.writer_submitted_at &&
-                new Date(project.writer_submitted_at) > new Date(project.ceo_rework_at);
+        const fetchPreviousVersion = async () => {
+            console.log('CEO Review: Starting fetchPreviousVersion for project:', project.id);
 
-            console.log('CEO Review: Project has ceo_rework_at:', project.ceo_rework_at);
-            console.log('CEO Review: Project has writer_submitted_at:', project.writer_submitted_at);
-            console.log('CEO Review: Is return from rework:', isReturnFromRework);
+            // Fetch history to find the last rework action
+            const { data: historyData, error: historyError } = await supabase
+                .from('workflow_history')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage')
+                .eq('project_id', project.id)
+                .order('timestamp', { ascending: false })
+                .limit(50);
 
-            if (isReturnFromRework) {
-                console.log('CEO Review: Fetching previous script for rework comparison');
+            if (historyError) {
+                console.error('Error fetching history:', historyError);
+                return;
+            }
 
-                const { data: historyData, error: historyError } = await supabase
-                    .from('workflow_history')
-                    .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp')
-                    .eq('project_id', project.id)
-                    .order('timestamp', { ascending: false })
-                    .limit(50);
-
-                if (historyError) {
-                    console.error('Error fetching previous script:', historyError);
-                } else if (historyData && historyData.length > 0) {
-                    console.log('CEO Review: History data found:', historyData.length, 'entries');
-
-                    // Find the script content that existed just before ceo_rework_at
-                    // Find the workflow entry with script_content IS NOT NULL whose timestamp < project.ceo_rework_at
-                    // Closest to (just before) ceo_rework_at
-                    const sortedHistory = [...historyData].sort((a, b) =>
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                    );
-
-                    for (const entry of sortedHistory) {
-                        // Look for an entry that was created before the CEO rework request
-                        // That has script_content and whose timestamp is before ceo_rework_at
-                        if (entry.script_content &&
-                            new Date(entry.timestamp) < new Date(project.ceo_rework_at)) {
-                            console.log('CEO Review: Found previous script content before CEO rework at:', entry.timestamp);
-                            setPreviousScript(entry.script_content);
-                            console.log('CEO Review: Previous script set');
-                            break;
-                        }
-                    }
-
-                    // Set previous asset links from the entry that was before rework
-                    const prevAssetsEntry = sortedHistory.find(entry =>
-                        new Date(entry.timestamp) < new Date(project.ceo_rework_at)
-                    );
-
-                    if (prevAssetsEntry) {
-                        setPreviousAssets({
-                            video_link: prevAssetsEntry.video_link,
-                            edited_video_link: prevAssetsEntry.edited_video_link,
-                            thumbnail_link: prevAssetsEntry.thumbnail_link,
-                            creative_link: prevAssetsEntry.creative_link
-                        });
-                    }
-                }
-            } else {
-                // If not returning from rework, clear previous script
+            if (!historyData || historyData.length === 0) {
+                console.log('CEO Review: No history data found for project:', project.id);
                 setPreviousScript(null);
                 setPreviousAssets(null);
+                setReworkTargetRole(null);
+                return;
+            }
+
+            // Find the most recent REWORK or REJECT action
+            const lastReworkIndex = historyData.findIndex(entry =>
+                ['REWORK', 'REJECTED'].includes(entry.action)
+            );
+
+            console.log('CEO Review: Last rework index:', lastReworkIndex);
+
+            if (lastReworkIndex !== -1) {
+                const reworkEntry = historyData[lastReworkIndex];
+                console.log('CEO Review: Found rework entry at:', reworkEntry.timestamp);
+
+                // STRICT CEO FILTER: Only show rework comparison if the rework was initiated by the CEO
+                if (reworkEntry.stage !== WorkflowStage.FINAL_REVIEW_CEO) {
+                    console.log('CEO Review: Ignoring rework from non-CEO stage:', reworkEntry.stage);
+                    setPreviousScript(null);
+                    setPreviousAssets(null);
+                    setReworkTargetRole(null);
+                    return;
+                }
+
+                // Identify who performed the rework (aka who submitted the changes AFTER the rework request)
+                // We look at actions occurring *more recently* than lastReworkIndex
+                const recentHistory = historyData.slice(0, lastReworkIndex);
+                let detectedRole: Role | null = null;
+
+                // Check for explicit rework submission actions first
+                if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
+                    detectedRole = Role.EDITOR;
+                } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
+                    detectedRole = Role.CINE;
+                } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
+                    detectedRole = Role.DESIGNER;
+                } else {
+                    // Fallback: If no explicit REWORK_... action, infer from what changed
+                    // We compare the CURRENT project state (project object) with the REWORK entry (snapshot at rework time)
+                    // Note: This assumes 'project' has the NEW values and 'reworkEntry' has the OLD values.
+
+                    if (project.video_link !== reworkEntry.video_link) detectedRole = Role.CINE;
+                    else if (project.edited_video_link !== reworkEntry.edited_video_link) detectedRole = Role.EDITOR;
+                    else if (project.thumbnail_link !== reworkEntry.thumbnail_link || project.data?.creative_link !== reworkEntry.creative_link) detectedRole = Role.DESIGNER;
+
+                    // If still no role detected, maybe check legacy logic or default?
+                    if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
+                        // Legacy handling
+                        if (reworkEntry.edited_video_link !== project.edited_video_link) detectedRole = Role.EDITOR;
+                    }
+
+                    if (!detectedRole && reworkEntry.stage === 'VIDEO_EDITING') {
+                        detectedRole = Role.EDITOR;
+                    }
+                }
+
+                setReworkTargetRole(detectedRole);
+
+                // Set previous script
+                if (reworkEntry.script_content) {
+                    setPreviousScript(reworkEntry.script_content);
+                }
+
+                // Set previous assets
+                setPreviousAssets({
+                    video_link: reworkEntry.video_link,
+                    edited_video_link: reworkEntry.edited_video_link,
+                    thumbnail_link: reworkEntry.thumbnail_link,
+                    creative_link: reworkEntry.creative_link
+                });
+
+            } else {
+                console.log('CEO Review: No recent rework found in history');
+                setPreviousScript(null);
+                setPreviousAssets(null);
+                setReworkTargetRole(null);
             }
         };
 
-        fetchPreviousScript();
-    }, [project.id, project.ceo_rework_at, project.writer_submitted_at, project.data?.script_content]);
+        fetchPreviousVersion();
+    }, [project.id, project.ceo_rework_at, project.writer_submitted_at]);
 
     const downloadPDF = async () => {
         if (!scriptContentRef.current) return;
@@ -450,7 +487,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             >
                                 {project.priority}
                             </span>
-                            {previousScript && (
+                            {(previousScript || previousAssets) && (
                                 <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-[#FFD952] text-black">
                                     REWORK
                                 </span>
@@ -489,7 +526,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : (previousScript || previousAssets) ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -710,272 +747,253 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <section className="space-y-4 pt-6 border-t-4 border-black">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
 
-                            {previousScript ? (
-                                // Show both previous and current assets side by side for rework projects
-                                <div className="space-y-8">
-                                    {/* Script Reference Link */}
+                            {previousScript || previousAssets ? (
+                                (() => {
+                                    // Helper logic to determine if we should show previous assets
+                                    // We show previous if:
+                                    // 1. We identified the target role for that asset type
+                                    // 2. The previous asset exists
+                                    // Note: We deliberately DO NOT check if previous !== current. 
+                                    // If they are the same, we still want to show them side-by-side to highlight that NO CHANGE was made.
+                                    const showPreviousRaw = reworkTargetRole === Role.CINE && previousAssets?.video_link;
+                                    const showPreviousEdited = reworkTargetRole === Role.EDITOR && previousAssets?.edited_video_link;
+                                    const showPreviousCreative = reworkTargetRole === Role.DESIGNER && (previousAssets?.thumbnail_link || previousAssets?.creative_link);
 
-
-                                    {/* Raw Video Assets */}
-                                    {isVideo && (project.video_link || previousAssets?.video_link) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Raw Video */}
-                                            {previousAssets?.video_link && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Raw Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">Original footage</p>
-                                                        </div>
-                                                        <a href={previousAssets.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Current Raw Video */}
-                                            {project.video_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Raw Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">Original footage</p>
-                                                        </div>
-                                                        <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Edited Video Assets */}
-                                    {isVideo && (project.edited_video_link || previousAssets?.edited_video_link || (project.editor_video_links_history && project.editor_video_links_history.length > 0)) && (
-                                        <div className="space-y-6">
-                                            {/* Previous Edited Videos from history */}
-                                            {project.editor_video_links_history && project.editor_video_links_history.length > 0 && (
-                                                <div className="grid grid-cols-2 gap-6">
-                                                    {project.editor_video_links_history.map((link, index) => (
-                                                        <div key={`prev-edited-${index}`} className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                            <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                                <h4 className="font-black text-slate-900 text-sm uppercase text-center">Old Edited Video #{index + 1}</h4>
-                                                            </div>
-                                                            <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                                <Video className="w-16 h-16 opacity-50" />
-                                                            </div>
-                                                            <div className="p-4 flex justify-between items-center bg-white">
-                                                                <div>
-                                                                    <p className="font-black text-slate-900 text-sm uppercase">Edited_Video_Old_#{index + 1}.mp4</p>
-                                                                    <p className="text-xs text-slate-500 font-bold">Previous version</p>
+                                    return (
+                                        // Show both previous and current assets side by side for rework projects
+                                        <div className="space-y-8 max-w-4xl mx-auto">
+                                            {/* Raw Video Assets */}
+                                            {isVideo && (project.video_link || previousAssets?.video_link) && (
+                                                <div className="space-y-2">
+                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Raw Video */}
+                                                        {showPreviousRaw && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.video_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
                                                                 </div>
-                                                                <a href={link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* Previous Edited Video (from workflow history) */}
-                                            {previousAssets?.edited_video_link && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Edited Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
-                                                        </div>
-                                                        <a href={previousAssets.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Current Edited Video */}
-                                            {project.edited_video_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Edited Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
-                                                        </div>
-                                                        <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Thumbnail/Creative Assets */}
-                                    {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || (previousScript && project.data?.creative_link) || (project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
-                                        <div className="space-y-6">
-                                            {/* Previous Thumbnails/Creatives from history */}
-                                            {project.designer_video_links_history && project.designer_video_links_history.length > 0 && (
-                                                <div className="grid grid-cols-2 gap-6">
-                                                    {project.designer_video_links_history.map((link, index) => (
-                                                        <div key={`prev-design-${index}`} className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                            <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                                <h4 className="font-black text-slate-900 text-sm uppercase text-center">Old Creative #{index + 1}</h4>
-                                                            </div>
-                                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                                <ImageIcon className="w-16 h-16" />
-                                                            </div>
-                                                            <div className="p-4 flex justify-between items-center bg-white">
-                                                                <div>
-                                                                    <p className="font-black text-slate-900 text-sm uppercase">Creative_Old_#{index + 1}.png</p>
-                                                                    <p className="text-xs text-slate-500 font-bold">Previous version</p>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={previousAssets!.video_link!} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
                                                                 </div>
-                                                                <a href={link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Original</span>
+                                                                    <a href={previousAssets!.video_link!} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                                        )}
 
-                                            {/* Previous Thumbnail/Creative (from workflow history) */}
-                                            {(previousAssets?.thumbnail_link || previousAssets?.creative_link) && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">
-                                                                {previousAssets?.thumbnail_link ? 'Creative_Thumbnail.png' : 'Creative Link'}
-                                                            </p>
-                                                            <p className="text-xs text-slate-500 font-bold">
-                                                                {previousAssets?.thumbnail_link ? 'PNG • 2mb' : 'External Link'}
-                                                            </p>
-                                                        </div>
-                                                        <a href={previousAssets.thumbnail_link || previousAssets.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">
-                                                            {previousAssets?.thumbnail_link ? 'View File' : 'View Link'}
-                                                        </a>
+                                                        {/* Current Raw Video */}
+                                                        {project.video_link && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showPreviousRaw ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={project.video_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* Current Thumbnail/Creative or Creative Link */}
-                                            {project.thumbnail_link ? (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
-                                                            <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
-                                                        </div>
-                                                        <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                            {/* Edited Video Assets */}
+                                            {isVideo && (project.edited_video_link || previousAssets?.edited_video_link) && (
+                                                <div className="space-y-2">
+                                                    {(showPreviousEdited || project.edited_video_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Edited Video</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Edited Video */}
+                                                        {showPreviousEdited && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.edited_video_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={previousAssets!.edited_video_link!} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Old Edit</span>
+                                                                    <a href={previousAssets!.edited_video_link!} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Current Edited Video */}
+                                                        {project.edited_video_link && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showPreviousEdited ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            ) : project.data?.creative_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative Link</p>
-                                                            <p className="text-xs text-slate-500 font-bold">External Link</p>
-                                                        </div>
-                                                        <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View Link</a>
+                                            )}
+
+                                            {/* Thumbnail/Creative Assets */}
+                                            {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || previousAssets?.creative_link) && (
+                                                <div className="space-y-2">
+                                                    {(showPreviousCreative || project.thumbnail_link || project.data?.creative_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Creative Assets</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Thumbnail/Creative */}
+                                                        {showPreviousCreative && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.thumbnail_link || project.data?.creative_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group overflow-hidden">
+                                                                    {previousAssets?.thumbnail_link ? (
+                                                                        <img src={previousAssets.thumbnail_link} alt="Previous" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <ImageIcon className="w-10 h-10" />
+                                                                    )}
+                                                                    <a href={previousAssets!.thumbnail_link || previousAssets!.creative_link!} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Old Design</span>
+                                                                    <a href={previousAssets!.thumbnail_link || previousAssets!.creative_link!} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Current Thumbnail/Creative */}
+                                                        {(project.thumbnail_link || project.data?.creative_link) && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showPreviousCreative ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group overflow-hidden">
+                                                                    {project.thumbnail_link ? (
+                                                                        <img src={project.thumbnail_link} alt="Current" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <ImageIcon className="w-10 h-10" />
+                                                                    )}
+                                                                    <a href={project.thumbnail_link || project.data?.creative_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={project.thumbnail_link || project.data?.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
-                                    )}
-                                </div>
+                                    );
+                                })()
                             ) : (
                                 // Show single assets for non-rework projects
-                                <div className="grid grid-cols-3 gap-6">
-                                    {/* Script Reference Link */}
-
-
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (
-                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                            <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
-                                                <Video className="w-16 h-16 opacity-50" />
+                                        <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                <h4 className="font-black text-white text-xs uppercase text-center">Raw Video</h4>
                                             </div>
-                                            <div className="p-4 flex justify-between items-center bg-white">
+                                            <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                <Video className="w-10 h-10 opacity-50" />
+                                                <a href={project.video_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                    <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                </a>
+                                            </div>
+                                            <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">Original footage</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">Raw_Video.mp4</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">Original</p>
                                                 </div>
-                                                <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
                                             </div>
                                         </div>
                                     )}
 
                                     {/* Edited Video Asset */}
                                     {isVideo && project.edited_video_link && (
-                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                            <div className="aspect-video bg-black flex items-center justify-center text-white border-b-2 border-black">
-                                                <Video className="w-16 h-16 opacity-50" />
+                                        <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                <h4 className="font-black text-white text-xs uppercase text-center">Edited Video</h4>
                                             </div>
-                                            <div className="p-4 flex justify-between items-center bg-white">
+                                            <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                <Video className="w-10 h-10 opacity-50" />
+                                                <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                    <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                </a>
+                                            </div>
+                                            <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">Edited_Video.mp4</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">Final Edit</p>
                                                 </div>
-                                                <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
                                             </div>
                                         </div>
                                     )}
 
                                     {/* Thumbnail/Creative Asset */}
                                     {project.thumbnail_link ? (
-                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
-                                                <ImageIcon className="w-16 h-16" />
+                                        <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                <h4 className="font-black text-white text-xs uppercase text-center">Creative</h4>
                                             </div>
-                                            <div className="p-4 flex justify-between items-center bg-white">
+                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group overflow-hidden">
+                                                <img src={project.thumbnail_link} alt="Creative" className="w-full h-full object-cover" />
+                                                <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                    <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                </a>
+                                            </div>
+                                            <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
-                                                    <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">Creative_Thumbnail.png</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">PNG</p>
                                                 </div>
-                                                <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
                                             </div>
                                         </div>
                                     ) : project.data?.creative_link && (
-                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 border-b-2 border-black">
-                                                <ImageIcon className="w-16 h-16" />
+                                        <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                <h4 className="font-black text-white text-xs uppercase text-center">Creative Link</h4>
                                             </div>
-                                            <div className="p-4 flex justify-between items-center bg-white">
+                                            <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group">
+                                                <ImageIcon className="w-10 h-10" />
+                                                <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                    <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                </a>
+                                            </div>
+                                            <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Creative Link</p>
-                                                    <p className="text-xs text-slate-500 font-bold">External Link</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">Creative Link</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">External</p>
                                                 </div>
-                                                <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View Link</a>
+                                                <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Open</a>
                                             </div>
                                         </div>
                                     )}
@@ -1173,7 +1191,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </button>
                     </div>
                 </div>
-            </div>
+            </div >
             {showPopup && (
                 <Popup
                     message={popupMessage}
@@ -1187,49 +1205,51 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             )}
 
             {/* Confirmation Popup */}
-            {showConfirmation && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    {console.log('Rendering confirmation popup', { confirmationAction })}
-                    <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-2xl font-black uppercase">Confirm Action</h3>
-                            <button
-                                onClick={() => setShowConfirmation(false)}
-                                className="text-slate-500 hover:text-slate-700"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <p className="mb-6">
-                            {confirmationAction === 'APPROVE' && 'Are you sure you want to approve this content?'}
-                            {confirmationAction === 'REWORK' && 'Are you sure you want to send this content back for rework?'}
-                            {confirmationAction === 'REJECT' && 'Are you sure you want to reject this content?'}
-                        </p>
-                        <div className="flex space-x-4">
-                            <button
-                                onClick={() => setShowConfirmation(false)}
-                                className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
-                            >
-                                No
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setShowConfirmation(false);
-                                    handleSubmit();
-                                }}
-                                className={`flex-1 px-4 py-3 border-2 border-black font-black uppercase transition-colors ${confirmationAction === 'REWORK' ? 'bg-[#FFD952] text-black' :
-                                    confirmationAction === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
-                                        confirmationAction === 'APPROVE' ? 'bg-[#0085FF] text-white' :
-                                            'bg-slate-200 text-slate-400'
-                                    }`}
-                            >
-                                Yes
-                            </button>
+            {
+                showConfirmation && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        {console.log('Rendering confirmation popup', { confirmationAction })}
+                        <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-2xl font-black uppercase">Confirm Action</h3>
+                                <button
+                                    onClick={() => setShowConfirmation(false)}
+                                    className="text-slate-500 hover:text-slate-700"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+                            <p className="mb-6">
+                                {confirmationAction === 'APPROVE' && 'Are you sure you want to approve this content?'}
+                                {confirmationAction === 'REWORK' && 'Are you sure you want to send this content back for rework?'}
+                                {confirmationAction === 'REJECT' && 'Are you sure you want to reject this content?'}
+                            </p>
+                            <div className="flex space-x-4">
+                                <button
+                                    onClick={() => setShowConfirmation(false)}
+                                    className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
+                                >
+                                    No
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowConfirmation(false);
+                                        handleSubmit();
+                                    }}
+                                    className={`flex-1 px-4 py-3 border-2 border-black font-black uppercase transition-colors ${confirmationAction === 'REWORK' ? 'bg-[#FFD952] text-black' :
+                                        confirmationAction === 'REJECT' ? 'bg-[#FF4F4F] text-white' :
+                                            confirmationAction === 'APPROVE' ? 'bg-[#0085FF] text-white' :
+                                                'bg-slate-200 text-slate-400'
+                                        }`}
+                                >
+                                    Yes
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

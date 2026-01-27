@@ -35,16 +35,20 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
   // Use the new workflow state logic with role context
   const workflowState = getWorkflowStateForRole(localProject, userRole);
-  const isRework = workflowState.isTargetedRework || workflowState.isRework;
+  // Robust check for rework status: Use helper or check status directly
+  const isRework = workflowState.isTargetedRework ||
+    workflowState.isRework ||
+    (localProject.status === 'REWORK' && localProject.assigned_to_role === userRole);
+
   const isRejected = workflowState.isRejected;
 
   // Determine if current user can edit based on role and workflow state
-  // Additional check for role-based access: if the current stage is VIDEO_EDITING and user role is EDITOR,
-  // and the project is assigned to EDITOR role, then allow access regardless of other factors
-  const roleBasedAccess = (localProject.current_stage === 'VIDEO_EDITING' && 
-                           userRole === 'EDITOR' && 
-                           localProject.assigned_to_role === 'EDITOR');
-  
+  // Additional check for role-based access: if the current stage is VIDEO_EDITING or status is REWORK 
+  // and user role is EDITOR, and the project is assigned to EDITOR role
+  const roleBasedAccess = ((localProject.current_stage === 'VIDEO_EDITING' || localProject.status === 'REWORK') &&
+    userRole === 'EDITOR' &&
+    localProject.assigned_to_role === 'EDITOR');
+
   const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
   const hasEditedVideo = !!localProject.edited_video_link;
@@ -176,10 +180,26 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       const updatedEditorVideoLinksHistory = [
         ...(project.editor_video_links_history || []),
         // Add the previous video link if it exists and is different from the new one
-        ...(project.edited_video_link && project.edited_video_link !== editedVideoLink 
-          ? [project.edited_video_link] 
+        ...(project.edited_video_link && project.edited_video_link !== editedVideoLink
+          ? [project.edited_video_link]
           : [])
       ];
+
+      // Update cmo_rework_context if this is a rework submission
+      let updatedCmoReworkContext = project.data?.cmo_rework_context;
+
+      if (isRework && updatedCmoReworkContext?.before) {
+        updatedCmoReworkContext = {
+          ...updatedCmoReworkContext,
+          after: {
+            video_link: project.video_link || null,
+            edited_video_link: editedVideoLink, // New input
+            thumbnail_link: project.thumbnail_link || null,
+            creative_link: project.data?.creative_link || null,
+            script_content: project.data?.script_content || null
+          }
+        };
+      }
 
       // Update the project with the edited video link and advance the workflow
       // This will properly check thumbnail_required and route to correct stage
@@ -196,7 +216,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         data: {
           ...project.data,
           needs_sub_editor: false,
-          thumbnail_required: project.data?.thumbnail_required
+          thumbnail_required: project.data?.thumbnail_required,
+          cmo_rework_context: updatedCmoReworkContext
         }
       });
       // Update project data to persist any changes made during this session
@@ -301,7 +322,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       </div>
 
       {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
-      {(isRework || isRejected) && project.history?.length > 0 && (
+      {(isRework || isRejected) && (
         <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
 
           {/* Header */}
@@ -325,40 +346,43 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <div className="p-4 bg-white border-l-4 border-red-500">
               <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
               <p className="text-red-700">
-                {getLatestReworkRejectComment(project, userRole)?.comment ||
+                {getLatestReworkRejectComment(localProject, userRole)?.comment ||
                   'No specific reason provided. Please review your submission and make necessary changes.'}
               </p>
               <p className="text-sm text-red-600 mt-2">
-                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project, userRole)?.actor_name || 'Reviewer'}
+                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
               </p>
             </div>
 
             {/* Display forwarded comments from CMO and CEO */}
-            {project?.forwarded_comments && project.forwarded_comments.length > 0 && (
+            {localProject?.forwarded_comments && Array.isArray(localProject.forwarded_comments) && localProject.forwarded_comments.length > 0 && (
               <div className="mb-4">
                 <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
                 <div className="space-y-2 ml-2">
-                  {project.forwarded_comments
-                    .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
+                  {localProject.forwarded_comments
                     .map((comment, index) => {
-                      const timestamp = new Date(comment.created_at).toLocaleString();
+                      // If comment has actor_name, use it; otherwise, default to "Reviewer"
+                      const actorName = comment.actor_name || 'Reviewer';
+
+                      // Check if the actor is CMO or CEO based on the name
+                      const isCmoOrCeo = ['CMO', 'CEO', 'cmo', 'ceo'].some(role =>
+                        actorName.toLowerCase().includes(role.toLowerCase())
+                      );
+
+                      // Only show if it's from CMO/CEO
+                      if (!isCmoOrCeo) return null;
 
                       return (
-                        <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
+                        <div key={`forwarded-${index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
                           <div className="flex items-center">
-                            <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
-                            <span className="mx-2 text-slate-400">•</span>
-                            <span className="text-xs text-slate-500">{timestamp}</span>
+                            <span className="font-bold text-blue-700">{actorName} Comment</span>
                           </div>
                           <div className="mt-1">
-                            <span className="px-1.5 py-0.5 text-xs font-black uppercase border border-black bg-blue-500 text-white">
-                              {comment.action}
-                            </span>
                             <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
                           </div>
                         </div>
                       );
-                    })}
+                    }).filter(Boolean)}
                 </div>
               </div>
             )}
@@ -371,54 +395,54 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                {(project.delivery_date || isRework) && (
+                {(localProject.delivery_date || isRework) && (
 
                   <div>
                     <span className="text-sm font-bold text-gray-600 block mb-1">
                       Current Delivery Date
                     </span>
-                    <p className="font-medium">{project.delivery_date}</p>
+                    <p className="font-medium">{localProject.delivery_date}</p>
                   </div>
                 )}
 
-                {project.edited_video_link && (
+                {localProject.edited_video_link && (
                   <div>
                     <span className="text-sm font-bold text-gray-600 block mb-1">
                       Previous Edited Video
                     </span>
                     <a
-                      href={project.edited_video_link}
+                      href={localProject.edited_video_link}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 underline break-all"
                     >
-                      {project.edited_video_link}
+                      {localProject.edited_video_link}
                     </a>
                   </div>
                 )}
 
-                {project.video_link && (
+                {localProject.video_link && (
                   <div>
                     <span className="text-sm font-bold text-gray-600 block mb-1">
                       Raw Video Link
                     </span>
                     <a
-                      href={project.video_link}
+                      href={localProject.video_link}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 underline break-all"
                     >
-                      {project.video_link}
+                      {localProject.video_link}
                     </a>
                   </div>
                 )}
 
-                {project.shoot_date && (
+                {localProject.shoot_date && (
                   <div>
                     <span className="text-sm font-bold text-gray-600 block mb-1">
                       Shoot Date
                     </span>
-                    <p className="font-medium">{project.shoot_date}</p>
+                    <p className="font-medium">{localProject.shoot_date}</p>
                   </div>
                 )}
 
@@ -752,7 +776,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             )}
 
             {/* Show input if user has edit permissions */}
-            {(canEdit || !hasEditedVideo) && (
+            {(canEdit || !hasEditedVideo || isRework) && (
               <div className="space-y-4">
                 <p className="text-slate-600 font-medium">
                   {isRejected
@@ -781,8 +805,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               </div>
             )}
 
-            {/* Delivered state ONLY for non-rework */}
-            {hasEditedVideo && !isRework && (
+            {/* Delivered state ONLY for non-rework - Check status explicitly to override historical data */}
+            {hasEditedVideo && !isRework && localProject.status !== 'REWORK' && (
               <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
                 <p className="text-sm font-bold uppercase text-green-800">
                   ✓ Edited Video Delivered

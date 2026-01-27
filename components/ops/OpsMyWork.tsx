@@ -14,10 +14,10 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
     // Filter projects to show only pending works by default
     const filteredProjects = projects.filter(project => {
         // Check if project is completed/posted
-        const isCompleted = project.status === TaskStatus.DONE || 
-                           project.data?.live_url || 
-                           project.current_stage === WorkflowStage.POSTED;
-        
+        const isCompleted = project.status === TaskStatus.DONE ||
+            project.data?.live_url ||
+            project.current_stage === WorkflowStage.POSTED;
+
         switch (filterCategory) {
             case 'pending':
                 // Show only pending/active projects (not completed)
@@ -27,15 +27,8 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                 return isCompleted;
             case 'ceoapproved':
                 // CEO approved projects - must be approved by CEO and not completed
-                return (
-                    project.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-                    project.current_stage === WorkflowStage.VIDEO_EDITING ||
-                    project.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                    project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                    project.current_stage === WorkflowStage.OPS_SCHEDULING ||
-                    project.current_stage === WorkflowStage.POSTED ||
-                    project.ceo_approved_at
-                ) && !isCompleted;
+                // STRICT CHECK: Only check the timestamp, do not infer from stage
+                return !!project.ceo_approved_at && !isCompleted;
             case 'readytoschedule':
                 // Strict filter for ready to schedule projects
                 return (
@@ -126,7 +119,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                 >
                                     {project.channel}
                                 </span>
-                                
+
                                 <div className="flex gap-2">
                                     <span
                                         className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
@@ -138,7 +131,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                     >
                                         {project.priority}
                                     </span>
-                                    
+
                                     {project.status === 'REJECTED' ? (
                                         <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase flex items-center gap-1">
                                             <AlertTriangle size={12} />
@@ -197,29 +190,48 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
 
                             {/* Approval Status Grid */}
                             <div className="grid grid-cols-2 gap-3 mb-4">
-                                {/* CMO Approval Status */}
-                                <div className="flex items-center gap-2 text-sm p-2 bg-slate-50 border border-slate-200 rounded">
-                                    {project.cmo_approved_at ? (
-                                        <CheckCircle size={14} className="text-green-600" />
-                                    ) : (
-                                        <AlertTriangle size={14} className="text-red-500" />
-                                    )}
-                                    <span className={`font-bold ${project.cmo_approved_at ? 'text-green-700' : 'text-red-500'}`}>
-                                        {project.cmo_approved_at ? 'CMO Approved' : 'CMO Pending'}
-                                    </span>
-                                </div>
+                                {(() => {
+                                    // Infer Final Review Status from Stage because timestamps might capture Script Approval
+                                    const isCmoFinalApproved = [
+                                        WorkflowStage.FINAL_REVIEW_CEO,
+                                        WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL,
+                                        WorkflowStage.OPS_SCHEDULING,
+                                        WorkflowStage.POSTED
+                                    ].includes(project.current_stage) || !!project.data?.live_url;
 
-                                {/* CEO Approval Status */}
-                                <div className="flex items-center gap-2 text-sm p-2 bg-slate-50 border border-slate-200 rounded">
-                                    {project.ceo_approved_at ? (
-                                        <CheckCircle size={14} className="text-green-600" />
-                                    ) : (
-                                        <AlertTriangle size={14} className="text-red-500" />
-                                    )}
-                                    <span className={`font-bold ${project.ceo_approved_at ? 'text-green-700' : 'text-red-500'}`}>
-                                        {project.ceo_approved_at ? 'CEO Approved' : 'CEO Pending'}
-                                    </span>
-                                </div>
+                                    const isCeoFinalApproved = [
+                                        WorkflowStage.OPS_SCHEDULING,
+                                        WorkflowStage.POSTED
+                                    ].includes(project.current_stage) || !!project.data?.live_url;
+
+                                    return (
+                                        <>
+                                            {/* CMO Approval Status */}
+                                            <div className="flex items-center gap-2 text-sm p-2 bg-slate-50 border border-slate-200 rounded">
+                                                {isCmoFinalApproved ? (
+                                                    <CheckCircle size={14} className="text-green-600" />
+                                                ) : (
+                                                    <AlertTriangle size={14} className="text-amber-500" />
+                                                )}
+                                                <span className={`font-bold ${isCmoFinalApproved ? 'text-green-700' : 'text-amber-600'}`}>
+                                                    {isCmoFinalApproved ? 'CMO Approved' : 'CMO Review'}
+                                                </span>
+                                            </div>
+
+                                            {/* CEO Approval Status */}
+                                            <div className="flex items-center gap-2 text-sm p-2 bg-slate-50 border border-slate-200 rounded">
+                                                {isCeoFinalApproved ? (
+                                                    <CheckCircle size={14} className="text-green-600" />
+                                                ) : (
+                                                    <AlertTriangle size={14} className="text-amber-500" />
+                                                )}
+                                                <span className={`font-bold ${isCeoFinalApproved ? 'text-green-700' : 'text-amber-600'}`}>
+                                                    {isCeoFinalApproved ? 'CEO Approved' : 'CEO Review'}
+                                                </span>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
                             </div>
 
                             {/* Status Info */}

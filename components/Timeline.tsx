@@ -26,23 +26,34 @@ const Timeline: React.FC<TimelineProps> = ({ project, forRole }) => {
     return true;
   });
 
-  // DEDUPLICATION: Remove duplicate events matching all criteria
-  const uniqueEventsMap = new Map<string, HistoryEvent>();
-
-  validEvents.forEach(event => {
-    // Create unique key based on requirements
-    // ${actor_id}_${action}_${stage}_${comment}_${timestamp}
-    // ensure timestamp comparison is safe (e.g. to the second if needed, but string equality usually works for exact dupes)
-    const key = `${event.actor_id}_${event.action}_${event.stage}_${event.comment || ''}_${event.timestamp}`;
-
-    if (!uniqueEventsMap.has(key)) {
-      uniqueEventsMap.set(key, event);
-    }
+  // Sort events by timestamp DESC (Latest first) BEFORE deduplication to handle proximity
+  const rawSortedEvents = validEvents.sort((a, b) => {
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
   });
 
-  // Convert to array and SORT by timestamp DESC (Latest first)
-  const sortedHistory = Array.from(uniqueEventsMap.values()).sort((a, b) => {
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  // DEDUPLICATION: Remove events that are identical to the previous (newer) one within a short timeframe
+  // Effectively filters out "double-click" or "retry" duplicates from Supabase
+  const sortedHistory = rawSortedEvents.filter((event, index, self) => {
+    if (index === 0) return true; // Always keep the very latest event
+
+    const prevEvent = self[index - 1]; // The newer event (already in the list effectively, or at least previously sorted)
+
+    // Check strict content equality
+    const isSameActor = event.actor_id === prevEvent.actor_id;
+    const isSameAction = event.action === prevEvent.action;
+    const isSameStage = event.stage === prevEvent.stage;
+    const isSameComment = (event.comment || '').trim() === (prevEvent.comment || '').trim();
+
+    // Check time proximity (e.g. within 2 minutes) to capture double-clicks/API retries
+    const timeDiff = Math.abs(new Date(event.timestamp).getTime() - new Date(prevEvent.timestamp).getTime());
+    const isCloseInTime = timeDiff < 2 * 60 * 1000; // 2 minutes
+
+    // If it looks like a duplicate and happened almost instantly, ignore the older one
+    if (isSameActor && isSameAction && isSameStage && isSameComment && isCloseInTime) {
+      return false;
+    }
+
+    return true;
   });
 
   // Don't render timeline for OPS role if requested (preserving existing logic)

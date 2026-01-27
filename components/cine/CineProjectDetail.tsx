@@ -37,10 +37,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     // Determine if current user can edit based on role and workflow state
     // Additional check for role-based access: if the current stage is CINEMATOGRAPHY and user role is CINE,
     // and the project is assigned to CINE role, then allow access regardless of other factors
-    const roleBasedAccess = (localProject.current_stage === 'CINEMATOGRAPHY' && 
-                             userRole === 'CINE' && 
-                             localProject.assigned_to_role === 'CINE');
-    
+    const roleBasedAccess = (localProject.current_stage === 'CINEMATOGRAPHY' &&
+        userRole === 'CINE' &&
+        localProject.assigned_to_role === 'CINE');
+
     const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
 
     // Check if this project is currently assigned to the Cine role
@@ -250,24 +250,41 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             const updatedCineVideoLinksHistory = [
                 ...(localProject.cine_video_links_history || []),
                 // Add the previous video link if it exists and is different from the new one
-                ...(localProject.video_link && localProject.video_link !== videoLink 
-                    ? [localProject.video_link] 
+                ...(localProject.video_link && localProject.video_link !== videoLink
+                    ? [localProject.video_link]
                     : [])
             ];
-            
+
             // Prepare comprehensive update data
+            let updatedCmoReworkContext = localProject.data?.cmo_rework_context;
+
+            // If this is a CMO-initiated rework (evidenced by 'before' context), capture the 'after' state
+            if (isRework && updatedCmoReworkContext?.before) {
+                updatedCmoReworkContext = {
+                    ...updatedCmoReworkContext,
+                    after: {
+                        video_link: videoLink,
+                        edited_video_link: localProject.edited_video_link || null,
+                        thumbnail_link: localProject.thumbnail_link || null,
+                        creative_link: localProject.data?.creative_link || null,
+                        script_content: localProject.data?.script_content || null
+                    }
+                };
+            }
+
             const updatedProjectData = {
                 ...localProject.data,
                 cine_comments: cineComments.trim() || undefined, // Store cinematographer comments
+                cmo_rework_context: updatedCmoReworkContext,
                 // Clear rework metadata to ensure normal workflow routing
                 rework_initiator_role: undefined,
                 rework_initiator_stage: undefined,
                 rework_target_role: undefined
             };
-            
+
             // Clear comments after storing them
             setCineComments('');
-            
+
             // Consolidated update to avoid multiple sequential calls
             await db.projects.update(localProject.id, {
                 video_link: videoLink,
@@ -280,7 +297,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 cine_video_links_history: updatedCineVideoLinksHistory, // Store the history of video links
                 data: updatedProjectData
             });
-            
+
             // Record the workflow action after the project is updated
             await db.workflow.recordAction(
                 localProject.id,
@@ -479,26 +496,29 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
                                 <div className="space-y-2 ml-2">
                                     {localProject.forwarded_comments
-                                        .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
                                         .map((comment, index) => {
-                                            const timestamp = new Date(comment.created_at).toLocaleString();
+                                            // If comment has actor_name, use it; otherwise, default to "Reviewer"
+                                            const actorName = comment.actor_name || 'Reviewer';
+
+                                            // Check if the actor is CMO or CEO based on the name
+                                            const isCmoOrCeo = ['CMO', 'CEO', 'cmo', 'ceo'].some(role =>
+                                                actorName.toLowerCase().includes(role.toLowerCase())
+                                            );
+
+                                            // Only show if it's from CMO/CEO
+                                            if (!isCmoOrCeo) return null;
 
                                             return (
-                                                <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
+                                                <div key={`forwarded-${index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
                                                     <div className="flex items-center">
-                                                        <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
-                                                        <span className="mx-2 text-slate-400">•</span>
-                                                        <span className="text-xs text-slate-500">{timestamp}</span>
+                                                        <span className="font-bold text-blue-700">{actorName} Comment</span>
                                                     </div>
                                                     <div className="mt-1">
-                                                        <span className="px-1.5 py-0.5 text-xs font-black uppercase border border-black bg-blue-500 text-white">
-                                                            {comment.action}
-                                                        </span>
                                                         <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
                                                     </div>
                                                 </div>
                                             );
-                                        })}
+                                        }).filter(Boolean)}
                                 </div>
                             </div>
                         )}
@@ -1069,6 +1089,31 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                         Upload Video
                                     </button>
                                 </div>
+                                <p className="text-sm text-slate-500">
+                                    🎬 Once uploaded, the Editor will be automatically notified
+                                </p>
+                            </div>
+                        ) : localProject.status === 'REWORK' ? (
+                            /* Show editable upload section when in rework */
+                            <div className="space-y-4">
+                                <p className="text-slate-600 font-medium">Upload the new video link for rework</p>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="url"
+                                        value={videoLink}
+                                        onChange={(e) => setVideoLink(e.target.value)}
+                                        placeholder="https://drive.google.com/file/d/... or https://vimeo.com/..."
+                                        className="flex-1 p-4 border-2 border-black text-lg font-medium focus:bg-yellow-50 focus:outline-none"
+                                    />
+                                    <button
+                                        onClick={handleUploadVideo}
+                                        className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    >
+                                        <Upload className="w-5 h-5 inline mr-2" />
+                                        Submit Rework Video
+                                    </button>
+                                </div>
+
                                 <p className="text-sm text-slate-500">
                                     🎬 Once uploaded, the Editor will be automatically notified
                                 </p>

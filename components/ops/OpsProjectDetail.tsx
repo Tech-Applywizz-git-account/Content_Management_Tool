@@ -165,6 +165,54 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Content Preview */}
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Project Info */}
+                    <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                        <div className="flex items-center gap-2 mb-3">
+                            <FileText size={16} className="text-slate-700" />
+                            <h3 className="font-black uppercase text-sm text-slate-700">Project Info</h3>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-slate-600">Priority:</span>
+                                <span className={`font-bold ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
+                                    {project.priority}
+                                </span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600">Status:</span>
+                                <span className={`font-bold ${isPosted ? 'text-green-600' : 'text-amber-600'}`}>
+                                    {isPosted ? 'POSTED' : project.post_scheduled_date ? 'SCHEDULED' : 'READY'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600">Content Type:</span>
+                                <span className="font-bold text-slate-900">
+                                    {project.content_type}
+                                </span>
+                            </div>
+                            {project.data?.niche && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Niche:</span>
+                                    <span className="font-bold text-slate-900 uppercase">
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                    : project.data.niche === 'OTHER' && project.data.niche_other
+                                                        ? project.data.niche_other
+                                                        : project.data.niche}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex justify-between mt-2 pt-2 border-t border-slate-300">
+                                <span className="text-slate-600">Writer:</span>
+                                <span className="font-bold text-slate-900">{project.writer_name || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-600">Editor:</span>
+                                <span className="font-bold text-slate-900">{project.editor_name || 'N/A'}</span>
+                            </div>
+                        </div>
+                    </div>
                     {/* Final Content */}
                     <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
                         <div className="flex items-center gap-2 mb-4">
@@ -174,6 +222,26 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                         {isVideo ? (
                             <div className="space-y-4">
+                                {/* Raw Video */}
+                                {project.video_link && (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Video size={16} className="text-slate-700" />
+                                            <label className="text-sm font-bold text-slate-700">Raw Video (Cine):</label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <a
+                                                href={project.video_link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 underline text-sm truncate flex-1 flex items-center gap-2"
+                                            >
+                                                <ExternalLink size={14} />
+                                                {project.video_link}
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Edited Video */}
                                 {project.edited_video_link && (
                                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
@@ -238,7 +306,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 </div>
                             )
                         )}
-                        
+
                         {!project.edited_video_link && !project.thumbnail_link && !project.creative_link && (
                             <div className="text-center py-8 text-slate-500">
                                 <EyeOff size={48} className="mx-auto mb-2 text-slate-300" />
@@ -410,56 +478,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                             </div>
                         )}
 
-                        {/* Project Info */}
-                        <div className="border-2 border-black p-6 bg-slate-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
-                            <div className="flex items-center gap-2 mb-3">
-                                <FileText size={16} className="text-slate-700" />
-                                <h3 className="font-black uppercase text-sm text-slate-700">Project Info</h3>
-                            </div>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-slate-600">Priority:</span>
-                                    <span className={`font-bold ${project.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
-                                        {project.priority}
-                                    </span>
-                                </div>
 
-                                <div className="flex justify-between">
-                                    <span className="text-slate-600">Status:</span>
-                                    <span className={`font-bold ${isPosted ? 'text-green-600' : 'text-amber-600'}`}>
-                                        {isPosted ? 'POSTED' : project.post_scheduled_date ? 'SCHEDULED' : 'READY'}
-                                    </span>
-                                </div>
-                                
-                                <div className="flex justify-between">
-                                    <span className="text-slate-600">Content Type:</span>
-                                    <span className="font-bold text-slate-900">
-                                        {project.content_type}
-                                    </span>
-                                </div>
-                                
-                                {project.data?.niche && (
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-600">Niche:</span>
-                                        <span className="font-bold text-slate-900 uppercase">
-                                            {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                                : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                        : project.data.niche === 'OTHER' && project.data.niche_other
-                                                            ? project.data.niche_other
-                                                            : project.data.niche}
-                                        </span>
-                                    </div>
-                                )}
-                                
-                                <div className="flex justify-between mt-2 pt-2 border-t border-slate-300">
-                                    <span className="text-slate-600">Created:</span>
-                                    <span className="font-bold text-slate-900">
-                                        {format(new Date(project.created_at), 'MMM dd, yyyy')}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>

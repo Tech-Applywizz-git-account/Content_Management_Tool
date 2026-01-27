@@ -43,6 +43,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
+
     // Effect to track when CMO opens the project for the first time
     useEffect(() => {
         const trackProjectOpen = async () => {
@@ -79,109 +80,152 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
 
+    const [reworkTargetRole, setReworkTargetRole] = useState<Role | null>(null);
+
     useEffect(() => {
-        const fetchPreviousScript = async () => {
-            console.log('CMO Review: Starting fetchPreviousScript for project:', project.id);
-            console.log('CMO Review: Project cmo_rework_at:', project.cmo_rework_at);
-            console.log('CMO Review: Project writer_submitted_at:', project.writer_submitted_at);
-            
-            // Only fetch previous script if this is a rework scenario
-            const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
-                new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
-            
-            console.log('CMO Review: Is rework scenario:', isReworkScenario);
-            
-            if (!isReworkScenario) {
-                console.log('CMO Review: Not a rework scenario, clearing previous script');
-                setPreviousScript(null);
-                return;
-            }
-            
-            // Fetch previous script version and asset links for rework scenarios
+        const fetchPreviousVersion = async () => {
+            console.log('CMO Review: Starting fetchPreviousVersion for project:', project.id);
+
+            // Fetch history to find the last rework action
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage')
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false })
-                .limit(50); // Get more entries to ensure we find the rework script
+                .limit(50);
 
             if (historyError) {
-                console.error('Error fetching previous script:', historyError);
+                console.error('Error fetching history:', historyError);
                 return;
-            }
-            
-            if (!historyData || historyData.length === 0) {
-                console.log('CMO Review: No history data found for project:', project.id);
-                return;
-            }
-            
-            console.log('CMO Review: History data found:', historyData.length, 'entries');
-            console.log('CMO Review: Looking for script before cmo_rework_at:', project.cmo_rework_at);
-            
-            // Find the script content that existed when CMO sent for rework
-            // This is the script content from the entry JUST BEFORE cmo_rework_at
-            let previousScriptFound = null;
-            
-            // Sort by timestamp ascending to process chronologically
-            const chronologicalHistory = [...historyData].sort((a, b) => 
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-            );
-            
-            console.log('CMO Review: Chronological history processing...');
-            
-            for (let i = 0; i < chronologicalHistory.length; i++) {
-                const entry = chronologicalHistory[i];
-                console.log(`Entry ${i}:`, {
-                    timestamp: entry.timestamp,
-                    action: entry.action,
-                    hasScript: !!entry.script_content,
-                    isBeforeRework: new Date(entry.timestamp) < new Date(project.cmo_rework_at)
-                });
-                
-                // Look for the last script content that existed before the CMO rework request
-                if (entry.script_content && new Date(entry.timestamp) < new Date(project.cmo_rework_at)) {
-                    console.log('CMO Review: Found candidate script before rework:', entry.timestamp);
-                    previousScriptFound = entry.script_content;
-                }
-                
-                // Stop once we reach or pass the rework timestamp
-                if (new Date(entry.timestamp) >= new Date(project.cmo_rework_at)) {
-                    console.log('CMO Review: Reached or passed cmo_rework_at, stopping search');
-                    break;
-                }
-            }
-            
-            if (previousScriptFound) {
-                console.log('CMO Review: Setting previous script (first 100 chars):', previousScriptFound.substring(0, 100));
-                setPreviousScript(previousScriptFound);
-            } else {
-                console.log('CMO Review: No previous script found before cmo_rework_at');
-                
-                // Fallback: try to find any REWORK or REJECTED action with script content
-                const reworkEntry = historyData.find(entry => 
-                    ['REJECTED', 'REWORK'].includes(entry.action) && entry.script_content
-                );
-                
-                if (reworkEntry) {
-                    console.log('CMO Review: Using fallback - REWORK/REJECTED entry script');
-                    setPreviousScript(reworkEntry.script_content);
-                } else {
-                    console.log('CMO Review: No fallback script found either');
-                }
             }
 
-            // Set previous asset links from the most recent entry
-            if (historyData.length > 0) {
+            if (!historyData || historyData.length === 0) {
+                console.log('CMO Review: No history data found for project:', project.id);
+                setPreviousScript(null);
+                setPreviousAssets(null);
+                setReworkTargetRole(null);
+                return;
+            }
+
+            // Find the most recent REWORK or REJECT action
+            // This represents the point where the project was sent back
+            const lastReworkIndex = historyData.findIndex(entry =>
+                ['REWORK', 'REJECTED'].includes(entry.action)
+            );
+
+            console.log('CMO Review: Last rework index:', lastReworkIndex);
+
+            if (lastReworkIndex !== -1) {
+                const reworkEntry = historyData[lastReworkIndex];
+                console.log('CMO Review: Found rework entry at:', reworkEntry.timestamp);
+
+                const recentHistory = historyData.slice(0, lastReworkIndex);
+
+                // Identify who the rework was targeted AT
+                let detectedRole: Role | null = null;
+
+                // 1. Try to determine from the rework entry itself (Best source)
+                if (reworkEntry.to_stage) {
+                    if (reworkEntry.to_stage === WorkflowStage.VIDEO_EDITING) detectedRole = Role.EDITOR;
+                    else if (reworkEntry.to_stage === WorkflowStage.CINEMATOGRAPHY) detectedRole = Role.CINE;
+                    else if (reworkEntry.to_stage === WorkflowStage.THUMBNAIL_DESIGN || reworkEntry.to_stage === WorkflowStage.CREATIVE_DESIGN) detectedRole = Role.DESIGNER;
+                }
+
+                if (!detectedRole && reworkEntry.to_role) {
+                    // Normalize string to Role enum if possible
+                    if ((Object.values(Role) as string[]).includes(reworkEntry.to_role)) {
+                        detectedRole = reworkEntry.to_role as Role;
+                    }
+                }
+
+                // 2. Try inferring from explicit submission actions in recent history
+                if (!detectedRole) {
+                    // Check for explicit rework submission actions first
+                    if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
+                        detectedRole = Role.EDITOR;
+                    } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
+                        detectedRole = Role.CINE;
+                    } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
+                        detectedRole = Role.DESIGNER;
+                    }
+                }
+
+                // 3. Fallback: Infer from what changed
+                if (!detectedRole) {
+                    // Check logic: if current value != rework value, that field changed.
+                    // Prioritize EDITOR if edited_video_link changed, as it's later in workflow than CINE
+                    if (project.edited_video_link && project.edited_video_link !== reworkEntry.edited_video_link) {
+                        detectedRole = Role.EDITOR;
+                    } else if (project.video_link && project.video_link !== reworkEntry.video_link) {
+                        detectedRole = Role.CINE;
+                    } else if ((project.thumbnail_link && project.thumbnail_link !== reworkEntry.thumbnail_link) ||
+                        (project.data?.creative_link && project.data?.creative_link !== reworkEntry.creative_link)) {
+                        detectedRole = Role.DESIGNER;
+                    }
+
+                    // Legacy/Safe fallback - if seemingly nothing changed or confused, but we are in review
+                    if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
+                        // If we have an edited video link, assume Editor unless we have strong reason otherwise
+                        if (project.edited_video_link) detectedRole = Role.EDITOR;
+                    }
+                }
+
+                setReworkTargetRole(detectedRole);
+
+                // The state "before" or "during" the rework request is what we want to compare against
+                // If the rework action entry itself has the snapshot of the "bad" state, we use that.
+                // Usually, the history entry records the state of the project *at the time of the action*.
+
+                // So, the rework entry contains the "Old" assets/script that were rejected.
+
+                // Set previous script
+                if (reworkEntry.script_content) {
+                    setPreviousScript(reworkEntry.script_content);
+                }
+
+                // Helper to get last history item
+                const getLastHistoryItem = (historyStrOrArray: string | string[] | undefined) => {
+                    if (!historyStrOrArray) return null;
+                    let arr: string[] = [];
+                    if (Array.isArray(historyStrOrArray)) {
+                        arr = historyStrOrArray;
+                    } else if (typeof historyStrOrArray === 'string') {
+                        try {
+                            const parsed = JSON.parse(historyStrOrArray);
+                            if (Array.isArray(parsed)) arr = parsed;
+                        } catch (e) { console.error('Error parsing video links history:', e); return null; }
+                    }
+                    if (arr.length > 0) return arr[arr.length - 1];
+                    return null;
+                };
+
+                // Fallback to history arrays if rework entry missing assets (legacy support)
+                const prevVideo = reworkEntry.video_link || getLastHistoryItem(project.cine_video_links_history);
+                const prevEdited = reworkEntry.edited_video_link || getLastHistoryItem(project.editor_video_links_history);
+                const prevDesignerAsset = getLastHistoryItem(project.designer_video_links_history);
+
+                // For designer, determining if the history item was a thumbnail or creative link is tricky without metadata
+                // We'll assign to thumbnail if current is thumbnail, or creative if current is creative
+                const prevThumbnail = reworkEntry.thumbnail_link || (project.thumbnail_link ? prevDesignerAsset : null);
+                const prevCreative = reworkEntry.creative_link || (!project.thumbnail_link ? prevDesignerAsset : null);
+
+                // Set previous assets
                 setPreviousAssets({
-                    video_link: historyData[0].video_link,
-                    edited_video_link: historyData[0].edited_video_link,
-                    thumbnail_link: historyData[0].thumbnail_link,
-                    creative_link: historyData[0].creative_link
+                    video_link: prevVideo,
+                    edited_video_link: prevEdited,
+                    thumbnail_link: prevThumbnail,
+                    creative_link: prevCreative
                 });
+
+            } else {
+                console.log('CMO Review: No recent rework found in history');
+                setPreviousScript(null);
+                setPreviousAssets(null);
+                setReworkTargetRole(null);
             }
         };
 
-        fetchPreviousScript();
+        fetchPreviousVersion();
     }, [project.id, project.cmo_rework_at, project.writer_submitted_at]);
 
     const downloadPDF = async () => {
@@ -235,10 +279,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
         try {
             if (decision === 'APPROVE') {
                 // CMO Approval -> Moves to next stage based on current stage
-                
+
                 // Use workflow.approve() for MULTI_WRITER_APPROVAL or POST_WRITER_REVIEW stages
                 // as these require special handling for multi-writer approval processes
-                if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL || 
+                if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
                     project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
                     // For these stages, determine the next stage according to the helpers.getNextStage function
                     const nextStageInfo = db.helpers.getNextStage(
@@ -247,13 +291,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         'APPROVED',
                         project.data
                     );
-                    
+
                     // Ensure we have a valid user ID
                     const currentUser = db.getCurrentUser();
                     if (!currentUser?.id) {
                         throw new Error('User not authenticated');
                     }
-                    
+
                     await db.workflow.approve(
                         project.id,
                         currentUser.id,
@@ -266,9 +310,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 } else {
                     // For rework projects and final review, ensure proper stage advancement
                     // Check if this is a rework scenario based on the presence of rework timestamps
-                    const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at && 
+                    const isReworkScenario = project.cmo_rework_at && project.writer_submitted_at &&
                         new Date(project.writer_submitted_at) > new Date(project.cmo_rework_at);
-                    
+
                     if (isReworkScenario || project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) {
                         // For rework scenarios, use the standardized workflow advancement
                         const nextStageInfo = db.helpers.getNextStage(
@@ -277,13 +321,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             'APPROVED',
                             project.data
                         );
-                        
+
                         // Ensure we have a valid user ID
                         const currentUser = db.getCurrentUser();
                         if (!currentUser?.id) {
                             throw new Error('User not authenticated');
                         }
-                        
+
                         await db.workflow.approve(
                             project.id,
                             currentUser.id,
@@ -299,7 +343,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         if (!currentUser?.id) {
                             throw new Error('User not authenticated');
                         }
-                        
+
                         await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
                     }
                 }
@@ -324,7 +368,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     if (!fetchError) {
                         const existingComments = currentProject.forwarded_comments || [];
                         const updatedComments = [...existingComments, newComment];
-                        
+
                         await supabase
                             .from('projects')
                             .update({ forwarded_comments: updatedComments })
@@ -350,23 +394,50 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 setPopupMessage(message);
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
-                
+
                 // Show the popup immediately after successful approval
                 // This ensures immediate feedback to the user
                 setShowPopup(true);
-                
+
                 // The popup will handle the navigation back when closed
                 // No need to call onComplete here since it's handled in the popup onClose
             } else if (decision === 'REWORK') {
                 // Rework -> Send to the role selected by the user in the dropdown
                 // Respect the user's selection from the reworkStage dropdown
-                
+
                 // Ensure we have a valid user ID
                 const currentUser = db.getCurrentUser();
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
+                // STORE SNAPSHOT FOR COMPARISON
+                // We store the 'before' state to show side-by-side comparison when it comes back
+                const beforeContext = {
+                    video_link: project.video_link,
+                    edited_video_link: project.edited_video_link,
+                    thumbnail_link: project.thumbnail_link,
+                    creative_link: project.data?.creative_link || null,
+                    script_content: project.data?.script_content || null
+                };
+
+                const updatedData = {
+                    ...project.data,
+                    cmo_rework_context: {
+                        before: beforeContext,
+                        after: null, // Clear any previous 'after' so we wait for new submission
+                        initiated_at: new Date().toISOString(),
+                        target_role: reworkStage // Optional: helpful for debugging
+                    }
+                };
+
+                // Update project data first
+                await supabase
+                    .from('projects')
+                    .update({ data: updatedData })
+                    .eq('id', project.id);
+
+
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, comment);
 
 
@@ -385,13 +456,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             } else if (decision === 'REJECT') {
                 // Full Reject - don't send back to a specific role, just reject the project
-                
+
                 // Ensure we have a valid user ID
                 const currentUser = db.getCurrentUser();
                 if (!currentUser?.id) {
                     throw new Error('User not authenticated');
                 }
-                
+
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
 
                 // Show popup for rejection
@@ -414,12 +485,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const getReworkOptions = () => {
         // Check if this is a creative project (either designer-initiated or creative-only content type)
         const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
-        
+
         // For designer-initiated projects, always send back to Designer
         if (project.data?.source === 'DESIGNER_INITIATED') {
             return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
         }
-        
+
         // For pure idea projects (without script content), always send back to Writer regardless of stage
         if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Idea)' }];
@@ -436,7 +507,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
             if (isCreativeProject) {
                 return [{ value: WorkflowStage.CREATIVE_DESIGN, label: 'Designer (Fix Creative)' }];
             }
-            
+
             const options = [];
 
             // Always include all relevant roles for these final review stages
@@ -448,13 +519,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             // Add Editor option
             options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
-            
+
             // Add Cinematographer option
             options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
-            
+
             // Add Writer option (in case script changes are needed)
             options.push({ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' });
-            
+
             return options;
         }
 
@@ -500,7 +571,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                             >
                                 {project.priority}
                             </span>
-                            {previousScript && (
+                            {(previousScript || previousAssets) && (
                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-[#FFD952] text-black">
                                     REWORK
                                 </span>
@@ -538,7 +609,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : previousScript ? 'Rework' : 'New'}
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : (previousScript || previousAssets) ? 'Rework' : 'New'}
                             </div>
                         </div>
                         <div>
@@ -568,13 +639,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.niche 
-                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving' 
-                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof' 
-                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet' 
-                                    : project.data.niche === 'OTHER' && project.data.niche_other 
-                                        ? project.data.niche_other 
-                                        : project.data.niche
+                                {project.data?.niche
+                                    ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche
                                     : '—'}
                             </div>
                         </div>
@@ -598,9 +669,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Thumbnail Link</p>
-                                        <a 
-                                            href={project.data.thumbnail_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.thumbnail_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -621,9 +692,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Script Link</p>
-                                        <a 
-                                            href={project.data.script_reference_link} 
-                                            target="_blank" 
+                                        <a
+                                            href={project.data.script_reference_link}
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline break-all font-medium"
                                         >
@@ -661,7 +732,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 console.log('CMO Review: Render - isFinalReview:', isFinalReview);
                                 console.log('CMO Review: Render - cmo_rework_at:', project.cmo_rework_at);
                                 console.log('CMO Review: Render - writer_submitted_at:', project.writer_submitted_at);
-                                
+
                                 // For final review stages, always show only the current script
                                 if (isFinalReview) {
                                     console.log('CMO Review: Showing current script only for final review');
@@ -673,7 +744,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                 ? project.data?.creative_link || 'No creative link available.'
                                                 : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                     ? project.data.idea_description
-                                                    : project.data?.script_content 
+                                                    : project.data?.script_content
                                                         ? (() => {
                                                             // Comprehensive HTML entity decoding
                                                             let decodedContent = project.data.script_content
@@ -684,7 +755,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                                 .replace(/&#39;/g, "'")
                                                                 .replace(/&nbsp;/g, ' ');
                                                             return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                          })()
+                                                        })()
                                                         : 'No script content available.'}
                                         </div>
                                     );
@@ -692,10 +763,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     // For non-final review stages, show comparison if we have a previous script content
                                     if (previousScript && previousScript.trim() !== '') {
                                         console.log('CMO Review: Showing script comparison - has previous script');
-                                        
+
                                         // Use project's script content as current if available, otherwise use a placeholder
                                         const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
-                                        
+
                                         // Show comparison for rework scenarios
                                         return (
                                             <ScriptComparison
@@ -719,7 +790,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                     ? project.data?.creative_link || 'No creative link available.'
                                                     : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                                         ? project.data.idea_description
-                                                        : project.data?.script_content 
+                                                        : project.data?.script_content
                                                             ? (() => {
                                                                 // Comprehensive HTML entity decoding
                                                                 let decodedContent = project.data.script_content
@@ -730,7 +801,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                                     .replace(/&#39;/g, "'")
                                                                     .replace(/&nbsp;/g, ' ');
                                                                 return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                              })()
+                                                            })()
                                                             : 'No script content available.'}
                                             </div>
                                         );
@@ -747,160 +818,201 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         <section className="space-y-4 pt-6 border-t-4 border-black">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
 
-                            {previousScript ? (
-                                // Show both previous and current assets side by side for rework projects
-                                <div className="space-y-8">
-                                    {/* Raw Video Assets */}
-                                    {isVideo && (project.video_link || previousAssets?.video_link) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Raw Video */}
-                                            {previousAssets?.video_link && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Raw Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">Original footage</p>
-                                                        </div>
-                                                        <a href={previousAssets.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                            {previousScript || previousAssets || project.data?.cmo_rework_context?.before ? (
+                                (() => {
+                                    // REWORK CONTEXT LOGIC
+                                    // Prioritize the explicit cmo_rework_context if available
+                                    const reworkContext = project.data?.cmo_rework_context;
+                                    const useReworkContext = !!(reworkContext && reworkContext.before);
+
+                                    // Resolve "Before" Assets
+                                    const prevVideo = useReworkContext ? reworkContext.before.video_link : previousAssets?.video_link;
+                                    const prevEdited = useReworkContext ? reworkContext.before.edited_video_link : previousAssets?.edited_video_link;
+                                    const prevThumbnail = useReworkContext ? reworkContext.before.thumbnail_link : previousAssets?.thumbnail_link;
+                                    const prevCreative = useReworkContext ? reworkContext.before.creative_link : (previousAssets?.creative_link || previousAssets?.data?.creative_link);
+
+                                    // Resolve "Current" (After) Assets
+                                    // If rework context has explicit 'after' (submitted by role), use it. Otherwise use current project state.
+                                    const currVideo = (useReworkContext && reworkContext.after?.video_link) ? reworkContext.after.video_link : project.video_link;
+                                    const currEdited = (useReworkContext && reworkContext.after?.edited_video_link) ? reworkContext.after.edited_video_link : project.edited_video_link;
+                                    const currThumbnail = (useReworkContext && reworkContext.after?.thumbnail_link) ? reworkContext.after.thumbnail_link : project.thumbnail_link;
+                                    const currCreative = (useReworkContext && reworkContext.after?.creative_link) ? reworkContext.after.creative_link : (project.data?.creative_link || project.creative_link);
+
+                                    // Determine visibility of comparison blocks
+                                    // We show "Previous" if checks pass.
+                                    // For rework context, we generally want to show the comparison for the role that was targeted.
+                                    // If reworkTargetRole is not set (e.g. reload), we might infer it from data changes or context.target_role
+
+                                    let targetRoleFromContext = null;
+                                    if (reworkContext?.target_role) {
+                                        if (reworkContext.target_role === WorkflowStage.CINEMATOGRAPHY) targetRoleFromContext = Role.CINE;
+                                        else if (reworkContext.target_role === WorkflowStage.VIDEO_EDITING) targetRoleFromContext = Role.EDITOR;
+                                        else if (reworkContext.target_role === WorkflowStage.THUMBNAIL_DESIGN || reworkContext.target_role === WorkflowStage.CREATIVE_DESIGN) targetRoleFromContext = Role.DESIGNER;
+                                    }
+
+                                    const targetRole = targetRoleFromContext || reworkTargetRole;
+
+                                    const showPreviousRaw = (targetRole === Role.CINE && prevVideo) || (useReworkContext && prevVideo && !prevEdited && !prevThumbnail && !prevCreative); // Fallback if explicit role matches or it's the only asset
+                                    const showPreviousEdited = (targetRole === Role.EDITOR && prevEdited) || (useReworkContext && prevEdited && !prevThumbnail && !prevCreative);
+                                    const showPreviousCreative = (targetRole === Role.DESIGNER && (prevThumbnail || prevCreative));
+
+                                    // Force show if we have rework context and the asset exists, and it corresponds to the likely active task
+                                    // To be safe, if we have a BEFORE asset, we allow showing it if it matches the content type
+                                    const showRaw = showPreviousRaw || (useReworkContext && prevVideo && !showPreviousEdited && !showPreviousCreative);
+                                    const showEdit = showPreviousEdited || (useReworkContext && prevEdited);
+                                    const showCreative = showPreviousCreative || (useReworkContext && (prevThumbnail || prevCreative));
+
+                                    return (
+                                        // Show both previous and current assets side by side for rework projects
+                                        <div className="space-y-8 max-w-4xl mx-auto">
+                                            {/* Raw Video Assets */}
+                                            {isVideo && (currVideo || prevVideo) && (
+                                                <div className="space-y-2">
+                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Raw Video */}
+                                                        {showRaw && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${currVideo ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={prevVideo} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Original</span>
+                                                                    <a href={prevVideo} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Current Raw Video */}
+                                                        {currVideo && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showRaw ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={currVideo} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={currVideo} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* Current Raw Video */}
-                                            {project.video_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Raw Video</h4>
+                                            {/* Edited Video Assets */}
+                                            {isVideo && (currEdited || prevEdited) && (
+                                                <div className="space-y-2">
+                                                    {(showEdit || currEdited) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Edited Video</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Edited Video */}
+                                                        {showEdit && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${currEdited ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={prevEdited} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Old Edit</span>
+                                                                    <a href={prevEdited} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Current Edited Video */}
+                                                        {currEdited && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showEdit ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
+                                                                    <Video className="w-10 h-10 opacity-50" />
+                                                                    <a href={currEdited} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">Play Video</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={currEdited} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">Original footage</p>
-                                                        </div>
-                                                        <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
+                                                </div>
+                                            )}
+
+                                            {/* Thumbnail/Creative Assets */}
+                                            {(currThumbnail || prevThumbnail || currCreative || prevCreative) && (
+                                                <div className="space-y-2">
+                                                    {(showCreative || currThumbnail || currCreative) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Creative Assets</h4>}
+                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                        {/* Previous Thumbnail/Creative */}
+                                                        {showCreative && (
+                                                            <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${currThumbnail || currCreative ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-100 border-b-2 border-slate-300">
+                                                                    <h4 className="font-black text-slate-900 text-xs uppercase text-center">Previous Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group overflow-hidden">
+                                                                    {prevThumbnail ? (
+                                                                        <img src={prevThumbnail} alt="Previous" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <ImageIcon className="w-10 h-10" />
+                                                                    )}
+                                                                    <a href={prevThumbnail || prevCreative} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Old Design</span>
+                                                                    <a href={prevThumbnail || prevCreative} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Current Thumbnail/Creative */}
+                                                        {(currThumbnail || currCreative) && (
+                                                            <div className={`border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${showCreative ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
+                                                                <div className="p-2 bg-slate-900 border-b-2 border-black">
+                                                                    <h4 className="font-black text-white text-xs uppercase text-center">Current Version</h4>
+                                                                </div>
+                                                                <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300 relative group overflow-hidden">
+                                                                    {currThumbnail ? (
+                                                                        <img src={currThumbnail} alt="Current" className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <ImageIcon className="w-10 h-10" />
+                                                                    )}
+                                                                    <a href={currThumbnail || currCreative} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 group-hover:bg-opacity-40 transition-all opacity-0 group-hover:opacity-100">
+                                                                        <span className="px-3 py-1 bg-white text-black font-black uppercase text-xs border-2 border-black">View</span>
+                                                                    </a>
+                                                                </div>
+                                                                <div className="p-2 flex justify-between items-center bg-white">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase">New Submission</span>
+                                                                    <a href={currThumbnail || currCreative} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
-                                    )}
-
-                                    {/* Edited Video Assets */}
-                                    {isVideo && (project.edited_video_link || previousAssets?.edited_video_link) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Edited Video */}
-                                            {previousAssets?.edited_video_link && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Edited Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
-                                                        </div>
-                                                        <a href={previousAssets.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Current Edited Video */}
-                                            {project.edited_video_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Edited Video</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-black flex items-center justify-center text-white">
-                                                        <Video className="w-16 h-16 opacity-50" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                            <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
-                                                        </div>
-                                                        <a href={project.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Thumbnail/Creative Assets */}
-                                    {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || (previousScript && project.data?.creative_link)) && (
-                                        <div className="grid grid-cols-2 gap-6">
-                                            {/* Previous Thumbnail/Creative */}
-                                            {(previousAssets?.thumbnail_link || previousAssets?.creative_link) && (
-                                                <div className="border-2 border-slate-300 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-100 border-b-2 border-slate-300">
-                                                        <h4 className="font-black text-slate-900 text-sm uppercase text-center">Previous Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">
-                                                                {previousAssets?.thumbnail_link ? 'Creative_Thumbnail.png' : 'Creative Link'}
-                                                            </p>
-                                                            <p className="text-xs text-slate-500 font-bold">
-                                                                {previousAssets?.thumbnail_link ? 'PNG • 2mb' : 'External Link'}
-                                                            </p>
-                                                        </div>
-                                                        <a href={previousAssets.thumbnail_link || previousAssets.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">
-                                                            {previousAssets?.thumbnail_link ? 'View File' : 'View Link'}
-                                                        </a>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Current Thumbnail/Creative or Creative Link */}
-                                            {project.thumbnail_link ? (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative_Thumbnail.png</p>
-                                                            <p className="text-xs text-slate-500 font-bold">PNG • 2mb</p>
-                                                        </div>
-                                                        <a href={project.thumbnail_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
-                                                    </div>
-                                                </div>
-                                            ) : project.data?.creative_link && (
-                                                <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                                    <div className="p-3 bg-slate-900 border-b-2 border-black">
-                                                        <h4 className="font-black text-white text-sm uppercase text-center">Current Creative</h4>
-                                                    </div>
-                                                    <div className="aspect-video bg-slate-100 flex items-center justify-center text-slate-300">
-                                                        <ImageIcon className="w-16 h-16" />
-                                                    </div>
-                                                    <div className="p-4 flex justify-between items-center bg-white">
-                                                        <div>
-                                                            <p className="font-black text-slate-900 text-sm uppercase">Creative Link</p>
-                                                            <p className="text-xs text-slate-500 font-bold">External Link</p>
-                                                        </div>
-                                                        <a href={project.data.creative_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View Link</a>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                    );
+                                })()
                             ) : (
                                 // Show single assets for non-rework projects
                                 <div className="grid grid-cols-3 gap-6">

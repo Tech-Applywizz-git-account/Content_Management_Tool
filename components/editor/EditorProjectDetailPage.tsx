@@ -90,6 +90,7 @@ const EditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Role 
         >
             <EditorProjectDetail
                 project={project}
+                userRole={user.role}
                 onBack={() => navigate(-1)}
                 onUpdate={() => {
                     // Refresh the current page after update
