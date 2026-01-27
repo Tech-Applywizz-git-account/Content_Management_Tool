@@ -5,7 +5,8 @@ import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import ReworkSection from '../ReworkSection';
 
 interface Props {
   project: Project;
@@ -14,10 +15,7 @@ interface Props {
   onUpdate: () => void;
   fromView?: 'MYWORK' | 'SCRIPTS';
 }
-const isReworkProject = (project: Project) =>
-  project.history?.some(h =>
-    h.action?.startsWith('REWORK_')
-  );
+
 
 const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate, fromView }) => {
   // For rework projects, keep existing data but track new inputs
@@ -33,23 +31,17 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   const [stageName, setStageName] = useState('');
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
-  // Use the new workflow state logic with role context
-  const workflowState = getWorkflowStateForRole(localProject, userRole);
-  // Robust check for rework status: Use helper or check status directly
-  const isRework = workflowState.isTargetedRework ||
-    workflowState.isRework ||
-    (localProject.status === 'REWORK' && localProject.assigned_to_role === userRole);
-
-  const isRejected = workflowState.isRejected;
+  // Use canonical rework condition
+  const isRework = isActiveRework(localProject, userRole);
+  // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
+  const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
 
   // Determine if current user can edit based on role and workflow state
-  // Additional check for role-based access: if the current stage is VIDEO_EDITING or status is REWORK 
-  // and user role is EDITOR, and the project is assigned to EDITOR role
   const roleBasedAccess = ((localProject.current_stage === 'VIDEO_EDITING' || localProject.status === 'REWORK') &&
     userRole === 'EDITOR' &&
     localProject.assigned_to_role === 'EDITOR');
 
-  const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
+  const canEdit = roleBasedAccess || canUserEdit(userRole, { isRework, isRejected, isTargetedRework: isRework, isInReview: false, isApproved: false, latestAction: null }, localProject.assigned_to_role, localProject.current_stage) || isRework;
 
   const hasEditedVideo = !!localProject.edited_video_link;
 
@@ -294,169 +286,39 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           </button>
           <div className="flex-1">
             <h1 className="text-2xl font-black uppercase text-slate-900">{project.title}</h1>
-            <div className="flex items-center gap-3 mt-1">
-              <span
-                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
-                  ? 'bg-[#FF4F4F] text-white'
-                  : project.channel === 'LINKEDIN'
-                    ? 'bg-[#0085FF] text-white'
-                    : 'bg-[#D946EF] text-white'
-                  }`}
-              >
-                {project.channel}
-              </span>
+            {fromView !== 'SCRIPTS' && (
+              <div className="flex items-center gap-3 mt-1">
+                <span
+                  className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
+                    ? 'bg-[#FF4F4F] text-white'
+                    : project.channel === 'LINKEDIN'
+                      ? 'bg-[#0085FF] text-white'
+                      : 'bg-[#D946EF] text-white'
+                    }`}
+                >
+                  {project.channel}
+                </span>
 
-              <span
-                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                  ? 'bg-red-500 text-white'
-                  : project.priority === 'NORMAL'
-                    ? 'bg-yellow-500 text-black'
-                    : 'bg-green-500 text-white'
-                  }`}
-              >
-                {project.priority}
-              </span>
-            </div>
+                <span
+                  className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                    ? 'bg-red-500 text-white'
+                    : project.priority === 'NORMAL'
+                      ? 'bg-yellow-500 text-black'
+                      : 'bg-green-500 text-white'
+                    }`}
+                >
+                  {project.priority}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Rework Information Box (Shown for all rework projects assigned to Editor) */}
-      {(isRework || isRejected) && (
-        <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-
-          {/* Header */}
-          <div className="flex items-center space-x-2 mb-4">
-            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-              <span className="text-white font-bold text-sm">!</span>
-            </div>
-            <div>
-              <h2 className="text-xl font-black uppercase text-red-800">
-                {isRejected ? 'Project Rejected' : 'Rework Required'}
-              </h2>
-              <p className="text-sm font-bold text-red-600">
-                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-
-            {/* Reviewer Comment */}
-            <div className="p-4 bg-white border-l-4 border-red-500">
-              <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
-              <p className="text-red-700">
-                {getLatestReworkRejectComment(localProject, userRole)?.comment ||
-                  'No specific reason provided. Please review your submission and make necessary changes.'}
-              </p>
-              <p className="text-sm text-red-600 mt-2">
-                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
-              </p>
-            </div>
-
-            {/* Display forwarded comments from CMO and CEO */}
-            {localProject?.forwarded_comments && Array.isArray(localProject.forwarded_comments) && localProject.forwarded_comments.length > 0 && (
-              <div className="mb-4">
-                <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
-                <div className="space-y-2 ml-2">
-                  {localProject.forwarded_comments
-                    .map((comment, index) => {
-                      // If comment has actor_name, use it; otherwise, default to "Reviewer"
-                      const actorName = comment.actor_name || 'Reviewer';
-
-                      // Check if the actor is CMO or CEO based on the name
-                      const isCmoOrCeo = ['CMO', 'CEO', 'cmo', 'ceo'].some(role =>
-                        actorName.toLowerCase().includes(role.toLowerCase())
-                      );
-
-                      // Only show if it's from CMO/CEO
-                      if (!isCmoOrCeo) return null;
-
-                      return (
-                        <div key={`forwarded-${index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
-                          <div className="flex items-center">
-                            <span className="font-bold text-blue-700">{actorName} Comment</span>
-                          </div>
-                          <div className="mt-1">
-                            <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
-                          </div>
-                        </div>
-                      );
-                    }).filter(Boolean)}
-                </div>
-              </div>
-            )}
-
-            {/* Existing Project Data (READ-ONLY) */}
-            <div className="bg-white border-2 border-gray-300 p-4">
-              <h4 className="font-bold text-gray-800 mb-3">
-                Existing Project Data
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                {(localProject.delivery_date || isRework) && (
-
-                  <div>
-                    <span className="text-sm font-bold text-gray-600 block mb-1">
-                      Current Delivery Date
-                    </span>
-                    <p className="font-medium">{localProject.delivery_date}</p>
-                  </div>
-                )}
-
-                {localProject.edited_video_link && (
-                  <div>
-                    <span className="text-sm font-bold text-gray-600 block mb-1">
-                      Previous Edited Video
-                    </span>
-                    <a
-                      href={localProject.edited_video_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline break-all"
-                    >
-                      {localProject.edited_video_link}
-                    </a>
-                  </div>
-                )}
-
-                {localProject.video_link && (
-                  <div>
-                    <span className="text-sm font-bold text-gray-600 block mb-1">
-                      Raw Video Link
-                    </span>
-                    <a
-                      href={localProject.video_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 underline break-all"
-                    >
-                      {localProject.video_link}
-                    </a>
-                  </div>
-                )}
-
-                {localProject.shoot_date && (
-                  <div>
-                    <span className="text-sm font-bold text-gray-600 block mb-1">
-                      Shoot Date
-                    </span>
-                    <p className="font-medium">{localProject.shoot_date}</p>
-                  </div>
-                )}
-
-              </div>
-            </div>
-
-            {/* Instruction */}
-            <div className="bg-red-100 border-2 border-red-200 p-3">
-              <p className="text-sm text-red-800 font-bold">
-                Please review the feedback above and submit a new edited video in the section below.
-              </p>
-            </div>
-
-          </div>
+      {/* Rework Information Section */}
+      {fromView !== 'SCRIPTS' && (isRework || isRejected) && (
+        <div className="max-w-6xl mx-auto px-6 pt-8">
+          <ReworkSection project={localProject} userRole={userRole} />
         </div>
       )}
 
@@ -760,9 +622,9 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
             {/* Show previous edited video if exists */}
             {hasEditedVideo && (
-              <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
-                <p className="text-sm font-bold uppercase text-gray-700 mb-2">
-                  Previous Edited Video
+              <div className="bg-blue-50 border-2 border-blue-600 p-4 mb-4">
+                <p className="text-sm font-bold uppercase text-blue-800 mb-2">
+                  Previous Submission
                 </p>
                 <a
                   href={localProject.edited_video_link}
@@ -775,16 +637,19 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               </div>
             )}
 
-            {/* Show input if user has edit permissions */}
-            {(canEdit || !hasEditedVideo || isRework) && (
+            {/* Show input if user has edit permissions OR is in rework */}
+            {(isRework || canEdit || !hasEditedVideo) && (
               <div className="space-y-4">
-                <p className="text-slate-600 font-medium">
-                  {isRejected
-                    ? 'Upload new edited video link for rejected project'
-                    : isRework
-                      ? 'Upload new edited video link for rework'
-                      : 'Upload final edited video link'}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-slate-600 font-medium">
+                    {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+                  </p>
+                  {isRework && (
+                    <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
+                      Comparison Mode Active
+                    </span>
+                  )}
+                </div>
 
                 <div className="flex gap-3">
                   <input
@@ -829,57 +694,57 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         )}
 
         {/* Project Info */}
-        {fromView !== 'SCRIPTS' && (
-          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-            <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-              </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                <p className="font-bold text-slate-900 mt-1">
-                  {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+        <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+          <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+              <p className="font-bold text-slate-900 mt-1">
+                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+              </p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+            </div>
+            {localProject.data?.niche && (
+              <div className="col-span-2">
+                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                <p className="font-bold text-slate-900 mt-1 uppercase">
+                  {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                      : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                        : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                          ? localProject.data.niche_other
+                          : localProject.data.niche}
                 </p>
               </div>
-              <div>
-                <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-              </div>
-              {localProject.data?.niche && (
-                <div className="col-span-2">
-                  <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                  <p className="font-bold text-slate-900 mt-1 uppercase">
-                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                      : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                        : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                            ? localProject.data.niche_other
-                            : localProject.data.niche}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
-      {showPopup && (
-        <Popup
-          message={popupMessage}
-          stageName={stageName}
-          duration={popupDuration}
-          onClose={() => {
-            setShowPopup(false);
-            onUpdate();
-          }}
-        />
-      )}
-    </div>
+      {
+        showPopup && (
+          <Popup
+            message={popupMessage}
+            stageName={stageName}
+            duration={popupDuration}
+            onClose={() => {
+              setShowPopup(false);
+              onUpdate();
+            }}
+          />
+        )
+      }
+    </div >
   );
 };
 

@@ -4,7 +4,8 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import ReworkSection from '../ReworkSection';
 import Popup from '../Popup';
 
 interface Props {
@@ -30,13 +31,13 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const [stageName, setStageName] = useState('');
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
-  // Use the new workflow state logic with role context
-  const workflowState = getWorkflowStateForRole(localProject, userRole);
-  const isRework = workflowState.isTargetedRework || workflowState.isRework;
-  const isRejected = workflowState.isRejected;
+  // Use canonical rework condition
+  const isRework = isActiveRework(localProject, userRole);
+  // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
+  const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
+  const canEdit = canUserEdit(userRole, { isRework, isRejected, isTargetedRework: isRework, isInReview: false, isApproved: false, latestAction: null }, localProject.assigned_to_role, localProject.current_stage) || isRework;
 
   // Reset form fields when project changes
   useEffect(() => {
@@ -204,8 +205,8 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       const updatedSubEditorVideoLinksHistory = [
         ...(localProject.sub_editor_video_links_history || []),
         // Add the previous video link if it exists and is different from the new one
-        ...(localProject.edited_video_link && localProject.edited_video_link !== editedVideoLink 
-          ? [localProject.edited_video_link] 
+        ...(localProject.edited_video_link && localProject.edited_video_link !== editedVideoLink
+          ? [localProject.edited_video_link]
           : [])
       ];
 
@@ -427,134 +428,35 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             </div>
           </div>
 
-          {/* Rework Information Box (Shown for all rework projects assigned to Sub-Editor) */}
-          {(isRework || isRejected) && localProject.history && localProject.history.length > 0 && (
-            <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-
-              {/* Header */}
-              <div className="flex items-center space-x-2 mb-4">
-                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">!</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-black uppercase text-red-800">
-                    {isRejected ? 'Project Rejected' : 'Rework Required'}
-                  </h2>
-                  <p className="text-sm font-bold text-red-600">
-                    {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-
-                {/* Reviewer Comment */}
-                <div className="p-4 bg-white border-l-4 border-red-500">
-                  <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
-                  <p className="text-red-700">
-                    {getLatestReworkRejectComment(localProject, userRole)?.comment ||
-                      'No specific reason provided. Please review your submission and make necessary changes.'}
-                  </p>
-                  <p className="text-sm text-red-600 mt-2">
-                    {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
-                  </p>
-                </div>
-
-                {/* Existing Project Data (READ-ONLY) */}
-                <div className="bg-white border-2 border-gray-300 p-4">
-                  <h4 className="font-bold text-gray-800 mb-3">
-                    Existing Project Data
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-                    {(localProject.delivery_date || isRework) && (
-
-                      <div>
-                        <span className="text-sm font-bold text-gray-600 block mb-1">
-                          Current Delivery Date
-                        </span>
-                        <p className="font-medium">{localProject.delivery_date}</p>
-                      </div>
-                    )}
-
-                    {localProject.edited_video_link && (
-                      <div>
-                        <span className="text-sm font-bold text-gray-600 block mb-1">
-                          Previous Edited Video
-                        </span>
-                        <a
-                          href={localProject.edited_video_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 underline break-all"
-                        >
-                          {localProject.edited_video_link}
-                        </a>
-                      </div>
-                    )}
-
-                    {localProject.video_link && (
-                      <div>
-                        <span className="text-sm font-bold text-gray-600 block mb-1">
-                          Raw Video Link
-                        </span>
-                        <a
-                          href={localProject.video_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 underline break-all"
-                        >
-                          {localProject.video_link}
-                        </a>
-                      </div>
-                    )}
-
-                    {localProject.shoot_date && (
-                      <div>
-                        <span className="text-sm font-bold text-gray-600 block mb-1">
-                          Shoot Date
-                        </span>
-                        <p className="font-medium">{localProject.shoot_date}</p>
-                      </div>
-                    )}
-
-                  </div>
-                </div>
-
-                {/* Instruction */}
-                <div className="bg-red-100 border-2 border-red-200 p-3">
-                  <p className="text-sm text-red-800 font-bold">
-                    Please review the feedback above and submit a new edited video in the section below.
-                  </p>
-                </div>
-
-              </div>
-            </div>
+          {/* Rework Information Section */}
+          {(isRework || isRejected) && (
+            <ReworkSection project={localProject} userRole={userRole} />
           )}
 
           {/* Raw Video from Cinematographer */}
-          {localProject.video_link && (fromView !== 'SCRIPTS') && (
-            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Video className="w-5 h-5" />
-                <h2 className="text-xl font-black uppercase">Raw Video (from Cinematographer)</h2>
+          {
+            localProject.video_link && (fromView !== 'SCRIPTS') && (
+              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Video className="w-5 h-5" />
+                  <h2 className="text-xl font-black uppercase">Raw Video (from Cinematographer)</h2>
+                </div>
+                <div className="bg-blue-50 border-2 border-blue-400 p-4">
+                  <p className="text-sm font-bold text-blue-800 mb-2">
+                    📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
+                  </p>
+                  <a
+                    href={localProject.video_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                  >
+                    {localProject.video_link}
+                  </a>
+                </div>
               </div>
-              <div className="bg-blue-50 border-2 border-blue-400 p-4">
-                <p className="text-sm font-bold text-blue-800 mb-2">
-                  📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
-                </p>
-                <a
-                  href={localProject.video_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
-                >
-                  {localProject.video_link}
-                </a>
-              </div>
-            </div>
-          )}
+            )
+          }
 
           {/* Script Reference */}
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -576,237 +478,248 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           </div>
 
           {/* Cinematographer Instructions - Show when project has cinematographer data */}
-          {(localProject.current_stage === WorkflowStage.CINEMATOGRAPHY || localProject.data?.cine_comments || localProject.data?.actor || localProject.data?.location || localProject.data?.lighting || localProject.data?.angles) && (
-            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <FileText className="w-5 h-5" />
-                <h2 className="text-xl font-black uppercase">Cinematographer Instructions</h2>
+          {
+            (localProject.current_stage === WorkflowStage.CINEMATOGRAPHY || localProject.data?.cine_comments || localProject.data?.actor || localProject.data?.location || localProject.data?.lighting || localProject.data?.angles) && (
+              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="w-5 h-5" />
+                  <h2 className="text-xl font-black uppercase">Cinematographer Instructions</h2>
+                </div>
+                <div className="space-y-4">
+                  {/* Writer's name */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700 uppercase">Writer</label>
+                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                      {localProject.data?.writer_name || 'Writer name not available'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
+                      <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                        {localProject.data?.actor ?? 'Not specified'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
+                      <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                        {localProject.data?.location ?? 'Not specified'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
+                      <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                        {localProject.data?.lighting ?? 'Not specified'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
+                      <p className="p-2 border-2 border-black font-medium bg-slate-50">
+                        {localProject.data?.angles ?? 'Not specified'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Cinematographer Comments */}
+                  {localProject.data?.cine_comments && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700 uppercase">Cinematographer Notes</label>
+                      <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
+                        <p>{localProject.data.cine_comments}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="space-y-4">
-                {/* Writer's name */}
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700 uppercase">Writer</label>
-                  <p className="p-2 border-2 border-black font-medium bg-slate-50">
-                    {localProject.data?.writer_name || 'Writer name not available'}
-                  </p>
+            )
+          }
+
+          {/* Delivery Date Section */}
+          {
+            fromView !== 'SCRIPTS' && (localProject.delivery_date || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
+              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar className="w-5 h-5" />
+                  <h2 className="text-xl font-black uppercase">Delivery Date</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 uppercase">Actor Details</label>
-                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
-                      {localProject.data?.actor ?? 'Not specified'}
+                {!localProject.delivery_date ? (
+                  <div className="space-y-4">
+                    <p className="text-slate-600 font-medium">Set when you'll deliver the edited video</p>
+                    <div className="flex gap-3">
+                      <input
+                        type="date"
+                        value={deliveryDate}
+                        onChange={(e) => setDeliveryDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleSetDeliveryDate}
+                        disabled={loading}
+                        className="px-8 py-4 bg-[#FF4F4F] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Calendar className="w-5 h-5 inline mr-2" />
+                        Set Delivery Date
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-500">
+                      📅 This date will be visible on calendars for all team members
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 uppercase">Location Details</label>
-                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
-                      {localProject.data?.location ?? 'Not specified'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 uppercase">Lighting Details</label>
-                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
-                      {localProject.data?.lighting ?? 'Not specified'}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 uppercase">Camera Angles</label>
-                    <p className="p-2 border-2 border-black font-medium bg-slate-50">
-                      {localProject.data?.angles ?? 'Not specified'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Cinematographer Comments */}
-                {localProject.data?.cine_comments && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-700 uppercase">Cinematographer Notes</label>
-                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                      <p>{localProject.data.cine_comments}</p>
+                ) : (
+                  <div className="bg-orange-50 border-2 border-orange-600 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
+                        <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
+                      </div>
+                      <div className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase bg-orange-200">
+                        Locked
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* Delivery Date Section */}
-          {fromView !== 'SCRIPTS' && (localProject.delivery_date || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
-            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Calendar className="w-5 h-5" />
-                <h2 className="text-xl font-black uppercase">Delivery Date</h2>
-              </div>
-
-              {!localProject.delivery_date ? (
-                <div className="space-y-4">
-                  <p className="text-slate-600 font-medium">Set when you'll deliver the edited video</p>
-                  <div className="flex gap-3">
-                    <input
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
-                    />
-                    <button
-                      onClick={handleSetDeliveryDate}
-                      disabled={loading}
-                      className="px-8 py-4 bg-[#FF4F4F] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Calendar className="w-5 h-5 inline mr-2" />
-                      Set Delivery Date
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-500">
-                    📅 This date will be visible on calendars for all team members
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-orange-50 border-2 border-orange-600 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold uppercase text-orange-800 mb-1">✓ Delivery Scheduled</p>
-                      <p className="text-2xl font-black text-orange-900">{localProject.delivery_date}</p>
-                    </div>
-                    <div className="px-4 py-2 border-2 border-orange-700 text-orange-800 font-bold text-sm uppercase bg-orange-200">
-                      Locked
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+            )
+          }
 
           {/* Edited Video Upload Section */}
-          {fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework || localProject.edited_video_link || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
-            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Film className="w-5 h-5" />
-                <h2 className="text-xl font-black uppercase">
-                  {isRejected
-                    ? 'Rejected Edited Video Upload'
-                    : isRework
-                      ? 'Rework Edited Video Upload'
-                      : 'Edited Video Upload'}
-                </h2>
-              </div>
-
-              {/* Show previous edited video if exists */}
-              {localProject.edited_video_link && (
-                <div className="bg-gray-50 border-2 border-gray-400 p-4 mb-4">
-                  <p className="text-sm font-bold uppercase text-gray-700 mb-2">
-                    Previous Edited Video
-                  </p>
-                  <a
-                    href={localProject.edited_video_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block break-all text-blue-600 underline"
-                  >
-                    {localProject.edited_video_link}
-                  </a>
-                </div>
-              )}
-
-              {/* Show input if user has edit permissions */}
-              {(canEdit || !localProject.edited_video_link) && (
-                <div className="space-y-4">
-                  <p className="text-slate-600 font-medium">
+          {
+            fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework || localProject.edited_video_link || localProject.assigned_to_role === Role.SUB_EDITOR || localProject.sub_editor_uploaded_at) && (
+              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Film className="w-5 h-5" />
+                  <h2 className="text-xl font-black uppercase">
                     {isRejected
-                      ? 'Upload new edited video link for rejected project'
+                      ? 'Rejected Edited Video Upload'
                       : isRework
-                        ? 'Upload new edited video link for rework'
-                        : 'Upload final edited video link'}
-                  </p>
-
-                  <div className="flex gap-3">
-                    <input
-                      type="url"
-                      value={editedVideoLink}
-                      onChange={(e) => setEditedVideoLink(e.target.value)}
-                      placeholder="https://drive.google.com/file/d/..."
-                      className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
-                    />
-                    <button
-                      onClick={handleUploadEditedVideo}
-                      className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <Upload className="w-5 h-5 inline mr-2" />
-                      {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
-                    </button>
-                  </div>
+                        ? 'Rework Edited Video Upload'
+                        : 'Edited Video Upload'}
+                  </h2>
                 </div>
-              )}
 
-              {/* Delivered state ONLY for non-rework */}
-              {localProject.edited_video_link && !isRework && (
-                <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
-                  <p className="text-sm font-bold uppercase text-green-800">
-                    ✓ Edited Video Delivered
-                  </p>
-                  <p className="text-sm text-green-800 mt-1">
-                    → Project has been moved to Designer for thumbnail creation
-                  </p>
-                  {/* Show upload timestamp */}
-                  {localProject.sub_editor_uploaded_at && (
-                    <div className="mt-3 pt-3 border-t border-green-300">
-                      <span className="text-xs font-bold uppercase text-green-700">Uploaded At</span>
-                      <p className="text-sm font-medium text-green-800">
-                        {format(new Date(localProject.sub_editor_uploaded_at), 'MMM dd, yyyy h:mm a')}
+                {/* Show previous edited video if exists and it's a rework */}
+                {isRework && localProject.edited_video_link && (
+                  <div className="bg-blue-50 border-2 border-blue-600 p-4 mb-4">
+                    <p className="text-sm font-bold uppercase text-blue-800 mb-2">
+                      Previous Submission
+                    </p>
+                    <a
+                      href={localProject.edited_video_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block break-all text-blue-600 underline"
+                    >
+                      {localProject.edited_video_link}
+                    </a>
+                  </div>
+                )}
+
+                {/* Show input if user has edit permissions OR is in rework */}
+                {(isRework || canEdit || !localProject.edited_video_link) && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-slate-600 font-medium">
+                        {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+                      </p>
+                      {isRework && (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
+                          Comparison Mode Active
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3">
+                      <input
+                        type="url"
+                        value={editedVideoLink}
+                        onChange={(e) => setEditedVideoLink(e.target.value)}
+                        placeholder="https://drive.google.com/file/d/..."
+                        className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleUploadEditedVideo}
+                        className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                      >
+                        <Upload className="w-5 h-5 inline mr-2" />
+                        {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivered state ONLY for non-rework */}
+                {localProject.edited_video_link && !isRework && (
+                  <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
+                    <p className="text-sm font-bold uppercase text-green-800">
+                      ✓ Edited Video Delivered
+                    </p>
+                    <p className="text-sm text-green-800 mt-1">
+                      → Project has been moved to Designer for thumbnail creation
+                    </p>
+                    {/* Show upload timestamp */}
+                    {localProject.sub_editor_uploaded_at && (
+                      <div className="mt-3 pt-3 border-t border-green-300">
+                        <span className="text-xs font-bold uppercase text-green-700">Uploaded At</span>
+                        <p className="text-sm font-medium text-green-800">
+                          {format(new Date(localProject.sub_editor_uploaded_at), 'MMM dd, yyyy h:mm a')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          {/* Project Info */}
+          {
+            fromView !== 'SCRIPTS' && (
+              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                    <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                    <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                    <p className="font-bold text-slate-900 mt-1">
+                      {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                    <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+                  </div>
+                  {localProject.data?.niche && (
+                    <div className="col-span-2">
+                      <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                      <p className="font-bold text-slate-900 mt-1 uppercase">
+                        {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                          : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                            : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                              : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                ? localProject.data.niche_other
+                                : localProject.data.niche}
                       </p>
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Project Info */}
-          {fromView !== 'SCRIPTS' && (
-            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-              <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                  <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                  <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                  <p className="font-bold text-slate-900 mt-1">
-                    {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-                  </p>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                  <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-                </div>
-                {localProject.data?.niche && (
-                  <div className="col-span-2">
-                    <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                    <p className="font-bold text-slate-900 mt-1 uppercase">
-                      {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                        : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                          : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                            : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                              ? localProject.data.niche_other
-                              : localProject.data.niche}
-                    </p>
-                  </div>
-                )}
               </div>
-            </div>
-          )}
-        </div>
-      </main>
+            )
+          }
+        </div >
+      </main >
       <div className="fixed inset-0 pointer-events-none z-50">
         {showPopup && (
           <Popup
@@ -820,7 +733,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
           />
         )}
       </div>
-    </div>
+    </div >
   );
 };
 

@@ -10,6 +10,72 @@ export interface WorkflowState {
 }
 
 /**
+ * Canonical rework condition for all roles
+ */
+export function isActiveRework(project: Project | undefined, userRole: string): boolean {
+  if (!project) return false;
+  return project.status === 'REWORK' && project.assigned_to_role === userRole;
+}
+
+/**
+ * Get the canonical rework comment for display
+ * Primary source: history (for REWORK actions)
+ * Secondary source: forwarded_comments (as fallback)
+ */
+export function getCanonicalReworkComment(project: Project | undefined): { comment: string | null; actor_name: string | null; from_role?: string | null } | null {
+  if (!project) return null;
+
+  // 1. Check history FIRST for REWORK actions (most authoritative)
+  if (project.history && project.history.length > 0) {
+    const sortedHistory = [...project.history].sort((a, b) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+
+    // Look for the most recent REWORK action
+    const reworkAction = sortedHistory.find(h =>
+      h.action === 'REWORK' || h.action === 'REJECTED' || h.action.startsWith('REWORK_') || h.action.includes('REWORK')
+    );
+
+    if (reworkAction) {
+      return {
+        comment: reworkAction.comment || null,
+        actor_name: reworkAction.actor_name || 'Reviewer',
+        from_role: reworkAction.from_role || reworkAction.actor_role || null
+      };
+    }
+  }
+
+  // 2. Check forwarded_comments as fallback
+  if (project.forwarded_comments && Array.isArray(project.forwarded_comments) && project.forwarded_comments.length > 0) {
+    // Look for REWORK or REJECTED comments
+    const reworkComment = project.forwarded_comments
+      .slice()
+      .reverse()
+      .find(c => c.action === 'REWORK' || c.action === 'REJECTED' || c.action?.includes('REWORK'));
+
+    if (reworkComment?.comment) {
+      return {
+        comment: reworkComment.comment,
+        actor_name: reworkComment.actor_name || 'Reviewer',
+        from_role: reworkComment.from_role || null
+      };
+    }
+
+    // If no rework-specific comment, use the latest one
+    const latestForwarded = project.forwarded_comments[project.forwarded_comments.length - 1];
+    if (latestForwarded?.comment) {
+      return {
+        comment: latestForwarded.comment,
+        actor_name: latestForwarded.actor_name || 'Reviewer',
+        from_role: latestForwarded.from_role || null
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Get the latest workflow action from project history
  */
 export function getLatestAction(project: Project | undefined): string | null {
@@ -209,11 +275,11 @@ export function canUserEdit(role: string, workflowState: WorkflowState, assigned
   // Primary check: if the current stage matches the user's role and assigned role, allow access
   // This handles the most common case where a user should be able to edit in their assigned stage
   if ((currentStage === 'VIDEO_EDITING' && role === Role.EDITOR && assignedRole === Role.EDITOR) ||
-      (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
-      (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
-      (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
-      (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
-      (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE && assignedRole === Role.CINE)) {
+    (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
+    (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR && assignedRole === Role.SUB_EDITOR) ||
+    (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
+    (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER && assignedRole === Role.DESIGNER) ||
+    (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE && assignedRole === Role.CINE)) {
     return true;
   }
 
@@ -221,25 +287,25 @@ export function canUserEdit(role: string, workflowState: WorkflowState, assigned
   if (!isRework) {
     // If not in rework state, check if the role matches the assigned role OR the current stage
     // This handles cases where the assigned_role might not be properly set but the stage indicates who should work
-    return role === assignedRole || 
-           (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
-           (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
-           (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
-           (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
-           (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
-           (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
+    return role === assignedRole ||
+      (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
+      (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
+      (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
+      (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
+      (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
+      (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
   }
 
   // When in rework state, we need to balance hierarchical access rules with current stage assignments
   // If the project has moved to a new stage and is assigned to a new role, that role should be able to work on it
   // regardless of the historical rework state
-  const currentStagePermission = 
-         (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
-         (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
-         (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
-         (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
-         (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
-         (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
+  const currentStagePermission =
+    (currentStage === 'VIDEO_EDITING' && role === Role.EDITOR) ||
+    (currentStage === 'SUB_EDITOR_ASSIGNMENT' && role === Role.SUB_EDITOR) ||
+    (currentStage === 'SUB_EDITOR_PROCESSING' && role === Role.SUB_EDITOR) ||
+    (currentStage === 'THUMBNAIL_DESIGN' && role === Role.DESIGNER) ||
+    (currentStage === 'CREATIVE_DESIGN' && role === Role.DESIGNER) ||
+    (currentStage === 'CINEMATOGRAPHY' && role === Role.CINE);
 
   // If the current stage permits the role, allow access even if in rework state
   if (currentStagePermission && role === assignedRole) {

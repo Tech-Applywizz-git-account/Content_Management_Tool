@@ -63,6 +63,14 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   };
 
   const [users, setUsers] = useState<User[]>([]);
+  const historyFilter = (searchParams.get('filter') as any) || 'ALL';
+
+  const setHistoryFilter = (filter: string) => {
+    setSearchParams(prev => {
+      prev.set('filter', filter);
+      return prev;
+    }, { replace: true });
+  };
 
   // Use allProjects for dashboard view, fallback to inboxProjects
   // Deduplicate projects by ID to prevent duplicates
@@ -314,7 +322,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
 
   const handleReview = (project: Project) => {
-    navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project });
+    navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project, from: location.pathname });
   };
 
   const handleHistoryDetail = (project: Project, history: any) => {
@@ -356,7 +364,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           <CmoFinalReview
             user={user}
             onBack={() => handleViewChange('dashboard')}
-            onProjectSelect={(project) => navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project })}
+            onProjectSelect={(project) => navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project, from: location.pathname })}
             selectedProject={null}
           />
         ) : activeView === 'calendar' ? (
@@ -398,7 +406,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   onClick={() => handleViewChange('history')}
                   className={`px-6 py-4 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
               ${activeTab === 'HISTORY' || activeView === 'history'
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-[#0085FF] text-white'
                       : 'bg-white text-slate-900 hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                     }`}
                 >
@@ -412,6 +420,41 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             {/* Content */}
             {activeTab === 'HISTORY' ? (
               <div className="space-y-6">
+                {/* Role Filters for History */}
+                <div className="flex flex-wrap gap-2 mb-6 p-4 bg-slate-50 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  {[
+                    { id: 'ALL', label: 'All History', color: 'bg-slate-900', textColor: 'text-white' },
+                    { id: 'WRITER', label: 'Writer', color: 'bg-yellow-400', textColor: 'text-black' },
+                    { id: 'CMO', label: 'CMO', color: 'bg-indigo-600', textColor: 'text-white' },
+                    { id: 'CEO', label: 'CEO', color: 'bg-violet-700', textColor: 'text-white' },
+                    { id: 'CINE', label: 'Cine', color: 'bg-cyan-500', textColor: 'text-white' },
+                    { id: 'EDITOR', label: 'Editor', color: 'bg-orange-500', textColor: 'text-white' },
+                    { id: 'DESIGNER', label: 'Designer', color: 'bg-pink-500', textColor: 'text-white' },
+                    { id: 'OPS', label: 'Ops', color: 'bg-red-500', textColor: 'text-white' },
+                    { id: 'POSTED', label: 'Posted', color: 'bg-emerald-500', textColor: 'text-white' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setHistoryFilter(filter.id as any)}
+                      className={`px-3 py-1.5 text-xs font-black uppercase border-2 border-black transition-all ${historyFilter === filter.id
+                        ? `${filter.color} ${filter.textColor} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      {filter.label} ({
+                        filter.id === 'ALL' ? filteredHistoryProjects.length :
+                          filter.id === 'POSTED' ? filteredHistoryProjects.filter(p => p.status === 'DONE').length :
+                            filter.id === 'OPS' ? filteredHistoryProjects.filter(p => p.assigned_to_role === Role.OPS && p.status !== 'DONE').length :
+                              filteredHistoryProjects.filter(p => {
+                                if (p.status === 'DONE') return false;
+                                if (filter.id === 'EDITOR') return p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR;
+                                return p.assigned_to_role === filter.id;
+                              }).length
+                      })
+                    </button>
+                  ))}
+                </div>
+
                 {/* Column Headers */}
                 <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-100 border-2 border-black font-black text-slate-700 uppercase text-xs">
                   <div className="col-span-4">Title</div>
@@ -422,75 +465,84 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </div>
 
                 <div className="space-y-4">
-                  {projects.map(p => {
-                    const history = historyMapRef.current.get(p.id);
+                  {projects
+                    .filter(p => {
+                      if (historyFilter === 'ALL') return true;
+                      if (historyFilter === 'POSTED') return p.status === 'DONE';
+                      if (historyFilter === 'OPS') return p.assigned_to_role === Role.OPS && p.status !== 'DONE';
+                      if (p.status === 'DONE') return false;
+                      if (historyFilter === 'EDITOR') return p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR;
+                      return p.assigned_to_role === historyFilter;
+                    })
+                    .map(p => {
+                      const history = historyMapRef.current.get(p.id);
 
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => handleHistoryDetail(p, history)}
-                        className="grid grid-cols-12 gap-4 items-center bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                      >
-                        <div className="col-span-4 font-black uppercase text-lg">
-                          {p.title}
-                        </div>
-
-                        <div className="col-span-2">
-                          <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE'
-                            ? 'bg-[#FF4F4F] text-white'
-                            : p.channel === 'LINKEDIN'
-                              ? 'bg-[#0085FF] text-white'
-                              : 'bg-[#D946EF] text-white'
-                            }`}>
-                            {p.channel}
-                          </span>
-                        </div>
-                        <div className="col-span-2">
-                          <span
-                            className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                              ? 'bg-red-500 text-white'
-                              : p.priority === 'NORMAL'
-                                ? 'bg-yellow-500 text-black'
-                                : 'bg-green-500 text-white'
-                              }`}
-                          >
-                            {p.priority}
-                          </span>
-                        </div>
-
-                        <div className="col-span-2 text-xs font-black uppercase text-slate-500">
-                          {STAGE_LABELS[p.current_stage]}
-                        </div>
-                        <div className="col-span-2">
-                          <div className="text-xs font-bold uppercase text-slate-700">
-                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => handleHistoryDetail(p, history)}
+                          className="grid grid-cols-12 gap-4 items-center bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                        >
+                          <div className="col-span-4 font-black uppercase text-lg">
+                            {p.title}
                           </div>
-                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+
+                          <div className="col-span-2">
+                            <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE'
+                              ? 'bg-[#FF4F4F] text-white'
+                              : p.channel === 'LINKEDIN'
+                                ? 'bg-[#0085FF] text-white'
+                                : 'bg-[#D946EF] text-white'
+                              }`}>
+                              {p.channel}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span
+                              className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                ? 'bg-red-500 text-white'
+                                : p.priority === 'NORMAL'
+                                  ? 'bg-yellow-500 text-black'
+                                  : 'bg-green-500 text-white'
+                                }`}
+                            >
+                              {p.priority}
+                            </span>
+                          </div>
+
+                          <div className="col-span-2 text-xs font-black uppercase text-slate-500">
+                            {STAGE_LABELS[p.current_stage]}
+                          </div>
+                          <div className="col-span-2">
+                            <div className="text-xs font-bold uppercase text-slate-700">
+                              By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                            </div>
+                            {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
+                              <div className="text-xs font-bold text-slate-500 uppercase">
+                                Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                              </div>
+                            )}
                             <div className="text-xs font-bold text-slate-500 uppercase">
-                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                              {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                             </div>
-                          )}
-                          <div className="text-xs font-bold text-slate-500 uppercase">
-                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
+
+                          <div className="col-span-2">
+                            <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${history?.action === 'APPROVED'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                              }`}>
+                              {history?.action}
+                            </span>
+                            {history?.action === 'REJECTED' && history?.comment && (
+                              <div className="text-xs text-red-700 mt-1 truncate" title={history.comment}>
+                                Reason: {history.comment}
+                              </div>
+                            )}
                           </div>
                         </div>
-
-                        <div className="col-span-2">
-                          <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${history?.action === 'APPROVED'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                            }`}>
-                            {history?.action}
-                          </span>
-                          {history?.action === 'REJECTED' && history?.comment && (
-                            <div className="text-xs text-red-700 mt-1 truncate" title={history.comment}>
-                              Reason: {history.comment}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               </div>
             ) : (

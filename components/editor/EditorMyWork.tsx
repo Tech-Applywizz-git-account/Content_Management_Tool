@@ -1,8 +1,8 @@
 import React from 'react';
-import { Project, Role } from '../../types';
+import { Project, Role, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video, Film } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import { isActiveRework } from '../../services/workflowUtils';
 import EditorScripts from './EditorScripts';
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
     projects: Project[];
     scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
-    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | null;
+    activeFilter?: 'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | 'CINE' | null;
     completedSubTab?: 'POST' | 'POSTED' | null;
     onSetCompletedSubTab?: (tab: 'POST' | 'POSTED' | null) => void;
 }
@@ -39,6 +39,10 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                 }
             }
             return filtered;
+        }
+
+        if (activeFilter === 'CINE') {
+            return (scriptProjects || []).filter(p => p.current_stage === 'CINEMATOGRAPHY');
         }
 
         // Sort projects by priority:
@@ -141,10 +145,9 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                 {myTasks.map(project => {
                     const isDelivered = !!project.edited_video_link;
 
-                    // Use the centralized workflow state detection with role context
-                    const workflowState = getWorkflowStateForRole(project, user.role);
-                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    const isRejected = workflowState.isRejected;
+                    // Use the canonical rework condition
+                    const isRework = isActiveRework(project, user.role);
+                    const isRejected = project.status === TaskStatus.REJECTED && project.assigned_to_role === user.role;
 
                     return (
                         <div
@@ -229,7 +232,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                         <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                                         <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
                                     </div>
-                                    {activeFilter === 'SCRIPTS' && (
+                                    {(activeFilter === 'SCRIPTS' || activeFilter === 'COMPLETED') && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
@@ -261,7 +264,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+                                        {activeFilter === 'SCRIPTS' || activeFilter === 'CINE' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
                                     </button>
                                 </div>
                             </div>

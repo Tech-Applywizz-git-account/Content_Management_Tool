@@ -9,11 +9,11 @@ interface RichTextEditorProps {
   projectName?: string;
 }
 
-const RichTextEditor: React.FC<RichTextEditorProps> = ({ 
-  initialContent, 
-  onSave, 
-  onCancel, 
-  canEdit 
+const RichTextEditor: React.FC<RichTextEditorProps> = ({
+  initialContent,
+  onSave,
+  onCancel,
+  canEdit
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const [content, setContent] = useState(initialContent);
@@ -21,38 +21,38 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Function to save selection before updating content
   const saveSelection = () => {
     if (!editorRef.current) return null;
-    
+
     const selection = window.getSelection();
     if (!selection?.rangeCount) return null;
-    
+
     const range = selection.getRangeAt(0);
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(editorRef.current);
     preCaretRange.setEnd(range.endContainer, range.endOffset);
     const start = preCaretRange.toString().length;
-    
+
     return {
       start,
       end: start + range.toString().length
     };
   };
-  
+
   // Function to restore selection after updating content
   const restoreSelection = (savedSelection: { start: number; end: number } | null) => {
     if (!savedSelection || !editorRef.current) return;
-    
+
     let charIndex = 0;
     const walker = document.createTreeWalker(
       editorRef.current,
       NodeFilter.SHOW_TEXT
     );
-    
+
     let node;
     let foundStart = false;
     let range = document.createRange();
     range.setStart(editorRef.current, 0);
     range.collapse(true);
-    
+
     while ((node = walker.nextNode())) {
       const nextCharIndex = charIndex + node.textContent!.length;
       if (!foundStart && savedSelection.start >= charIndex && savedSelection.start <= nextCharIndex) {
@@ -65,21 +65,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }
       charIndex = nextCharIndex;
     }
-    
+
     const selection = window.getSelection();
     if (selection) {
       selection.removeAllRanges();
       selection.addRange(range);
     }
   };
-  
+
   // Function to apply color to selected text
   const applyColor = (color: string) => {
     if (!canEdit || !editorRef.current) return;
-    
+
     const selection = window.getSelection();
     if (!selection || selection.toString().trim() === '') return;
-    
+
     // Map color names to bolder/darker hex values for better contrast
     const colorMap: Record<string, string> = {
       'red': '#990000', // bold dark red
@@ -89,47 +89,47 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       'orange': '#cc6600', // bold dark orange
       'black': '#000000', // black
     };
-    
+
     const darkColor = colorMap[color] || color;
-    
+
     // Save selection before applying color
     const savedSelection = saveSelection();
-    
+
     document.execCommand('styleWithCSS', false, 'true');
     document.execCommand('foreColor', false, darkColor);
-    
+
     // Update the content state
     const newContent = editorRef.current.innerHTML;
     setContent(newContent);
-    
+
     // Restore selection after updating state
     setTimeout(() => {
       restoreSelection(savedSelection);
     }, 0);
   };
-  
+
   // Function to apply bold formatting
   const applyBold = () => {
     if (!canEdit || !editorRef.current) return;
-    
+
     const selection = window.getSelection();
     if (!selection || selection.toString().trim() === '') return;
-    
+
     // Save selection before applying bold
     const savedSelection = saveSelection();
-    
+
     document.execCommand('bold', false, null);
-    
+
     // Update the content state
     const newContent = editorRef.current.innerHTML;
     setContent(newContent);
-    
+
     // Restore selection after updating state
     setTimeout(() => {
       restoreSelection(savedSelection);
     }, 0);
   };
-  
+
   // Function to handle text selection events
   const handleTextSelection = () => {
     // We can add logic here to show/hide the toolbar based on selection
@@ -155,37 +155,37 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         {/* Color picker toolbar - appears when text is selected */}
         {canEdit && (
           <div className="flex space-x-2">
-            <button 
+            <button
               onClick={() => applyColor('red')}
               className="w-6 h-6 bg-red-800 border border-black rounded-sm"
               title="Red"
               disabled={!canEdit}
             />
-            <button 
+            <button
               onClick={() => applyColor('blue')}
               className="w-6 h-6 bg-blue-800 border border-black rounded-sm"
               title="Blue"
               disabled={!canEdit}
             />
-            <button 
+            <button
               onClick={() => applyColor('green')}
               className="w-6 h-6 bg-green-800 border border-black rounded-sm"
               title="Green"
               disabled={!canEdit}
             />
-            <button 
+            <button
               onClick={() => applyColor('purple')}
               className="w-6 h-6 bg-purple-800 border border-black rounded-sm"
               title="Purple"
               disabled={!canEdit}
             />
-            <button 
+            <button
               onClick={() => applyColor('orange')}
               className="w-6 h-6 bg-orange-700 border border-black rounded-sm"
               title="Orange"
               disabled={!canEdit}
             />
-            <button 
+            <button
               onClick={() => applyColor('black')}
               className="w-6 h-6 bg-black border border-black rounded-sm"
               title="Black"
@@ -221,7 +221,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             setContent(newContent);
           }
         }}
-        className="flex-1 w-full text-lg resize-none outline-none font-serif p-4 border border-gray-300 rounded min-h-[600px]"
+        className="flex-1 w-full text-2xl resize-none outline-none font-serif p-4 border border-gray-300 rounded min-h-[600px]"
         ref={editorRef}
       />
 

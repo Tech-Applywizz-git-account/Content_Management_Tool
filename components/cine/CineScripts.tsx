@@ -422,29 +422,29 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
             <h3 className="text-lg font-black uppercase mb-4">
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
-            <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
-              {localProject.data?.script_content 
+            <div className="border-2 border-gray-200 p-8 bg-gray-50 text-2xl font-serif leading-relaxed">
+              {localProject.data?.script_content
                 ? (() => {
-                    let decodedContent = localProject.data.script_content
-                        .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>')
-                        .replace(/&amp;/g, '&')
-                        .replace(/&quot;/g, '"')
-                        .replace(/&#39;/g, "'")
-                        .replace(/&nbsp;/g, ' ');
-                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                  })()
-                : localProject.data?.idea_description 
+                  let decodedContent = localProject.data.script_content
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#39;/g, "'")
+                    .replace(/&nbsp;/g, ' ');
+                  return <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                })()
+                : localProject.data?.idea_description
                   ? (() => {
-                      let decodedContent = localProject.data.idea_description
-                          .replace(/&lt;/g, '<')
-                          .replace(/&gt;/g, '>')
-                          .replace(/&amp;/g, '&')
-                          .replace(/&quot;/g, '"')
-                          .replace(/&#39;/g, "'")
-                          .replace(/&nbsp;/g, ' ');
-                      return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                    })()
+                    let decodedContent = localProject.data.idea_description
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&amp;/g, '&')
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#39;/g, "'")
+                      .replace(/&nbsp;/g, ' ');
+                    return <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                  })()
                   : 'No content available'}
             </div>
           </div>
@@ -463,28 +463,28 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
                 <label className="text-sm font-bold text-slate-500 uppercase mb-1 block">Writer</label>
                 <p className="p-2 border-2 border-black font-medium bg-slate-50">{localProject.writer_name || '—'}</p>
               </div>
-              
+
               <div>
                 <label className="text-sm font-bold text-slate-500 uppercase mb-1 block">Actor</label>
                 <p className="p-2 border-2 border-black font-medium bg-slate-50">
                   {localProject.data?.actor_details || 'e.g. Female presenter, 30s, business attire'}
                 </p>
               </div>
-              
+
               <div>
                 <label className="text-sm font-bold text-slate-500 uppercase mb-1 block">Location</label>
                 <p className="p-2 border-2 border-black font-medium bg-slate-50">
                   {localProject.data?.location_details || 'e.g. Office, studio, outdoor street'}
                 </p>
               </div>
-              
+
               <div>
                 <label className="text-sm font-bold text-slate-500 uppercase mb-1 block">Lighting</label>
                 <p className="p-2 border-2 border-black font-medium bg-slate-50">
                   {localProject.data?.lighting_details || 'e.g. Soft daylight, cinematic, low-key'}
                 </p>
               </div>
-              
+
               <div>
                 <label className="text-sm font-bold text-slate-500 uppercase mb-1 block">Angles</label>
                 <p className="p-2 border-2 border-black font-medium bg-slate-50">
@@ -643,7 +643,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
               {comments.map((comment, index) => {
                 // Determine the description based on stage and action
                 let description = `${comment.action} in ${comment.stage}`;
-                        
+
                 switch (comment.stage) {
                   case 'SCRIPT':
                     if (comment.action === 'SUBMITTED') {
@@ -714,7 +714,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
                       description = `${comment.action} in ${comment.stage}`;
                     }
                 }
-                        
+
                 return (
                   <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
                     <div className="flex justify-between items-start">

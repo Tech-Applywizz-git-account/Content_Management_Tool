@@ -2,7 +2,7 @@ import React from 'react';
 import { Project, Role } from '../../types';
 import { format } from 'date-fns';
 import { Video, Palette, FileImage, CalendarIcon } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import { isActiveRework } from '../../services/workflowUtils';
 import DesignerScripts from './DesignerScripts';
 
 interface Props {
@@ -146,10 +146,9 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                     const isVideo = project.content_type === 'VIDEO';
                     const isDelivered = isVideo ? !!project.thumbnail_link : !!project.creative_link;
 
-                    // Use the centralized workflow state detection with role context
-                    const workflowState = getWorkflowStateForRole(project, user.role);
-                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    const isRejected = workflowState.isRejected;
+                    // Use the canonical rework condition
+                    const isRework = isActiveRework(project, user.role);
+                    const isRejected = project.status === 'REJECTED' && project.assigned_to_role === user.role;
 
                     return (
                         <div

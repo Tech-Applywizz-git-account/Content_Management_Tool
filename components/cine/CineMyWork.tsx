@@ -1,8 +1,8 @@
 import React from 'react';
-import { Project, Role, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import { isActiveRework } from '../../services/workflowUtils';
 import CineScripts from './CineScripts';
 
 interface Props {
@@ -95,8 +95,8 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                 key={role}
                                 onClick={() => setActiveRoleFilter(role as Role | 'ALL' | 'POSTED')}
                                 className={`px-4 py-2 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
-                                        ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
-                                        : 'bg-white text-slate-600 hover:bg-slate-50'
+                                    ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
+                                    : 'bg-white text-slate-600 hover:bg-slate-50'
                                     }`}
                             >
                                 {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
@@ -141,10 +141,9 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     const isScheduled = !!project.shoot_date;
                     const isUploaded = !!project.video_link;
 
-                    // Use the centralized workflow state detection with role context
-                    const workflowState = getWorkflowStateForRole(project, user.role);
-                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    const isRejected = workflowState.isRejected;
+                    // Use the canonical rework condition
+                    const isRework = isActiveRework(project, user.role);
+                    const isRejected = project.status === TaskStatus.REJECTED && project.assigned_to_role === user.role;
 
                     return (
                         <div

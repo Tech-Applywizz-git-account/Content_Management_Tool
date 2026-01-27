@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoReviewScreen from './CmoReviewScreen';
-import Layout from '../Layout';
 
-const CmoReviewPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+interface CmoReviewPageProps {
+    user: { full_name: string; role: Role };
+    onLogout: () => void;
+    refreshData: (user: any) => Promise<void>;
+}
+
+const CmoReviewPage: React.FC<CmoReviewPageProps> = ({ user, onLogout, refreshData }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
+    const location = useLocation();
+
+    // Check if project data was passed in location state for immediate display
+    const initialProject = (location.state as any)?.initialProject as Project | undefined;
+
+    const [project, setProject] = useState<Project | null>(initialProject || null);
+    const [loading, setLoading] = useState(!initialProject);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -20,8 +30,18 @@ const CmoReviewPage: React.FC<{ user: { full_name: string; role: Role }; onLogou
                 return;
             }
 
+            // If we already have the project with history from state, we can skip the blocking fetch
+            if (initialProject && (initialProject as any).history) {
+                setLoading(false);
+                return;
+            }
+
             try {
-                setLoading(true);
+                // Only show loading spinner if we don't have an initial project to show
+                if (!initialProject) {
+                    setLoading(true);
+                }
+
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*, workflow_history(*)')
@@ -43,25 +63,31 @@ const CmoReviewPage: React.FC<{ user: { full_name: string; role: Role }; onLogou
                 setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
-                setError('Failed to load project');
+                if (!project) setError('Failed to load project');
             } finally {
                 setLoading(false);
             }
         };
 
         loadProject();
-    }, [projectId]);
+    }, [projectId, initialProject]);
 
     const handleBack = () => {
-        navigate('/cmo');
+        const from = (location.state as any)?.from || '/cmo';
+        navigate(from);
     };
 
-    const handleComplete = () => {
-        // Refresh the parent dashboard to reflect changes
-        navigate('/cmo');
+    const handleComplete = async () => {
+        // Explicitly trigger a data refresh to ensure the dashboard is up-to-date
+        // before navigating back, so the project moves columns immediately
+        if (refreshData && user) {
+            await refreshData(user);
+        }
+        const from = (location.state as any)?.from || '/cmo';
+        navigate(from);
     };
 
-    if (loading) {
+    if (loading && !project) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#D946EF] border-t-transparent"></div>

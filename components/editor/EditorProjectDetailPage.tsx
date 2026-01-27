@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import EditorProjectDetail from './EditorProjectDetail';
@@ -11,7 +11,13 @@ const EditorProjectDetailPage: React.FC<{
     projects?: Project[];
 }> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
+    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+
+    // Check if coming from CINE PROJECTS tab or regular MY WORK
+    const fromViewParam = searchParams.get('from') || 'MYWORK';
+    const fromView = fromViewParam === 'SCRIPTS' ? 'SCRIPTS' : 'MYWORK';
+    const isFromCineTab = fromView === 'SCRIPTS';
 
     // Instant UI: Find project in cache first
     const cachedProject = projects.find(p => p.id === projectId);
@@ -86,7 +92,7 @@ const EditorProjectDetailPage: React.FC<{
             user={user as any}
             onLogout={onLogout}
             onOpenCreate={() => { }}
-            activeView="mywork"
+            activeView={isFromCineTab ? 'dashboard' : 'mywork'}
             onChangeView={(view) => {
                 if (view === 'dashboard') navigate('/editor');
                 else navigate(`/editor/${view}`);
@@ -100,6 +106,7 @@ const EditorProjectDetailPage: React.FC<{
                     // Refresh the current page after update
                     window.location.reload();
                 }}
+                fromView={fromView}
             />
         </Layout>
     );

@@ -116,7 +116,13 @@ export interface Project {
   rework_initiator_role?: Role;
   rework_initiator_stage?: WorkflowStage;
   visible_to_roles?: string[]; // Roles that can view this project
-  forwarded_comments?: Array<{ comment: string; actor_name: string }>; // Comments forwarded with rework requests
+  forwarded_comments?: Array<{
+    comment: string;
+    actor_name: string;
+    action?: string;
+    from_role?: string;
+    to_role?: string;
+  }>; // Comments forwarded with rework requests
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }

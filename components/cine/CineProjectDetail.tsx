@@ -6,7 +6,8 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import RichTextEditor from '../RichTextEditor';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import ReworkSection from '../ReworkSection';
 
 interface Props {
     project: Project;
@@ -24,15 +25,11 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
     const [localProject, setLocalProject] = useState<Project>(processedProject);
 
-    const isReworkProject = (project: Project) =>
-        project.history?.some(h =>
-            h.action?.startsWith('REWORK_')
-        );
 
-    // Use the new workflow state logic with role context
-    const workflowState = getWorkflowStateForRole(localProject, userRole);
-    const isRework = workflowState.isTargetedRework || workflowState.isRework;
-    const isRejected = workflowState.isRejected;
+    // Use canonical rework condition
+    const isRework = isActiveRework(localProject, userRole);
+    // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
+    const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
 
     // Determine if current user can edit based on role and workflow state
     // Additional check for role-based access: if the current stage is CINEMATOGRAPHY and user role is CINE,
@@ -41,10 +38,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         userRole === 'CINE' &&
         localProject.assigned_to_role === 'CINE');
 
-    const canEdit = roleBasedAccess || canUserEdit(userRole, workflowState, localProject.assigned_to_role, localProject.current_stage);
+    const canEdit = roleBasedAccess || canUserEdit(userRole, { isRework, isRejected, isTargetedRework: isRework, isInReview: false, isApproved: false, latestAction: null }, localProject.assigned_to_role, localProject.current_stage) || isRework;
 
     // Check if this project is currently assigned to the Cine role
-    const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
+    const isCurrentlyAssignedToCine = (localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE') || isRework;
 
 
     const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
@@ -57,7 +54,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     const [editingCameraAngles, setEditingCameraAngles] = useState(processedProject.data?.angles ?? '');
 
     // Helper function to decode HTML entities
-    const decodeHtmlEntities = (html) => {
+    const decodeHtmlEntities = (html: string | null | undefined) => {
         if (!html) return '';
         const txt = document.createElement('textarea');
         txt.innerHTML = html;
@@ -65,7 +62,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     };
 
     // State for script content (decoded for editing)
-    const [scriptContent, setScriptContent] = useState(decodeHtmlEntities(processedProject.data.script_content || ''));
+    const [scriptContent, setScriptContent] = useState(decodeHtmlEntities(processedProject.data?.script_content || ''));
     // State for script edit mode
     const [isScriptEditing, setIsScriptEditing] = useState(false);
 
@@ -85,7 +82,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         setEditingLocationDetails(processedProject.data?.location ?? '');
         setEditingLightingDetails(processedProject.data?.lighting ?? '');
         setEditingCameraAngles(processedProject.data?.angles ?? '');
-        setScriptContent(decodeHtmlEntities(processedProject.data.script_content || ''));
+        setScriptContent(decodeHtmlEntities(processedProject.data?.script_content || ''));
         setIsScriptEditing(false); // Reset edit mode when project changes
         setLocalProject(processedProject);
     }, [initialProject]);
@@ -166,7 +163,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             // Update project data to persist any changes made during this session
             await db.updateProjectData(localProject.id, {
                 ...localProject.data,
-                cine_thumbnail_link: localProject.data.cine_thumbnail_link
+                cine_thumbnail_link: localProject.data?.cine_thumbnail_link
             });
 
             setLocalProject(prev => ({
@@ -209,11 +206,6 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 return;
             }
 
-            // Determine if this is a rework submission based on the new workflow state logic
-            const workflowState = getWorkflowStateForRole(localProject, userRole);
-            const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            const isRejected = workflowState.isRejected;
-
             // Record the action in workflow history before updating the project
             const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'CINE_VIDEO_UPLOADED';
             let comment = isRework
@@ -231,7 +223,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
                 fromStage: localProject.current_stage,
-                toStage: WorkflowStage.VIDEO_EDITING,
+                toStage: WorkflowStage.MULTI_WRITER_APPROVAL,
                 userId: user.id,
                 action: actionType,
                 comment: comment
@@ -329,6 +321,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     // Send notification to all users of the assigned role
                     for (const nextUser of nextUsers) {
                         try {
+
                             // Use type assertion to access the notifications service
                             const dbWithNotifications = db as any;
                             await dbWithNotifications.notifications.create(
@@ -463,98 +456,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 </div>
             </div>
 
-            {/* Rework Information Box (Shown for rework projects assigned to Cine) */}
-            {(isRework || isRejected) && localProject.history && localProject.history.length > 0 && (
-                <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                    <div className="flex items-center space-x-2 mb-4">
-                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">!</span>
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black uppercase text-red-800">
-                                {isRejected ? 'Project Rejected' : 'Rework Required'}
-                            </h2>
-                            <p className="text-sm font-bold text-red-600">
-                                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                        <div className="p-4 bg-white border-l-4 border-red-500">
-                            <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
-                            <p className="text-red-700">
-                                {getLatestReworkRejectComment(localProject, userRole)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
-                            </p>
-                            <p className="text-sm text-red-600 mt-2">
-                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
-                            </p>
-                        </div>
-
-                        {/* Display forwarded comments from CMO and CEO - Hide when in footage upload tab */}
-                        {activeFilter !== 'UPLOADED' && localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
-                            <div className="mb-4">
-                                <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
-                                <div className="space-y-2 ml-2">
-                                    {localProject.forwarded_comments
-                                        .map((comment, index) => {
-                                            // If comment has actor_name, use it; otherwise, default to "Reviewer"
-                                            const actorName = comment.actor_name || 'Reviewer';
-
-                                            // Check if the actor is CMO or CEO based on the name
-                                            const isCmoOrCeo = ['CMO', 'CEO', 'cmo', 'ceo'].some(role =>
-                                                actorName.toLowerCase().includes(role.toLowerCase())
-                                            );
-
-                                            // Only show if it's from CMO/CEO
-                                            if (!isCmoOrCeo) return null;
-
-                                            return (
-                                                <div key={`forwarded-${index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
-                                                    <div className="flex items-center">
-                                                        <span className="font-bold text-blue-700">{actorName} Comment</span>
-                                                    </div>
-                                                    <div className="mt-1">
-                                                        <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        }).filter(Boolean)}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Existing Data Display */}
-                        <div className="bg-white border-2 border-gray-300 p-4">
-                            <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {localProject.shoot_date && (
-                                    <div>
-                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
-                                        <p className="font-medium">{localProject.shoot_date}</p>
-                                    </div>
-                                )}
-                                {localProject.video_link && (
-                                    <div>
-                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Video Link</span>
-                                        <a
-                                            href={localProject.video_link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 hover:underline break-all"
-                                        >
-                                            {localProject.video_link}
-                                        </a>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="bg-red-100 border-2 border-red-200 p-3">
-                            <p className="text-sm text-red-800 font-bold">
-                                Please update the shoot date and/or video link below. Both old and new data will be visible for comparison.
-                            </p>
-                        </div>
-                    </div>
+            {/* Rework Information Section */}
+            {(isRework || isRejected) && (
+                <div className="max-w-6xl mx-auto px-6 pt-8">
+                    <ReworkSection project={localProject} userRole={userRole} />
                 </div>
             )}
 
@@ -667,7 +572,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 }}
                                 onCancel={() => {
                                     // Cancel editing - revert to original content
-                                    setScriptContent(decodeHtmlEntities(localProject.data.script_content || ''));
+                                    setScriptContent(decodeHtmlEntities(localProject.data?.script_content || ''));
                                     setIsScriptEditing(false);
                                 }}
                                 canEdit={canEdit}
@@ -676,8 +581,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             />
                         ) : (
                             <>
-                                {localProject.data.script_content
-                                    ? <div className="prose max-w-none text-lg" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
+                                {localProject.data?.script_content
+                                    ? <div className="prose max-w-none text-2xl" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
                                     : 'No script content available'}
 
                                 {canEdit && (
@@ -1025,29 +930,35 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
                         {(canEdit) ? (
                             <div className="space-y-4">
-                                {/* Show existing video link as reference */}
-                                {localProject.video_link && (
-                                    <div className="bg-blue-50 border-2 border-blue-600 p-4">
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2">
-                                                <Video className="w-5 h-5 text-blue-800" />
-                                                <p className="text-sm font-bold uppercase text-blue-800">Previous Video Link</p>
-                                            </div>
-                                            <a
-                                                href={localProject.video_link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
-                                            >
-                                                {localProject.video_link}
-                                            </a>
-                                        </div>
+                                {/* Show previous video link if exists and it's a rework */}
+                                {isRework && localProject.video_link && (
+                                    <div className="bg-blue-50 border-2 border-blue-600 p-4 mb-4">
+                                        <p className="text-sm font-bold uppercase text-blue-800 mb-2">
+                                            Previous Submission
+                                        </p>
+                                        <a
+                                            href={localProject.video_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block break-all text-blue-600 underline"
+                                        >
+                                            {localProject.video_link}
+                                        </a>
                                     </div>
                                 )}
 
                                 {/* Input for new video link */}
                                 <div className="space-y-4">
-                                    <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-slate-600 font-medium">
+                                            {isRework ? 'Upload New Version (Rework)' : 'Upload Video Link'}
+                                        </p>
+                                        {isRework && (
+                                            <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
+                                                Comparison Mode Active
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="flex gap-3">
                                         <input
                                             type="url"
@@ -1261,21 +1172,23 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     </div>
                 )}
             </div>
-            {showPopup && (
-                <Popup
-                    message={popupMessage}
-                    stageName={stageName}
-                    duration={popupDuration}
-                    onClose={() => {
-                        setShowPopup(false);
-                        // Only call onUpdate() for major state changes, not for script saves
-                        if (!popupMessage.includes('Script content updated successfully')) {
-                            onUpdate();
-                        }
-                    }}
-                />
-            )}
-        </div>
+            {
+                showPopup && (
+                    <Popup
+                        message={popupMessage}
+                        stageName={stageName}
+                        duration={popupDuration}
+                        onClose={() => {
+                            setShowPopup(false);
+                            // Only call onUpdate() for major state changes, not for script saves
+                            if (!popupMessage.includes('Script content updated successfully')) {
+                                onUpdate();
+                            }
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 };
 

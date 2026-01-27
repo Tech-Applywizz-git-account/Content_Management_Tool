@@ -17,11 +17,12 @@ interface Props {
     onLogout: () => void;
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Determine activeView from URL path
     const getActiveViewFromPath = () => {
@@ -34,8 +35,25 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
 
     const activeView = getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'DELIVERED' | 'SCRIPTS' | null>(null);
-    const [completedSubTab, setCompletedSubTab] = useState<'POST' | 'POSTED' | null>(null);
+
+    const activeFilter = (searchParams.get('filter') as any) || null;
+    const setActiveFilter = (filter: string | null) => {
+        setSearchParams(prev => {
+            if (filter) prev.set('filter', filter);
+            else prev.delete('filter');
+            return prev;
+        }, { replace: true });
+    };
+
+    const completedSubTab = (searchParams.get('subtab') as any) || null;
+    const setCompletedSubTab = (subtab: string | null) => {
+        setSearchParams(prev => {
+            if (subtab) prev.set('subtab', subtab);
+            else prev.delete('subtab');
+            return prev;
+        }, { replace: true });
+    };
+
     const [refreshKey, setRefreshKey] = useState(0);
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
@@ -60,33 +78,30 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     };
 
     // Handle top-level view changes (Dashboard / My Work / Calendar)
-    const handleViewChange = (view: string, preserveFilter = false) => {
+    const handleViewChange = (view: string, preserveFilter = false, newFilter: string | null = null) => {
         setSelectedProject(null);
         const rolePath = user.role.toLowerCase();
 
-        // ✅ IMPORTANT:
-        // If user manually clicks "My Work",
-        // clear any dashboard-based filters
-        if (view === 'mywork' && !preserveFilter) {
-            setActiveFilter(null);
+        let searchStr = '';
+        if (newFilter) {
+            searchStr = `?filter=${newFilter}`;
+        } else if (preserveFilter) {
+            searchStr = searchParams.toString() ? `?${searchParams.toString()}` : '';
+        }
+
+        // If user manually clicks "My Work" without preserveFilter and no newFilter, clear filters
+        if (view === 'mywork' && !preserveFilter && !newFilter) {
+            setSearchParams({}, { replace: true });
         }
 
         if (view === 'dashboard') {
-            navigate(`/${rolePath}`);
+            navigate(`/${rolePath}${searchStr}`);
         } else if (view === 'create-designer-project') {
-            navigate(`/${rolePath}/create`);
+            navigate(`/${rolePath}/create${searchStr}`);
         } else {
-            navigate(`/${rolePath}/${view}`);
+            navigate(`/${rolePath}/${view}${searchStr}`);
         }
     };
-
-    // Mount-only effect
-    useEffect(() => {
-        // Safety: never restore dashboard filters on reload
-        setActiveFilter(null);
-    }, []);
-
-
 
     /**
  * Projects shown in MyWork:
@@ -111,25 +126,29 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
                     const isNotDone = p.status !== TaskStatus.DONE;
+                    // Include rework projects assigned to designer
+                    const isDesignerRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+                    if (isDesignerRework) return true;
+                    // Regular in-progress logic
                     if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link && isNotDone;
                     return p.delivery_date && !p.thumbnail_link && isNotDone;
                 });
             case 'DELIVERED':
-                let deliveredProjects = (historyProjects || []).filter(p => p.creative_link || p.thumbnail_link);
+                let deliveredProjects = (historyProjects || []).filter(p => !!p.creative_link || !!p.thumbnail_link);
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
-                    // Show projects that are not yet fully posted (live)
-                    return deliveredProjects.filter(p => !p.data?.live_url);
+                    // Show projects that are not yet fully posted
+                    return deliveredProjects.filter(p => p.status !== TaskStatus.DONE);
                 } else if (completedSubTab === 'POSTED') {
-                    // Show posted projects
-                    return deliveredProjects.filter(p => p.status === TaskStatus.DONE && !!p.data?.live_url);
+                    // Show projects that are fully completed and posted
+                    return deliveredProjects.filter(p => p.status === TaskStatus.DONE);
                 }
                 return deliveredProjects;
             default:
                 return historyProjects || [];
         }
-    }, [activeFilter, historyProjects, scriptProjects]);
+    }, [activeFilter, historyProjects, scriptProjects, completedSubTab]);
 
     // Counts derived directly from projects table (source of truth)
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState<number>(0);
@@ -152,13 +171,22 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         // Count all script projects passed from parent
         setScriptsCount((scriptProjects || []).length);
 
-        // Calculate other counts based on historyProjects
-        setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
+        // Calculate other counts based on EXACT SAME logic as filteredProjects memo
+        setNeedsDeliveryCount((historyProjects || []).filter(p =>
+            !p.delivery_date && p.status !== TaskStatus.DONE
+        ).length);
+
         setInProgressCount((historyProjects || []).filter(p => {
-            if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link;
-            return p.delivery_date && !p.thumbnail_link;
+            const isNotDone = p.status !== TaskStatus.DONE;
+            // Include rework projects assigned to designer
+            const isDesignerRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+            if (isDesignerRework) return true;
+            // Regular in-progress logic
+            if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link && isNotDone;
+            return p.delivery_date && !p.thumbnail_link && isNotDone;
         }).length);
-        setDeliveredCount((historyProjects || []).filter(p => p.creative_link || p.thumbnail_link).length);
+
+        setDeliveredCount((historyProjects || []).filter(p => !!p.creative_link || !!p.thumbnail_link).length);
     }, [inboxProjects, historyProjects, scriptProjects]);
 
     return (
@@ -229,8 +257,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div
                             onClick={() => {
-                                setActiveFilter('NEEDS_DELIVERY');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'NEEDS_DELIVERY');
                             }}
                             className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -241,8 +268,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         </div>
                         <div
                             onClick={() => {
-                                setActiveFilter('IN_PROGRESS');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'IN_PROGRESS');
                             }}
                             className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -253,8 +279,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         </div>
                         <div
                             onClick={() => {
-                                setActiveFilter('DELIVERED');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'DELIVERED');
                             }}
                             className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -265,8 +290,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                         </div>
                         <div
                             onClick={() => {
-                                setActiveFilter('SCRIPTS');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'SCRIPTS');
                             }}
                             className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >

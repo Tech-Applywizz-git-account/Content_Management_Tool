@@ -94,6 +94,7 @@ const DesignerProjectDetailPage: React.FC<{
         >
             <DesignerProjectDetail
                 project={project}
+                userRole={user.role}
                 onBack={() => navigate(-1)}
                 onUpdate={() => {
                     // Refresh the current page after update

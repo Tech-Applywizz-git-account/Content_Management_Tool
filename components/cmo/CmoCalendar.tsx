@@ -27,6 +27,7 @@ const toDateKey = (value?: string | null): string | null => {
 
 const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<{ date: Date; entries: any[] } | null>(null);
   const [datedProjects, setDatedProjects] = useState<Project[]>([]);
 
   /**
@@ -55,7 +56,11 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
           id: `${project.id}-shoot`,
           projectId: project.id,
           title: project.title,
+          writer_name: project.writer_name,
+          created_by_name: project.created_by_name,
           type: 'SHOOT',
+          channel: project.channel,
+          priority: project.priority,
           niche: project.data?.niche as string,
           niche_other: project.data?.niche_other as string
         });
@@ -66,7 +71,11 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
           id: `${project.id}-delivery`,
           projectId: project.id,
           title: project.title,
+          writer_name: project.writer_name,
+          created_by_name: project.created_by_name,
           type: 'DELIVERY',
+          channel: project.channel,
+          priority: project.priority,
           niche: project.data?.niche as string,
           niche_other: project.data?.niche_other as string
         });
@@ -77,7 +86,11 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
           id: `${project.id}-post`,
           projectId: project.id,
           title: project.title,
+          writer_name: project.writer_name,
+          created_by_name: project.created_by_name,
           type: 'POST',
+          channel: project.channel,
+          priority: project.priority,
           niche: project.data?.niche as string,
           niche_other: project.data?.niche_other as string
         });
@@ -127,7 +140,7 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in relative">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-4xl font-black uppercase text-slate-900">
           Workflow Calendar
@@ -172,13 +185,13 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
       </div>
 
       {/* Calendar Grid */}
-      <div className="border-2 border-black bg-white">
+      <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         {/* Day Headers */}
         <div className="grid grid-cols-7 border-b-2 border-black">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
             <div
               key={day}
-              className="p-3 text-center font-black text-sm border-r border-black last:border-r-0"
+              className="p-3 text-center font-black text-sm border-r border-black last:border-r-0 bg-slate-50"
             >
               {day}
             </div>
@@ -194,40 +207,109 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
             return (
               <div
                 key={day.toISOString()}
-                className={`min-h-[120px] p-2 border-r border-b border-black last:border-r-0
-                  ${!isSameMonth(day, currentDate) ? 'bg-slate-50' : ''}
+                onClick={() => dayEntries.length > 0 && setSelectedDay({ date: day, entries: dayEntries })}
+                className={`min-h-[140px] p-2 border-r border-b border-black last:border-r-0 cursor-pointer transition-all hover:bg-slate-50
+                  ${!isSameMonth(day, currentDate) ? 'bg-slate-50 opacity-40' : 'bg-white'}
                   ${isToday ? 'bg-amber-50 border-amber-500' : ''}`}
               >
                 <div
-                  className={`text-sm font-bold mb-1 ${isToday ? 'text-amber-600' : 'text-slate-600'
+                  className={`text-sm font-bold mb-2 flex items-center justify-center w-7 h-7 rounded-full ${isToday ? 'bg-amber-500 text-white' : 'text-slate-600'
                     }`}
                 >
                   {format(day, 'd')}
                 </div>
 
                 <div className="space-y-1">
-                  {dayEntries.map(entry => (
+                  {dayEntries.slice(0, 3).map(entry => (
                     <div
                       key={entry.id}
-                      className={`text-[10px] p-1.5 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white font-bold rounded shadow-sm border border-black/10 hover:scale-[1.02] transition-transform cursor-default overflow-hidden`}
+                      className={`text-[10px] p-1.5 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white font-bold rounded shadow-sm border border-black/10 overflow-hidden`}
                     >
-                      <div className="truncate mb-0.5">{entry.title}</div>
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="bg-white/20 px-1 rounded text-[8px] tracking-tighter uppercase">{entry.type}</span>
-                        {entry.niche && (
-                          <div className="text-[7px] font-black uppercase tracking-wider opacity-80 truncate">
-                            {formatNiche(entry.niche, entry.niche_other)}
-                          </div>
-                        )}
+                      <div className="truncate font-black">{entry.title}</div>
+                      <div className="text-[7px] font-bold opacity-90 truncate">By: {entry.writer_name || entry.created_by_name || '—'}</div>
+                      <div className="flex items-center justify-between gap-1 mt-0.5 pt-0.5 border-t border-white/10 text-[7px] uppercase tracking-tighter">
+                        <span className="bg-white/20 px-1 rounded">{entry.type}</span>
+                        {entry.niche && <span className="opacity-80 truncate">{formatNiche(entry.niche)}</span>}
                       </div>
                     </div>
                   ))}
+                  {dayEntries.length > 3 && (
+                    <div className="text-[10px] text-amber-600 font-black text-center py-1 mt-1 border-t border-dashed border-amber-200">
+                      +{dayEntries.length - 3} more
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Day Detail Modal */}
+      {selectedDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900 p-4 border-b-4 border-black flex items-center justify-between">
+              <h3 className="text-xl font-black text-white uppercase tracking-tight">
+                Schedule for {format(selectedDay.date, 'MMM dd, yyyy')}
+              </h3>
+              <button
+                onClick={() => setSelectedDay(null)}
+                className="bg-white border-2 border-black p-1 hover:bg-red-500 hover:text-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto space-y-3 bg-slate-50">
+              {selectedDay.entries.map(entry => (
+                <div
+                  key={entry.id}
+                  className={`p-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 bg-gradient-to-br ${getEntryStyles(entry.type)} text-white`}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-white/20 rounded">
+                      {entry.type}
+                    </span>
+                    <div className="flex gap-2">
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-black/20 rounded">
+                        {entry.channel}
+                      </span>
+                      {entry.priority === 'HIGH' && (
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-red-500 rounded">
+                          ★ HIGH
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <h4 className="font-black uppercase leading-snug text-lg">{entry.title}</h4>
+                  <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-white/20">
+                    <div className="text-xs font-bold uppercase">
+                      Writer: <span className="opacity-90">{entry.writer_name || entry.created_by_name || 'Unknown'}</span>
+                    </div>
+                    {entry.niche && (
+                      <div className="text-[10px] font-bold uppercase opacity-80">
+                        Niche: {formatNiche(entry.niche, entry.niche_other)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t-4 border-black bg-white flex justify-end">
+              <button
+                onClick={() => setSelectedDay(null)}
+                className="bg-slate-900 text-white px-6 py-2 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="absolute inset-0 -z-10" onClick={() => setSelectedDay(null)}></div>
+        </div>
+      )}
 
       {/* Empty State */}
       {datedProjects.length === 0 && (

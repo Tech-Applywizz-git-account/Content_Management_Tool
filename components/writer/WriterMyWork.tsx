@@ -12,13 +12,30 @@ interface Props {
   projects: Project[];
 }
 
+import { useSearchParams } from 'react-router-dom';
+
 const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
-  // ✅ hooks MUST be inside component
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [reviewComments, setReviewComments] = useState<any[]>([]);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
-  const [activeTab, setActiveTab] = useState<'IDEA' | 'SCRIPT'>('IDEA');
+
+  const activeTab = (searchParams.get('type') as 'IDEA' | 'SCRIPT') || 'IDEA';
+  const setActiveTab = (tab: 'IDEA' | 'SCRIPT') => {
+    setSearchParams(prev => {
+      prev.set('type', tab);
+      return prev;
+    }, { replace: true });
+  };
+
+  const scriptFilter = searchParams.get('filter') || 'ALL';
+  const setScriptFilter = (filter: string) => {
+    setSearchParams(prev => {
+      prev.set('filter', filter);
+      return prev;
+    }, { replace: true });
+  };
   // Helper function to safely parse project data
   const parseProjectData = (data: any) => {
     if (!data) return null;
@@ -184,7 +201,27 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   };
 
   // Determine which projects to display based on active tab
-  const displayProjects = activeTab === 'IDEA' ? ideaProjects : scriptProjects;
+  const filteredScriptProjects = scriptProjects.filter(project => {
+    if (scriptFilter === 'ALL') return true;
+    if (scriptFilter === 'POSTED') return project.status === 'DONE';
+
+    // For other filters, we check the assigned_to_role
+    // Note: We only show non-completed projects for role-based filters
+    if (project.status === 'DONE') return false;
+
+    switch (scriptFilter) {
+      case 'WRITER': return project.assigned_to_role === 'WRITER';
+      case 'CMO': return project.assigned_to_role === 'CMO';
+      case 'CEO': return project.assigned_to_role === 'CEO';
+      case 'CINE': return project.assigned_to_role === 'CINE';
+      case 'EDITOR': return project.assigned_to_role === 'EDITOR' || project.assigned_to_role === 'SUB_EDITOR';
+      case 'DESIGNER': return project.assigned_to_role === 'DESIGNER';
+      case 'OPS': return project.assigned_to_role === 'OPS';
+      default: return true;
+    }
+  });
+
+  const displayProjects = activeTab === 'IDEA' ? ideaProjects : filteredScriptProjects;
 
   /* ===============================
     MAIN VIEW - Show edit modal OR list view
@@ -570,18 +607,60 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
       {/* Tab Navigation */}
       <div className="flex space-x-2 mb-4">
         <button
-          className={`px-4 py-2 font-bold uppercase border-2 ${activeTab === 'IDEA' ? 'bg-[#D946EF] text-white border-black' : 'bg-white text-black border-black'} shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}
+          className={`px-4 py-2 font-bold uppercase border-2 transition-all ${activeTab === 'IDEA'
+            ? 'bg-[#D946EF] text-white border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+            : 'bg-white text-black border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]'
+            }`}
           onClick={() => setActiveTab('IDEA')}
         >
           Idea
         </button>
         <button
-          className={`px-4 py-2 font-bold uppercase border-2 ${activeTab === 'SCRIPT' ? 'bg-[#D946EF] text-white border-black' : 'bg-white text-black border-black'} shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}
+          className={`px-4 py-2 font-bold uppercase border-2 transition-all ${activeTab === 'SCRIPT'
+            ? 'bg-[#0085FF] text-white border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+            : 'bg-white text-black border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]'
+            }`}
           onClick={() => setActiveTab('SCRIPT')}
         >
           Script
         </button>
       </div>
+
+      {/* Script Role Filters */}
+      {activeTab === 'SCRIPT' && (
+        <div className="flex flex-wrap gap-2 mb-6 p-4 bg-slate-50 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          {[
+            { id: 'ALL', label: 'All Projects', color: 'bg-slate-900', textColor: 'text-white' },
+            { id: 'WRITER', label: 'Writer', color: 'bg-yellow-400', textColor: 'text-black' },
+            { id: 'CMO', label: 'CMO', color: 'bg-indigo-600', textColor: 'text-white' },
+            { id: 'CEO', label: 'CEO', color: 'bg-violet-700', textColor: 'text-white' },
+            { id: 'CINE', label: 'Cine', color: 'bg-cyan-500', textColor: 'text-white' },
+            { id: 'EDITOR', label: 'Editor', color: 'bg-orange-500', textColor: 'text-white' },
+            { id: 'DESIGNER', label: 'Designer', color: 'bg-pink-500', textColor: 'text-white' },
+            { id: 'OPS', label: 'Ops', color: 'bg-red-500', textColor: 'text-white' },
+            { id: 'POSTED', label: 'Posted', color: 'bg-emerald-500', textColor: 'text-white' },
+          ].map((filter) => (
+            <button
+              key={filter.id}
+              onClick={() => setScriptFilter(filter.id)}
+              className={`px-3 py-1.5 text-xs font-black uppercase border-2 border-black transition-all ${scriptFilter === filter.id
+                ? `${filter.color} ${filter.textColor} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`
+                : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+            >
+              {filter.label}
+              {filter.id === 'ALL' ? '' : ` (${filter.id === 'POSTED'
+                ? scriptProjects.filter(p => p.status === 'DONE').length
+                : scriptProjects.filter(p => {
+                  if (p.status === 'DONE') return false;
+                  if (filter.id === 'EDITOR') return p.assigned_to_role === 'EDITOR' || p.assigned_to_role === 'SUB_EDITOR';
+                  return p.assigned_to_role === filter.id;
+                }).length
+                })`}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4">
         {displayProjects.length === 0 ? (

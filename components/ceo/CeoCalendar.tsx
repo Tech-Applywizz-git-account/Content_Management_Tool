@@ -20,6 +20,7 @@ interface Props {
 
 const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDay, setSelectedDay] = useState<{ date: Date; projects: any[] } | null>(null);
 
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
@@ -29,7 +30,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     const datedProjects = projects && Array.isArray(projects) ? projects.filter(p => p.shoot_date || p.delivery_date || p.post_scheduled_date) : [];
 
     const getProjectsForDay = (day: Date) => {
-        const dayProjects = [];
+        const dayProjects: any[] = [];
 
         datedProjects.forEach(project => {
             // Check shoot date
@@ -93,7 +94,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
     };
 
     // Get all dated projects for upcoming section
-    const allDatedProjects = [];
+    const allDatedProjects: any[] = [];
 
     datedProjects.forEach(project => {
         // Add shoot date
@@ -153,7 +154,7 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
         });
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in relative">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <h1 className="text-4xl font-black uppercase text-slate-900">Workflow Calendar</h1>
 
@@ -194,11 +195,11 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             </div>
 
             {/* Calendar Grid */}
-            <div className="border-2 border-black bg-white">
+            <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {/* Day Headers */}
                 <div className="grid grid-cols-7 border-b-2 border-black">
                     {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                        <div key={day} className="p-3 text-center font-black text-sm border-r border-black last:border-r-0">
+                        <div key={day} className="p-3 text-center font-black text-sm border-r border-black last:border-r-0 bg-slate-50">
                             {day}
                         </div>
                     ))}
@@ -213,41 +214,106 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                         return (
                             <div
                                 key={day.toISOString()}
-                                className={`min-h-[100px] p-2 border-r border-b border-black last:border-r-0 ${!isSameMonth(day, currentDate) ? 'bg-slate-50' : ''
+                                onClick={() => dayProjects.length > 0 && setSelectedDay({ date: day, projects: dayProjects })}
+                                className={`min-h-[140px] p-2 border-r border-b border-black last:border-r-0 cursor-pointer transition-all hover:bg-slate-50 ${!isSameMonth(day, currentDate) ? 'bg-slate-50 opacity-40' : 'bg-white'
                                     } ${isToday ? 'bg-amber-50 border-amber-500' : ''}`}
                             >
-                                <div className={`text-sm font-bold mb-1 ${isToday ? 'text-amber-600' : 'text-slate-600'}`}>
+                                <div className={`text-sm font-bold mb-2 flex items-center justify-center w-7 h-7 rounded-full ${isToday ? 'bg-amber-500 text-white' : 'text-slate-600'}`}>
                                     {format(day, 'd')}
                                 </div>
                                 <div className="space-y-1">
-                                    {dayProjects.map((project: any) => (
+                                    {dayProjects.slice(0, 3).map((project: any) => (
                                         <div
                                             key={`${project.id}-${project.dateType}`}
-                                            className={`text-xs p-1 ${getDateTypeColor(project.dateType)} text-white font-bold truncate ${project.priority === 'HIGH' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
+                                            className={`text-[10px] p-1.5 ${getDateTypeColor(project.dateType)} text-white font-bold truncate rounded shadow-sm border border-black/10 transition-transform cursor-default overflow-hidden ${project.priority === 'HIGH' ? 'ring-2 ring-red-500 ring-offset-1' : ''}`}
                                             title={`${project.title} (${project.priority}) - ${getDateTypeLabel(project.dateType)} Date${project.data?.niche ? ` - Niche: ${project.data.niche}` : ''}`}
                                         >
-                                            {project.title} ({getDateTypeLabel(project.dateType)})
-                                            {project.priority === 'HIGH' && (
-                                                <span className="ml-1 text-[8px] font-black text-red-200">★</span>
-                                            )}
-                                            {(project.dateType === 'post' || project.dateType === 'shoot' || project.dateType === 'delivery') && project.data?.niche && (
-                                                <div className="text-[8px] font-normal mt-0.5 truncate" title={project.data.niche}>
-                                                    [{project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                                : project.data.niche === 'OTHER' && project.data.niche_other
-                                                                    ? project.data.niche_other
-                                                                    : project.data.niche}]
-                                                </div>
-                                            )}
+                                            <div className="font-black truncate leading-tight">{project.title}</div>
+                                            <div className="text-[8px] font-bold opacity-80 truncate mb-0.5">By: {project.writer_name || project.created_by_name || '—'}</div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] uppercase tracking-tighter bg-black/20 px-1 rounded">{getDateTypeLabel(project.dateType)}</span>
+                                                {project.priority === 'HIGH' && (
+                                                    <span className="text-[8px] font-black text-red-200 ml-auto">★</span>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
+                                    {dayProjects.length > 3 && (
+                                        <div className="text-[10px] text-amber-600 font-black text-center py-1 mt-1 border-t border-dashed border-amber-200">
+                                            +{dayProjects.length - 3} more
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
                     })}
                 </div>
             </div>
+
+            {/* Day Detail Modal */}
+            {selectedDay && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div
+                        className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="bg-slate-900 p-4 border-b-4 border-black flex items-center justify-between">
+                            <h3 className="text-xl font-black text-white uppercase tracking-tight">
+                                Schedule for {format(selectedDay.date, 'MMM dd, yyyy')}
+                            </h3>
+                            <button
+                                onClick={() => setSelectedDay(null)}
+                                className="bg-white border-2 border-black p-1 hover:bg-red-500 hover:text-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto space-y-3 bg-slate-50">
+                            {selectedDay.projects.map(project => (
+                                <div
+                                    key={`${project.id}-${project.dateType}`}
+                                    className={`p-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 ${getDateTypeColor(project.dateType)} text-white`}
+                                >
+                                    <div className="flex justify-between items-start">
+                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-white/20 rounded">
+                                            {getDateTypeLabel(project.dateType)}
+                                        </span>
+                                        <div className="flex gap-2">
+                                            <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-black/20 rounded">
+                                                {project.channel}
+                                            </span>
+                                            {project.priority === 'HIGH' && (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-red-600 rounded">
+                                                    ★ HIGH
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <h4 className="font-black uppercase leading-snug text-lg">{project.title}</h4>
+                                    <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-white/20">
+                                        <div className="text-xs font-bold uppercase">
+                                            Writer: <span className="opacity-90">{project.writer_name || project.created_by_name || 'Unknown'}</span>
+                                        </div>
+                                        <div className="text-[10px] font-bold uppercase opacity-80">
+                                            Stage: {project.current_stage?.replace(/_/g, ' ') || 'N/A'}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-4 border-t-4 border-black bg-white flex justify-end">
+                            <button
+                                onClick={() => setSelectedDay(null)}
+                                className="bg-slate-900 text-white px-6 py-2 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                    <div className="absolute inset-0 -z-10" onClick={() => setSelectedDay(null)}></div>
+                </div>
+            )}
+
 
             {/* Upcoming Dates */}
             {upcomingDates.length > 0 && (

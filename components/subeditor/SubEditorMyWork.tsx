@@ -1,8 +1,8 @@
 import React from 'react';
-import { Project, Role } from '../../types';
+import { Project, Role, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video, Film } from 'lucide-react';
-import { getWorkflowState, getWorkflowStateForRole } from '../../services/workflowUtils';
+import { isActiveRework } from '../../services/workflowUtils';
 import SubEditorScripts from './SubEditorScripts';
 
 interface Props {
@@ -93,8 +93,6 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                 </p>
             </div>
 
-
-
             {/* Sub-tabs for COMPLETED filter */}
             {activeFilter === 'COMPLETED' && onSetCompletedSubTab && (
                 <div className="flex space-x-4 border-b-2 border-black pb-2 mb-6">
@@ -126,41 +124,38 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
             )}
 
             {/* Role Filters for SCRIPTS view */}
-            {
-                activeFilter === 'SCRIPTS' && (
-                    <div className="overflow-x-auto pb-4">
-                        <div className="flex space-x-2 min-w-max">
-                            {['ALL', 'POSTED', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.SUB_EDITOR, Role.DESIGNER, Role.OPS].map((role) => (
-                                <button
-                                    key={role}
-                                    onClick={() => setActiveRoleFilter(role as Role | 'ALL' | 'POSTED')}
-                                    className={`px-4 py-2 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
-                                        ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
-                                        : 'bg-white text-slate-600 hover:bg-slate-50'
-                                        }`}
-                                >
-                                    {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
-                                </button>
-                            ))}
-                        </div>
+            {activeFilter === 'SCRIPTS' && (
+                <div className="overflow-x-auto pb-4">
+                    <div className="flex space-x-2 min-w-max">
+                        {['ALL', 'POSTED', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.SUB_EDITOR, Role.DESIGNER, Role.OPS].map((role) => (
+                            <button
+                                key={role}
+                                onClick={() => setActiveRoleFilter(role as Role | 'ALL' | 'POSTED')}
+                                className={`px-4 py-2 text-xs font-black uppercase border-2 border-black transition-all ${activeRoleFilter === role
+                                    ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(100,100,100,1)]'
+                                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {role === 'ALL' ? 'ALL' : role === 'POSTED' ? 'POSTED' : role === Role.SUB_EDITOR ? 'EDITOR' : role}
+                            </button>
+                        ))}
                     </div>
-                )
-            }
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
                     const isDelivered = !!project.edited_video_link;
 
-                    // Use the centralized workflow state detection with role context
-                    const workflowState = getWorkflowStateForRole(project, user.role);
-                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    const isRejected = workflowState.isRejected;
+                    // Use the canonical rework condition
+                    const isRework = isActiveRework(project, user.role);
+                    const isRejected = project.status === TaskStatus.REJECTED && project.assigned_to_role === user.role;
 
                     return (
                         <div
                             key={project.id}
                             onClick={() => {
-                                if (activeFilter === 'SCRIPTS' || activeFilter === 'CINE') {
+                                if (activeFilter === 'SCRIPTS') {
                                     setSelectedProject(project);
                                 } else {
                                     onSelectProject(project);
@@ -239,7 +234,7 @@ const SubEditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSe
                                         <span className="font-bold text-slate-400 uppercase text-xs">Writer</span>
                                         <span className="font-bold text-slate-900">{project.data?.writer_name || project.writer_name || 'Unknown'}</span>
                                     </div>
-                                    {activeFilter === 'SCRIPTS' && (
+                                    {(activeFilter === 'SCRIPTS' || activeFilter === 'COMPLETED') && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>

@@ -18,11 +18,12 @@ interface Props {
     onLogout: () => void;
 }
 
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 
 const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, scriptProjects, onRefresh, onLogout }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Determine activeView from URL path
     const getActiveViewFromPath = () => {
@@ -34,8 +35,25 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     const activeView = getActiveViewFromPath();
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-    const [activeFilter, setActiveFilter] = useState<'NEEDS_DELIVERY' | 'IN_PROGRESS' | 'COMPLETED' | 'SCRIPTS' | 'CINE' | null>(null);
-    const [completedSubTab, setCompletedSubTab] = useState<'POST' | 'POSTED' | null>(null);
+
+    const activeFilter = (searchParams.get('filter') as any) || null;
+    const setActiveFilter = (filter: string | null) => {
+        setSearchParams(prev => {
+            if (filter) prev.set('filter', filter);
+            else prev.delete('filter');
+            return prev;
+        }, { replace: true });
+    };
+
+    const completedSubTab = (searchParams.get('subtab') as any) || null;
+    const setCompletedSubTab = (subtab: string | null) => {
+        setSearchParams(prev => {
+            if (subtab) prev.set('subtab', subtab);
+            else prev.delete('subtab');
+            return prev;
+        }, { replace: true });
+    };
+
     const [refreshKey, setRefreshKey] = useState(0);
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
@@ -60,31 +78,28 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     };
 
     // Handle top-level view changes (Dashboard / My Work / Calendar)
-    const handleViewChange = (view: string, preserveFilter = false) => {
+    const handleViewChange = (view: string, preserveFilter = false, newFilter: string | null = null) => {
         setSelectedProject(null);
         const rolePath = user.role.toLowerCase();
 
-        // ✅ IMPORTANT:
-        // If user manually clicks "My Work",
-        // clear any dashboard-based filters
-        if (view === 'mywork' && !preserveFilter) {
-            setActiveFilter(null);
+        let searchStr = '';
+        if (newFilter) {
+            searchStr = `?filter=${newFilter}`;
+        } else if (preserveFilter) {
+            searchStr = searchParams.toString() ? `?${searchParams.toString()}` : '';
+        }
+
+        // If user manually clicks "My Work" without preserveFilter and no newFilter, clear filters
+        if (view === 'mywork' && !preserveFilter && !newFilter) {
+            setSearchParams({}, { replace: true });
         }
 
         if (view === 'dashboard') {
-            navigate(`/${rolePath}`);
+            navigate(`/${rolePath}${searchStr}`);
         } else {
-            navigate(`/${rolePath}/${view}`);
+            navigate(`/${rolePath}/${view}${searchStr}`);
         }
     };
-
-    // Mount-only effect
-    useEffect(() => {
-        // Safety: never restore dashboard filters on reload
-        setActiveFilter(null);
-    }, []);
-
-
 
     // Realtime: refresh inbox when projects table changes
     useEffect(() => {
@@ -139,17 +154,17 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
-                    // Show projects that are not yet fully posted (live)
-                    return completedProjects.filter(p => !p.data?.live_url);
+                    // Show projects that are not yet fully posted (waiting for ops/review)
+                    return completedProjects.filter(p => p.status !== TaskStatus.DONE);
                 } else if (completedSubTab === 'POSTED') {
-                    // Show posted projects
-                    return completedProjects.filter(p => p.status === TaskStatus.DONE && !!p.data?.live_url);
+                    // Show projects that are fully completed and posted
+                    return completedProjects.filter(p => p.status === TaskStatus.DONE);
                 }
                 return completedProjects;
             default:
                 return historyProjects || [];
         }
-    }, [activeFilter, historyProjects, scriptProjects]);
+    }, [activeFilter, historyProjects, scriptProjects, completedSubTab, user.role]);
 
 
     // ✅ FIXED: Remove mock data and use real projects filtered by stage
@@ -163,11 +178,19 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [scriptsCount, setScriptsCount] = useState(0);
     const [cineProjectsCount, setCineProjectsCount] = useState(0);
 
-    // Calculate counts when historyProjects or scriptProjects change
+    // Calculate counts when historyProjects, scriptProjects or user.role change
     useEffect(() => {
-        // Calculate counts based on historyProjects and scriptProjects
-        setNeedsDeliveryCount((historyProjects || []).filter(p => !p.delivery_date).length);
-        setInProgressCount((historyProjects || []).filter(p => p.delivery_date && !p.edited_video_link).length);
+        // Calculate counts based on EXACT SAME logic as filteredProjects memo
+        setNeedsDeliveryCount((historyProjects || []).filter(p =>
+            !p.delivery_date && p.status !== TaskStatus.DONE
+        ).length);
+
+        setInProgressCount((historyProjects || []).filter(p => {
+            const workflowState = getWorkflowStateForRole(p, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
+        }).length);
+
         setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
 
         // Count script projects from props
@@ -175,7 +198,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         // Count CINE projects from props
         setCineProjectsCount((scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY).length);
-    }, [historyProjects, scriptProjects]);
+    }, [historyProjects, scriptProjects, user.role]);
 
     return (
         <Layout
@@ -226,8 +249,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         {/* NEEDS DELIVERY DATE */}
                         <div
                             onClick={() => {
-                                setActiveFilter('NEEDS_DELIVERY');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'NEEDS_DELIVERY');
                             }}
                             className="bg-[#F59E0B] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -240,8 +262,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         {/* IN PROGRESS */}
                         <div
                             onClick={() => {
-                                setActiveFilter('IN_PROGRESS');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'IN_PROGRESS');
                             }}
                             className="bg-[#3B82F6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -254,8 +275,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         {/* COMPLETED EDITS */}
                         <div
                             onClick={() => {
-                                setActiveFilter('COMPLETED');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'COMPLETED');
                             }}
                             className="bg-[#10B981] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -268,8 +288,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         {/* SCRIPTS */}
                         <div
                             onClick={() => {
-                                setActiveFilter('SCRIPTS');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'SCRIPTS');
                             }}
                             className="bg-[#8B5CF6] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
@@ -282,8 +301,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         {/* CINE PROJECTS */}
                         <div
                             onClick={() => {
-                                setActiveFilter('CINE');
-                                handleViewChange('mywork', true);
+                                handleViewChange('mywork', true, 'CINE');
                             }}
                             className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >

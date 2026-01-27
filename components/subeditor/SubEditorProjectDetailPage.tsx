@@ -281,27 +281,61 @@ const SubEditorProjectDetailPage: React.FC<{
                         </button>
                         <div className="flex-1">
                             <h1 className="text-2xl font-black uppercase text-slate-900">{project.title}</h1>
-                            <div className="flex items-center gap-3 mt-1">
-                                <span
-                                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                        project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                            'bg-[#D946EF] text-white'
-                                        }`}
-                                >
-                                    {project.channel}
-                                </span>
-                                <span
-                                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH' ? 'bg-red-500 text-white' :
-                                        project.priority === 'NORMAL' ? 'bg-yellow-500 text-black' :
-                                            'bg-green-500 text-white'
-                                        }`}
-                                >
-                                    {project.priority}
-                                </span>
-                            </div>
+                            {!isFromCineTab && (
+                                <div className="flex items-center gap-3 mt-1">
+                                    <span
+                                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                            project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                                'bg-[#D946EF] text-white'
+                                            }`}
+                                    >
+                                        {project.channel}
+                                    </span>
+                                    <span
+                                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH' ? 'bg-red-500 text-white' :
+                                            project.priority === 'NORMAL' ? 'bg-yellow-500 text-black' :
+                                                'bg-green-500 text-white'
+                                            }`}
+                                    >
+                                        {project.priority}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
+
+                {/* Rework Information Box - Only shown when NOT from CINE tab */}
+                {!isFromCineTab && (isRework || isRejected) && project.history && project.history.length > 0 && (
+                    <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] mb-6">
+                        <div className="flex items-center space-x-2 mb-4">
+                            <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                                <span className="text-white font-bold text-sm">!</span>
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black uppercase text-red-800">
+                                    {isRejected ? 'Project Rejected' : 'Rework Required'}
+                                </h2>
+                                <p className="text-sm font-bold text-red-600">
+                                    {isRejected ? '(Limited editing capabilities)' : '(Feedback from previous stages)'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="p-4 bg-white border-l-4 border-red-500">
+                                <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+                                <p className="text-red-700">
+                                    {getLatestReworkRejectComment(project, user.role)?.comment ||
+                                        'No specific reason provided. Please review the feedback and make necessary changes.'}
+                                </p>
+                                <p className="text-sm text-red-600 mt-2">
+                                    {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(project, user.role)?.actor_name || 'Reviewer'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Script Content */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -514,45 +548,43 @@ const SubEditorProjectDetailPage: React.FC<{
                     </div>
                 )}
 
-                {/* Project Info - Only shown when NOT from CINE tab */}
-                {!isFromCineTab && (
-                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                        <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                                <p className="font-bold text-slate-900 mt-1">{project.status}</p>
-                            </div>
-                            <div>
-                                <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                                <p className="font-bold text-slate-900 mt-1">{project.priority}</p>
-                            </div>
-                            <div>
-                                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                                <p className="font-bold text-slate-900 mt-1">
-                                    {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                {/* Project Info */}
+                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                    <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                            <p className="font-bold text-slate-900 mt-1">{project.status}</p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                            <p className="font-bold text-slate-900 mt-1">{project.priority}</p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                            <p className="font-bold text-slate-900 mt-1">
+                                {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                            </p>
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                            <p className="font-bold text-slate-900 mt-1">{project.content_type}</p>
+                        </div>
+                        {project.data?.niche && (
+                            <div className="col-span-2">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                                    {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche}
                                 </p>
                             </div>
-                            <div>
-                                <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                                <p className="font-bold text-slate-900 mt-1">{project.content_type}</p>
-                            </div>
-                            {project.data?.niche && (
-                                <div className="col-span-2">
-                                    <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                                    <p className="font-bold text-slate-900 mt-1 uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
 
 
