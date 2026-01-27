@@ -12,13 +12,17 @@ interface WriterProjectDetailPageProps {
         role: Role;
     };
     onLogout: () => void;
+    projects?: Project[];
 }
 
-const WriterProjectDetailPage: React.FC<WriterProjectDetailPageProps> = ({ user, onLogout }) => {
+const WriterProjectDetailPage: React.FC<WriterProjectDetailPageProps> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId);
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -26,6 +30,7 @@ const WriterProjectDetailPage: React.FC<WriterProjectDetailPageProps> = ({ user,
             if (!projectId) return;
 
             try {
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*')
@@ -38,7 +43,7 @@ const WriterProjectDetailPage: React.FC<WriterProjectDetailPageProps> = ({ user,
                 }
             } catch (err) {
                 console.error('Error fetching project:', err);
-                setError('Failed to load project details.');
+                if (!project) setError('Failed to load project details.');
             } finally {
                 setLoading(false);
             }
@@ -51,15 +56,9 @@ const WriterProjectDetailPage: React.FC<WriterProjectDetailPageProps> = ({ user,
         navigate(-1);
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-lg font-black uppercase text-slate-900">Loading Project...</p>
-                </div>
-            </div>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Instant UI
     }
 
     if (error || !project) {

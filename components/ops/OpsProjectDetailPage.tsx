@@ -6,11 +6,18 @@ import OpsProjectDetail from './OpsProjectDetail';
 import OpsProjectDetailDetailed from './OpsProjectDetailDetailed';
 import Layout from '../Layout';
 
-const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const OpsProjectDetailPage: React.FC<{
+    user: { full_name: string; role: Role };
+    onLogout: () => void;
+    projects?: Project[];
+}> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId);
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -22,7 +29,7 @@ const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; 
             }
 
             try {
-                setLoading(true);
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*, workflow_history(*)')
@@ -31,7 +38,7 @@ const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; 
 
                 if (error) throw error;
                 if (!data) {
-                    setError('Project not found');
+                    if (!project) setError('Project not found');
                     return;
                 }
 
@@ -44,7 +51,7 @@ const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; 
                 setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
-                setError('Failed to load project');
+                if (!project) setError('Failed to load project');
             } finally {
                 setLoading(false);
             }
@@ -53,12 +60,9 @@ const OpsProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; 
         loadProject();
     }, [projectId]);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#D946EF] border-t-transparent"></div>
-            </div>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Or a very subtle loader, but user asked for NO BLOCKING
     }
 
     if (error || !project) {

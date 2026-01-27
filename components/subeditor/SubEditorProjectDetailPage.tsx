@@ -9,7 +9,11 @@ import Popup from '../Popup';
 import Layout from '../Layout';
 import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
-const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const SubEditorProjectDetailPage: React.FC<{
+    user: { full_name: string; role: Role };
+    onLogout: () => void;
+    projects?: Project[];
+}> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -19,10 +23,10 @@ const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Ro
     const fromView = searchParams.get('from') || 'MYWORK';
     const isFromCineTab = fromView === 'SCRIPTS';
 
-    // Initialize state from navigation state if available (for immediate rendering)
-    const initialProject = location.state?.project as Project | null;
-    const [project, setProject] = useState<Project | null>(initialProject);
-    const [loading, setLoading] = useState(!initialProject);
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId) || location.state?.project as Project;
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
     const [error, setError] = useState<string | null>(null);
 
     const [deliveryDate, setDeliveryDate] = useState('');
@@ -45,74 +49,29 @@ const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Ro
             }
 
             try {
-                setError(null);
-
-                // Fetch project directly from Supabase
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
-                    .select('*')
+                    .select('*, workflow_history(*)')
                     .eq('id', projectId)
                     .single();
 
                 if (error) {
                     console.error('Error fetching project:', error);
-                    setError('Project not found');
+                    if (!project) setError('Project not found');
                     return;
                 }
 
                 if (!data) {
-                    setError('Project not found');
+                    if (!project) setError('Project not found');
                     return;
                 }
 
+                // Map workflow_history to history property expected by Timeline
                 const projectData: Project = {
-                    id: data.id,
-                    title: data.title,
-                    channel: data.channel,
-                    content_type: data.content_type,
-                    current_stage: data.current_stage,
-                    assigned_to_role: data.assigned_to_role,
-                    assigned_to_user_id: data.assigned_to_user_id,
-                    status: data.status,
-                    priority: data.priority,
-                    due_date: data.due_date,
-                    created_by: data.created_by,
-                    created_by_user_id: data.created_by_user_id,
-                    created_by_name: data.created_by_name,
-                    writer_id: data.writer_id,
-                    writer_name: data.writer_name,
-                    editor_name: data.editor_name,
-                    designer_name: data.designer_name,
-                    sub_editor_name: data.sub_editor_name,
-                    created_at: data.created_at,
-                    writer_submitted_at: data.writer_submitted_at,
-                    cmo_approved_at: data.cmo_approved_at,
-                    cmo_rework_at: data.cmo_rework_at,
-                    ceo_approved_at: data.ceo_approved_at,
-                    ceo_rework_at: data.ceo_rework_at,
-                    cine_uploaded_at: data.cine_uploaded_at,
-                    editor_uploaded_at: data.editor_uploaded_at,
-                    sub_editor_uploaded_at: data.sub_editor_uploaded_at,
-                    designer_uploaded_at: data.designer_uploaded_at,
-                    edited_by_role: data.edited_by_role,
-                    edited_by_user_id: data.edited_by_user_id,
-                    edited_by_name: data.edited_by_name,
-                    edited_at: data.edited_at,
-                    shoot_date: data.shoot_date,
-                    delivery_date: data.delivery_date,
-                    post_scheduled_date: data.post_scheduled_date,
-                    video_link: data.video_link,
-                    edited_video_link: data.edited_video_link,
-                    thumbnail_link: data.thumbnail_link,
-                    creative_link: data.creative_link,
-                    data: data.data || {},
-                    history: data.history || [],
-                    rework_target_role: data.rework_target_role,
-                    rework_initiator_role: data.rework_initiator_role,
-                    rework_initiator_stage: data.rework_initiator_stage,
-                    first_review_opened_at: data.first_review_opened_at,
-                    first_review_opened_by_role: data.first_review_opened_by_role,
-                };
+                    ...data,
+                    history: data.workflow_history || []
+                } as Project;
 
                 setProject(projectData);
                 setDeliveryDate(projectData.delivery_date || '');
@@ -120,7 +79,7 @@ const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Ro
 
             } catch (err) {
                 console.error('Error loading project:', err);
-                setError('Failed to load project');
+                if (!project) setError('Failed to load project');
             } finally {
                 setLoading(false);
             }
@@ -136,22 +95,9 @@ const SubEditorProjectDetailPage: React.FC<{ user: { full_name: string; role: Ro
     const canEdit = project ? canUserEdit(user.role, workflowState!, project.assigned_to_role, project.current_stage) : false;
 
     // If there's an error or no project, show error message (no loading state)
-    if (loading) {
-        return (
-            <Layout
-                user={user}
-                onLogout={onLogout}
-                onOpenCreate={() => { }}
-                activeView={fromView === 'MYWORK' ? 'mywork' : 'dashboard'}
-            >
-                <div className="flex-1 flex items-center justify-center min-h-[500px]">
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="w-8 h-8 border-4 border-[#D946EF] border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-xl font-black text-slate-400 uppercase tracking-widest animate-pulse">Loading Project...</p>
-                    </div>
-                </div>
-            </Layout>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Instant UI
     }
 
     // If there's an error or no project, show error message

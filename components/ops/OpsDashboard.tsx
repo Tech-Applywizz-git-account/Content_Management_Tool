@@ -130,6 +130,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     // Updated to strictly use timestamp
     const ceoApproved = (inboxProjects || []).filter(p =>
         p.ceo_approved_at &&
+        p.data?.source !== 'IDEA_PROJECT' &&
         !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)
     );
 

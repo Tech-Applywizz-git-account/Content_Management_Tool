@@ -12,27 +12,24 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
     const navigate = useNavigate();
     const [activeRoleFilter, setActiveRoleFilter] = useState<'ALL' | 'WRITER' | 'CMO' | 'CEO' | 'CINE' | 'EDITOR' | 'DESIGNER' | 'OPS' | 'POSTED'>('ALL');
 
-    const ceoApprovedProjectsBase = projects.filter(p =>
-        p.current_stage === WorkflowStage.CINEMATOGRAPHY ||
-        p.current_stage === WorkflowStage.VIDEO_EDITING ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-        p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-        p.current_stage === WorkflowStage.OPS_SCHEDULING ||
-        p.current_stage === WorkflowStage.POSTED
-    );
-
-    // Show only script projects - exclude all idea projects completely
-    // "I need only the scripts i donot need the idea"
-    const scriptProjects = ceoApprovedProjectsBase.filter(p =>
-        p.data?.source !== 'IDEA_PROJECT'
+    // Base filter: only script projects with a CEO approval timestamp
+    const scriptProjects = projects.filter(p =>
+        !!p.ceo_approved_at && p.data?.source !== 'IDEA_PROJECT'
     );
 
     const projectsToShow = scriptProjects.filter(p => {
-        if (activeRoleFilter === 'ALL') return true;
-        if (activeRoleFilter === 'POSTED') {
-            return p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED;
+        const isCompleted = p.status === TaskStatus.DONE ||
+            p.data?.live_url ||
+            p.current_stage === WorkflowStage.POSTED;
+
+        if (activeRoleFilter === 'ALL') {
+            // Default "ALL" tab shows only active projects to match dashboard count
+            return !isCompleted;
         }
-        return p.assigned_to_role === activeRoleFilter;
+        if (activeRoleFilter === 'POSTED') {
+            return isCompleted;
+        }
+        return p.assigned_to_role === activeRoleFilter && !isCompleted;
     });
 
     const handleProjectClick = (projectId: string) => {
@@ -68,17 +65,16 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                     <button
                         key={filter.key}
                         onClick={() => setActiveRoleFilter(filter.key as any)}
-                        className={`px-3 py-1 text-xs font-black uppercase border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${
-                            activeRoleFilter === filter.key
+                        className={`px-3 py-1 text-xs font-black uppercase border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${activeRoleFilter === filter.key
                                 ? `${filter.color} text-white`
                                 : 'bg-white text-slate-900 hover:bg-slate-100'
-                        }`}
+                            }`}
                     >
                         {filter.label} ({
                             filter.key === 'ALL' ? scriptProjects.length :
-                            filter.key === 'POSTED' ? 
-                                scriptProjects.filter(p => p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED).length :
-                                scriptProjects.filter(p => p.assigned_to_role === filter.key).length
+                                filter.key === 'POSTED' ?
+                                    scriptProjects.filter(p => p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED).length :
+                                    scriptProjects.filter(p => p.assigned_to_role === filter.key).length
                         })
                     </button>
                 ))}

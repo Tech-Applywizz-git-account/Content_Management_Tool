@@ -5,11 +5,18 @@ import { supabase } from '../../src/integrations/supabase/client';
 import DesignerProjectDetail from './DesignerProjectDetail';
 import Layout from '../Layout';
 
-const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const DesignerProjectDetailPage: React.FC<{
+    user: { full_name: string; role: Role };
+    onLogout: () => void;
+    projects?: Project[];
+}> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId);
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -21,7 +28,7 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
             }
 
             try {
-                setLoading(true);
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*, workflow_history(*)')
@@ -30,7 +37,7 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
 
                 if (error) throw error;
                 if (!data) {
-                    setError('Project not found');
+                    if (!project) setError('Project not found');
                     return;
                 }
 
@@ -43,7 +50,7 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
                 setProject(projectWithHistory as Project);
             } catch (err) {
                 console.error('Error loading project:', err);
-                setError('Failed to load project');
+                if (!project) setError('Failed to load project');
             } finally {
                 setLoading(false);
             }
@@ -52,12 +59,9 @@ const DesignerProjectDetailPage: React.FC<{ user: { full_name: string; role: Rol
         loadProject();
     }, [projectId]);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#D946EF] border-t-transparent"></div>
-            </div>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Instant UI
     }
 
     if (error || !project) {

@@ -9,19 +9,24 @@ interface Props {
     onLogout: () => void;
 }
 
-const OpsCeoApprovedViewWrapper: React.FC<Props> = ({ user, onLogout }) => {
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+const OpsCeoApprovedViewWrapper: React.FC<{
+    user: any;
+    onLogout: () => void;
+    projects?: Project[];
+}> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
+
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId);
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchProject = async () => {
             try {
-                setLoading(true);
-                setError(null);
-                
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*')
@@ -29,12 +34,15 @@ const OpsCeoApprovedViewWrapper: React.FC<Props> = ({ user, onLogout }) => {
                     .single();
 
                 if (error) throw error;
-                if (!data) throw new Error('Project not found');
+                if (!data) {
+                    if (!project) setError('Project not found');
+                    return;
+                }
 
                 setProject(data as Project);
             } catch (err) {
                 console.error('Error fetching project:', err);
-                setError(err instanceof Error ? err.message : 'Failed to load project');
+                if (!project) setError(err instanceof Error ? err.message : 'Failed to load project');
             } finally {
                 setLoading(false);
             }
@@ -50,15 +58,9 @@ const OpsCeoApprovedViewWrapper: React.FC<Props> = ({ user, onLogout }) => {
         navigate('/ops/ceoapproved');
     };
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-white font-sans flex flex-col items-center justify-center">
-                <div className="text-center">
-                    <div className="text-xl font-black text-slate-900 uppercase mb-4">Loading Project...</div>
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto"></div>
-                </div>
-            </div>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Instant UI
     }
 
     if (error || !project) {

@@ -5,12 +5,19 @@ import { supabase } from '../../src/integrations/supabase/client';
 import CeoReviewScreen from './CeoReviewScreen';
 import Layout from '../Layout';
 
-const CeoProjectDetailPage: React.FC<{ user: { id: string; full_name: string; role: Role }; onLogout: () => void }> = ({ user, onLogout }) => {
+const CeoProjectDetailPage: React.FC<{
+    user: { id: string; full_name: string; role: Role };
+    onLogout: () => void;
+    projects?: Project[];
+}> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
-    const [project, setProject] = useState<Project | null>(null);
-    const [loading, setLoading] = useState(true);
+
+    // Instant UI: Find project in cache first
+    const cachedProject = projects.find(p => p.id === projectId);
+    const [project, setProject] = useState<Project | null>(cachedProject || null);
+    const [loading, setLoading] = useState(!cachedProject);
     const [error, setError] = useState<string | null>(null);
     const [selectedHistory, setSelectedHistory] = useState<any>(null);
 
@@ -26,7 +33,7 @@ const CeoProjectDetailPage: React.FC<{ user: { id: string; full_name: string; ro
             }
 
             try {
-                setLoading(true);
+                // Background fetch - don't show spinner if we have cached data
                 const { data, error } = await supabase
                     .from('projects')
                     .select('*')
@@ -35,7 +42,7 @@ const CeoProjectDetailPage: React.FC<{ user: { id: string; full_name: string; ro
 
                 if (error) throw error;
                 if (!data) {
-                    setError('Project not found');
+                    if (!project) setError('Project not found');
                     return;
                 }
 
@@ -57,7 +64,7 @@ const CeoProjectDetailPage: React.FC<{ user: { id: string; full_name: string; ro
                 }
             } catch (err) {
                 console.error('Error loading project:', err);
-                setError('Failed to load project');
+                if (!project) setError('Failed to load project');
             } finally {
                 setLoading(false);
             }
@@ -66,12 +73,9 @@ const CeoProjectDetailPage: React.FC<{ user: { id: string; full_name: string; ro
         loadProject();
     }, [projectId, isHistory, user.id]);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#D946EF] border-t-transparent"></div>
-            </div>
-        );
+    // Only block if we have NO data AND we're still loading
+    if (loading && !project) {
+        return null; // Instant UI
     }
 
     if (error || !project) {
