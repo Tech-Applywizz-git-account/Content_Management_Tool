@@ -8,6 +8,7 @@ import ScriptComparison from '../ScriptComparison';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { getWorkflowState } from '../../services/workflowUtils';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
@@ -746,14 +747,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                     ? project.data.idea_description
                                                     : project.data?.script_content
                                                         ? (() => {
-                                                            // Comprehensive HTML entity decoding
-                                                            let decodedContent = project.data.script_content
-                                                                .replace(/&lt;/g, '<')
-                                                                .replace(/&gt;/g, '>')
-                                                                .replace(/&amp;/g, '&')
-                                                                .replace(/&quot;/g, '"')
-                                                                .replace(/&#39;/g, "'")
-                                                                .replace(/&nbsp;/g, ' ');
+                                                            const decodedContent = decodeHtmlEntities(project.data.script_content);
                                                             return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
                                                         })()
                                                         : 'No script content available.'}
@@ -764,14 +758,17 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                     if (previousScript && previousScript.trim() !== '') {
                                         console.log('CMO Review: Showing script comparison - has previous script');
 
+                                        // Recursive HTML entity decoding helper
+                                        // (ScriptComparison component handles decoding internally)
+
                                         // Use project's script content as current if available, otherwise use a placeholder
                                         const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
 
                                         // Show comparison for rework scenarios
                                         return (
                                             <ScriptComparison
-                                                previousScript={previousScript.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
-                                                currentScript={currentScriptContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')}
+                                                previousScript={previousScript}
+                                                currentScript={currentScriptContent}
                                                 previousAuthor="Previous Version"
                                                 currentAuthor="Writer Rework Submission"
                                                 previousTimestamp=""
@@ -792,14 +789,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                                         ? project.data.idea_description
                                                         : project.data?.script_content
                                                             ? (() => {
-                                                                // Comprehensive HTML entity decoding
-                                                                let decodedContent = project.data.script_content
-                                                                    .replace(/&lt;/g, '<')
-                                                                    .replace(/&gt;/g, '>')
-                                                                    .replace(/&amp;/g, '&')
-                                                                    .replace(/&quot;/g, '"')
-                                                                    .replace(/&#39;/g, "'")
-                                                                    .replace(/&nbsp;/g, ' ');
+                                                                const decodedContent = decodeHtmlEntities(project.data.script_content);
                                                                 return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
                                                             })()
                                                             : 'No script content available.'}

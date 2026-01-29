@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { decodeHtmlEntities } from '../utils/htmlDecoder';
 
 interface ScriptComparisonProps {
   previousScript: string;
@@ -9,28 +10,25 @@ interface ScriptComparisonProps {
   currentTimestamp?: string;
 }
 
-// Utility function to decode HTML entities and clean inline styles
-const decodeHtmlEntities = (html: string) => {
+// Utility function to clean inline styles after decoding
+const cleanHtmlStyles = (html: string) => {
   if (!html) return '';
-  const txt = document.createElement('textarea');
-  txt.innerHTML = html;
-  let decoded = txt.value;
 
   // Remove Tailwind CSS inline styles
-  decoded = decoded.replace(/style="[^"]*"/g, '');
+  let cleaned = html.replace(/style="[^"]*"/g, '');
 
   // Remove empty span and div tags that might remain
-  decoded = decoded.replace(/<span\s*>/g, '').replace(/<\/span>/g, '');
-  decoded = decoded.replace(/<div\s*>/g, '').replace(/<\/div>/g, '');
+  cleaned = cleaned.replace(/<span\s*>/g, '').replace(/<\/span>/g, '');
+  cleaned = cleaned.replace(/<div\s*>/g, '').replace(/<\/div>/g, '');
 
-  return decoded;
+  return cleaned;
 };
 
 // Simple diff algorithm for comparing text
 const getTextDifferences = (oldText: string, newText: string) => {
-  // Decode HTML entities before comparison
-  const decodedOldText = decodeHtmlEntities(oldText);
-  const decodedNewText = decodeHtmlEntities(newText);
+  // Decode HTML entities before comparison, then clean styles
+  const decodedOldText = cleanHtmlStyles(decodeHtmlEntities(oldText));
+  const decodedNewText = cleanHtmlStyles(decodeHtmlEntities(newText));
 
   const oldLines = decodedOldText.split('\n');
   const newLines = decodedNewText.split('\n');
@@ -60,8 +58,8 @@ const getTextDifferences = (oldText: string, newText: string) => {
 
 // Function to highlight added content in current script at word level
 const highlightAddedContent = (oldText: string, newText: string) => {
-  const decodedOldText = decodeHtmlEntities(oldText);
-  const decodedNewText = decodeHtmlEntities(newText);
+  const decodedOldText = cleanHtmlStyles(decodeHtmlEntities(oldText));
+  const decodedNewText = cleanHtmlStyles(decodeHtmlEntities(newText));
 
   const oldLines = decodedOldText.split('\n');
   const newLines = decodedNewText.split('\n');

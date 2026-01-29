@@ -9,6 +9,7 @@ import Popup from '../Popup';
 import ScriptComparison from '../ScriptComparison';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
@@ -667,53 +668,16 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             className="overflow-auto"
                         >
                             {previousScript && previousScript.trim() !== '' ? (
-                                // Show both old and new scripts side by side
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Previous Script */}
-                                    <div className="bg-white border-2 border-slate-300 p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            Previous Version
-                                        </h4>
-                                        <div className="font-serif text-xl leading-normal text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                            {(() => {
-                                                // Decode HTML entities in the previous script content
-                                                let decodedContent = previousScript
-                                                    .replace(/&lt;/g, '<')
-                                                    .replace(/&gt;/g, '>')
-                                                    .replace(/&amp;/g, '&')
-                                                    .replace(/&quot;/g, '"')
-                                                    .replace(/&#39;/g, "'")
-                                                    .replace(/&nbsp;/g, ' ');
-                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                            })()}
-                                        </div>
-                                    </div>
-
-                                    {/* Current Script */}
-                                    <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] p-6">
-                                        <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
-                                            Writer Rework Submission
-                                        </h4>
-                                        <div className="font-serif text-xl leading-normal text-slate-800 whitespace-pre-wrap bg-white p-4 border-2 border-black max-h-96 overflow-y-auto">
-                                            {project.data?.source === 'DESIGNER_INITIATED'
-                                                ? project.data?.creative_link || 'No creative link available.'
-                                                : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                                    ? project.data.idea_description
-                                                    : project.data?.script_content
-                                                        ? (() => {
-                                                            let decodedContent = project.data.script_content
-                                                                .replace(/&lt;/g, '<')
-                                                                .replace(/&gt;/g, '>')
-                                                                .replace(/&amp;/g, '&')
-                                                                .replace(/&quot;/g, '"')
-                                                                .replace(/&#39;/g, "'")
-                                                                .replace(/&nbsp;/g, ' ');
-                                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                        })()
-                                                        : 'No script content available.'}
-                                        </div>
-                                    </div>
-                                </div>
+                                // Show script comparison for rework scenarios
+                                // ScriptComparison component handles HTML entity decoding internally
+                                <ScriptComparison
+                                    previousScript={previousScript}
+                                    currentScript={project.data?.script_content || '<p>No new script content submitted</p>'}
+                                    previousAuthor="Previous Version"
+                                    currentAuthor="Writer Rework Submission"
+                                    previousTimestamp=""
+                                    currentTimestamp=""
+                                />
                             ) : (
                                 // Show single script for non-rework projects
                                 <div
@@ -725,13 +689,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             ? project.data.idea_description
                                             : project.data?.script_content
                                                 ? (() => {
-                                                    let decodedContent = project.data.script_content
-                                                        .replace(/&lt;/g, '<')
-                                                        .replace(/&gt;/g, '>')
-                                                        .replace(/&amp;/g, '&')
-                                                        .replace(/&quot;/g, '"')
-                                                        .replace(/&#39;/g, "'")
-                                                        .replace(/&nbsp;/g, ' ');
+                                                    const decodedContent = decodeHtmlEntities(project.data.script_content);
                                                     return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
                                                 })()
                                                 : 'No script content available.'}
