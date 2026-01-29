@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { decodeHtmlEntities } from '../utils/htmlDecoder';
 
 interface RichTextEditorProps {
   initialContent: string;
@@ -139,10 +140,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Initialize the contentEditable div with initial content
   useEffect(() => {
     if (editorRef.current && initialContent) {
-      // Always set the content to preserve formatting, spaces, and structure
-      // This ensures existing script content displays exactly as it was saved
-      editorRef.current.innerHTML = initialContent;
-      setContent(initialContent);
+      // Decode HTML entities to ensure formatting is preserved and rendered correctly
+      const decoded = decodeHtmlEntities(initialContent);
+      editorRef.current.innerHTML = decoded;
+      setContent(decoded);
     }
   }, [initialContent]);
 

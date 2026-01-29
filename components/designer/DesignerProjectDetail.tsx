@@ -4,9 +4,11 @@ import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
+import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
+import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
     project: Project;
@@ -435,18 +437,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             {isVideo ? 'Script Reference' : 'Content Brief'}
                         </h2>
                     </div>
-                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {localProject.data.script_content ? (() => {
-                            let decodedContent = localProject.data.script_content
-                                .replace(/&lt;/g, '<')
-                                .replace(/&gt;/g, '>')
-                                .replace(/&amp;/g, '&')
-                                .replace(/&quot;/g, '"')
-                                .replace(/&#39;/g, "'")
-                                .replace(/&nbsp;/g, ' ');
-                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                        })() : 'No content available'}
-                    </div>
+                    <ScriptDisplay content={localProject.data.script_content || ''} />
                 </div>
 
                 {/* Thumbnail Requirements - Show if video and thumbnail required */}

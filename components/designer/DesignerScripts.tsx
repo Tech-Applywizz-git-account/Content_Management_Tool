@@ -4,6 +4,8 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare, Palette } from 'lucide-react';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
+import ScriptDisplay from '../ScriptDisplay';
 import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
@@ -357,30 +359,8 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
             <h3 className="text-lg font-black uppercase mb-4">
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
-            <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
-              {localProject.data?.script_content 
-                ? (() => {
-                    let decodedContent = localProject.data.script_content
-                        .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>')
-                        .replace(/&amp;/g, '&')
-                        .replace(/&quot;/g, '"')
-                        .replace(/&#39;/g, "'")
-                        .replace(/&nbsp;/g, ' ');
-                    return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                  })()
-                : localProject.data?.idea_description 
-                  ? (() => {
-                      let decodedContent = localProject.data.idea_description
-                          .replace(/&lt;/g, '<')
-                          .replace(/&gt;/g, '>')
-                          .replace(/&amp;/g, '&')
-                          .replace(/&quot;/g, '"')
-                          .replace(/&#39;/g, "'")
-                          .replace(/&nbsp;/g, ' ');
-                      return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                    })()
-                  : <pre className="whitespace-pre-wrap font-sans text-sm">No content available</pre>}
+            <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50 overflow-x-auto">
+              <ScriptDisplay content={localProject.data?.script_content || localProject.data?.idea_description || ''} showBox={false} />
             </div>
           </div>
         )}
@@ -564,7 +544,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
               {comments.map((comment, index) => {
                 // Determine the description based on stage and action
                 let description = `${comment.action} in ${comment.stage}`;
-                        
+
                 switch (comment.stage) {
                   case 'SCRIPT':
                     if (comment.action === 'SUBMITTED') {
@@ -635,7 +615,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
                       description = `${comment.action} in ${comment.stage}`;
                     }
                 }
-                        
+
                 return (
                   <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
                     <div className="flex justify-between items-start">

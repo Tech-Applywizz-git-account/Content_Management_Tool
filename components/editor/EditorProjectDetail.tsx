@@ -4,9 +4,11 @@ import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } fr
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
+import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
+import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
   project: Project;
@@ -353,17 +355,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <FileText className="w-5 h-5" />
             <h2 className="text-xl font-black uppercase">Script Reference</h2>
           </div>
-          <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-            {localProject.data?.script_content ? (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: localProject.data.script_content
-                }}
-              />
-            ) : (
-              'No script content available'
-            )}
-          </div>
+          <ScriptDisplay content={localProject.data?.script_content || ''} />
         </div>
 
         {/* Cinematographer Instructions - Show when project has cinematographer data */}

@@ -4,6 +4,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare } from 'lucide-react';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
@@ -422,30 +423,12 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
             <h3 className="text-lg font-black uppercase mb-4">
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
-            <div className="border-2 border-gray-200 p-8 bg-gray-50 text-2xl font-serif leading-relaxed">
+            <div className="border-2 border-gray-200 p-8 bg-gray-50 text-2xl font-serif leading-relaxed overflow-x-auto">
               {localProject.data?.script_content
-                ? (() => {
-                  let decodedContent = localProject.data.script_content
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#39;/g, "'")
-                    .replace(/&nbsp;/g, ' ');
-                  return <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                })()
+                ? <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
                 : localProject.data?.idea_description
-                  ? (() => {
-                    let decodedContent = localProject.data.idea_description
-                      .replace(/&lt;/g, '<')
-                      .replace(/&gt;/g, '>')
-                      .replace(/&amp;/g, '&')
-                      .replace(/&quot;/g, '"')
-                      .replace(/&#39;/g, "'")
-                      .replace(/&nbsp;/g, ' ');
-                    return <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                  })()
-                  : 'No content available'}
+                  ? <div className="text-2xl" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.idea_description) }} />
+                  : <div className="text-slate-400 italic">No content available</div>}
             </div>
           </div>
         )}

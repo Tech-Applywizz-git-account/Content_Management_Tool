@@ -7,9 +7,10 @@ import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, X, RotateCcw, Download, Video, Image as ImageIcon } from 'lucide-react';
 import Popup from '../Popup';
 import ScriptComparison from '../ScriptComparison';
+import ScriptDisplay from '../ScriptDisplay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { decodeHtmlEntities } from '../../utils/htmlDecoder';
+import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
@@ -679,21 +680,13 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     currentTimestamp=""
                                 />
                             ) : (
-                                // Show single script for non-rework projects
-                                <div
-                                    className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-xl leading-normal text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                                >
-                                    {project.data?.source === 'DESIGNER_INITIATED'
+                                <ScriptDisplay
+                                    content={(project.data?.source === 'DESIGNER_INITIATED'
                                         ? project.data?.creative_link || 'No creative link available.'
                                         : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                             ? project.data.idea_description
-                                            : project.data?.script_content
-                                                ? (() => {
-                                                    const decodedContent = decodeHtmlEntities(project.data.script_content);
-                                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                })()
-                                                : 'No script content available.'}
-                                </div>
+                                            : project.data?.script_content) || ''}
+                                />
                             )}
                         </div>
                     </section>

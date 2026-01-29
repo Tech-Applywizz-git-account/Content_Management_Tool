@@ -4,6 +4,7 @@ import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { db } from '../../services/supabaseDb';
 import { UserStatus } from '../../types';
 import Popup from '../Popup';
@@ -408,17 +409,10 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             <FileText className="w-6 h-6" />
                             <h3 className="text-xl font-black uppercase text-slate-900">Script Content</h3>
                         </div>
-                        <div className="bg-slate-50 border-2 border-slate-200 p-6 font-serif text-slate-900 leading-relaxed max-h-96 overflow-y-auto">
-                            {project.data.script_content ? (() => {
-                                let decodedContent = project.data.script_content
-                                    .replace(/&lt;/g, '<')
-                                    .replace(/&gt;/g, '>')
-                                    .replace(/&amp;/g, '&')
-                                    .replace(/&quot;/g, '"')
-                                    .replace(/&#39;/g, "'")
-                                    .replace(/&nbsp;/g, ' ');
-                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                            })() : (
+                        <div className="bg-slate-50 border-2 border-slate-200 p-6 font-serif text-slate-900 leading-relaxed max-h-96 overflow-y-auto overflow-x-auto">
+                            {project.data.script_content ? (
+                                <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(project.data.script_content) }} />
+                            ) : (
                                 <p className="text-slate-500 italic">No script content available</p>
                             )}
                         </div>
@@ -451,7 +445,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </div>
                                 </div>
                             )}
-                            
+
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Raw Video (from Cinematographer)</h4>
@@ -552,13 +546,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
-                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link && 
-                              !(project.editor_video_links_history && project.editor_video_links_history.length > 0) && 
-                              !(project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
-                                <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
-                                    <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
-                                </div>
-                            )}
+                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link &&
+                                !(project.editor_video_links_history && project.editor_video_links_history.length > 0) &&
+                                !(project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
+                                    <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
+                                        <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
+                                    </div>
+                                )}
                         </div>
                     </div>
 

@@ -4,8 +4,10 @@ import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
+import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import Timeline from '../Timeline';
+import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
     project: Project;
@@ -257,90 +259,32 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             // Show both old and new content side by side for rework projects
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 {/* Previous Content */}
-                                <div className="bg-white border-2 border-slate-300 p-6">
+                                <div className="flex flex-col">
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
                                     </h4>
-                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {(() => {
-                                            // Decode HTML entities to properly display the content
-                                            let decodedContent = previousScript
-                                                .replace(/&lt;/g, '<')
-                                                .replace(/&gt;/g, '>')
-                                                .replace(/&amp;/g, '&')
-                                                .replace(/&quot;/g, '"')
-                                                .replace(/&#39;/g, "'")
-                                                .replace(/&nbsp;/g, ' ');
-                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                        })()}
-                                    </div>
+                                    <ScriptDisplay content={previousScript} showBox={true} />
                                 </div>
 
                                 {/* Current Content */}
-                                <div className="bg-white border-2 border-slate-300 p-6">
+                                <div className="flex flex-col">
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Updated Idea' : 'Updated Script'}
                                     </h4>
-                                    <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-slate-50 p-4 border-2 border-slate-200 max-h-96 overflow-y-auto">
-                                        {project.data?.source === 'IDEA_PROJECT'
-                                            ? (() => {
-                                                // Decode HTML entities to properly display the content
-                                                let decodedContent = project.data.idea_description || 'No idea description available';
-                                                decodedContent = decodedContent
-                                                    .replace(/&lt;/g, '<')
-                                                    .replace(/&gt;/g, '>')
-                                                    .replace(/&amp;/g, '&')
-                                                    .replace(/&quot;/g, '"')
-                                                    .replace(/&#39;/g, "'")
-                                                    .replace(/&nbsp;/g, ' ');
-                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                            })()
-                                            : (() => {
-                                                // Decode HTML entities to properly display the content
-                                                let decodedContent = project.data.script_content || 'No content available';
-                                                decodedContent = decodedContent
-                                                    .replace(/&lt;/g, '<')
-                                                    .replace(/&gt;/g, '>')
-                                                    .replace(/&amp;/g, '&')
-                                                    .replace(/&quot;/g, '"')
-                                                    .replace(/&#39;/g, "'")
-                                                    .replace(/&nbsp;/g, ' ');
-                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                            })()}
-                                    </div>
+                                    <ScriptDisplay
+                                        content={project.data?.source === 'IDEA_PROJECT'
+                                            ? project.data.idea_description || ''
+                                            : project.data?.script_content || ''}
+                                        showBox={true}
+                                    />
                                 </div>
                             </div>
                         ) : (
-                            // Show single content for non-rework projects
-                            <div className="prose prose-slate max-w-none">
-                                <div className="font-serif text-lg leading-relaxed text-slate-800 whitespace-pre-wrap bg-white p-6 border-2 border-slate-200">
-                                    {project.data?.source === 'IDEA_PROJECT'
-                                        ? (() => {
-                                            // Decode HTML entities to properly display the content
-                                            let decodedContent = project.data.idea_description || 'No idea description available';
-                                            decodedContent = decodedContent
-                                                .replace(/&lt;/g, '<')
-                                                .replace(/&gt;/g, '>')
-                                                .replace(/&amp;/g, '&')
-                                                .replace(/&quot;/g, '"')
-                                                .replace(/&#39;/g, "'")
-                                                .replace(/&nbsp;/g, ' ');
-                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                        })()
-                                        : (() => {
-                                            // Decode HTML entities to properly display the content
-                                            let decodedContent = project.data.script_content || 'No content available';
-                                            decodedContent = decodedContent
-                                                .replace(/&lt;/g, '<')
-                                                .replace(/&gt;/g, '>')
-                                                .replace(/&amp;/g, '&')
-                                                .replace(/&quot;/g, '"')
-                                                .replace(/&#39;/g, "'")
-                                                .replace(/&nbsp;/g, ' ');
-                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                        })()}
-                                </div>
-                            </div>
+                            <ScriptDisplay
+                                content={project.data?.source === 'IDEA_PROJECT'
+                                    ? project.data.idea_description || ''
+                                    : project.data?.script_content || ''}
+                            />
                         )}
                     </div>
 

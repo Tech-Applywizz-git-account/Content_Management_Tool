@@ -5,10 +5,11 @@ import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
 import Popup from '../Popup';
 import ScriptComparison from '../ScriptComparison';
+import ScriptDisplay from '../ScriptDisplay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { getWorkflowState } from '../../services/workflowUtils';
-import { decodeHtmlEntities } from '../../utils/htmlDecoder';
+import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
@@ -737,22 +738,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                 // For final review stages, always show only the current script
                                 if (isFinalReview) {
                                     console.log('CMO Review: Showing current script only for final review');
-                                    return (
-                                        <div
-                                            className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                                        >
-                                            {project.data?.source === 'DESIGNER_INITIATED'
-                                                ? project.data?.creative_link || 'No creative link available.'
-                                                : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                                    ? project.data.idea_description
-                                                    : project.data?.script_content
-                                                        ? (() => {
-                                                            const decodedContent = decodeHtmlEntities(project.data.script_content);
-                                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                        })()
-                                                        : 'No script content available.'}
-                                        </div>
-                                    );
+                                    const displayContent = project.data?.source === 'DESIGNER_INITIATED'
+                                        ? project.data?.creative_link || 'No creative link available.'
+                                        : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
+                                            ? project.data.idea_description
+                                            : project.data?.script_content;
+
+                                    return <ScriptDisplay content={displayContent || ''} />;
                                 } else {
                                     // For non-final review stages, show comparison if we have a previous script content
                                     if (previousScript && previousScript.trim() !== '') {
@@ -779,22 +771,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                         console.log('CMO Review: Showing single script - previousScript exists:', !!previousScript, 'current exists:', !!project.data?.script_content, 'isFinalReview:', isFinalReview);
                                         console.log('CMO Review: Conditions for comparison - hasPrevious:', !!previousScript, 'prev not empty:', previousScript && previousScript.trim() !== '', 'not final review:', !isFinalReview);
                                         // Show single script for non-rework projects
-                                        return (
-                                            <div
-                                                className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                                            >
-                                                {project.data?.source === 'DESIGNER_INITIATED'
-                                                    ? project.data?.creative_link || 'No creative link available.'
-                                                    : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
-                                                        ? project.data.idea_description
-                                                        : project.data?.script_content
-                                                            ? (() => {
-                                                                const decodedContent = decodeHtmlEntities(project.data.script_content);
-                                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                                            })()
-                                                            : 'No script content available.'}
-                                            </div>
-                                        );
+                                        const displayContent = project.data?.source === 'DESIGNER_INITIATED'
+                                            ? project.data?.creative_link || 'No creative link available.'
+                                            : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
+                                                ? project.data.idea_description
+                                                : project.data?.script_content;
+
+                                        return <ScriptDisplay content={displayContent || ''} />;
                                     }
                                 }
                             })()}

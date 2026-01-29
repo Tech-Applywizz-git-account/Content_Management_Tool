@@ -4,6 +4,7 @@ import { Project, Role, WorkflowStage, STAGE_LABELS } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CeoReviewScreen from './CeoReviewScreen';
 import Layout from '../Layout';
+import ScriptDisplay from '../ScriptDisplay';
 
 const CeoProjectDetailPage: React.FC<{
     user: { id: string; full_name: string; role: Role };
@@ -144,19 +145,7 @@ const CeoProjectDetailPage: React.FC<{
                 {/* SCRIPT CONTENT */}
                 <div className="border-2 border-black p-4 bg-slate-100">
                     <h3 className="font-black uppercase mb-2">Script Content</h3>
-                    {project.data?.script_content
-                        ? (() => {
-                            let decodedContent = project.data.script_content
-                                .replace(/&lt;/g, '<')
-                                .replace(/&gt;/g, '>')
-                                .replace(/&amp;/g, '&')
-                                .replace(/&quot;/g, '"')
-                                .replace(/&#39;/g, "'")
-                                .replace(/&nbsp;/g, ' ');
-                            return <div className="whitespace-pre-wrap text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                        })()
-                        : <p>No script</p>
-                    }
+                    <ScriptDisplay content={project.data?.script_content || ''} showBox={false} />
                 </div>
 
                 {/* CEO COMMENT */}

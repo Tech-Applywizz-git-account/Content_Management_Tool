@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus, Priority } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
@@ -243,13 +244,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     };
   }, []);
 
-  // Helper function to decode HTML entities
-  const decodeHtmlEntities = (html) => {
-    if (!html) return '';
-    const txt = document.createElement('textarea');
-    txt.innerHTML = html;
-    return txt.value;
-  };
 
   // Function to check grammar and spelling using OpenAI API
   const checkGrammarAndSpelling = async (text: string) => {
@@ -2233,15 +2227,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
                 <div className="bg-white p-4 border-2 border-yellow-200 min-h-[200px] max-h-60 overflow-y-auto">
                   <div className="text-slate-700 whitespace-pre-wrap font-serif">
-                    {(() => {
-                      const decodeHtmlEntities = (html) => {
-                        const txt = document.createElement('textarea');
-                        txt.innerHTML = html;
-                        return txt.value;
-                      };
-                      const decodedContent = decodeHtmlEntities(previousScript);
-                      return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                    })()}
+                    return <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(previousScript) }} />;
                   </div>
                 </div>
               </div>

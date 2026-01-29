@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { decodeHtmlEntities } from '../utils/htmlDecoder';
+import { decodeHtmlEntities, stripHtmlTags } from '../utils/htmlDecoder';
+import ScriptDisplay from './ScriptDisplay';
 
 interface ScriptComparisonProps {
   previousScript: string;
@@ -10,28 +11,15 @@ interface ScriptComparisonProps {
   currentTimestamp?: string;
 }
 
-// Utility function to clean inline styles after decoding
-const cleanHtmlStyles = (html: string) => {
-  if (!html) return '';
-
-  // Remove Tailwind CSS inline styles
-  let cleaned = html.replace(/style="[^"]*"/g, '');
-
-  // Remove empty span and div tags that might remain
-  cleaned = cleaned.replace(/<span\s*>/g, '').replace(/<\/span>/g, '');
-  cleaned = cleaned.replace(/<div\s*>/g, '').replace(/<\/div>/g, '');
-
-  return cleaned;
-};
 
 // Simple diff algorithm for comparing text
 const getTextDifferences = (oldText: string, newText: string) => {
-  // Decode HTML entities before comparison, then clean styles
-  const decodedOldText = cleanHtmlStyles(decodeHtmlEntities(oldText));
-  const decodedNewText = cleanHtmlStyles(decodeHtmlEntities(newText));
+  // Strip all HTML tags from both scripts for a clean text comparison
+  const cleanOldText = stripHtmlTags(oldText);
+  const cleanNewText = stripHtmlTags(newText);
 
-  const oldLines = decodedOldText.split('\n');
-  const newLines = decodedNewText.split('\n');
+  const oldLines = cleanOldText.split('\n');
+  const newLines = cleanNewText.split('\n');
   const maxLength = Math.max(oldLines.length, newLines.length);
 
   const differences = [];
@@ -58,11 +46,11 @@ const getTextDifferences = (oldText: string, newText: string) => {
 
 // Function to highlight added content in current script at word level
 const highlightAddedContent = (oldText: string, newText: string) => {
-  const decodedOldText = cleanHtmlStyles(decodeHtmlEntities(oldText));
-  const decodedNewText = cleanHtmlStyles(decodeHtmlEntities(newText));
+  const cleanOldText = stripHtmlTags(oldText);
+  const cleanNewText = stripHtmlTags(newText);
 
-  const oldLines = decodedOldText.split('\n');
-  const newLines = decodedNewText.split('\n');
+  const oldLines = cleanOldText.split('\n');
+  const newLines = cleanNewText.split('\n');
 
   const highlightedLines = [];
 
@@ -71,15 +59,9 @@ const highlightAddedContent = (oldText: string, newText: string) => {
     const newLine = newLines[i];
     const oldLine = oldLines[i] || '';
 
-    // Clean the line content by removing Tailwind CSS inline styles
-    const cleanNewLine = newLine.replace(/style="[^"]*"/g, '').replace(/<[^>]*>/g, match => {
-      // Preserve the tag but remove style attributes
-      return match.replace(/style="[^"]*"/g, '');
-    });
-
-    const cleanOldLine = oldLine.replace(/style="[^"]*"/g, '').replace(/<[^>]*>/g, match => {
-      return match.replace(/style="[^"]*"/g, '');
-    });
+    // For clear comparison, we use the already stripped lines
+    const cleanNewLine = newLine;
+    const cleanOldLine = oldLine;
 
     if (cleanNewLine === cleanOldLine) {
       // Line unchanged
@@ -145,6 +127,7 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
   const [highlightedLines, setHighlightedLines] = useState<Array<{ type: string, content: string }>>([]);
 
   useEffect(() => {
+    // We still keep the highlight logic for comparison, but it works on stripped text
     const highlighted = highlightAddedContent(previousScript || '', currentScript || '');
     setHighlightedLines(highlighted);
   }, [previousScript, currentScript]);
@@ -183,85 +166,36 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
     }
   };
 
-  const renderLine = (diff: { type: string, content: string, lineNumber: number }) => {
-    const baseClasses = "py-1 px-2 font-mono text-sm border-l-4";
-
-    switch (diff.type) {
-      case 'added':
-        return (
-          <div
-            key={`${diff.lineNumber}-${diff.type}`}
-            className={`${baseClasses} border-green-500 bg-green-50 text-green-800`}
-          >
-            <span className="text-gray-400 mr-2">+{diff.lineNumber}</span>
-            {diff.content}
-          </div>
-        );
-      case 'removed':
-        return (
-          <div
-            key={`${diff.lineNumber}-${diff.type}`}
-            className={`${baseClasses} border-red-500 bg-red-50 text-red-800 line-through`}
-          >
-            <span className="text-gray-400 mr-2">-{diff.lineNumber}</span>
-            {diff.content}
-          </div>
-        );
-      default:
-        return (
-          <div
-            key={`${diff.lineNumber}-${diff.type}`}
-            className={`${baseClasses} border-gray-300 bg-white text-gray-700`}
-          >
-            <span className="text-gray-400 mr-2"> {diff.lineNumber}</span>
-            {diff.content}
-          </div>
-        );
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Side-by-side comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Previous Script */}
-        <div className="bg-white border-2 border-red-200 rounded-lg overflow-hidden">
+        <div className="bg-white border-2 border-red-200 rounded-lg overflow-hidden flex flex-col">
           <div className="bg-red-500 text-white p-3 font-bold uppercase text-sm">
             Previous Script
           </div>
-          <div className="font-serif text-xl text-gray-800 leading-normal max-h-96 overflow-y-auto">
+          <div className="font-serif text-xl text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
             <div className="p-4">
-              {(() => {
-                if (!previousScript) return 'No previous script available';
-
-                const decodedContent = decodeHtmlEntities(previousScript);
-                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-              })()}
+              <ScriptDisplay content={previousScript} showBox={false} />
             </div>
           </div>
         </div>
 
-        {/* Current Script with Highlights */}
-        <div className="bg-white border-2 border-green-200 rounded-lg overflow-hidden">
+        {/* Current Script with Highlights or Formatting */}
+        <div className="bg-white border-2 border-green-200 rounded-lg overflow-hidden flex flex-col">
           <div className="bg-green-500 text-white p-3 font-bold uppercase text-sm">
             Current Script
           </div>
-          <div className="font-serif text-gray-800 leading-normal max-h-96 overflow-y-auto">
+          <div className="font-serif text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
             <div className="p-4 text-xl">
-              {highlightedLines.length > 0 ? (
-                <div className="space-y-0">
-                  {highlightedLines.map((line, index) => renderHighlightedLine(line, index))}
-                </div>
-              ) : (
-                <div className="text-gray-500 italic">
-                  {(() => {
-                    if (!currentScript) return 'No script content available';
-
-                    const decodedContent = decodeHtmlEntities(currentScript);
-                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                  })()}
-                </div>
-              )}
+              <div className="space-y-0">
+                {highlightedLines.length > 0 ? (
+                  highlightedLines.map((line, index) => renderHighlightedLine(line, index))
+                ) : (
+                  <ScriptDisplay content={currentScript} showBox={false} />
+                )}
+              </div>
             </div>
           </div>
         </div>

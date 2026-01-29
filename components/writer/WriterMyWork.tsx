@@ -6,6 +6,8 @@ import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowStateForRole } from '../../services/workflowUtils';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
+import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -366,32 +368,8 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
               <h3 className="text-lg font-black uppercase mb-4">
                 {selectedProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
               </h3>
-              <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
-                {selectedProject.data?.script_content || selectedProject.data?.idea_description ? (
-                  <div
-                    className="whitespace-pre-wrap font-sans text-sm"
-                    dangerouslySetInnerHTML={{
-                      __html: (() => {
-                        let content = selectedProject.data?.script_content || selectedProject.data?.idea_description || 'No content available';
-                        if (content !== 'No content available') {
-                          // Decode HTML entities to properly display the content
-                          content = content
-                            .replace(/&lt;/g, '<')
-                            .replace(/&gt;/g, '>')
-                            .replace(/&amp;/g, '&')
-                            .replace(/&quot;/g, '"')
-                            .replace(/&#39;/g, "'")
-                            .replace(/&nbsp;/g, ' ');
-                        }
-                        return content;
-                      })()
-                    }}
-                  />
-                ) : (
-                  <pre className="whitespace-pre-wrap font-sans text-sm">
-                    No content available
-                  </pre>
-                )}
+              <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50 overflow-x-auto">
+                <ScriptDisplay content={selectedProject.data?.script_content || selectedProject.data?.idea_description || ''} showBox={false} />
 
                 {/* Show cinematographer comments if available */}
                 {selectedProject.data?.cine_comments && (

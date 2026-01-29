@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../types';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle, Eye, Clock, ExternalLink, Play, EyeOff, AlertTriangle } from 'lucide-react';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
@@ -322,17 +323,10 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 <FileText size={24} className="text-slate-700" />
                                 <h2 className="text-xl font-black uppercase text-slate-900">Script / Caption</h2>
                             </div>
-                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg max-h-60 overflow-y-auto">
-                                {project.data.script_content ? (() => {
-                                    let decodedContent = project.data.script_content
-                                        .replace(/&lt;/g, '<')
-                                        .replace(/&gt;/g, '>')
-                                        .replace(/&amp;/g, '&')
-                                        .replace(/&quot;/g, '"')
-                                        .replace(/&#39;/g, "'")
-                                        .replace(/&nbsp;/g, ' ');
-                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} className="prose max-w-none" />;
-                                })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg max-h-60 overflow-y-auto overflow-x-auto">
+                                {project.data.script_content ? (
+                                    <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(project.data.script_content) }} className="prose max-w-none" />
+                                ) : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}

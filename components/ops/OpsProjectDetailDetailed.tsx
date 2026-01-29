@@ -6,6 +6,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import Timeline from '../Timeline';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
@@ -117,17 +118,10 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, 
                                 <FileText size={20} className="text-green-600" />
                                 Script / Caption
                             </h2>
-                            <div className="p-4 bg-slate-50 border border-slate-300 rounded max-h-60 overflow-y-auto">
-                                {project.data.script_content ? (() => {
-                                    let decodedContent = project.data.script_content
-                                        .replace(/&lt;/g, '<')
-                                        .replace(/&gt;/g, '>')
-                                        .replace(/&amp;/g, '&')
-                                        .replace(/&quot;/g, '"')
-                                        .replace(/&#39;/g, "'")
-                                        .replace(/&nbsp;/g, ' ');
-                                    return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                })() : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
+                            <div className="p-4 bg-slate-50 border border-slate-300 rounded max-h-60 overflow-y-auto overflow-x-auto">
+                                {project.data.script_content ? (
+                                    <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(project.data.script_content) }} />
+                                ) : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
                             </div>
                         </div>
                     )}

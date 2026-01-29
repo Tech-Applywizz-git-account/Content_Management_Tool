@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
+import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import RichTextEditor from '../RichTextEditor';
 import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
     project: Project;
@@ -169,7 +171,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 ...prev,
                 shoot_date: shootDate
             }));
-            console.log(`Shoot date set: ${shootDate}`);
+            console.log(`Shoot date set: ${shootDate} `);
 
             // Show popup notification (use STAGE_LABELS and include calendar visibility)
             const stageLabel = STAGE_LABELS[WorkflowStage.CINEMATOGRAPHY] || 'Cinematography';
@@ -182,7 +184,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             console.error('Failed to set shoot date:', error);
             // Show more detailed error information
             if (error instanceof Error) {
-                alert(`❌ Failed to set shoot date: ${error.message}\n\nPlease try again.`);
+                alert(`❌ Failed to set shoot date: ${error.message} \n\nPlease try again.`);
             } else {
                 alert('❌ Failed to set shoot date. Please try again.');
             }
@@ -224,7 +226,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             // Add cinematographer comments if provided
             if (cineComments.trim()) {
-                comment += `\n\nCinematographer Comments: ${cineComments}`;
+                comment += `\n\nCinematographer Comments: ${cineComments} `;
             } else if (localProject.data?.cine_comments) {
                 // If there are existing comments in the project data, include them
                 comment += `\n\nCinematographer Comments: ${localProject.data.cine_comments}`;
@@ -349,7 +351,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             console.error('Failed to upload video:', error);
             // Show more detailed error information
             if (error instanceof Error) {
-                alert(`❌ Failed to upload video: ${error.message}\n\nPlease try again.`);
+                alert(`❌ Failed to upload video: ${error.message} \n\nPlease try again.`);
             } else {
                 alert('❌ Failed to upload video. Please try again.');
             }
@@ -425,23 +427,23 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                         <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
                         <div className="flex items-center gap-3 mt-1">
                             <span
-                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
+                                className={`px - 2 py - 1 text - [10px] font - black uppercase border - 2 border - black ${localProject.channel === 'YOUTUBE'
                                     ? 'bg-[#FF4F4F] text-white'
                                     : localProject.channel === 'LINKEDIN'
                                         ? 'bg-[#0085FF] text-white'
                                         : 'bg-[#D946EF] text-white'
-                                    }`}
+                                    } `}
                             >
                                 {localProject.channel}
                             </span>
 
                             <span
-                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
+                                className={`px - 2 py - 1 text - [10px] font - black uppercase border - 2 border - black ${localProject.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : localProject.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
                                         : 'bg-green-500 text-white'
-                                    }`}
+                                    } `}
                             >
                                 {localProject.priority}
                             </span>
@@ -488,7 +490,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             const timestamp = new Date(comment.created_at).toLocaleString();
 
                                             return (
-                                                <div key={`forwarded-${comment.id || index}`} className="p-2 bg-blue-50 border border-blue-200 rounded">
+                                                <div key={`forwarded - ${comment.id || index} `} className="p-2 bg-blue-50 border border-blue-200 rounded">
                                                     <div className="flex items-center">
                                                         <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
                                                         <span className="mx-2 text-slate-400">•</span>
@@ -660,15 +662,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             />
                         ) : (
                             <>
-                                {localProject.data.script_content
-                                    ? (
-                                        <div className="bg-white p-8 border-2 border-slate-100 shadow-inner overflow-hidden"
-                                            style={{ fontSize: '1.25rem', lineHeight: '1.8' }}>
-                                            <div className="whitespace-pre-wrap script-content-display text-slate-900"
-                                                dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
-                                        </div>
-                                    )
-                                    : <div className="text-slate-400 italic">No script content available</div>}
+                                <ScriptDisplay content={localProject.data.script_content || ''} showBox={false} />
 
                                 {canEdit && (
                                     <div className="mt-4 flex justify-end">
@@ -932,7 +926,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     user.id,
                                                     user.email || user.id, // UserName (using email or ID as fallback)
                                                     'CINE_COMMENTS_ADDED', // Use appropriate action value
-                                                    `Cinematographer added comments: ${cineComments.trim()}`
+                                                    `Cinematographer added comments: ${cineComments.trim()} `
                                                 );
 
                                                 // Update project data with comments
@@ -1109,7 +1103,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     const timestamp = new Date(comment.created_at).toLocaleString();
 
                                     return (
-                                        <div key={`ceo-forwarded-${comment.id || index}`} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div key={`ceo - forwarded - ${comment.id || index} `} className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                             <div className="flex items-center mb-2">
                                                 <span className="font-bold text-blue-800">CEO Comment</span>
                                                 <span className="mx-2 text-slate-400">•</span>

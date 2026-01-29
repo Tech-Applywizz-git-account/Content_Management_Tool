@@ -4,6 +4,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare } from 'lucide-react';
+import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 interface Props {
@@ -292,7 +293,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
         ...localProject.data,
         cinematography_instructions: cinematographyInstructions
       };
-      
+
       if (rawVideoLink) {
         updatedData.raw_video_link = rawVideoLink;
       }
@@ -433,30 +434,12 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
             <h3 className="text-lg font-black uppercase mb-4">
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
-            <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50">
-              {localProject.data?.script_content 
-                ? (() => {
-                    let decodedContent = localProject.data.script_content
-                        .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>')
-                        .replace(/&amp;/g, '&')
-                        .replace(/&quot;/g, '"')
-                        .replace(/&#39;/g, "'")
-                        .replace(/&nbsp;/g, ' ');
-                    return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                  })()
-                : localProject.data?.idea_description 
-                  ? (() => {
-                      let decodedContent = localProject.data.idea_description
-                          .replace(/&lt;/g, '<')
-                          .replace(/&gt;/g, '>')
-                          .replace(/&amp;/g, '&')
-                          .replace(/&quot;/g, '"')
-                          .replace(/&#39;/g, "'")
-                          .replace(/&nbsp;/g, ' ');
-                      return <div className="whitespace-pre-wrap font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                    })()
-                  : <pre className="whitespace-pre-wrap font-sans text-sm">No content available</pre>}
+            <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50 overflow-x-auto">
+              {localProject.data?.script_content
+                ? <div className="font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.script_content) }} />
+                : localProject.data?.idea_description
+                  ? <div className="font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.idea_description) }} />
+                  : <div className="text-slate-400 italic">No content available</div>}
             </div>
           </div>
         )}
@@ -492,7 +475,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
                   readOnly={!canEdit}
                 />
               </div>
-              
+
               {canEdit && (
                 <button
                   onClick={handleSaveCinematographyInfo}

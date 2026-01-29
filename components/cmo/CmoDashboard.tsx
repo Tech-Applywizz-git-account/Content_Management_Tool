@@ -422,9 +422,28 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
               <div className="space-y-6">
                 {/* Role Filters for History */}
                 <div className="flex flex-wrap gap-2 mb-6 p-4 bg-slate-50 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                  {/* Dynamic Writer Filters */}
+                  <div className="w-full flex flex-wrap gap-2 mb-2 pb-2 border-b border-slate-200">
+                    <span className="text-xs font-bold uppercase text-slate-500 flex items-center mr-2">Writers:</span>
+                    {users.filter(u => u.role === Role.WRITER).map(writer => (
+                      <button
+                        key={writer.id}
+                        onClick={() => setHistoryFilter(writer.id)}
+                        className={`px-3 py-1.5 text-xs font-black uppercase border-2 border-black transition-all ${historyFilter === writer.id
+                          ? 'bg-amber-100 text-amber-900 border-amber-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                          : 'bg-white text-slate-600 hover:bg-slate-100'
+                          }`}
+                      >
+                        {writer.full_name} ({
+                          filteredHistoryProjects.filter(p => p.created_by_user_id === writer.id || p.data?.writer_id === writer.id).length
+                        })
+                      </button>
+                    ))}
+                  </div>
+
                   {[
                     { id: 'ALL', label: 'All History', color: 'bg-slate-900', textColor: 'text-white' },
-                    { id: 'WRITER', label: 'Writer', color: 'bg-yellow-400', textColor: 'text-black' },
+                    { id: 'WRITER', label: 'Assigned to Writer', color: 'bg-yellow-400', textColor: 'text-black' },
                     { id: 'CMO', label: 'CMO', color: 'bg-indigo-600', textColor: 'text-white' },
                     { id: 'CEO', label: 'CEO', color: 'bg-violet-700', textColor: 'text-white' },
                     { id: 'CINE', label: 'Cine', color: 'bg-cyan-500', textColor: 'text-white' },
@@ -468,6 +487,13 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   {projects
                     .filter(p => {
                       if (historyFilter === 'ALL') return true;
+
+                      // Check if filter is a user ID (Writer)
+                      const isWriterFilter = users.some(u => u.id === historyFilter && u.role === Role.WRITER);
+                      if (isWriterFilter) {
+                        return p.created_by_user_id === historyFilter || p.data?.writer_id === historyFilter;
+                      }
+
                       if (historyFilter === 'POSTED') return p.status === 'DONE';
                       if (historyFilter === 'OPS') return p.assigned_to_role === Role.OPS && p.status !== 'DONE';
                       if (p.status === 'DONE') return false;
