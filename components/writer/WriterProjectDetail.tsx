@@ -232,15 +232,17 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     )}
 
-                    {/* Cinematographer Comments - Show if cine_comments exist */}
-                    {project.data?.cine_comments && (
-                        <div className="bg-blue-50 p-6 border-2 border-blue-400">
-                            <div className="flex items-center space-x-2 mb-4">
+                    {/* Cinematographer Comments - Show if cine_comments or cine_to_writer_feedback exist */}
+                    {(project.data?.cine_comments || project.data?.cine_to_writer_feedback) && (
+                        <div className="bg-blue-50 p-6 border-2 border-blue-400 space-y-4">
+                            <div className="flex items-center space-x-2">
                                 <MessageSquare className="w-5 h-5 text-blue-600" />
                                 <h3 className="text-lg font-black uppercase text-blue-900">Cinematographer Notes</h3>
                             </div>
                             <div className="bg-white p-4 border-2 border-blue-300">
-                                <p className="text-blue-800 whitespace-pre-line">{project.data.cine_comments}</p>
+                                <p className="text-blue-800 whitespace-pre-line text-lg font-medium italic">
+                                    {project.data?.cine_to_writer_feedback || project.data?.cine_comments}
+                                </p>
                             </div>
                         </div>
                     )}

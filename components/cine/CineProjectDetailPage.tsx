@@ -94,6 +94,7 @@ const CineProjectDetailPage: React.FC<{
         >
             <CineProjectDetail
                 project={project}
+                userRole={user.role}
                 onBack={() => navigate(-1)}
                 onUpdate={() => {
                     // Refresh the current page after update

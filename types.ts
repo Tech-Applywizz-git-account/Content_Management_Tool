@@ -145,6 +145,9 @@ export interface ProjectData {
   niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'OTHER';
   niche_other?: string;
   cine_thumbnail_link?: string;
+  cine_thumbnail_photos?: string[];
+  cine_to_writer_feedback?: string;
+  script_reference_link?: string;
   [key: string]: any;
 }
 

@@ -621,11 +621,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                         </div>
                                         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
 
-                                        {/* Show cine comments if available */}
-                                        {(p.data?.cine_notes_for_writer || p.data?.cine_comments) && (
-                                            <div className="mb-2 p-2 bg-blue-50 border border-blue-200 text-xs">
-                                                <p className="font-bold text-blue-700 mb-1">Cine Notes:</p>
-                                                <p className="text-blue-600 line-clamp-2">{(p.data.cine_notes_for_writer || p.data.cine_comments).substring(0, 100)}{(p.data.cine_notes_for_writer || p.data.cine_comments).length > 100 ? '...' : ''}</p>
+                                        {/* Show cine feedback if available */}
+                                        {(p.data?.cine_notes_for_writer || p.data?.cine_comments || p.data?.cine_to_writer_feedback) && (
+                                            <div className="mb-2 p-2 bg-purple-50 border border-purple-200 text-xs">
+                                                <p className="font-bold text-purple-700 mb-1">Cine Notes:</p>
+                                                <p className="text-purple-600 line-clamp-3 italic">
+                                                    {p.data?.cine_to_writer_feedback || p.data?.cine_notes_for_writer || p.data?.cine_comments}
+                                                </p>
                                             </div>
                                         )}
 

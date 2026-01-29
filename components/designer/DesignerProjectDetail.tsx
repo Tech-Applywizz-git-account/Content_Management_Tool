@@ -480,23 +480,27 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 </div>
                             )}
 
-                            {/* Thumbnail Link from Cinematographer */}
-                            {localProject.data.cine_thumbnail_link && (
+                            {/* Thumbnail Photos from Cinematographer */}
+                            {localProject.data.cine_thumbnail_photos && localProject.data.cine_thumbnail_photos.length > 0 && (
                                 <div>
-                                    <p className="font-bold text-slate-500 uppercase text-xs mb-1">Cinematographer's Thumbnail Assets</p>
-                                    <a
-                                        href={localProject.data.cine_thumbnail_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="block p-3 bg-white border-2 border-purple-400 text-purple-600 font-medium hover:bg-purple-50 transition-colors break-all"
-                                    >
-                                        {localProject.data.cine_thumbnail_link}
-                                    </a>
-                                    <p className="text-xs text-slate-500 mt-1">Assets provided by Cinematographer for thumbnail creation</p>
+                                    <p className="font-bold text-slate-500 uppercase text-xs mb-2">Cinematographer's Photos</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {localProject.data.cine_thumbnail_photos.map((photo: string, index: number) => (
+                                            <a
+                                                key={index}
+                                                href={photo}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block p-3 bg-white border-2 border-purple-400 text-purple-600 font-medium hover:bg-purple-50 transition-colors truncate"
+                                            >
+                                                Photo {index + 1}
+                                            </a>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
 
-                            {!localProject.data.thumbnail_reference_link && !localProject.data.thumbnail_notes && !localProject.data.cine_thumbnail_link && (
+                            {!localProject.data.thumbnail_reference_link && !localProject.data.thumbnail_notes && !localProject.data.cine_thumbnail_link && (!localProject.data.cine_thumbnail_photos || localProject.data.cine_thumbnail_photos.length === 0) && (
                                 <p className="text-slate-500 italic">No specific thumbnail requirements provided.</p>
                             )}
                         </div>
