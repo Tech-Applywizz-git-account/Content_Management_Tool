@@ -138,6 +138,28 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Track editor initialization to prevent cursor jumping
+  const isEditorInitialized = useRef(false);
+
+  // Initialize editor content when available
+  useEffect(() => {
+    if (!loading && editorRef.current && formData.script_content) {
+      // Only set content if we haven't initialized yet
+      if (!isEditorInitialized.current) {
+        editorRef.current.innerHTML = formData.script_content;
+        isEditorInitialized.current = true;
+      }
+      // Or if we specifically loaded new content from workflow history (rework/reject)
+      // We check if the content is drastically different to avoid overwriting minor edits
+      else if (formData._workflow_script_loaded) {
+        const currentContent = editorRef.current.innerHTML;
+        if (currentContent !== formData.script_content && (currentContent === '' || currentContent === '<br>')) {
+          editorRef.current.innerHTML = formData.script_content;
+        }
+      }
+    }
+  }, [loading, formData.script_content, formData._workflow_script_loaded]);
+
   // Corrections feature state
   const [correctionsEnabled, setCorrectionsEnabled] = useState(false);
   const [correctionsRunning, setCorrectionsRunning] = useState(false);

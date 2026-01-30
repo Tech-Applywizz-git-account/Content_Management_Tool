@@ -13,7 +13,7 @@ interface ScriptDisplayProps {
 const ScriptDisplay: React.FC<ScriptDisplayProps> = ({
     content,
     className = '',
-    fontSize = '1.25rem',
+    fontSize = '1.125rem', // text-lg to match writer
     lineHeight = '1.8',
     padding = 'p-8',
     showBox = true
@@ -24,20 +24,17 @@ const ScriptDisplay: React.FC<ScriptDisplayProps> = ({
 
     const decodedContent = decodeHtmlEntities(content);
 
+    // Enforce standard styling to match the writer's editor
+    // We only force bold tags to be bold, and allow paragraph spacing.
+    // We do NOT enforce weight on the container, allowing natural inheritance.
     const styles = (
         <style dangerouslySetInnerHTML={{
             __html: `
+            .script-content-display b, .script-content-display strong {
+                font-weight: bold;
+            }
             .script-content-display p {
                 margin-bottom: 1.5em;
-            }
-            .script-content-display b, .script-content-display strong {
-                font-weight: 900;
-            }
-            .script-content-display span[style*="color"] {
-                font-weight: 700;
-            }
-            .script-content-display span[style*="font-weight"] {
-                font-weight: 900;
             }
         `}} />
     );
@@ -52,6 +49,7 @@ const ScriptDisplay: React.FC<ScriptDisplayProps> = ({
                     lineHeight,
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word'
+                    // removed explicit fontWeight: 400 to allow bold tags to work naturally
                 }}
                 dangerouslySetInnerHTML={{ __html: decodedContent }}
             />
@@ -61,9 +59,9 @@ const ScriptDisplay: React.FC<ScriptDisplayProps> = ({
     if (!showBox) return display;
 
     return (
-        <div className={`bg-white ${padding} border-2 border-slate-100 shadow-inner overflow-hidden`}>
+        <div className={`bg-white ${padding} border-2 border-slate-100 shadow-inner overflow-hidden`} >
             {display}
-        </div>
+        </div >
     );
 };
 
