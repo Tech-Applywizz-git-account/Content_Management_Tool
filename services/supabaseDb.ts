@@ -1158,14 +1158,14 @@ export const workflow = {
             'SUBMITTED': 'SUBMITTED',
             'APPROVED': 'APPROVED',
             'REWORK': 'REWORK',
-            'REWORK_VIDEO_SUBMITTED': 'REWORK_SUBMITTED',
-            'REWORK_EDIT_SUBMITTED': 'REWORK_SUBMITTED',
-            'REWORK_DESIGN_SUBMITTED': 'REWORK_SUBMITTED',
-            'REWORK_SUBMITTED': 'REWORK_SUBMITTED',
+            'REWORK_VIDEO_SUBMITTED': 'SUBMITTED',
+            'REWORK_EDIT_SUBMITTED': 'SUBMITTED',
+            'REWORK_DESIGN_SUBMITTED': 'SUBMITTED',
+            'REWORK_SUBMITTED': 'SUBMITTED',
             'REJECTED': 'REJECTED',
             'PUBLISHED': 'APPROVED',
-            'SUB_EDITOR_ASSIGNED': 'SUB_EDITOR_ASSIGNED',
-            'ASSIGNED_TO_SUB_EDITOR': 'SUB_EDITOR_ASSIGNED',
+            'SUB_EDITOR_ASSIGNED': 'SUBMITTED',
+            'ASSIGNED_TO_SUB_EDITOR': 'SUBMITTED',
             'SUB_EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
             'EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
             'CINE_VIDEO_UPLOADED': 'SUBMITTED',
@@ -1524,13 +1524,7 @@ export const workflow = {
                 // Determine the appropriate action type based on the comment
                 let actionType = 'SUBMITTED'; // Default action
                 if (comment.toLowerCase().includes('uploaded')) {
-                    if (comment.toLowerCase().includes('video')) {
-                        actionType = 'REWORK_VIDEO_SUBMITTED';
-                    } else if (comment.toLowerCase().includes('edit')) {
-                        actionType = 'REWORK_EDIT_SUBMITTED';
-                    } else {
-                        actionType = 'SUBMITTED';
-                    }
+                    actionType = 'SUBMITTED';
                 }
 
                 // Record the actual action taken by the non-writer
@@ -2313,6 +2307,9 @@ export const helpers = {
 
             // CINE -> MULTI_WRITER_APPROVAL (Writer)
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
+
+            // MULTI_WRITER_APPROVAL -> VIDEO_EDITING (Editor)
+            [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
             // VIDEO_EDITING -> DESIGNER (if thumbnail) OR OPS/CMO (Post Review)
             [WorkflowStage.VIDEO_EDITING]: {
@@ -3177,37 +3174,33 @@ export const db = {
         let reworkMetadata: any = undefined;
 
         if (isFromRework) {
+            advanceAction = 'SUBMITTED';
             const role = currentUserCache.role;
-            if (role === Role.EDITOR || role === Role.SUB_EDITOR) advanceAction = 'REWORK_EDIT_SUBMITTED';
-            else if (role === Role.DESIGNER) advanceAction = 'REWORK_DESIGN_SUBMITTED';
-            else if (role === Role.CINE) advanceAction = 'REWORK_VIDEO_SUBMITTED';
 
             // Calculate metadata for asset comparison (Before vs After)
-            if (advanceAction.startsWith('REWORK_')) {
-                let beforeLink = null;
-                let afterLink = null;
+            let beforeLink = null;
+            let afterLink = null;
 
-                if (role === Role.CINE) {
-                    beforeLink = project.cine_video_links_history?.[project.cine_video_links_history.length - 1] || null;
-                    afterLink = project.video_link;
-                } else if (role === Role.EDITOR) {
-                    beforeLink = project.editor_video_links_history?.[project.editor_video_links_history.length - 1] || null;
-                    afterLink = project.edited_video_link;
-                } else if (role === Role.SUB_EDITOR) {
-                    beforeLink = project.sub_editor_video_links_history?.[project.sub_editor_video_links_history.length - 1] || null;
-                    afterLink = project.edited_video_link;
-                } else if (role === Role.DESIGNER) {
-                    beforeLink = project.designer_video_links_history?.[project.designer_video_links_history.length - 1] || null;
-                    afterLink = project.thumbnail_link || project.creative_link;
-                }
-
-                reworkMetadata = {
-                    before_link: beforeLink,
-                    after_link: afterLink,
-                    reworked_by_role: role
-                };
-                console.log(`📝 Recording specialized rework history for ${role}:`, reworkMetadata);
+            if (role === Role.CINE) {
+                beforeLink = project.cine_video_links_history?.[project.cine_video_links_history.length - 1] || null;
+                afterLink = project.video_link;
+            } else if (role === Role.EDITOR) {
+                beforeLink = project.editor_video_links_history?.[project.editor_video_links_history.length - 1] || null;
+                afterLink = project.edited_video_link;
+            } else if (role === Role.SUB_EDITOR) {
+                beforeLink = project.sub_editor_video_links_history?.[project.sub_editor_video_links_history.length - 1] || null;
+                afterLink = project.edited_video_link;
+            } else if (role === Role.DESIGNER) {
+                beforeLink = project.designer_video_links_history?.[project.designer_video_links_history.length - 1] || null;
+                afterLink = project.thumbnail_link || project.creative_link;
             }
+
+            reworkMetadata = {
+                before_link: beforeLink,
+                after_link: afterLink,
+                reworked_by_role: role
+            };
+            console.log(`📝 Recording specialized rework history for ${role}:`, reworkMetadata);
         }
 
         const result = await workflow.approve(

@@ -158,40 +158,41 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
 
 
   // Counts derived directly from projects table (source of truth)
+  // Counts derived directly from the same logic used for filtering
   const [needsScheduleCount, setNeedsScheduleCount] = useState<number>(0);
   const [scheduledShootsCount, setScheduledShootsCount] = useState<number>(0);
   const [footageUploadedCount, setFootageUploadedCount] = useState<number>(0);
   const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
-
-  useEffect(() => {
-    // Use the inboxProjects passed from App.tsx instead of making a separate query
-    const activeProjects = (inboxProjects || []).filter(p => p.status !== TaskStatus.DONE);
-
-    setActiveProjectsCount(activeProjects.length);
-    setNeedsScheduleCount(activeProjects.filter(p => !p.shoot_date).length);
-    setScheduledShootsCount(activeProjects.filter(p => p.shoot_date && !p.video_link).length);
-
-    // Footage uploaded: consider multiple possible fields for active projects
-    setFootageUploadedCount(
-      activeProjects.filter(p => !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)).length
-    );
-
-    // Count all script projects passed from parent
-    setScriptCount((scriptProjects || []).length);
-  }, [inboxProjects, scriptProjects]);
-
-  // Calculate counts based on historyProjects for consistency with the filtered view
-  useEffect(() => {
-    // Use historyProjects for "Footage Uploaded" count since that's what gets displayed when filtered
-    const historyFootageUploadedCount = (historyProjects || []).filter(p =>
-      !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)
-    ).length;
-
-    // Update footage uploaded count to match what will be shown when filter is applied
-    setFootageUploadedCount(historyFootageUploadedCount);
-  }, [historyProjects]);
-
   const [scriptCount, setScriptCount] = useState<number>(0);
+
+  useEffect(() => {
+    const list = historyProjects || [];
+
+    // 1. Needs Schedule: !project.shoot_date
+    const needsSchedule = list.filter(p => !p.shoot_date);
+    setNeedsScheduleCount(needsSchedule.length);
+
+    // 2. Scheduled: (project.shoot_date && !project.video_link) || isRework
+    const scheduled = list.filter(p => {
+      const workflowState = getWorkflowStateForRole(p, user.role);
+      const isRework = workflowState.isTargetedRework || workflowState.isRework;
+      return (p.shoot_date && !p.video_link) || isRework;
+    });
+    setScheduledShootsCount(scheduled.length);
+
+    // 3. Footage Uploaded: !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link
+    const uploaded = list.filter(p =>
+      !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)
+    );
+    setFootageUploadedCount(uploaded.length);
+
+    // 4. Scripts
+    setScriptCount((scriptProjects || []).length);
+
+    // 5. Active Projects (from inbox)
+    setActiveProjectsCount((inboxProjects || []).filter(p => p.status !== TaskStatus.DONE).length);
+  }, [historyProjects, inboxProjects, scriptProjects, user.role]);
+
 
   return (
     <Layout

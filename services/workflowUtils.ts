@@ -535,21 +535,6 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
         return { editor_uploaded_at: now };
       }
       break;
-    case 'REWORK_VIDEO_SUBMITTED':
-      if (role === Role.CINE) {
-        return { cine_uploaded_at: now };
-      }
-      break;
-    case 'REWORK_EDIT_SUBMITTED':
-      if (role === Role.EDITOR) {
-        return { editor_uploaded_at: now };
-      }
-      break;
-    case 'REWORK_DESIGN_SUBMITTED':
-      if (role === Role.DESIGNER) {
-        return { designer_uploaded_at: now };
-      }
-      break;
   }
 
   return {};

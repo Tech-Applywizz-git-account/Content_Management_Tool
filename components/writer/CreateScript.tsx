@@ -267,42 +267,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   }, []);
 
 
-  // Function to check grammar and spelling using OpenAI API
+  // Function to check grammar and spelling using the central Edge Function
   const checkGrammarAndSpelling = async (text: string) => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      // Use the centralized aiTools service which calls the new Edge Function
+      const data = await db.aiTools.checkGrammar(text);
 
-      // Add AbortController for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout based on recent performance
-
-      let data;
-      try {
-        // Send the ORIGINAL text to preserve whitespace and ensuring matching works
-        // We do NOT normalize whitespace here because we need to find the exact substring later
-        const response = await fetch(`${supabaseUrl}/functions/v1/openai-correction`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-            'apikey': supabaseAnonKey,
-          },
-          body: JSON.stringify({ text: text }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`Service error: ${response.status}`);
-        }
-
-        data = await response.json();
-      } catch (fetchErr: any) {
-        if (fetchErr.name === 'AbortError') throw new Error('Correction request timed out. Please try again.');
-        throw fetchErr;
-      }
 
       const issues = data.issues || [];
       const errors: any[] = [];

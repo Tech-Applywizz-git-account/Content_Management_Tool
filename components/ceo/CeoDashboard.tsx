@@ -140,15 +140,11 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       // Count projects where:
       // 1. Status is WAITING_APPROVAL or REJECTED
       // 2. Stage is one of: SCRIPT_REVIEW_L2, FINAL_REVIEW_CEO
-      // 3. Or it's an idea project at FINAL_REVIEW_CEO
       const { count: pendingCountResult, error: pendingErr } = await supabase
         .from('projects')
         .select('*', { head: true, count: 'exact' })
         .in('status', [TaskStatus.WAITING_APPROVAL, TaskStatus.REJECTED])
         .or(`current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L2},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CEO}`);
-      // Note: Ideally we should use the same exact filter as pendingApprovals:
-      // (status=WAITING_APPROVAL OR status=REJECTED) AND (stage=SCRIPT_REVIEW_L2 OR stage=FINAL_REVIEW_CEO)
-      // The .or syntax above handles the stage part. status is handled by .in.
 
       if (pendingErr) throw pendingErr;
 
@@ -156,17 +152,6 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       setApprovedCount(approvedCountResult || 0);
       setRejectedCount(reworkCountResult || 0); // Set rework count to rejectedCount state for the rework card
       setCeoPendingCount(pendingCountResult || 0); // New state for pending count
-      // Debug: if rejected count is unexpected, fetch and log the rejected projects
-      try {
-        const { data: rejectedRows } = await supabase
-          .from('projects')
-          .select('id,title,current_stage,status')
-          .eq('status', TaskStatus.REJECTED);
-
-        console.log('CEO Dashboard - rejected projects list:', rejectedRows || []);
-      } catch (logErr) {
-        console.error('Failed to fetch rejected projects for debug:', logErr);
-      }
     } catch (err) {
       console.error('Failed to load counts from projects:', err);
     }
@@ -348,9 +333,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     (p.status === TaskStatus.WAITING_APPROVAL || p.status === TaskStatus.REJECTED) &&
     (
       p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
-      p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-      // Also include idea projects that reached CEO stage
-      (p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.FINAL_REVIEW_CEO)
+      p.current_stage === WorkflowStage.FINAL_REVIEW_CEO
     )
   );
 
@@ -426,7 +409,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
 
 
-  // Stats Calculations
+  // Stats Calculations from derived data to ensure perfect consistency
   const inboxPendingCount = pendingApprovals.length;
   const filteredPendingCount = filteredPendingApprovals.length;
   const reworkProjectsCount = reworkProjects.length;

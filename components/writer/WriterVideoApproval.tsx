@@ -223,32 +223,42 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 status: UserStatus.ACTIVE
             });
 
-            // Call the workflow approve function instead of advanceWorkflow
+            // Determine the next stage automatically
+            const nextStageInfo = db.helpers.getNextStage(
+                project.current_stage,
+                project.content_type,
+                'APPROVED',
+                project.data
+            );
+
+            // Call the workflow approve function with correctly calculated next stage/role
             await db.workflow.approve(
                 project.id,
                 user.id,
                 user.user_metadata?.full_name || user.email || 'Unknown User',
                 Role.WRITER,
-                WorkflowStage.MULTI_WRITER_APPROVAL, // ignored internally
-                Role.WRITER,
+                nextStageInfo.stage,
+                nextStageInfo.role,
                 'Writer approved the final video'
             );
 
             // Determine popup message based on approval progress
-            let popupMsg, stageName;
+            let popupMsg, stageMsgName;
+            const actualNextStageLabel = STAGE_LABELS[nextStageInfo.stage] || 'Next Stage';
+
             if (newApprovedCount >= totalWriters) {
                 // All writers have approved, moving to next stage
-                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to Video Editing.`;
-                stageName = 'Video Editing';
+                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to ${actualNextStageLabel}.`;
+                stageMsgName = actualNextStageLabel;
             } else {
                 // Still need more approvals
                 popupMsg = `You approved the video. ${newApprovedCount} of ${totalWriters} writers have approved so far.`;
-                stageName = 'Waiting for Other Writers';
+                stageMsgName = 'Waiting for Other Writers';
             }
 
             // Show success popup
             setPopupMessage(popupMsg);
-            setStageName(stageName);
+            setStageName(stageMsgName);
             setPopupDuration(5000);
             setShowPopup(true);
 
