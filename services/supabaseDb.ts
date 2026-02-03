@@ -12,9 +12,12 @@ import {
 } from '../types';
 
 import { Notification } from '../types';
-import { getTimestampUpdate } from './workflowUtils';
+import { getTimestampUpdate, isReworkProject } from './workflowUtils';
 
 console.log('🔍 Initializing supabaseDb service');
+
+// User cache for session management
+let currentUserCache: User | null = null;
 
 // ============================================================================
 // AUTHENTICATION
@@ -329,14 +332,18 @@ export const users = {
     // Get all users
     async getAll() {
         console.log("📡 DB: Fetching all users...");
-        const { data, error } = await supabase
+
+        // Use admin client if available (for localhost/dev/admin tools) to bypass RLS
+        // Fallback to public client (RLS enforced)
+        const client = supabaseAdmin || supabase;
+
+        const { data, error } = await client
             .from('users')
             .select(`
                 id,
                 email,
                 full_name,
                 role,
-                avatar_url,
                 status,
                 phone,
                 last_login,
@@ -380,7 +387,6 @@ export const users = {
                 email,
                 full_name,
                 role,
-                avatar_url,
                 status,
                 phone,
                 last_login,
@@ -580,9 +586,9 @@ export const projects = {
                 break;
 
             case Role.CMO:
-                // CMO inbox: SCRIPT_REVIEW_L1 and FINAL_REVIEW_CMO
+                // CMO inbox: SCRIPT_REVIEW_L1, FINAL_REVIEW_CMO, and POST_WRITER_REVIEW (joint with Ops)
                 query = query.or(
-                    `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L1},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CMO}`
+                    `current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L1},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CMO},current_stage.eq.${WorkflowStage.POST_WRITER_REVIEW}`
                 );
                 break;
 
@@ -937,6 +943,47 @@ export const projects = {
     // Update project
     async update(id: string, updates: Partial<Project>) {
         console.log('Updating project', id, 'with data:', updates);
+
+        // --- Asset History Preservation Logic ---
+        // Fetch current project state to check if assets are being overwritten
+        const { data: currentProject } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (currentProject) {
+            // Define asset field mappings to their history arrays
+            const assetMappings = [
+                { linkField: 'video_link' as const, historyField: 'cine_video_links_history' as const },
+                { linkField: 'edited_video_link' as const, historyField: 'editor_video_links_history' as const },
+                { linkField: 'thumbnail_link' as const, historyField: 'designer_video_links_history' as const },
+                { linkField: 'creative_link' as const, historyField: 'designer_video_links_history' as const }
+            ];
+
+            for (const mapping of assetMappings) {
+                const newValue = updates[mapping.linkField];
+                const oldValue = currentProject[mapping.linkField];
+
+                // If link is changing and we have an old value, preserve it in history
+                if (newValue && oldValue && newValue !== oldValue) {
+                    console.log(`📦 Preserving old ${mapping.linkField} in history before update`);
+
+                    // Special case: sub-editor vs editor history
+                    let actualHistoryField = mapping.historyField;
+                    if (mapping.linkField === 'edited_video_link' && currentUserCache?.role === Role.SUB_EDITOR) {
+                        actualHistoryField = 'sub_editor_video_links_history' as any;
+                    }
+
+                    const existingHistory = currentProject[actualHistoryField] || [];
+                    // Only add if not already in history to avoid duplicates
+                    if (!existingHistory.includes(oldValue)) {
+                        (updates as any)[actualHistoryField] = [...existingHistory, oldValue];
+                    }
+                }
+            }
+        }
+
         const { error } = await supabase
             .from('projects')
             .update(updates)
@@ -1078,7 +1125,7 @@ export const workflow = {
     // Record workflow history
     async recordAction(
         projectId: string,
-        stage: WorkflowStage,
+        nextRole: Role | string, // NEW MEANING: next responsible role
         userId: string,
         userName: string,
         action: string,
@@ -1089,46 +1136,60 @@ export const workflow = {
         actorRole?: string,
         metadata: any = {}
     ) {
+        // 1. Fetch current stage from projects table BEFORE insertion (Mandatory Fix)
+        // This ensures from_stage correctly captures the stage before the transition
+        const { data: project, error: fetchError } = await supabase
+            .from('projects')
+            .select('current_stage, assigned_to_role')
+            .eq('id', projectId)
+            .single();
+
+        if (fetchError || !project) {
+            console.error('Failed to fetch current project for workflow history:', fetchError);
+            throw fetchError || new Error('Project not found');
+        }
+
+        const fromStage = actorRole || project.assigned_to_role;
+        const toStage = nextRole;
+
         // Map frontend action values to strictly allowed database actions
         const actionMap: Record<string, string> = {
-            'CREATED': 'CREATED',
+            'CREATED': 'SUBMITTED',
             'SUBMITTED': 'SUBMITTED',
             'APPROVED': 'APPROVED',
             'REWORK': 'REWORK',
-            'REWORK_VIDEO_SUBMITTED': 'REWORK_VIDEO_SUBMITTED',
+            'REWORK_VIDEO_SUBMITTED': 'REWORK_SUBMITTED',
+            'REWORK_EDIT_SUBMITTED': 'REWORK_SUBMITTED',
+            'REWORK_DESIGN_SUBMITTED': 'REWORK_SUBMITTED',
+            'REWORK_SUBMITTED': 'REWORK_SUBMITTED',
             'REJECTED': 'REJECTED',
-            'PUBLISHED': 'PUBLISHED',
+            'PUBLISHED': 'APPROVED',
             'SUB_EDITOR_ASSIGNED': 'SUB_EDITOR_ASSIGNED',
+            'ASSIGNED_TO_SUB_EDITOR': 'SUB_EDITOR_ASSIGNED',
             'SUB_EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
             'EDITOR_VIDEO_UPLOADED': 'SUBMITTED',
             'CINE_VIDEO_UPLOADED': 'SUBMITTED',
-            'VIDEO_REWORK_ROUTED_TO_SUB_EDITOR': 'VIDEO_REWORK_ROUTED_TO_SUB_EDITOR',
-            'VIDEO_REWORK_ROUTED_TO_EDITOR': 'VIDEO_REWORK_ROUTED_TO_EDITOR'
+            'VIDEO_REWORK_ROUTED_TO_SUB_EDITOR': 'REWORK',
+            'VIDEO_REWORK_ROUTED_TO_EDITOR': 'REWORK'
         };
 
-        // Use ONLY the strict actions. Default to SUBMITTED if not found.
         const dbAction = actionMap[action] || 'SUBMITTED';
 
         // Log the data we're about to insert for debugging
-        console.log('Recording workflow history with data:', {
+        console.log('Recording workflow history with role-based transition:', {
             project_id: projectId,
-            stage: stage,
-            actor_id: userId,
-            actor_name: userName,
-            action: dbAction,
-            comment: comment || '',
-            script_content: scriptContent || '',
-            from_role: fromRole,
-            to_role: toRole,
-            actor_role: actorRole,
-            metadata: metadata
+            from_stage: fromStage,
+            to_stage: toStage,
+            action: dbAction
         });
 
         const { error } = await supabase
             .from('workflow_history')
             .insert({
                 project_id: projectId,
-                stage: stage,
+                from_stage: fromStage, // ROLE
+                to_stage: toStage,     // ROLE
+                stage: project.current_stage, // Keep original stage info here if field exists
                 actor_id: userId,
                 actor_name: userName,
                 action: dbAction,
@@ -1142,46 +1203,16 @@ export const workflow = {
 
         if (error) {
             console.error('Failed to record workflow history:', error);
-            console.error('Data that failed to insert:', {
-                project_id: projectId,
-                stage: stage,
-                actor_id: userId,
-                actor_name: userName,
-                action: dbAction,
-                comment: comment || '',
-                script_content: scriptContent || null,
-                from_role: fromRole,
-                to_role: toRole,
-                actor_role: actorRole,
-                metadata: metadata
-            });
-            // Log more detailed error information
-            console.error('Full error details:', JSON.stringify(error, null, 2));
-
-            // Try to get more specific error information
-            if (error.message) {
-                console.error('Error message:', error.message);
-            }
-            if (error.details) {
-                console.error('Error details:', error.details);
-            }
-            if (error.hint) {
-                console.error('Error hint:', error.hint);
-            }
-
             throw error;
         }
 
-        // Update the appropriate timestamp based on the action
-        const project = await projects.getById(projectId);
-        if (project) {
-            const timestampUpdates = getTimestampUpdate(action, project.assigned_to_role);
-            if (Object.keys(timestampUpdates).length > 0) {
-                await supabase
-                    .from('projects')
-                    .update(timestampUpdates)
-                    .eq('id', projectId);
-            }
+        // 2. Update timestamps based on the action and the role that was assigned when action happened
+        const timestampUpdates = getTimestampUpdate(action, project.assigned_to_role);
+        if (Object.keys(timestampUpdates).length > 0) {
+            await supabase
+                .from('projects')
+                .update(timestampUpdates)
+                .eq('id', projectId);
         }
     },
 
@@ -1194,19 +1225,27 @@ export const workflow = {
         nextRole: Role,
         comment?: string
     ) {
-        // First get the current project to know its current stage
-        const { data: currentProject, error: fetchError } = await supabase
-            .from('projects')
-            .select('current_stage')
-            .eq('id', projectId)
-            .single();
-
-        if (fetchError) {
-            console.error('Failed to fetch current project:', fetchError);
-            throw fetchError;
+        // Fetch current state BEFORE any updates to ensure accurate from_stage recording
+        const currentProject = await projects.getById(projectId);
+        if (!currentProject) {
+            throw new Error('Project not found');
         }
 
-        // Update project
+        // 1. Add workflow history BEFORE project update (Mandatory Fix)
+        await this.recordAction(
+            projectId,
+            nextRole, // to_stage is now the next ROLE
+            userId,
+            userName,
+            'SUBMITTED',
+            comment || 'Submitted for review',
+            undefined, // scriptContent
+            Role.WRITER, // fromRole
+            nextRole, // toRole
+            Role.WRITER // actorRole
+        );
+
+        // 2. Update project
         const { error: updateError } = await supabase
             .from('projects')
             .update({
@@ -1216,17 +1255,17 @@ export const workflow = {
             })
             .eq('id', projectId);
 
+        if (updateError) {
+            console.error('Failed to update project:', updateError);
+            throw updateError;
+        }
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data: updateData, error: fetchDataError } = await supabase
             .from('projects')
             .select('*')
             .eq('id', projectId)
             .single();
-
-        if (updateError) {
-            console.error('Failed to update project:', updateError);
-            throw updateError;
-        }
 
         if (fetchDataError) {
             console.error('Failed to fetch updated project:', fetchDataError);
@@ -1237,37 +1276,7 @@ export const workflow = {
             throw new Error('Project not found or no rows updated');
         }
 
-        // Use the updated data
         const data = updateData;
-
-        // Add workflow history
-        const { error: historyError } = await supabase
-            .from('workflow_history')
-            .insert({
-                project_id: projectId,
-                stage: nextStage,
-                actor_id: userId,
-                actor_name: userName,
-                action: 'SUBMITTED',
-                comment: comment || 'Submitted for review',
-                actor_role: Role.WRITER, // Assuming writer is submitting
-                from_role: Role.WRITER,
-                to_role: nextRole
-            });
-
-        if (historyError) {
-            console.error('Failed to add workflow history:', historyError);
-            throw historyError;
-        }
-
-        // Update the appropriate timestamp based on the action
-        const timestampUpdates = getTimestampUpdate('SUBMITTED', Role.WRITER); // Assuming writer is submitting
-        if (Object.keys(timestampUpdates).length > 0) {
-            await supabase
-                .from('projects')
-                .update(timestampUpdates)
-                .eq('id', projectId);
-        }
 
         // Find users with the next role to notify
         const { data: nextRoleUsers } = await supabase
@@ -1444,7 +1453,8 @@ export const workflow = {
         nextRole: Role,
         comment?: string,
         actionOverride?: string,
-        fromRoleOverride?: string
+        fromRoleOverride?: string,
+        metadata?: any
     ) {
         // First get the current project to preserve important fields
         // First get the current project to preserve important fields
@@ -1526,7 +1536,7 @@ export const workflow = {
                 // Record the actual action taken by the non-writer
                 await this.recordAction(
                     projectId,
-                    currentProject.current_stage as WorkflowStage,
+                    nextRole, // to_stage
                     userId,
                     userName,
                     actionType,
@@ -1534,7 +1544,8 @@ export const workflow = {
                     undefined,
                     currentProject.assigned_to_role as Role, // fromRole
                     nextRole, // toRole
-                    userRole // actorRole
+                    userRole, // actorRole
+                    metadata // Pass through metadata
                 );
 
                 // Update project timestamp
@@ -1571,7 +1582,7 @@ export const workflow = {
             // Record the approval for this specific writer
             await this.recordAction(
                 projectId,
-                WorkflowStage.MULTI_WRITER_APPROVAL,
+                Role.WRITER, // Staying with writers for now
                 userId,
                 userName,
                 'APPROVED',
@@ -1598,13 +1609,28 @@ export const workflow = {
             if (totalWritersRequired > 0 && approvedCount >= totalWritersRequired) {
                 console.log('🚀 All writers have approved, advancing to VIDEO_EDITING stage');
 
-                // Update project to move to VIDEO_EDITING stage (Assigned to Editor)
+                // 1. Record the final TRANSITION action BEFORE update (Mandatory Fix)
+                await this.recordAction(
+                    projectId,
+                    nextRole, // nextRole is the target
+                    userId,
+                    userName,
+                    actionOverride || 'SUBMITTED',
+                    comment || `All writers have approved - Project advanced to ${nextStage}.`,
+                    undefined,
+                    Role.WRITER, // fromRole
+                    nextRole,    // toRole
+                    Role.WRITER,  // actorRole
+                    metadata
+                );
+
+                // 2. Update project
                 const updateData: any = {
-                    current_stage: WorkflowStage.VIDEO_EDITING,
-                    assigned_to_role: Role.EDITOR,
+                    current_stage: nextStage,
+                    assigned_to_role: nextRole,
                     assigned_to_user_id: null,
                     status: TaskStatus.WAITING_APPROVAL,
-                    visible_to_roles: ['EDITOR', 'WRITER'],
+                    visible_to_roles: [nextRole, Role.WRITER, Role.OPS],
                     updated_at: new Date().toISOString()
                 };
 
@@ -1614,44 +1640,30 @@ export const workflow = {
                     .eq('id', projectId);
 
                 if (updateError) {
-                    console.error('❌ Failed to update project to EDITOR stage:', updateError);
+                    console.error('❌ Failed to update project to next stage:', updateError);
                     throw updateError;
                 }
 
-                // Record the final TRANSITION action for EDITOR
-                await this.recordAction(
-                    projectId,
-                    WorkflowStage.MULTI_WRITER_APPROVAL,
-                    userId,
-                    userName,
-                    'SUBMITTED', // Using SUBMITTED for the arrival notification
-                    'All writers have approved - Project advanced to video editing.',
-                    undefined,
-                    Role.WRITER, // fromRole
-                    Role.EDITOR,    // toRole
-                    Role.WRITER  // actorRole
-                );
-
-                // Notify Editors
-                const { data: editorUsers } = await supabase
+                // Notify New Role Users
+                const { data: targetUsers } = await supabase
                     .from('users')
                     .select('id')
-                    .eq('role', Role.EDITOR)
+                    .eq('role', nextRole)
                     .eq('status', 'ACTIVE');
 
-                if (editorUsers && editorUsers.length > 0) {
-                    for (const editor of editorUsers) {
+                if (targetUsers && targetUsers.length > 0) {
+                    for (const targetUser of targetUsers) {
                         try {
                             const dbWithNotifications = db as any;
                             await dbWithNotifications.notifications.create(
-                                editor.id,
+                                targetUser.id,
                                 projectId,
                                 'PROJECT_ASSIGNED',
-                                'New Project Ready for Editing',
-                                `Writers have approved the footage for: ${currentProject.title}. Please begin video editing.`
+                                'New Project Ready',
+                                `Writers have approved the project: ${currentProject.title}. Please review.`
                             );
                         } catch (notificationError) {
-                            console.error('Failed to send notification to editor:', notificationError);
+                            console.error('Failed to send notification:', notificationError);
                         }
                     }
                 }
@@ -1696,10 +1708,31 @@ export const workflow = {
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL;
             }
 
+            // 1. Record the approval in workflow history BEFORE update (Mandatory Fix)
+            await this.recordAction(
+                projectId,
+                nextRole, // nextRole is the target
+                userId,
+                userName,
+                actionOverride || 'APPROVED',
+                comment || `Approved by ${userRole}`,
+                undefined,
+                fromRoleOverride ? fromRoleOverride as Role : userRole,
+                nextRole,
+                userRole,
+                metadata
+            );
+
+            // 2. Update project
             const { error: updateError } = await supabase
                 .from('projects')
                 .update(projectUpdateData)
                 .eq('id', projectId);
+
+            if (updateError) {
+                console.error('Failed to update project:', updateError);
+                throw updateError;
+            }
 
             // Fetch the updated project separately to avoid conflicting select parameters
             const { data: updateData, error: fetchDataError } = await supabase
@@ -1707,11 +1740,6 @@ export const workflow = {
                 .select('*')
                 .eq('id', projectId)
                 .single();
-
-            if (updateError) {
-                console.error('Failed to update project:', updateError);
-                throw updateError;
-            }
 
             if (fetchDataError) {
                 console.error('Failed to fetch updated project:', fetchDataError);
@@ -1722,36 +1750,7 @@ export const workflow = {
                 throw new Error('Project not found or no rows updated');
             }
 
-            // Use the updated data
-            const data = updateData;
-
-            // Use the current project stage as the stage for workflow history
-            // This represents the stage where the action occurred, not where the project is going
-            const historyStage = currentProject.current_stage;
-
-            // Add workflow history
-            console.log('Inserting workflow history:', {
-                project_id: projectId,
-                stage: historyStage,
-                actor_id: userId,
-                actor_name: userName,
-                action: 'APPROVED',
-                comment: comment || `Approved by ${userRole}`
-            });
-
-            // Record the approval in workflow history
-            await this.recordAction(
-                projectId,
-                historyStage,
-                userId,
-                userName,
-                'APPROVED',
-                comment || `Approved by ${userRole}`,
-                undefined,
-                userRole, // fromRole
-                nextRole, // toRole
-                userRole // actorRole
-            );
+            const data = updateData as Project;
 
             // Update the appropriate timestamp based on the action
             const timestampUpdates = getTimestampUpdate('APPROVED', userRole);
@@ -1854,24 +1853,47 @@ export const workflow = {
             rework_initiator_stage: isRework ? currentProject?.current_stage : undefined
         };
 
-        // SPECIAL CASE: When rework is initiated from MULTI_WRITER_APPROVAL, FINAL_REVIEW_CMO, FINAL_REVIEW_CEO, or FINAL_REVIEW_CEO_POST_APPROVAL stages,
-        // store the target role that should handle the rework instead of routing back to the initiator
-        if (isRework &&
-            (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
-                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                currentProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) &&
-            returnToRole) {
+        // Store the target role that should handle the rework for ALL rework scenarios
+        // This ensures advanceWorkflow can correctly identify when the rework is done
+        if (isRework && returnToRole) {
             updatedData = {
                 ...updatedData,
-                rework_target_role: actualReturnToRole  // Store the target role that should handle the rework
+                rework_target_role: actualReturnToRole
             };
         } else {
-            // Remove any existing rework_target_role if not in these special rework stages
+            // Remove any existing rework_target_role if not a rework or no return role
             delete updatedData.rework_target_role;
         }
 
-        // Update project
+        // 1. Add workflow history BEFORE project update (Mandatory Fix)
+        // Extract script content (or idea description) and asset links if available
+        const videoLink = currentProject?.video_link || null;
+        const editedVideoLink = currentProject?.edited_video_link || null;
+        const thumbnailLink = currentProject?.thumbnail_link || null;
+        const creativeLink = currentProject?.creative_link || null;
+
+        await this.recordAction(
+            projectId,
+            actualReturnToRole, // to_stage is Role
+            userId,
+            userName,
+            isRework ? 'REWORK' : 'REJECTED',
+            comment || (isRework ? `Rework requested by ${userRole}` : `Rejected by ${userRole}`),
+            currentProject?.data?.script_content || currentProject?.data?.idea_description || null,
+            userRole, // fromRole (the one who rejected)
+            actualReturnToRole, // toRole (the one who must fix it)
+            userRole, // actorRole
+            {
+                rework_reason: comment,
+                video_link: videoLink,
+                edited_video_link: editedVideoLink,
+                thumbnail_link: thumbnailLink,
+                creative_link: creativeLink,
+                edited_by_user_id: (currentProject as any).edited_by_user_id // Include who actually edited the video
+            }
+        );
+
+        // 2. Update project
         const { error: updateError } = await supabase
             .from('projects')
             .update({
@@ -1889,17 +1911,17 @@ export const workflow = {
             })
             .eq('id', projectId);
 
+        if (updateError) {
+            console.error('Failed to update project for rejection:', updateError);
+            throw updateError;
+        }
+
         // Fetch the updated project separately to avoid conflicting select parameters
         const { data: updateData, error: fetchDataError } = await supabase
             .from('projects')
             .select('*')
             .eq('id', projectId)
             .single();
-
-        if (updateError) {
-            console.error('Failed to update project:', updateError);
-            throw updateError;
-        }
 
         if (fetchDataError) {
             console.error('Failed to fetch updated project:', fetchDataError);
@@ -1910,44 +1932,8 @@ export const workflow = {
             throw new Error('Project not found or no rows updated');
         }
 
-        // Use the updated data
         const data = updateData;
-
-        // Extract script content (or idea description) and asset links if available
-        const scriptContent = currentProject?.data?.script_content || currentProject?.data?.idea_description || null;
-        const videoLink = currentProject?.video_link || null;
-        const editedVideoLink = currentProject?.edited_video_link || null;
-        const thumbnailLink = currentProject?.thumbnail_link || null;
-        const creativeLink = currentProject?.creative_link || null;
-
-        // Determine the action type based on isRework parameter
         const actionType = isRework ? 'REWORK' : 'REJECTED';
-
-        // Determine from_role and to_role for precise email routing
-        // Action Required (REJECTED) -> Project Creator (WRITER)
-        // Rework Required (REWORK) -> Assigned role (returnToRole)
-
-        // Add workflow history using recordAction
-        await this.recordAction(
-            projectId,
-            returnToStage,
-            userId,
-            userName,
-            actionType,
-            comment || (isRework ? `Rework requested by ${userRole}` : `Rejected by ${userRole}`),
-            scriptContent,
-            userRole, // fromRole (the one who rejected)
-            returnToRole, // toRole (the one who must fix it)
-            userRole, // actorRole
-            {
-                rework_reason: comment,
-                video_link: videoLink,
-                edited_video_link: editedVideoLink,
-                thumbnail_link: thumbnailLink,
-                creative_link: creativeLink,
-                edited_by_user_id: currentProject.edited_by_user_id // Include who actually edited the video
-            }
-        );
 
         // Update the appropriate timestamp based on the action
         const timestampUpdates = getTimestampUpdate(actionType, userRole);
@@ -1993,7 +1979,21 @@ export const workflow = {
         userId: string,
         userName: string
     ) {
-        // Update project
+        // 1. Add workflow history BEFORE project update (Mandatory Fix)
+        await this.recordAction(
+            projectId,
+            Role.OPS, // TERMINATING AT OPS
+            userId,
+            userName,
+            'APPROVED',
+            'Project completed and published',
+            undefined, // scriptContent
+            Role.OPS, // fromRole
+            Role.OPS, // toRole (terminating action)
+            Role.OPS  // actorRole
+        );
+
+        // 2. Update project
         const { error: updateError } = await supabase
             .from('projects')
             .update({
@@ -2001,56 +2001,12 @@ export const workflow = {
             })
             .eq('id', projectId);
 
-        // Fetch the updated project separately to avoid conflicting select parameters
-        const { data: updateData, error: fetchDataError } = await supabase
-            .from('projects')
-            .select('*')
-            .eq('id', projectId)
-            .single();
-
         if (updateError) {
-            console.error('Failed to update project:', updateError);
+            console.error('Failed to mark project as done:', updateError);
             throw updateError;
         }
 
-        if (fetchDataError) {
-            console.error('Failed to fetch updated project:', fetchDataError);
-            throw fetchDataError;
-        }
-
-        if (!updateData) {
-            throw new Error('Project not found or no rows updated');
-        }
-
-        // Use the updated data
-        const data = updateData;
-
-        // Add workflow history
-        const { error: historyError } = await supabase
-            .from('workflow_history')
-            .insert({
-                project_id: projectId,
-                stage: WorkflowStage.POSTED,
-                actor_id: userId,
-                actor_name: userName,
-                action: 'APPROVED',
-                comment: 'Project completed and published'
-            });
-
-        if (historyError) {
-            console.error('Failed to add workflow history:', historyError);
-            throw historyError;
-        }
-
-        // Update the appropriate timestamp based on the action
-        const timestampUpdates = getTimestampUpdate('APPROVED', Role.OPS); // Assuming ops is marking as done
-        if (Object.keys(timestampUpdates).length > 0) {
-            await supabase
-                .from('projects')
-                .update(timestampUpdates)
-                .eq('id', projectId);
-        }
-
+        const data = await projects.getById(projectId);
         return data;
     }
 };
@@ -2354,55 +2310,52 @@ export const helpers = {
                 stage: contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN,
                 role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
             },
-            // ✅ CHANGED: Cine now goes to Multi-Writer Approval instead of Editor
+
+            // CINE -> MULTI_WRITER_APPROVAL (Writer)
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
+
+            // VIDEO_EDITING -> DESIGNER (if thumbnail) OR OPS/CMO (Post Review)
             [WorkflowStage.VIDEO_EDITING]: {
-                // When editor uploads video, check routing based on needs_sub_editor flag
-                // If needs_sub_editor is true -> route to SUB_EDITOR_ASSIGNMENT
-                // If needs_sub_editor is false or undefined -> route to DESIGNER or POST_WRITER_REVIEW based on thumbnail requirement
-                // For rework scenarios, prioritize routing back to the original requester
                 stage: projectData?.needs_sub_editor === true
-                    ? WorkflowStage.SUB_EDITOR_ASSIGNMENT  // Route to sub-editor assignment
-                    : (projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
-                        ? projectData.rework_initiator_stage as WorkflowStage  // Go back to original route for rework
-                        : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                            ? WorkflowStage.POST_WRITER_REVIEW  // ✅ CHANGED: Go to Post Review (CMO) if no thumbnail needed
-                            : WorkflowStage.THUMBNAIL_DESIGN)),  // Go to designer for normal scripts with thumbnail required
+                    ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
+                    : (projectData?.rework_initiator_stage
+                        ? projectData.rework_initiator_stage as WorkflowStage
+                        : (projectData?.thumbnail_required === true
+                            ? WorkflowStage.THUMBNAIL_DESIGN
+                            : WorkflowStage.POST_WRITER_REVIEW)), // Skip designer if no thumbnail
                 role: projectData?.needs_sub_editor === true
-                    ? Role.EDITOR  // Editor handles sub-editor assignment
-                    : (projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
-                        ? projectData.rework_initiator_role as Role  // Go back to original role for rework
-                        : (projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                            ? Role.CMO  // ✅ CHANGED: CMO handles Post Review
-                            : Role.DESIGNER))  // Designer handles thumbnail creation for normal scripts with thumbnail required
+                    ? Role.EDITOR
+                    : (projectData?.rework_initiator_stage
+                        ? projectData.rework_initiator_role as Role
+                        : (projectData?.thumbnail_required === true
+                            ? Role.DESIGNER
+                            : Role.CMO)) // Assign to CMO for Post Review (Ops also sees it)
             },
+
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                // After sub-editor, go back to Editor? Or behave like Editor?
-                // Usually Sub-Editor -> Editor for confirmation? Or directly next?
-                // Assuming Sub-Editor flow merges back to Editor workflow or proceeds.
-                // The existing code sent to MULTI_WRITER_APPROVAL.
-                // New flow: Editor -> Designer/CMO. So Sub-Editor -> Designer/CMO is likely safer to skip back to Editor or proceed.
-                // Let's assume Sub-Editor finishes -> Editor for final verification? Or proceed?
-                // Based on "editor->designer", if Sub-Editor is done, it's effectively "Editor Done".
-                // So route to Designer/CMO.
-                stage: projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                    ? WorkflowStage.POST_WRITER_REVIEW
-                    : WorkflowStage.THUMBNAIL_DESIGN,
-                role: projectData?.thumbnail_required === false || projectData?.thumbnail_required === undefined
-                    ? Role.CMO
-                    : Role.DESIGNER,
+                stage: projectData?.thumbnail_required === true
+                    ? WorkflowStage.THUMBNAIL_DESIGN
+                    : WorkflowStage.POST_WRITER_REVIEW,
+                role: projectData?.thumbnail_required === true
+                    ? Role.DESIGNER
+                    : Role.CMO
             },
-            [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage  // If this is a rework scenario, go back to the original requester
-                ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }  // Go back to original route for rework
-                : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }, // ✅ CHANGED: Designer -> Post Review (CMO)
-            [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
-            [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
-            [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },  // After CEO final approval, send to ops for scheduling
 
-            // ✅ CHANGED: Post Writer Review -> Final Review CEO
+            // THUMBNAIL_DESIGN -> OPS/CMO (Post Review)
+            [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage
+                ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }
+                : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },
+
+            [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+
+            // POST_WRITER_REVIEW (Ops/CMO) -> CEO
             [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+
+            [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+            [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO }
@@ -2432,11 +2385,182 @@ export const helpers = {
  */
 
 // Session management (mimics mockDb behavior)
-let currentUserCache: User | null = null;
+// User cache moved to top of file
 
 // ============================================================================
 // EXPORT ALL - Flat Interface Matching mockDb
 // ============================================================================
+
+// ============================================================================
+// AI TOOLS SERVICE
+// ============================================================================
+
+export const aiTools = {
+    /**
+     * Check text for spelling and grammar issues using the Edge Function
+     */
+    async checkGrammar(text: string): Promise<{
+        issues: Array<{
+            type: 'spelling' | 'grammar';
+            incorrect: string;
+            suggestion: string;
+        }>
+    }> {
+        if (!text || text.trim().length === 0) {
+            return { issues: [] };
+        }
+
+        const supabaseKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || (process as any).env?.VITE_SUPABASE_ANON_KEY;
+        const FUNCTION_URL = 'https://kifpnlyljlxppuzizmsf.supabase.co/functions/v1/open-ai';
+
+        try {
+            const response = await fetch(FUNCTION_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': supabaseKey
+                },
+                body: JSON.stringify({ text })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Edge Function Error:', errorText);
+                throw new Error(`Failed to check grammar: ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('AI Tools Error:', error);
+            throw error;
+        }
+    }
+};
+// ============================================================================
+// NOTIFICATIONS SERVICE
+// ============================================================================
+
+export const notifications = {
+    // Create a new notification
+    async create(userId: string, projectId: string, type: string, title: string, message: string) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .insert({
+                user_id: userId,
+                project_id: projectId,
+                type,
+                title,
+                message
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to create notification:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Get notifications for a user
+    async getForUser(userId: string, limit: number = 50) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            console.error('Failed to fetch notifications:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Mark a notification as read
+    async markAsRead(notificationId: string) {
+        const { data, error } = await supabase
+            .from('notifications')
+            .update({
+                is_read: true,
+                read_at: new Date().toISOString()
+            })
+            .eq('id', notificationId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Failed to mark notification as read:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    // Mark all notifications for a user as read
+    async markAllAsRead(userId: string) {
+        const { error } = await supabase
+            .from('notifications')
+            .update({
+                is_read: true,
+                read_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+            .eq('is_read', false);
+
+        if (error) {
+            console.error('Failed to mark all notifications as read:', error);
+            throw error;
+        }
+
+        return true;
+    },
+
+    // Get unread count for a user
+    async getUnreadCount(userId: string) {
+        const { count, error } = await supabase
+            .from('notifications')
+            .select('*', { count: 'exact' })
+            .eq('user_id', userId)
+            .eq('is_read', false);
+
+        if (error) {
+            console.error('Failed to get unread count:', error);
+            throw error;
+        }
+
+        return count || 0;
+    },
+    // Global Logout
+    async logout() {
+        console.log('🔌 DB: Executing global logout sequence...');
+
+        try {
+            // 1. Clear Supabase Session
+            const { error } = await supabase.auth.signOut();
+            if (error) console.warn('Supabase SignOut Warning:', error.message);
+        } catch (e) {
+            console.error('Supabase SignOut Exception:', e);
+        }
+
+        // 2. Clear Local Cache explicitly
+        localStorage.removeItem('app_user_cache');
+        localStorage.removeItem('mock_session');
+        localStorage.removeItem('admin_last_view');
+
+        // 3. Clear any other Supabase tokens (optional but safe)
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('sb-')) {
+                localStorage.removeItem(key);
+            }
+        });
+
+        console.log('✅ DB: Logout sequence complete');
+    },
+};
 
 export const db = {
     // Keep namespaced access for advanced usage
@@ -2448,6 +2572,8 @@ export const db = {
     systemLogs,
     storage,
     helpers,
+    notifications,
+    aiTools,
 
     // ========================================================================
     // FLAT COMPATIBILITY METHODS (matches mockDb.ts interface)
@@ -2663,11 +2789,15 @@ export const db = {
         if (currentUserId && currentUserFullName) {
             await workflow.recordAction(
                 createdProject.id,
-                WorkflowStage.SCRIPT, // Starting stage for regular projects
+                Role.WRITER, // next responsible role is Writer
                 currentUserId,
                 currentUserFullName,
                 'CREATED',
-                'Project created by writer'
+                'Project created by writer',
+                undefined,
+                Role.WRITER, // fromRole
+                Role.WRITER, // toRole
+                Role.WRITER  // actorRole
             );
         }
 
@@ -2707,11 +2837,15 @@ export const db = {
         if (currentUserId && currentUserFullName) {
             await workflow.recordAction(
                 createdProject.id,
-                WorkflowStage.FINAL_REVIEW_CMO,
+                Role.CMO, // next responsible role is CMO
                 currentUserId,
                 currentUserFullName,
                 'CREATED',
-                'Direct Creative Upload project created'
+                'Direct Creative Upload project created',
+                undefined,
+                Role.CMO, // fromRole
+                Role.CMO, // toRole
+                Role.CMO  // actorRole
             );
         }
 
@@ -2758,11 +2892,15 @@ export const db = {
         if (currentUserId && currentUserFullName) {
             await workflow.recordAction(
                 createdProject.id,
-                WorkflowStage.FINAL_REVIEW_CMO,
+                Role.CMO, // next responsible role is CMO
                 currentUserId,
                 currentUserFullName,
                 'CREATED',
-                'Designer-initiated creative project created'
+                'Designer-initiated creative project created',
+                undefined,
+                Role.DESIGNER, // fromRole
+                Role.CMO, // toRole
+                Role.DESIGNER  // actorRole
             );
         }
 
@@ -2805,11 +2943,15 @@ export const db = {
         if (currentUserCache) {
             await workflow.recordAction(
                 createdProject.id,
-                WorkflowStage.FINAL_REVIEW_CMO,
+                Role.CMO, // next responsible role is CMO
                 currentUserCache.id,
                 currentUserCache.full_name,
                 'CREATED',
-                'Idea project created and submitted to CMO'
+                'Idea project created and submitted to CMO',
+                undefined,
+                Role.WRITER, // fromRole (assuming writer creates ideas)
+                Role.CMO,    // toRole
+                Role.WRITER  // actorRole
             );
         }
 
@@ -2964,7 +3106,7 @@ export const db = {
         }
 
         // Get the project with retry mechanism
-        let project;
+        let project: Project | null = null;
         let attempts = 0;
         const maxAttempts = 3;
 
@@ -2987,172 +3129,86 @@ export const db = {
             throw new Error('Project not found after multiple attempts. Please try again.');
         }
 
-        // 1️⃣ Block advanceWorkflow for MULTI_WRITER_APPROVAL and POST_WRITER_REVIEW
-        if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
-            console.log('⛔ advanceWorkflow blocked for MULTI_WRITER_APPROVAL');
-            throw new Error('Use workflow.approve() for multi-writer approvals');
-        }
+        console.log('🔍 Advancing workflow for project:', project.id, 'Stage:', project.current_stage);
 
-        if (project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
-            console.log('⛔ advanceWorkflow blocked for POST_WRITER_REVIEW');
-            throw new Error('Use workflow.approve() for post-writer review approvals');
-        }
+        // 1️⃣ Determine if this is a rework submission
+        // We use isReworkProject utility to detect based on rework_target_role
+        const isFromRework = isReworkProject(project);
 
-        console.log('Advancing workflow for project:', project);
-        console.log('Current stage:', project.current_stage);
-        console.log('Content type:', project.content_type);
-
-        // Check if the project was recently in rework status by checking workflow history
-        const { data: workflowHistory, error: historyError } = await supabase
-            .from('workflow_history')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('timestamp', { ascending: false })
-            .limit(10); // Get recent history entries
-
-        let isFromRework = false;
-        let reworkInitiator: string | null = null;
-        let reworkInitiatorRole: string | null = null;
-
-        if (workflowHistory && workflowHistory.length > 0) {
-            // Check if the most recent action was a rework or rejection
-            const recentRework = workflowHistory.find(h => h.action === 'REWORK' || h.action === 'REJECTED');
-            if (recentRework) {
-                isFromRework = true;
-                reworkInitiator = recentRework.actor_id;
-                reworkInitiatorRole = recentRework.from_role;
-            }
-        }
-
-        // Determine the next stage based on current stage and whether it's from rework
-        let nextStageInfo;
-
-        // CHECK FOR REWORK ROUTING: If this project has rework tracking, route back to initiator
-        // Check both top-level (new schema) and data object (legacy/fallback)
+        // Use rework metadata from project or project.data
         const trackingInitiatorRole = project.rework_initiator_role || project.data?.rework_initiator_role;
         const trackingInitiatorStage = project.rework_initiator_stage || project.data?.rework_initiator_stage;
-        const trackingTargetRole = project.rework_target_role || project.data?.rework_target_role;
 
-        if (trackingInitiatorRole && trackingInitiatorStage) {
-            console.log('🔄 Rework tracking found - routing back to initiator:', trackingInitiatorRole);
+        let nextStageInfo: { stage: WorkflowStage; role: Role };
 
-            // Determine if the current role is the one targeted for rework
-            const isTargetedRoleCompleting = trackingTargetRole && currentUserCache.role === trackingTargetRole;
-            const isWriterResubmitting = currentUserCache.role === Role.WRITER && trackingTargetRole === Role.WRITER;
-
-            if (isTargetedRoleCompleting || isWriterResubmitting) {
-                console.log('🔄 Rework target completed work, routing back to initiator:', trackingInitiatorRole);
-
-                nextStageInfo = {
-                    stage: trackingInitiatorStage as WorkflowStage,
-                    role: trackingInitiatorRole as Role
-                };
-
-                // Clear rework tracking from data metadata (safer than top-level columns if they don't exist)
-                const updatedData = { ...project.data };
-                delete updatedData.rework_initiator_role;
-                delete updatedData.rework_initiator_stage;
-                delete updatedData.rework_target_role;
-
-                await supabase
-                    .from('projects')
-                    .update({
-                        data: updatedData
-                    })
-                    .eq('id', projectId);
-            }
+        // 2️⃣ Priority 1: Handle Rework Routing (Submitter returns to Initiator)
+        if (isFromRework && trackingInitiatorRole && trackingInitiatorStage) {
+            console.log('🔄 Rework detected: preparing to return to initiator', trackingInitiatorRole);
+            nextStageInfo = {
+                stage: trackingInitiatorStage as WorkflowStage,
+                role: trackingInitiatorRole as Role
+            };
+        }
+        // 3️⃣ Priority 2: Special Stage Handling (Idea Project Approval)
+        else if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+            console.log('💡 Idea approved: converting to script stage');
+            nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
+        }
+        // 4️⃣ Priority 3: Multi-Writer Intermediate Steps
+        else if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && project.assigned_to_role === Role.WRITER) {
+            console.log('📊 Multi-writer intermediate approval - staying in same stage');
+            nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
+        }
+        // 5️⃣ Priority 4: Standard Workflow Progression
+        else {
+            nextStageInfo = helpers.getNextStage(
+                project.current_stage as WorkflowStage,
+                project.content_type,
+                'APPROVED',
+                project.data
+            );
         }
 
-        // If not handled by rework routing (or if it fallback to normal), use normal flow
-        if (!nextStageInfo) {
-            if (project.data?.rework_initiator_role && project.data?.rework_initiator_stage) {
-                // FALLBACK for legacy data in project.data
-                // ...existing legacy logic...
-                if ((project.data.rework_initiator_stage === WorkflowStage.MULTI_WRITER_APPROVAL ||
-                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                    project.data.rework_initiator_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL) &&
-                    project.data.rework_target_role &&
-                    currentUserCache.role === project.data.rework_target_role) {
+        console.log('🎯 Determined Next Stage:', nextStageInfo.stage, 'Role:', nextStageInfo.role);
 
-                    nextStageInfo = {
-                        stage: project.data.rework_initiator_stage as WorkflowStage,
-                        role: project.data.rework_initiator_role as Role
-                    };
+        // 6️⃣ Execute Approval & Advance
+        // Use specialized action types for rework submissions if applicable
+        let advanceAction = 'SUBMITTED';
+        let reworkMetadata: any = undefined;
 
-                    await supabase.from('projects').update({
-                        data: { ...project.data, rework_initiator_role: undefined, rework_initiator_stage: undefined, rework_target_role: undefined }
-                    }).eq('id', projectId);
-                } else if (currentUserCache.role === project.data.rework_target_role || currentUserCache.role === Role.WRITER) {
-                    nextStageInfo = {
-                        stage: project.data.rework_initiator_stage as WorkflowStage,
-                        role: project.data.rework_initiator_role as Role
-                    };
-                    await supabase.from('projects').update({
-                        data: { ...project.data, rework_initiator_role: undefined, rework_initiator_stage: undefined, rework_target_role: undefined }
-                    }).eq('id', projectId);
+        if (isFromRework) {
+            const role = currentUserCache.role;
+            if (role === Role.EDITOR || role === Role.SUB_EDITOR) advanceAction = 'REWORK_EDIT_SUBMITTED';
+            else if (role === Role.DESIGNER) advanceAction = 'REWORK_DESIGN_SUBMITTED';
+            else if (role === Role.CINE) advanceAction = 'REWORK_VIDEO_SUBMITTED';
+
+            // Calculate metadata for asset comparison (Before vs After)
+            if (advanceAction.startsWith('REWORK_')) {
+                let beforeLink = null;
+                let afterLink = null;
+
+                if (role === Role.CINE) {
+                    beforeLink = project.cine_video_links_history?.[project.cine_video_links_history.length - 1] || null;
+                    afterLink = project.video_link;
+                } else if (role === Role.EDITOR) {
+                    beforeLink = project.editor_video_links_history?.[project.editor_video_links_history.length - 1] || null;
+                    afterLink = project.edited_video_link;
+                } else if (role === Role.SUB_EDITOR) {
+                    beforeLink = project.sub_editor_video_links_history?.[project.sub_editor_video_links_history.length - 1] || null;
+                    afterLink = project.edited_video_link;
+                } else if (role === Role.DESIGNER) {
+                    beforeLink = project.designer_video_links_history?.[project.designer_video_links_history.length - 1] || null;
+                    afterLink = project.thumbnail_link || project.creative_link;
                 }
+
+                reworkMetadata = {
+                    before_link: beforeLink,
+                    after_link: afterLink,
+                    reworked_by_role: role
+                };
+                console.log(`📝 Recording specialized rework history for ${role}:`, reworkMetadata);
             }
         }
-
-        // Further routing if still not set
-        if (!nextStageInfo) {
-            // SPECIAL CASE: If this is an idea project and CEO approves it (FINAL_REVIEW_CEO),
-            // send it back to the writer to convert the idea into a script
-            // This check should happen regardless of whether the project is from rework or not
-            if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
-                nextStageInfo = { stage: WorkflowStage.SCRIPT, role: Role.WRITER };
-            } else if (project.current_stage === WorkflowStage.VIDEO_EDITING && project.assigned_to_role === Role.EDITOR) {
-                // When editor uploads video, check routing based on needs_sub_editor flag
-                // Use the flexible routing logic from helpers.getNextStage
-                const routingInfo = helpers.getNextStage(
-                    project.current_stage,
-                    project.content_type,
-                    'APPROVED',
-                    project.data
-                );
-                nextStageInfo = routingInfo;
-            } else if (project.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT && project.assigned_to_role === Role.EDITOR) {
-                // When editor assigns to sub-editor, move to sub-editor processing stage
-                // Preserve the specific assigned user ID if it exists
-                nextStageInfo = { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR };
-                // The assigned_to_user_id is already in the project and will be preserved during the update
-            } else if (project.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING && project.assigned_to_role === Role.SUB_EDITOR) {
-                // After sub-editor completes work, check routing based on thumbnail_required flag
-                // If thumbnail_required is true -> route to THUMBNAIL_DESIGN
-                // If thumbnail_required is false or undefined -> route to MULTI_WRITER_APPROVAL
-                nextStageInfo = project.data?.thumbnail_required === true
-                    ? { stage: WorkflowStage.THUMBNAIL_DESIGN, role: Role.DESIGNER }
-                    : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-            } else if (project.current_stage === WorkflowStage.THUMBNAIL_DESIGN && project.assigned_to_role === Role.DESIGNER) {
-                // After designer completes work, go to multi-writer approval
-                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-            } else if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && project.assigned_to_role === Role.WRITER) {
-                console.log('🔍 DEBUG: Processing MULTI_WRITER_APPROVAL stage for project:', projectId);
-
-                // For MULTI_WRITER_APPROVAL stage, advanceWorkflow does NOT decide the next stage
-                // The actual advancement will happen in workflow.approve() after checking all approvals
-                // This prevents the race condition where we check approvals before the current approval is recorded
-
-                // Always return to MULTI_WRITER_APPROVAL stage
-                // The final decision on advancement happens in workflow.approve() after the approval is recorded
-                nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
-            } else {
-                // For all other transitions, use the standard hierarchy to ensure 
-                // no review stages (like CMO review) are skipped, even after rework.
-                nextStageInfo = helpers.getNextStage(
-                    project.current_stage,
-                    project.content_type,
-                    'APPROVED',
-                    project.data
-                );
-            }
-        }
-
-        console.log('Next stage info:', nextStageInfo);
-
-        // Determine action type: If from rework, use REWORK_VIDEO_SUBMITTED
-        const advanceAction = isFromRework ? 'REWORK_VIDEO_SUBMITTED' : 'SUBMITTED';
 
         const result = await workflow.approve(
             projectId,
@@ -3163,12 +3219,30 @@ export const db = {
             nextStageInfo.role,
             comment,
             advanceAction,
-            reworkInitiatorRole || currentUserCache.role // fromRole
+            undefined, // fromRoleOverride
+            reworkMetadata
         );
 
-        // Refresh the project data to ensure UI is up to date
-        const updatedProject = await projects.getById(projectId);
-        console.log('Project updated after advanceWorkflow:', updatedProject);
+        // 7️⃣ CLEAR rework tracking once project successfully returns to initiator
+        // We check if the result project is now assigned to the role we intended to return to
+        if (isFromRework && result && result.assigned_to_role === (trackingInitiatorRole as Role)) {
+            console.log('🧹 Clearing rework metadata after successful return to initiator');
+            const { data: currentData } = await supabase.from('projects').select('data').eq('id', projectId).single();
+            const updatedProjectData = { ...currentData?.data };
+
+            // Delete from data object
+            delete updatedProjectData.rework_initiator_role;
+            delete updatedProjectData.rework_initiator_stage;
+            delete updatedProjectData.rework_target_role;
+
+            // Update project - also clearing top-level columns to be thorough
+            await supabase.from('projects').update({
+                data: updatedProjectData,
+                rework_initiator_role: null,
+                rework_initiator_stage: null,
+                rework_target_role: null
+            }).eq('id', projectId);
+        }
 
         return result;
     },
@@ -3258,6 +3332,29 @@ export const db = {
             targetRole = baseTargetRole;
         }
 
+        // Store rework metadata if this is a rework request
+        if (isRework) {
+            console.log('📝 Storing rework metadata for initiator return:', {
+                role: currentUserCache.role,
+                stage: project.current_stage,
+                target: targetRole
+            });
+            const { data: currentData } = await supabase.from('projects').select('data').eq('id', projectId).single();
+            const updatedProjectData = {
+                ...currentData?.data,
+                rework_initiator_role: currentUserCache.role,
+                rework_initiator_stage: project.current_stage,
+                rework_target_role: targetRole
+            };
+
+            await supabase.from('projects').update({
+                data: updatedProjectData,
+                rework_initiator_role: currentUserCache.role,
+                rework_initiator_stage: project.current_stage,
+                rework_target_role: targetRole
+            }).eq('id', projectId);
+        }
+
         const result = await workflow.reject(
             projectId,
             currentUserCache.id,
@@ -3284,7 +3381,6 @@ export const db = {
     }
 };
 
-// Default export for compatibility
 // ============================================================================
 // TOKEN HEALTH MONITORING
 // ============================================================================
@@ -3320,108 +3416,4 @@ export const tokenHealthCheck = (): {
     }
 };
 
-// ============================================================================
-// NOTIFICATIONS SERVICE
-// ============================================================================
-
-export const notifications = {
-    // Create a new notification
-    async create(userId: string, projectId: string, type: string, title: string, message: string) {
-        const { data, error } = await supabase
-            .from('notifications')
-            .insert({
-                user_id: userId,
-                project_id: projectId,
-                type,
-                title,
-                message
-            })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Failed to create notification:', error);
-            throw error;
-        }
-
-        return data;
-    },
-
-    // Get notifications for a user
-    async getForUser(userId: string, limit: number = 50) {
-        const { data, error } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(limit);
-
-        if (error) {
-            console.error('Failed to fetch notifications:', error);
-            throw error;
-        }
-
-        return data;
-    },
-
-    // Mark a notification as read
-    async markAsRead(notificationId: string) {
-        const { data, error } = await supabase
-            .from('notifications')
-            .update({
-                is_read: true,
-                read_at: new Date().toISOString()
-            })
-            .eq('id', notificationId)
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Failed to mark notification as read:', error);
-            throw error;
-        }
-
-        return data;
-    },
-
-    // Mark all notifications for a user as read
-    async markAllAsRead(userId: string) {
-        const { error } = await supabase
-            .from('notifications')
-            .update({
-                is_read: true,
-                read_at: new Date().toISOString()
-            })
-            .eq('user_id', userId)
-            .eq('is_read', false);
-
-        if (error) {
-            console.error('Failed to mark all notifications as read:', error);
-            throw error;
-        }
-
-        return true;
-    },
-
-    // Get unread count for a user
-    async getUnreadCount(userId: string) {
-        const { count, error } = await supabase
-            .from('notifications')
-            .select('*', { count: 'exact' })
-            .eq('user_id', userId)
-            .eq('is_read', false);
-
-        if (error) {
-            console.error('Failed to get unread count:', error);
-            throw error;
-        }
-
-        return count || 0;
-    }
-};
-
 export default db;
-
-
-
-

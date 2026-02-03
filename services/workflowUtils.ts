@@ -480,10 +480,25 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
 
   switch (action) {
     case 'SUBMITTED':
-      // For script submissions, consider this as writer submitting
-      // For editor uploads, this should also set editor_uploaded_at
+    case 'REWORK_SUBMITTED':
+    case 'REWORK_VIDEO_SUBMITTED':
+    case 'REWORK_EDIT_SUBMITTED':
+    case 'REWORK_DESIGN_SUBMITTED':
+    case 'EDITOR_VIDEO_UPLOADED':
+    case 'DESIGNER_ASSET_UPLOADED':
+    case 'SUB_EDITOR_VIDEO_UPLOADED':
+    case 'CINE_VIDEO_UPLOADED':
       if (role === Role.EDITOR) {
         return { editor_uploaded_at: now };
+      }
+      if (role === Role.SUB_EDITOR) {
+        return { sub_editor_uploaded_at: now };
+      }
+      if (role === Role.DESIGNER) {
+        return { designer_uploaded_at: now };
+      }
+      if (role === Role.CINE) {
+        return { cine_uploaded_at: now };
       }
       return { writer_submitted_at: now };
     case 'APPROVED':
@@ -514,6 +529,7 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
       }
       break;
     case 'ASSIGNED_TO_SUB_EDITOR':
+    case 'SUB_EDITOR_ASSIGNED':
       // When editor assigns project to sub-editor
       if (role === Role.EDITOR) {
         return { editor_uploaded_at: now };
@@ -561,7 +577,7 @@ export function isReworkProject(project: Project): boolean {
   if (reworkAction) {
     const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
     const hasLaterSubmission = sortedHistory.some(h => {
-      const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+      const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'].includes(h.action);
       const actionTimestamp = new Date(h.timestamp).getTime();
       return isSubmissionAction && actionTimestamp > reworkTimestamp;
     });

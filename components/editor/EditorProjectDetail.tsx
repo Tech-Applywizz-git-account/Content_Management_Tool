@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, User } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, User, UserStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
@@ -58,6 +58,21 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     const processedProject = { ...project };
     setDeliveryDate(processedProject.delivery_date || '');
     setEditedVideoLink(processedProject.edited_video_link || '');
+
+    // Set current user in db service for centralized workflow tracking
+    const setUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        db.setCurrentUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
+          role: Role.EDITOR,
+          status: UserStatus.ACTIVE
+        });
+      }
+    };
+    setUser();
   }, [project]);
 
   // Fetch sub-editors when component mounts
@@ -170,36 +185,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         comment
       );
 
-      // Prepare the editor video links history array
-      const updatedEditorVideoLinksHistory = [
-        ...(project.editor_video_links_history || []),
-        // Add the previous video link if it exists and is different from the new one
-        ...(project.edited_video_link && project.edited_video_link !== editedVideoLink
-          ? [project.edited_video_link]
-          : [])
-      ];
-
-      // Update cmo_rework_context if this is a rework submission
-      let updatedCmoReworkContext = project.data?.cmo_rework_context;
-
-      if (isRework && updatedCmoReworkContext?.before) {
-        updatedCmoReworkContext = {
-          ...updatedCmoReworkContext,
-          after: {
-            video_link: project.video_link || null,
-            edited_video_link: editedVideoLink, // New input
-            thumbnail_link: project.thumbnail_link || null,
-            creative_link: project.data?.creative_link || null,
-            script_content: project.data?.script_content || null
-          }
-        };
-      }
-
       // Update the project with the edited video link and advance the workflow
       // This will properly check thumbnail_required and route to correct stage
+      // projects.update now handles history preservation automatically
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
-        editor_video_links_history: updatedEditorVideoLinksHistory, // Store the history of video links
         editor_uploaded_at: new Date().toISOString(),
         editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
         edited_by_role: 'EDITOR', // Track who actually edited
@@ -210,8 +200,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         data: {
           ...project.data,
           needs_sub_editor: false,
-          thumbnail_required: project.data?.thumbnail_required,
-          cmo_rework_context: updatedCmoReworkContext
+          thumbnail_required: project.data?.thumbnail_required
         }
       });
       // Update project data to persist any changes made during this session

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS, UserStatus } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -44,6 +44,21 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
     setDeliveryDate(initialProject.delivery_date || '');
     setEditedVideoLink(initialProject.edited_video_link || '');
     setLocalProject(initialProject);
+
+    // Set current user in db service for centralized workflow tracking
+    const setUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        db.setCurrentUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
+          role: Role.SUB_EDITOR,
+          status: UserStatus.ACTIVE
+        });
+      }
+    };
+    setUser();
   }, [initialProject]);
 
   const handleSetDeliveryDate = async () => {
@@ -201,20 +216,11 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         nextRole // to_role - Designer if thumbnail required, Writer (for multi-writer approval) if not
       );
 
-      // Prepare the sub-editor video links history array
-      const updatedSubEditorVideoLinksHistory = [
-        ...(localProject.sub_editor_video_links_history || []),
-        // Add the previous video link if it exists and is different from the new one
-        ...(localProject.edited_video_link && localProject.edited_video_link !== editedVideoLink
-          ? [localProject.edited_video_link]
-          : [])
-      ];
-
       // Update the project with the edited video link and preserve who actually edited the video
       // Don't update assigned_to_role here since advanceWorkflow will handle proper role assignment based on thumbnail_required
+      // projects.update now handles history preservation automatically
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
-        sub_editor_video_links_history: updatedSubEditorVideoLinksHistory, // Store the history of video links
         editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail
         sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name
         edited_by_role: 'SUB_EDITOR', // Track who actually edited

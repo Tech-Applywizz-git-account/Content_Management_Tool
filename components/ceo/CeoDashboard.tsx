@@ -136,12 +136,19 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         reworkCountResult = 0;
       }
 
-      // Pending: count projects assigned to the user with WAITING_APPROVAL status
+      // Pending: align counting logic with the dashboard list filter
+      // Count projects where:
+      // 1. Status is WAITING_APPROVAL or REJECTED
+      // 2. Stage is one of: SCRIPT_REVIEW_L2, FINAL_REVIEW_CEO
+      // 3. Or it's an idea project at FINAL_REVIEW_CEO
       const { count: pendingCountResult, error: pendingErr } = await supabase
         .from('projects')
         .select('*', { head: true, count: 'exact' })
-        .eq('assigned_to_role', user.role)
-        .eq('status', TaskStatus.WAITING_APPROVAL);
+        .in('status', [TaskStatus.WAITING_APPROVAL, TaskStatus.REJECTED])
+        .or(`current_stage.eq.${WorkflowStage.SCRIPT_REVIEW_L2},current_stage.eq.${WorkflowStage.FINAL_REVIEW_CEO}`);
+      // Note: Ideally we should use the same exact filter as pendingApprovals:
+      // (status=WAITING_APPROVAL OR status=REJECTED) AND (stage=SCRIPT_REVIEW_L2 OR stage=FINAL_REVIEW_CEO)
+      // The .or syntax above handles the stage part. status is handled by .in.
 
       if (pendingErr) throw pendingErr;
 
@@ -333,7 +340,11 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // Logic: 
   // Pending = Projects in CEO review stages with WAITING_APPROVAL status
   // History = Projects CEO has previously acted on (in history) OR current projects not assigned to them but relevant
-  const pendingApprovals = (inboxProjects || []).filter(p =>
+  // We use allProjects here to ensure we catch everything matching the stage/status criteria, 
+  // explicitly bypassing any upstream "assigned_to_role" filtering that might be applied to inboxProjects.
+  const sourceProjects = allProjects && allProjects.length > 0 ? allProjects : (inboxProjects || []);
+
+  const pendingApprovals = sourceProjects.filter(p =>
     (p.status === TaskStatus.WAITING_APPROVAL || p.status === TaskStatus.REJECTED) &&
     (
       p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||

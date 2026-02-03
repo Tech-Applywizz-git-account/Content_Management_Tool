@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
@@ -61,6 +61,21 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         setThumbnailLink(processedProject.thumbnail_link || '');
         setCreativeLink(processedProject.creative_link || '');
         setLocalProject(project); // Update localProject when the prop changes
+
+        // Set current user in db service for centralized workflow tracking
+        const setUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                db.setCurrentUser({
+                    id: session.user.id,
+                    email: session.user.email || '',
+                    full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
+                    role: Role.DESIGNER,
+                    status: UserStatus.ACTIVE
+                });
+            }
+        };
+        setUser();
     }, [project]);
 
     const handleSetDeliveryDate = async () => {
@@ -149,45 +164,22 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     : [])
             ];
 
-            // Update the project with the file link and advance the workflow
-            // This will properly route to the correct next stage
             const updates: Partial<Project> = {};
-
             if (isVideo) {
                 updates.thumbnail_link = link;
             } else {
                 updates.creative_link = link;
             }
 
-            // Prepare update for cmo_rework_context
-            let updatedCmoReworkContext = localProject.data?.cmo_rework_context;
-
-            if (isRework && updatedCmoReworkContext?.before) {
-                updatedCmoReworkContext = {
-                    ...updatedCmoReworkContext,
-                    after: {
-                        video_link: localProject.video_link || null,
-                        edited_video_link: localProject.edited_video_link || null,
-                        thumbnail_link: isVideo ? link : (localProject.thumbnail_link || null),
-                        creative_link: !isVideo ? link : (localProject.data?.creative_link || localProject.creative_link || null),
-                        script_content: localProject.data?.script_content || null
-                    }
-                };
-            }
-
+            // Update the project with the file link and advance the workflow
+            // projects.update now handles history preservation automatically
             await db.projects.update(localProject.id, {
                 ...updates,
-                designer_video_links_history: updatedDesignerVideoLinksHistory, // Store the history of video links
                 designer_uploaded_at: new Date().toISOString(), // Store timestamp
                 designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
-                data: {
-                    ...localProject.data,
-                    cmo_rework_context: updatedCmoReworkContext
-                }
             });
 
             // Update project data to persist any changes made during this session
-            // Include the asset links in the update so timestamp logic can detect the upload
             const projectDataUpdates: any = { ...localProject.data };
             if (isVideo) {
                 projectDataUpdates.thumbnail_link = link;
@@ -197,13 +189,15 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
 
             await db.updateProjectData(localProject.id, projectDataUpdates);
 
-            // Advance workflow to next stage based on project settings
-            await db.advanceWorkflow(localProject.id, comment);
+            // ✅ Use advanceWorkflow to properly determine the next stage
+            // It will handle rework initiator return automatically.
+            const updatedProjectResult = await db.advanceWorkflow(localProject.id, comment);
 
             console.log(`${isRework ? 'Rework ' : ''}${isVideo ? 'Thumbnail' : 'Creative'} uploaded: ${link}`);
 
-            // Get updated project to determine who to notify
-            const updatedProject = await db.getProjectById(localProject.id);
+            // Update local state with the result from advanceWorkflow
+            const updatedProject = updatedProjectResult as Project;
+            setLocalProject(updatedProject);
 
             // Find users to notify based on the next assigned role
             if (updatedProject?.assigned_to_role) {

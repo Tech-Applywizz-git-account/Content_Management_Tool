@@ -91,7 +91,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
             // Fetch history to find the last rework action
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage, to_stage, to_role, metadata')
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false })
                 .limit(50);
@@ -125,50 +125,69 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
                 // Identify who the rework was targeted AT
                 let detectedRole: Role | null = null;
+                let metadataBasedAssets: any = null;
 
-                // 1. Try to determine from the rework entry itself (Best source)
-                if (reworkEntry.to_stage) {
-                    if (reworkEntry.to_stage === WorkflowStage.VIDEO_EDITING) detectedRole = Role.EDITOR;
-                    else if (reworkEntry.to_stage === WorkflowStage.CINEMATOGRAPHY) detectedRole = Role.CINE;
-                    else if (reworkEntry.to_stage === WorkflowStage.THUMBNAIL_DESIGN || reworkEntry.to_stage === WorkflowStage.CREATIVE_DESIGN) detectedRole = Role.DESIGNER;
+                // 1. Check for metadata-rich rework submission actions first (Robust approach)
+                const reworkSubmission = recentHistory.find(h => h.action.startsWith('REWORK_') && h.metadata);
+                if (reworkSubmission?.metadata?.before_link) {
+                    const meta = reworkSubmission.metadata;
+                    detectedRole = meta.reworked_by_role;
+                    if (detectedRole === Role.CINE) metadataBasedAssets = { video_link: meta.before_link };
+                    else if (detectedRole === Role.EDITOR || detectedRole === Role.SUB_EDITOR) metadataBasedAssets = { edited_video_link: meta.before_link };
+                    else if (detectedRole === Role.DESIGNER) metadataBasedAssets = { thumbnail_link: meta.before_link, creative_link: meta.before_link };
                 }
 
-                if (!detectedRole && reworkEntry.to_role) {
-                    // Normalize string to Role enum if possible
-                    if ((Object.values(Role) as string[]).includes(reworkEntry.to_role)) {
-                        detectedRole = reworkEntry.to_role as Role;
-                    }
-                }
-
-                // 2. Try inferring from explicit submission actions in recent history
                 if (!detectedRole) {
-                    // Check for explicit rework submission actions first
-                    if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
-                        detectedRole = Role.EDITOR;
-                    } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
-                        detectedRole = Role.CINE;
-                    } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
-                        detectedRole = Role.DESIGNER;
-                    }
-                }
-
-                // 3. Fallback: Infer from what changed
-                if (!detectedRole) {
-                    // Check logic: if current value != rework value, that field changed.
-                    // Prioritize EDITOR if edited_video_link changed, as it's later in workflow than CINE
-                    if (project.edited_video_link && project.edited_video_link !== reworkEntry.edited_video_link) {
-                        detectedRole = Role.EDITOR;
-                    } else if (project.video_link && project.video_link !== reworkEntry.video_link) {
-                        detectedRole = Role.CINE;
-                    } else if ((project.thumbnail_link && project.thumbnail_link !== reworkEntry.thumbnail_link) ||
-                        (project.data?.creative_link && project.data?.creative_link !== reworkEntry.creative_link)) {
-                        detectedRole = Role.DESIGNER;
+                    // 2. Try to determine from the rework entry itself (Best source)
+                    if (reworkEntry.to_stage) {
+                        if (reworkEntry.to_stage === WorkflowStage.VIDEO_EDITING) detectedRole = Role.EDITOR;
+                        else if (reworkEntry.to_stage === WorkflowStage.CINEMATOGRAPHY) detectedRole = Role.CINE;
+                        else if (reworkEntry.to_stage === WorkflowStage.THUMBNAIL_DESIGN || reworkEntry.to_stage === WorkflowStage.CREATIVE_DESIGN) detectedRole = Role.DESIGNER;
                     }
 
-                    // Legacy/Safe fallback - if seemingly nothing changed or confused, but we are in review
-                    if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
-                        // If we have an edited video link, assume Editor unless we have strong reason otherwise
-                        if (project.edited_video_link) detectedRole = Role.EDITOR;
+                    if (!detectedRole && reworkEntry.to_role) {
+                        // Normalize string to Role enum if possible
+                        if ((Object.values(Role) as string[]).includes(reworkEntry.to_role)) {
+                            detectedRole = reworkEntry.to_role as Role;
+                        }
+                    }
+
+                    // 3. Try checking metadata from rework submission actions first (Most robust)
+                    const reworkSubmission = recentHistory.find(h => h.action.startsWith('REWORK_') && h.metadata);
+                    if (reworkSubmission?.metadata?.reworked_by_role) {
+                        detectedRole = reworkSubmission.metadata.reworked_by_role;
+                    }
+
+                    // 4. Try inferring from explicit submission actions in recent history (Legacy/Fallback)
+                    if (!detectedRole) {
+                        // Check for explicit rework submission actions first
+                        if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
+                            detectedRole = Role.EDITOR;
+                        } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
+                            detectedRole = Role.CINE;
+                        } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
+                            detectedRole = Role.DESIGNER;
+                        }
+                    }
+
+                    // 4. Fallback: Infer from what changed
+                    if (!detectedRole) {
+                        // Check logic: if current value != rework value, that field changed.
+                        // Prioritize EDITOR if edited_video_link changed, as it's later in workflow than CINE
+                        if (project.edited_video_link && project.edited_video_link !== reworkEntry.edited_video_link) {
+                            detectedRole = Role.EDITOR;
+                        } else if (project.video_link && project.video_link !== reworkEntry.video_link) {
+                            detectedRole = Role.CINE;
+                        } else if ((project.thumbnail_link && project.thumbnail_link !== reworkEntry.thumbnail_link) ||
+                            (project.data?.creative_link && project.data?.creative_link !== reworkEntry.creative_link)) {
+                            detectedRole = Role.DESIGNER;
+                        }
+
+                        // Legacy/Safe fallback - if seemingly nothing changed or confused, but we are in review
+                        if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
+                            // If we have an edited video link, assume Editor unless we have strong reason otherwise
+                            if (project.edited_video_link) detectedRole = Role.EDITOR;
+                        }
                     }
                 }
 
@@ -186,37 +205,22 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 }
 
                 // Helper to get last history item
-                const getLastHistoryItem = (historyStrOrArray: string | string[] | undefined) => {
+                const getLastHistoryItem = (historyStrOrArray: any) => {
                     if (!historyStrOrArray) return null;
-                    let arr: string[] = [];
-                    if (Array.isArray(historyStrOrArray)) {
-                        arr = historyStrOrArray;
-                    } else if (typeof historyStrOrArray === 'string') {
-                        try {
-                            const parsed = JSON.parse(historyStrOrArray);
-                            if (Array.isArray(parsed)) arr = parsed;
-                        } catch (e) { console.error('Error parsing video links history:', e); return null; }
-                    }
-                    if (arr.length > 0) return arr[arr.length - 1];
+                    if (Array.isArray(historyStrOrArray)) return historyStrOrArray[historyStrOrArray.length - 1];
+                    try {
+                        const parsed = typeof historyStrOrArray === 'string' ? JSON.parse(historyStrOrArray) : historyStrOrArray;
+                        if (Array.isArray(parsed)) return parsed[parsed.length - 1];
+                    } catch (e) { return null; }
                     return null;
                 };
 
-                // Fallback to history arrays if rework entry missing assets (legacy support)
-                const prevVideo = reworkEntry.video_link || getLastHistoryItem(project.cine_video_links_history);
-                const prevEdited = reworkEntry.edited_video_link || getLastHistoryItem(project.editor_video_links_history);
-                const prevDesignerAsset = getLastHistoryItem(project.designer_video_links_history);
-
-                // For designer, determining if the history item was a thumbnail or creative link is tricky without metadata
-                // We'll assign to thumbnail if current is thumbnail, or creative if current is creative
-                const prevThumbnail = reworkEntry.thumbnail_link || (project.thumbnail_link ? prevDesignerAsset : null);
-                const prevCreative = reworkEntry.creative_link || (!project.thumbnail_link ? prevDesignerAsset : null);
-
-                // Set previous assets
+                // Set previous assets with fallbacks to history columns
                 setPreviousAssets({
-                    video_link: prevVideo,
-                    edited_video_link: prevEdited,
-                    thumbnail_link: prevThumbnail,
-                    creative_link: prevCreative
+                    video_link: metadataBasedAssets?.video_link || reworkEntry.video_link || getLastHistoryItem(project.cine_video_links_history),
+                    edited_video_link: metadataBasedAssets?.edited_video_link || reworkEntry.edited_video_link || getLastHistoryItem(project.editor_video_links_history) || getLastHistoryItem(project.sub_editor_video_links_history),
+                    thumbnail_link: metadataBasedAssets?.thumbnail_link || reworkEntry.thumbnail_link || (project.thumbnail_link ? getLastHistoryItem(project.designer_video_links_history) : null),
+                    creative_link: metadataBasedAssets?.creative_link || reworkEntry.creative_link || (!project.thumbnail_link ? getLastHistoryItem(project.designer_video_links_history) : null)
                 });
 
             } else {
@@ -371,10 +375,14 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         const existingComments = currentProject.forwarded_comments || [];
                         const updatedComments = [...existingComments, newComment];
 
-                        await supabase
+                        const { error: updateError } = await supabase
                             .from('projects')
                             .update({ forwarded_comments: updatedComments })
                             .eq('id', project.id);
+
+                        if (updateError) {
+                            console.error('Failed to save forwarded comment:', updateError);
+                        }
                     }
                 }
 
@@ -759,8 +767,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                                         // Show comparison for rework scenarios
                                         return (
                                             <ScriptComparison
-                                                previousScript={previousScript}
-                                                currentScript={currentScriptContent}
+                                                previousScript={stripHtmlTags(previousScript)}
+                                                currentScript={stripHtmlTags(currentScriptContent)}
                                                 previousAuthor="Previous Version"
                                                 currentAuthor="Writer Rework Submission"
                                                 previousTimestamp=""

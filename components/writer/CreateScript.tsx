@@ -270,18 +270,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Function to check grammar and spelling using OpenAI API
   const checkGrammarAndSpelling = async (text: string) => {
     try {
-      // Normalize text: clean whitespace but preserve structure
-      const normalizedText = text.replace(/\s+/g, ' ').trim();
-
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       // Add AbortController for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout based on recent performance
 
       let data;
       try {
+        // Send the ORIGINAL text to preserve whitespace and ensuring matching works
+        // We do NOT normalize whitespace here because we need to find the exact substring later
         const response = await fetch(`${supabaseUrl}/functions/v1/openai-correction`, {
           method: 'POST',
           headers: {
@@ -289,7 +288,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             'Authorization': `Bearer ${supabaseAnonKey}`,
             'apikey': supabaseAnonKey,
           },
-          body: JSON.stringify({ text: normalizedText }),
+          body: JSON.stringify({ text: text }),
           signal: controller.signal,
         });
 
@@ -316,7 +315,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
         // Find all occurrences of the incorrect string in the ORIGINAL text
         let searchIndex = 0;
+        let matchFound = false;
+
+        // We stick to the original text for searching
         while ((searchIndex = text.indexOf(incorrect, searchIndex)) !== -1) {
+          matchFound = true;
           const startIndex = searchIndex;
           const endIndex = startIndex + incorrect.length;
 
@@ -338,6 +341,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             break; // Just pick the first non-overlapping match for this issue
           }
           searchIndex++;
+        }
+
+        if (!matchFound) {
+          console.warn(`Could not find incorrect text "${incorrect}" in original content. This may be due to whitespace differences.`);
         }
       });
 
@@ -1363,7 +1370,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           await (db.projects.update as any)(createdProject.id, {
             created_by_user_id: currentUser.id,
             created_by_name: currentUser.full_name,
-            assigned_to_user_id: currentUser.id
+            assigned_to_user_id: currentUser.id,
+            writer_id: currentUser.id,
+            writer_name: currentUser.full_name
           });
 
           // Update project data with writer information
@@ -1385,6 +1394,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             ...formData,
           };
 
+          const updatesForColumns: any = {};
+
           if (creatorRole === Role.CMO) {
             // Store CMO information
             updateData.cmo_id = currentUser?.id;
@@ -1393,9 +1404,19 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             // Default to Writer information
             updateData.writer_id = currentUser?.id;
             updateData.writer_name = currentUser?.full_name;
+
+            // Also update top-level columns
+            updatesForColumns.writer_id = currentUser?.id;
+            updatesForColumns.writer_name = currentUser?.full_name;
           }
 
           await db.updateProjectData(realProjectId, updateData);
+
+          // Update top-level columns if needed
+          if (Object.keys(updatesForColumns).length > 0) {
+            await (db.projects.update as any)(realProjectId, updatesForColumns);
+          }
+
           console.log('✅ Existing project data updated');
         }
 

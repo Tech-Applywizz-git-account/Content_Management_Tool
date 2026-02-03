@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { User, Role, Project } from './types';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -29,6 +29,7 @@ import OpsCeoApprovedViewWrapper from './components/ops/OpsCeoApprovedViewWrappe
 import ObserverDashboard from './components/observer/ObserverDashboard';
 import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
+import CmoHistoryDetail from './components/cmo/CmoHistoryDetail';
 
 import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
 import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
@@ -115,7 +116,9 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                     <Routes>
                         <Route path="project/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
                         <Route path="review/:projectId" element={<CmoReviewPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
-                        <Route path="history_detail/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
+                        <Route path="history_detail/:projectId" element={
+                          <CmoHistoryDetailWithParams currentUser={user!} onBack={() => window.history.back()} />
+                        } />
                         <Route path="*" element={<CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
                 </ProtectedRoute>
@@ -206,6 +209,20 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
             } />
         </Routes>
     );
+};
+
+// Wrapper component to pass URL parameters to CmoHistoryDetail
+const CmoHistoryDetailWithParams: React.FC<any> = (props) => {
+  const [searchParams] = useSearchParams();
+  const historyFilter = searchParams.get('filter') || 'ALL';
+  
+  // Pass activeTab as 'WRITERS' when historyFilter is 'WRITER' or writer ID
+  const activeTab = historyFilter === 'WRITER' || 
+                   (historyFilter && !['ALL', 'CMO', 'CEO', 'CINE', 'EDITOR', 'DESIGNER', 'OPS', 'POSTED'].includes(historyFilter)) 
+                   ? 'WRITERS' 
+                   : undefined;
+  
+  return <CmoHistoryDetail {...props} activeTab={activeTab} />;
 };
 
 export default AppRoutes;

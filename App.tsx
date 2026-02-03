@@ -49,20 +49,35 @@ import ObserverDashboard from './components/observer/ObserverDashboard';
 // Sync user recovery from localStorage to prevent flash-loading-spinner on refresh
 const getUserSync = (): User | null => {
   try {
+    // 1. Try dedicated app user cache first (most reliable source of truth for role)
+    const cachedUser = localStorage.getItem('app_user_cache');
+    if (cachedUser) {
+      const parsed = JSON.parse(cachedUser);
+      // Basic validation to ensure it looks like a user object
+      if (parsed && parsed.id && parsed.role) {
+        return parsed;
+      }
+    }
+
+    // 2. Try mock session
     const mock = localStorage.getItem('mock_session');
     if (mock) return JSON.parse(mock);
 
-    // Try to find Supabase auth token
+    // 3. Try to find Supabase auth token (fallback)
     const tokenKey = Object.keys(localStorage).find(k => k.endsWith('-auth-token'));
     if (tokenKey) {
       const tokenData = JSON.parse(localStorage.getItem(tokenKey) || '{}');
       if (tokenData && tokenData.user) {
         const u = tokenData.user;
+        // Ensure role is normalized to Uppercase to prevent mismatch redirects
+        const rawRole = u.user_metadata?.role || u.user_metadata?.name || '';
+        const normalizedRole = rawRole.toUpperCase() as Role;
+
         return {
           id: u.id,
           email: u.email,
           full_name: u.user_metadata?.full_name || u.user_metadata?.name || 'User',
-          role: (u.user_metadata?.role as Role) || Role.OBSERVER,
+          role: Object.values(Role).includes(normalizedRole) ? normalizedRole : Role.OBSERVER,
           status: 'ACTIVE',
         } as User;
       }
@@ -86,8 +101,16 @@ function App() {
     db.setCurrentUser(initialUser);
   }
   const [user, setUser] = useState<User | null>(initialUser);
-  const [loading, setLoading] = useState(!initialUser);
+  const [loading, setLoading] = useState(true); // Start loading by default
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+
+  // Use a Ref to track user state in event listeners without stale closures
+  const userRef = React.useRef<User | null>(user);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const [projects, setProjects] = useState<DashboardData>({ inbox: [], history: [] });
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
 
@@ -109,6 +132,16 @@ function App() {
 
   // Sub-Editor State - State for Sub-Editor dashboard script projects
   const [subEditorScriptProjects, setSubEditorScriptProjects] = useState<Project[]>([]);
+
+  // Cache user to localStorage whenever it changes to ensure persistence across reloads
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('app_user_cache', JSON.stringify(user));
+    }
+    // NOTE: We do NOT implicitly clear the cache here when user is null.
+    // Clearing is handled explicitly by handleLogout, clearInvalidToken, or session validation failures.
+    // This prevents accidental clearing during transient loading states or network glitches.
+  }, [user]);
 
   // Function to check if token is expired
   const isTokenExpired = (tokenData: any): boolean => {
@@ -132,6 +165,7 @@ function App() {
         localStorage.removeItem(key);
       }
     });
+    localStorage.removeItem('app_user_cache');
   };
 
   // Function to clear invalid token and reset state
@@ -168,7 +202,14 @@ function App() {
       const { data: { user: supabaseUser }, error: authError } = await supabase.auth.getUser();
 
       if (authError || !supabaseUser) {
-        console.log('✅ Session Restore: No Supabase session found or error');
+        console.warn('⚠️ Session Restore: Supabase session invalid or expired.', authError?.message || 'No user');
+
+        // If we had a cached user but the server rejects the token, we must clear it.
+        // This handles cases where the token expired while the user was away.
+        if (localStorage.getItem('app_user_cache') || user) {
+          console.log('⚠️ Session Restore: Clearing invalid cached session.');
+          clearInvalidToken();
+        }
         return;
       }
 
@@ -188,20 +229,34 @@ function App() {
         // We shouldn't clear tokens here, just let it fall through to login
       }
     } catch (error: any) {
+      console.error('❌ Session Restore: Error:', error);
+
+      // Check for "row not found" error (PGRST116 or "0 rows")
+      // This happens when Supabase Auth has a session, but the user was deleted from public.users table
+      if (error.code === 'PGRST116' || error.details?.includes('0 rows') || error.message?.includes('0 rows')) {
+        console.warn('⚠️ Session Restore: User profile missing from database. Configuring cleanup...');
+
+        // Force cleanup of invalid session
+        clearAllTokens();
+        setUser(null);
+        await supabase.auth.signOut();
+
+        console.log('✅ Session Restore: Invalid session cleared.');
+        // Do NOT blindly redirect to /login here as it can cause loops if we are already there
+        // or if the auth listener picks it up. Let the UI react to user=null.
+        return;
+      }
+
       console.error('❌ Session Restore: Fatal error:', error);
-      // In case of fatal error during restoration, we don't necessarily want to clear everything 
-      // unless we're sure the session is invalid.
     }
   };
 
-  // Session restoration on mount - Improved for reliable refresh handling
+  // Session restoration and Auth Listener
   useEffect(() => {
-    console.log('App: Initializing auth...');
+    console.log('App: Initializing auth system...');
     let mounted = true;
-    let fallbackTimer: ReturnType<typeof setTimeout>;
 
-    const initializeAuth = async () => {
-      console.log('App: initializeAuth called');
+    const initAuth = async () => {
       if (!mounted) return;
 
       // Skip restoration on reset-password pages
@@ -211,141 +266,102 @@ function App() {
 
       if (isRecoveryFlow) {
         console.log('App: Recovery flow detected, handling separately');
-        try {
-          const { data } = await supabase.auth.getUser();
-          if (data?.user) {
-            const profile = await db.users.getById(data.user.id);
-            if (profile) {
-              setUser(profile);
-              db.setCurrentUser(profile);
-            }
+        // In recovery, we trust the URL token but still verify user
+        const { data } = await supabase.auth.getUser();
+        if (data?.user) {
+          // Just fetch profile, don't do full restoreSession loop which might be strict
+          const profile = await db.users.getById(data.user.id);
+          if (profile && mounted) {
+            setUser(profile);
+            db.setCurrentUser(profile);
           }
-        } catch (e) {
-          console.error('Error in recovery session check:', e);
         }
-        setLoading(false);
-        setIsRestoringSession(false);
+        if (mounted) {
+          setLoading(false);
+          setIsRestoringSession(false);
+        }
         return;
       }
 
       try {
-        // 1. Check for fast local session
-        const { data: { session } } = await supabase.auth.getSession();
+        // 1. Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.warn('App: GetSession warning:', error.message);
+        }
 
         if (session?.user) {
-          console.log('App: Session found via getSession, restoring...');
+          console.log('App: Active session found, verifying profile...');
+          // If we have a session, ensure we have the full profile
+          // We call restoreSession even if user is set, to ensure data freshness on reload
           await restoreSession();
         } else {
-          // 2. Check for mock session explicitly
+          console.log('App: No active Supabase session found');
+          // Attempt mock session fallback here
           const mockSession = localStorage.getItem('mock_session');
           if (mockSession) {
             await restoreSession();
-          } else {
-            console.log('App: No local session found');
           }
         }
-      } catch (error) {
-        console.error('App: Auth initialization error:', error);
+      } catch (err) {
+        console.error('App: Auth init exception:', err);
       } finally {
         if (mounted) {
+          // Only release the block after we've tried everything
           setLoading(false);
           setIsRestoringSession(false);
-          console.log('App: Auth initialization complete');
+          console.log('App: Auth initialization complete, blocking released');
         }
       }
     };
 
-    // Safety timeout to ensure app always loads, but WITHOUT clearing tokens unless essential
-    fallbackTimer = setTimeout(() => {
-      if (!mounted) return;
-      if (loading) {
-        console.warn('App: Auth initialization timed out - forcing loading to false');
-        setLoading(false);
-        setIsRestoringSession(false);
-      }
-    }, 10000);
 
-    initializeAuth();
+    // 2. Listen for changes (Important for token refreshes and multi-tab sync)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`🔔 Auth Change: ${event}`);
+
+      const currentUser = userRef.current; // Use Ref to get latest state
+
+      // We only react to SIGNED_IN or TOKEN_REFRESHED if we are NOT already processing initAuth
+      // or if the user state has drifted.
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // If detailed profile is missing, fetch it
+        if (session?.user) {
+          // We check against current state. If `user` is null, we definitely need to restore.
+          // If `user` exists, we might want to refresh if IDs don't match (account switch).
+          // We avoid infinite loops by checking ID match if user exists.
+          if (!currentUser || currentUser.id !== session.user.id) {
+            console.log('App: Auth event requires profile sync...');
+            await restoreSession();
+          }
+        }
+      } else if (event === 'SIGNED_OUT') {
+        // Only logout if we think we are logged in
+        if (currentUser) {
+          console.log('App: Signed out event received');
+          handleLogout();
+        }
+      }
+    });
+
+    // Run initialization
+    initAuth();
 
     return () => {
       mounted = false;
-      clearTimeout(fallbackTimer);
+      subscription.unsubscribe();
     };
-  }, []);
+  }, []); // Empty dependency array as this is mount logic
 
 
 
-  // Effect to fetch all projects for management and overview roles
+  // Unified Data Refresh Effect: Ensures data is fetched whenever user is set (login, restore, refresh)
   useEffect(() => {
-    // Fetch all projects for management and overview roles
-    if (user?.role === Role.CMO || user?.role === Role.CEO || user?.role === Role.OPS || user?.role === Role.ADMIN || user?.role === Role.OBSERVER) {
-      const fetchAllProjects = async () => {
-        try {
-          const projects = await db.projects.getAll();
-          setAllProjects(projects);
-        } catch (error) {
-          console.error('Failed to fetch all projects for management role:', error);
-        }
-      };
-
-      fetchAllProjects();
+    if (user) {
+      refreshData(user);
     }
-
-    // Only fetch for Cine users
-    if (user?.role === Role.CINE) {
-      const fetchCineScriptProjects = async () => {
-        try {
-          const projects = await db.projects.getScriptProjects();
-          setCineScriptProjects(projects);
-        } catch (error) {
-          console.error('Failed to fetch script projects for Cine:', error);
-        }
-      };
-
-      fetchCineScriptProjects();
-    }
-
-    // Only fetch for Editor users
-    if (user?.role === Role.EDITOR) {
-      const fetchEditorScriptProjects = async () => {
-        try {
-          const projects = await db.projects.getScriptProjects();
-          setEditorScriptProjects(projects);
-        } catch (error) {
-          console.error('Failed to fetch script projects for Editor:', error);
-        }
-      };
-
-      fetchEditorScriptProjects();
-    }
-
-    // Only fetch for Designer users
-    if (user?.role === Role.DESIGNER) {
-      const fetchDesignerScriptProjects = async () => {
-        try {
-          const projects = await db.projects.getScriptProjects();
-          setDesignerScriptProjects(projects);
-        } catch (error) {
-          console.error('Failed to fetch script projects for Designer:', error);
-        }
-      };
-
-      fetchDesignerScriptProjects();
-    }
-
-    // Only fetch for Sub-Editor users
-    if (user?.role === Role.SUB_EDITOR || user?.role === Role.WRITER) {
-      const fetchSubEditorScriptProjects = async () => {
-        try {
-          const projects = await db.projects.getScriptProjects();
-          setSubEditorScriptProjects(projects);
-        } catch (error) {
-          console.error('Failed to fetch script projects for role:', error);
-        }
-      };
-
-      fetchSubEditorScriptProjects();
-    }
+    // We don't implicitly clear data on user null here to avoid flash before redirect
   }, [user]);
 
   const refreshData = async (u: User = user!) => {
@@ -389,8 +405,17 @@ function App() {
           }
         }
 
-        // For Editor, Designer, and Sub-Editor roles, also refresh script projects
-        if (u.role === Role.EDITOR) {
+        // Role-specific script project fetching
+        if (u.role === Role.CINE) {
+          try {
+            console.log('🔄 App.tsx: Refreshing script projects for Cine');
+            const scriptProjects = await db.projects.getScriptProjects();
+            setCineScriptProjects(scriptProjects);
+            console.log('✅ App.tsx: Cine script projects refreshed:', scriptProjects.length);
+          } catch (error) {
+            console.error('❌ App.tsx: Failed to refresh script projects for Cine:', error);
+          }
+        } else if (u.role === Role.EDITOR) {
           try {
             console.log('🔄 App.tsx: Refreshing script projects for Editor');
             const scriptProjects = await db.projects.getScriptProjects();
@@ -486,6 +511,7 @@ function App() {
       setAdminLogs([]);
       localStorage.removeItem('admin_last_view');
       localStorage.removeItem('mock_session'); // Also clear mock session
+      localStorage.removeItem('app_user_cache'); // Clear app user cache
       console.log('✅ Logout: UI state cleared');
 
       // Ensure Supabase signout completes
@@ -570,7 +596,19 @@ function App() {
     return null;
   };
 
-  // Main rendering logic - no more loading spinner block
+  // Global Loading State
+  if (loading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-black"></div>
+          <p className="font-bold text-slate-600 animate-pulse">Loading Application...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Main rendering logic
   return (
     <div className="app-container">
       <ScrollRestorer />

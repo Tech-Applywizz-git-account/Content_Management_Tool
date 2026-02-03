@@ -110,7 +110,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             // Fetch history to find the last rework action
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, actor_name, timestamp, stage, metadata')
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false })
                 .limit(50);
@@ -152,31 +152,39 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 // We look at actions occurring *more recently* than lastReworkIndex
                 const recentHistory = historyData.slice(0, lastReworkIndex);
                 let detectedRole: Role | null = null;
+                let metadataBasedAssets: any = null;
 
-                // Check for explicit rework submission actions first
-                if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
-                    detectedRole = Role.EDITOR;
-                } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
-                    detectedRole = Role.CINE;
-                } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
-                    detectedRole = Role.DESIGNER;
-                } else {
-                    // Fallback: If no explicit REWORK_... action, infer from what changed
-                    // We compare the CURRENT project state (project object) with the REWORK entry (snapshot at rework time)
-                    // Note: This assumes 'project' has the NEW values and 'reworkEntry' has the OLD values.
+                // 1. Check for metadata-rich rework submission actions first (Robust approach)
+                const reworkSubmission = recentHistory.find(h => h.action.startsWith('REWORK_') && h.metadata);
+                if (reworkSubmission?.metadata?.before_link) {
+                    const meta = reworkSubmission.metadata;
+                    detectedRole = meta.reworked_by_role;
+                    if (detectedRole === Role.CINE) metadataBasedAssets = { video_link: meta.before_link };
+                    else if (detectedRole === Role.EDITOR || detectedRole === Role.SUB_EDITOR) metadataBasedAssets = { edited_video_link: meta.before_link };
+                    else if (detectedRole === Role.DESIGNER) metadataBasedAssets = { thumbnail_link: meta.before_link, creative_link: meta.before_link };
+                }
 
-                    if (project.video_link !== reworkEntry.video_link) detectedRole = Role.CINE;
-                    else if (project.edited_video_link !== reworkEntry.edited_video_link) detectedRole = Role.EDITOR;
-                    else if (project.thumbnail_link !== reworkEntry.thumbnail_link || project.data?.creative_link !== reworkEntry.creative_link) detectedRole = Role.DESIGNER;
-
-                    // If still no role detected, maybe check legacy logic or default?
-                    if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
-                        // Legacy handling
-                        if (reworkEntry.edited_video_link !== project.edited_video_link) detectedRole = Role.EDITOR;
-                    }
-
-                    if (!detectedRole && reworkEntry.stage === 'VIDEO_EDITING') {
+                if (!detectedRole) {
+                    // 2. Check for explicit rework submission actions (Legacy/Fallback)
+                    if (recentHistory.some(h => h.action === 'REWORK_EDIT_SUBMITTED')) {
                         detectedRole = Role.EDITOR;
+                    } else if (recentHistory.some(h => h.action === 'REWORK_VIDEO_SUBMITTED')) {
+                        detectedRole = Role.CINE;
+                    } else if (recentHistory.some(h => h.action === 'REWORK_DESIGN_SUBMITTED')) {
+                        detectedRole = Role.DESIGNER;
+                    } else {
+                        // 3. Fallback: Infer from what changed
+                        if (project.video_link !== reworkEntry.video_link) detectedRole = Role.CINE;
+                        else if (project.edited_video_link !== reworkEntry.edited_video_link) detectedRole = Role.EDITOR;
+                        else if (project.thumbnail_link !== reworkEntry.thumbnail_link || project.data?.creative_link !== reworkEntry.creative_link) detectedRole = Role.DESIGNER;
+
+                        if (!detectedRole && recentHistory.some(h => h.action === 'SUBMITTED' || h.action === 'WRITER_SUBMIT')) {
+                            if (reworkEntry.edited_video_link !== project.edited_video_link) detectedRole = Role.EDITOR;
+                        }
+
+                        if (!detectedRole && reworkEntry.stage === 'VIDEO_EDITING') {
+                            detectedRole = Role.EDITOR;
+                        }
                     }
                 }
 
@@ -187,12 +195,23 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     setPreviousScript(reworkEntry.script_content);
                 }
 
-                // Set previous assets
+                // Helper to get last history item from project history arrays
+                const getLastHistoryItem = (historyStrOrArray: any) => {
+                    if (!historyStrOrArray) return null;
+                    if (Array.isArray(historyStrOrArray)) return historyStrOrArray[historyStrOrArray.length - 1];
+                    try {
+                        const parsed = typeof historyStrOrArray === 'string' ? JSON.parse(historyStrOrArray) : historyStrOrArray;
+                        if (Array.isArray(parsed)) return parsed[parsed.length - 1];
+                    } catch (e) { return null; }
+                    return null;
+                };
+
+                // Set previous assets with fallbacks
                 setPreviousAssets({
-                    video_link: reworkEntry.video_link,
-                    edited_video_link: reworkEntry.edited_video_link,
-                    thumbnail_link: reworkEntry.thumbnail_link,
-                    creative_link: reworkEntry.creative_link
+                    video_link: metadataBasedAssets?.video_link || reworkEntry.video_link || getLastHistoryItem(project.cine_video_links_history),
+                    edited_video_link: metadataBasedAssets?.edited_video_link || reworkEntry.edited_video_link || getLastHistoryItem(project.editor_video_links_history) || getLastHistoryItem(project.sub_editor_video_links_history),
+                    thumbnail_link: metadataBasedAssets?.thumbnail_link || reworkEntry.thumbnail_link || (project.thumbnail_link ? getLastHistoryItem(project.designer_video_links_history) : null),
+                    creative_link: metadataBasedAssets?.creative_link || reworkEntry.creative_link || (!project.thumbnail_link ? getLastHistoryItem(project.designer_video_links_history) : null)
                 });
 
             } else {

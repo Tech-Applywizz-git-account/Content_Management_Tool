@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Lock, ArrowRight, Layers, Zap, CheckCircle, X, Mail, Key, AlertCircle, Loader, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../src/integrations/supabase/client';
@@ -11,6 +12,8 @@ interface AuthProps {
 }
 
 const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
+    const location = useLocation();
+    const navigate = useNavigate();
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -19,6 +22,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+
+    // Check for login action in URL
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        if (params.get('action') === 'login') {
+            setShowLoginModal(true);
+        }
+    }, [location.search]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,7 +43,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
 
             // Use the db.login function which properly sets currentUserCache
             const userProfile = await db.auth.signIn(email, password);
-            
+
             console.log('🟢 Auth: Login successful, User:', userProfile.full_name);
 
             // Pass user to parent callback with timeout race to prevent infinite hanging
@@ -124,7 +135,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
 
                 <div className="flex flex-col sm:flex-row gap-5 w-full sm:w-auto justify-center">
                     <button
-                        onClick={() => setShowLoginModal(true)}
+                        onClick={() => navigate('/login?action=login')}
                         className="bg-[#D946EF] border-2 border-black px-8 sm:px-12 py-4 sm:py-5 text-white font-black text-lg sm:text-xl flex items-center justify-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all uppercase tracking-wide w-full sm:w-auto min-h-[48px]"
                     >
                         Start Production <ArrowRight className="ml-3 w-6 h-6" />

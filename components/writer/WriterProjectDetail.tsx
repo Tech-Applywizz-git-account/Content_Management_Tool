@@ -26,6 +26,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
     const [comments, setComments] = useState<WorkflowHistoryEntry[]>([]);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
+    const [previousAssets, setPreviousAssets] = useState<{
+        video_link?: string | null;
+        edited_video_link?: string | null;
+        thumbnail_link?: string | null;
+        creative_link?: string | null;
+    } | null>(null);
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
     const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
@@ -94,44 +100,53 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 setReturnType('rework');
             }
 
-            // Fetch the most recent workflow history entry to get script content
+            // Fetch the most recent workflow history entry to get script content and comparison metadata
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
-                .select('script_content, action, comment, timestamp, actor_name')
+                .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, comment, timestamp, actor_name, metadata')
                 .eq('project_id', project.id)
                 .order('timestamp', { ascending: false })
-                .limit(1);
+                .limit(50);
 
             if (historyError) {
                 console.error('Error fetching workflow history:', historyError);
-            } else if (historyData && historyData.length > 0) {
-                // Fetch previous script version based on the latest action
-                let scriptAction = workflowState.isRework ? 'REWORK' : 'REJECTED';
-                const { data: scriptData, error: scriptError } = await supabase
-                    .from('workflow_history')
-                    .select('script_content')
-                    .eq('project_id', project.id)
-                    .eq('action', scriptAction)
-                    .order('timestamp', { ascending: false })
-                    .limit(1);
+                return;
+            }
 
-                if (scriptError) {
-                    // Handle case where script_content column doesn't exist yet
-                    if (scriptError.code === '42703') {
-                        console.warn(`script_content column not found in workflow_history table. This is expected if the migration hasn't been applied yet.`);
-                    } else {
-                        console.error('Error fetching previous script:', scriptError);
-                    }
-                } else if (scriptData && scriptData.length > 0 && scriptData[0].script_content) {
-                    setPreviousScript(scriptData[0].script_content);
-                } else {
-                    // Fallback to the script content from the latest history entry
-                    if (historyData && historyData.length > 0 && historyData[0].script_content) {
-                        setPreviousScript(historyData[0].script_content);
-                    }
+            if (historyData && historyData.length > 0) {
+                // Find most recent rework action to get "Before" state
+                const lastRework = historyData.find(h => ['REWORK', 'REJECTED'].includes(h.action));
+                // Find most recent rework submission to get metadata
+                const reworkSubmission = historyData.find(h => h.action.startsWith('REWORK_') && h.metadata);
+
+                if (lastRework || reworkSubmission) {
+                    const meta = reworkSubmission?.metadata;
+
+                    // Helper to get last history item
+                    const getLastHistoryItem = (historyStrOrArray: any) => {
+                        if (!historyStrOrArray) return null;
+                        if (Array.isArray(historyStrOrArray)) return historyStrOrArray[historyStrOrArray.length - 1];
+                        try {
+                            const parsed = typeof historyStrOrArray === 'string' ? JSON.parse(historyStrOrArray) : historyStrOrArray;
+                            if (Array.isArray(parsed)) return parsed[parsed.length - 1];
+                        } catch (e) { return null; }
+                        return null;
+                    };
+
+                    setPreviousAssets({
+                        video_link: meta?.reworked_by_role === Role.CINE ? meta.before_link : (lastRework?.video_link || getLastHistoryItem(project.cine_video_links_history)),
+                        edited_video_link: (meta?.reworked_by_role === Role.EDITOR || meta?.reworked_by_role === Role.SUB_EDITOR) ? meta.before_link : (lastRework?.edited_video_link || getLastHistoryItem(project.editor_video_links_history) || getLastHistoryItem(project.sub_editor_video_links_history)),
+                        thumbnail_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.thumbnail_link || getLastHistoryItem(project.designer_video_links_history)),
+                        creative_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.creative_link || getLastHistoryItem(project.designer_video_links_history))
+                    });
                 }
 
-                // Fetch rejection reason from project
+                // Get script content from latest history entry that has it
+                const scriptEntry = historyData.find(h => h.script_content);
+                if (scriptEntry) {
+                    setPreviousScript(scriptEntry.script_content);
+                }
+
                 if (project.rejected_reason) {
                     setRejectionReason(project.rejected_reason);
                 }
@@ -350,28 +365,70 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             <div className="space-y-4">
                                 {project.edited_video_link && (
                                     <div className="bg-white p-4 border-2 border-orange-300">
-                                        <h4 className="font-bold text-orange-800 mb-2">Edited Video</h4>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold text-orange-800">Edited Video</h4>
+                                            {previousAssets?.edited_video_link && (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 border border-orange-400">Reworked Version</span>
+                                            )}
+                                        </div>
                                         <a
                                             href={project.edited_video_link}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-blue-600 underline break-all"
+                                            className="text-blue-600 underline break-all font-medium"
                                         >
                                             {project.edited_video_link}
                                         </a>
+
+                                        {previousAssets?.edited_video_link && (
+                                            <div className="mt-4 pt-4 border-t border-dashed border-orange-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase italic">Previous Version (Before Rework)</h4>
+                                                </div>
+                                                <a
+                                                    href={previousAssets.edited_video_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-slate-500 underline break-all text-sm opacity-70"
+                                                >
+                                                    {previousAssets.edited_video_link}
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 {project.thumbnail_link && (
                                     <div className="bg-white p-4 border-2 border-orange-300">
-                                        <h4 className="font-bold text-orange-800 mb-2">Thumbnail</h4>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold text-orange-800">Thumbnail</h4>
+                                            {previousAssets?.thumbnail_link && (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 border border-orange-400">Reworked Version</span>
+                                            )}
+                                        </div>
                                         <a
                                             href={project.thumbnail_link}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-blue-600 underline break-all"
+                                            className="text-blue-600 underline break-all font-medium"
                                         >
                                             {project.thumbnail_link}
                                         </a>
+
+                                        {previousAssets?.thumbnail_link && (
+                                            <div className="mt-4 pt-4 border-t border-dashed border-orange-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase italic">Previous Version (Before Rework)</h4>
+                                                </div>
+                                                <a
+                                                    href={previousAssets.thumbnail_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-slate-500 underline break-all text-sm opacity-70"
+                                                >
+                                                    {previousAssets.thumbnail_link}
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 {!writerAlreadyActed ? (

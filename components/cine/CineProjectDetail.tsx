@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
@@ -86,6 +86,21 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         setScriptContent(decodeHtmlEntities(processedProject.data.script_content || ''));
         setIsScriptEditing(false); // Reset edit mode when project changes
         setLocalProject(processedProject);
+
+        // Set current user in db service for centralized workflow tracking
+        const setUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                db.setCurrentUser({
+                    id: session.user.id,
+                    email: session.user.email || '',
+                    full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
+                    role: Role.CINE,
+                    status: UserStatus.ACTIVE
+                });
+            }
+        };
+        setUser();
     }, [initialProject]);
 
     // Ensure state is updated when localProject changes
@@ -213,141 +228,49 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 return;
             }
 
-            // Determine if this is a rework submission based on the new workflow state logic
-            const workflowState = getWorkflowStateForRole(localProject, userRole);
-            const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            const isRejected = workflowState.isRejected;
-
-            // Record the action in workflow history before updating the project
-            const actionType = isRework ? 'REWORK_VIDEO_SUBMITTED' : 'CINE_VIDEO_UPLOADED';
-            let comment = isRework
-                ? `Rework video uploaded: ${videoLink}`
-                : `Raw video uploaded: ${videoLink}`;
-
-            // Add cinematographer comments if provided
-            if (cineComments.trim()) {
-                comment += `\n\nCinematographer Comments: ${cineComments} `;
-            } else if (localProject.data?.cine_comments) {
-                // If there are existing comments in the project data, include them
-                comment += `\n\nCinematographer Comments: ${localProject.data.cine_comments}`;
-            }
-
-            console.log('About to record workflow history with:', {
-                projectId: localProject.id,
-                fromStage: localProject.current_stage,
-                toStage: WorkflowStage.VIDEO_EDITING,
-                userId: user.id,
-                action: actionType,
-                comment: comment
-            });
-
-            await db.workflow.recordAction(
-                localProject.id,
-                localProject.current_stage, // Record action at current stage
-                user.id,
-                user.email || user.id, // userName (using email or ID as fallback)
-                actionType, // Use appropriate action value
-                comment
-            );
-
-            // Update the project with the video link and advance the workflow
-            // This will properly route to the correct next stage
-
-
-            // Update project data to persist any changes made during this session
-            // Include video_link in the update so timestamp logic can detect the upload
-            // Also clear any rework metadata to ensure proper routing from CINEMATOGRAPHY to VIDEO_EDITING
+            // Update video link and comments first
+            // We do this before advanceWorkflow to ensure the data is saved
             const updatedProjectData = {
                 ...localProject.data,
-                video_link: videoLink,
-                cine_uploaded_at: new Date().toISOString(),
-                cine_comments: cineComments.trim() || undefined, // Store cinematographer comments
-                // Clear rework metadata to ensure normal workflow routing
-                rework_initiator_role: undefined,
-                rework_initiator_stage: undefined,
-                rework_target_role: undefined
+                cine_comments: cineComments.trim() || undefined
             };
 
-            // Clear comments state after storing them in the data object
-            setCineComments('');
-
             await db.projects.update(localProject.id, {
                 video_link: videoLink,
-                cine_uploaded_at: new Date().toISOString(),
-                status: TaskStatus.WAITING_APPROVAL
+                // cine_uploaded_at will be updated by advanceWorkflow -> workflow.approve -> getTimestampUpdate
             });
 
-            // Update the project data separately to clear rework metadata
+            // Also update data object
             await db.updateProjectData(localProject.id, updatedProjectData);
 
-            // Update project stage directly to VIDEO_EDITING since cine uploaded the video
-            await db.workflow.recordAction(
-                localProject.id,
-                WorkflowStage.CINEMATOGRAPHY, // Current stage
-                user.id,
-                user.email || user.id, // userName
-                'CINE_VIDEO_UPLOADED', // specific action
-                `Raw video uploaded: ${videoLink}`
-            );
+            // Use advanceWorkflow to handle routing logic, history, and notifications matches the central logic
+            // This ensures rework routing (returning to initiator) works correctly
+            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments);
 
-            // Update project to move to VIDEO_EDITING stage
-            await db.projects.update(localProject.id, {
-                current_stage: WorkflowStage.VIDEO_EDITING,
-                assigned_to_role: Role.EDITOR,
-                status: TaskStatus.WAITING_APPROVAL
-            });
+            // Clear comments state
+            setCineComments('');
 
-            // ✅ Update local state ONLY after success
-            setLocalProject(prev => ({
-                ...prev,
-                video_link: videoLink
-            }));
+            // Update local state with the returned updated project
+            setLocalProject(updatedProject as Project);
 
-            // Get updated project to determine who to notify
-            const updatedProject = await db.getProjectById(localProject.id);
+            // Show popup notification
+            // Determine if this was a rework submission based on the UPDATED project state comparison
+            const workflowState = getWorkflowStateForRole(updatedProject as Project, userRole);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
 
-            // Find users to notify based on the next assigned role
-            if (updatedProject?.assigned_to_role) {
-                const { data: nextUsers } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('role', updatedProject.assigned_to_role)
-                    .eq('status', 'ACTIVE');
+            const actualNextStageLabel = STAGE_LABELS[updatedProject.current_stage] || (updatedProject.current_stage || 'Next Stage').replace(/_/g, ' ');
 
-                if (nextUsers && nextUsers.length > 0) {
-                    // Send notification to all users of the assigned role
-                    for (const nextUser of nextUsers) {
-                        try {
-                            // Use type assertion to access the notifications service
-                            const dbWithNotifications = db as any;
-                            await dbWithNotifications.notifications.create(
-                                nextUser.id,
-                                localProject.id,
-                                'ASSET_UPLOADED',
-                                'New Raw Video Available',
-                                `${user?.user_metadata?.full_name || 'Cinematographer'} has uploaded a raw video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
-                            );
-                        } catch (notificationError) {
-                            console.error('Failed to send notification:', notificationError);
-                            // Continue with the process even if notification fails
-                        }
-                    }
-                }
-            }
-
-            // Show popup notification using STAGE_LABELS for the actual next stage
-            const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.VIDEO_EDITING] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
             const popupMessageText = isRework
-                ? `Rework video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`
-                : `Raw video uploaded for "${localProject.title}". The project has moved to ${actualNextStageLabel}.`;
+                ? `Rework video uploaded for "${updatedProject.title}". The project has moved to ${actualNextStageLabel}.`
+                : `Raw video uploaded for "${updatedProject.title}". The project has moved to ${actualNextStageLabel}.`;
 
             setPopupMessage(popupMessageText);
-
             setStageName(actualNextStageLabel);
             // For rework scenarios, use longer duration to ensure visibility
-            setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
+            setPopupDuration(isRework ? 10000 : 5000);
             setShowPopup(true);
-        } catch (error) {
+
+        } catch (error: any) {
             console.error('Failed to upload video:', error);
             // Show more detailed error information
             if (error instanceof Error) {
@@ -479,8 +402,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             </p>
                         </div>
 
-                        {/* Display forwarded comments from CMO and CEO - Hide when in footage upload tab */}
-                        {activeFilter !== 'UPLOADED' && localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
+                        {/* Display forwarded comments from CMO and CEO - Show in all tabs */}
+                        {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
                             <div className="mb-4">
                                 <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
                                 <div className="space-y-2 ml-2">
@@ -539,6 +462,39 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <p className="text-sm text-red-800 font-bold">
                                 Please update the shoot date and/or video link below. Both old and new data will be visible for comparison.
                             </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Forwarded Comments (General) - Visible when not in rework/rejected state */}
+            {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && !isRework && !isRejected && (
+                <div className="max-w-6xl mx-auto px-6 pt-6 pb-0">
+                    <div className="bg-blue-50 border-2 border-blue-200 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-center">
+                        <h4 className="font-bold text-blue-800 mb-4 uppercase">Forwarded Reviewer Feedback</h4>
+                        <div className="space-y-3">
+                            {localProject.forwarded_comments
+                                .filter((comment: any) => ['CMO', 'CEO'].includes(comment.from_role))
+                                .map((comment: any, index: number) => (
+                                    <div key={index} className="bg-white border-l-4 border-blue-500 p-4 shadow-sm text-left">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-white bg-blue-500 px-2 py-0.5 uppercase text-xs">
+                                                    {comment.from_role}
+                                                </span>
+                                                <span className="font-bold text-slate-400 text-xs uppercase">
+                                                    {comment.action}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-400 uppercase">
+                                                {new Date(comment.created_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-slate-900 font-bold whitespace-pre-wrap">
+                                            {comment.comment}
+                                        </p>
+                                    </div>
+                                ))}
                         </div>
                     </div>
                 </div>

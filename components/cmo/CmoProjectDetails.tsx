@@ -481,13 +481,23 @@ action,
                                     fullProject.data?.source === 'IDEA_PROJECT' && fullProject.data?.script_content ? 'Script Content' : 'Content'}
                         </h3>
 
-                        <div className="border-2 border-black bg-white p-8 min-h-[300px] font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-x-auto">
+                        <div className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             {fullProject.data?.source === 'DESIGNER_INITIATED'
                                 ? fullProject.data?.creative_link || 'No creative link available.'
                                 : fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content
                                     ? <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(fullProject.data.idea_description) }} />
                                     : fullProject.data?.script_content
-                                        ? <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(fullProject.data.script_content) }} />
+                                        ? (() => {
+                                            // Decode HTML entities to properly display the content
+                                            let decodedContent = fullProject.data.script_content
+                                                .replace(/&lt;/g, '<')
+                                                .replace(/&gt;/g, '>')
+                                                .replace(/&amp;/g, '&')
+                                                .replace(/&quot;/g, '"')
+                                                .replace(/&#39;/g, "'")
+                                                .replace(/&nbsp;/g, ' ');
+                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                        })()
                                         : 'No content available.'}
                         </div>
                     </section>
