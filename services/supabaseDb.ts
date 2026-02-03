@@ -898,8 +898,7 @@ export const projects = {
         due_date: string;
         data: any;
 
-        // ✅ Creator fields
-        created_by_user_id?: string | null;
+        // Creator info for display
         created_by_name?: string | null;
         writer_id?: string | null;
         writer_name?: string | null;
@@ -916,9 +915,7 @@ export const projects = {
                 due_date: projectData.due_date,
                 data: projectData.data,
 
-                // Creator info
-                created_by: projectData.created_by_user_id ?? null, // Populate legacy column
-                created_by_user_id: projectData.created_by_user_id ?? null,
+                // Creator info (display and workflow)
                 created_by_name: projectData.created_by_name ?? null,
                 writer_id: projectData.writer_id ?? null,
                 writer_name: projectData.writer_name ?? null,
@@ -984,9 +981,12 @@ export const projects = {
             }
         }
 
+        // Remove ownership fields before update to let backend handle it
+        const { created_by, created_by_user_id, ...cleanUpdates } = updates as any;
+
         const { error } = await supabase
             .from('projects')
-            .update(updates)
+            .update(cleanUpdates)
             .eq('id', id);
 
         if (error) {
@@ -1483,7 +1483,6 @@ export const workflow = {
             status: rawProject.status,
             priority: rawProject.priority,
             due_date: rawProject.due_date,
-            created_by: rawProject.created_by,
             created_at: rawProject.created_at,
             data: rawProject.data,
             history: [], // We don't need history here
@@ -1673,8 +1672,7 @@ export const workflow = {
             // Update project
             const projectUpdateData: any = {
                 current_stage: nextStage,
-                // Preserve creator information
-                created_by_user_id: currentProject?.created_by_user_id || null,
+                // Preserve display information
                 created_by_name: currentProject?.created_by_name || null,
                 writer_id: currentProject?.writer_id || null,
                 writer_name: currentProject?.writer_name || null,
@@ -2772,8 +2770,7 @@ export const db = {
             due_date: dueDate,
             priority,
             data: {},
-            // Set creator information
-            created_by_user_id: currentUserId,
+            // Set display information
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,
@@ -2874,9 +2871,7 @@ export const db = {
                 creative_link: link, // Also store the creative link in the data object for consistency
                 source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
             },
-            // Set creator information
-            created_by: currentUserId, // For backward compatibility
-            created_by_user_id: currentUserId,
+            // Set display information
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,
@@ -2926,8 +2921,7 @@ export const db = {
                 idea_description: description, // Store the idea description
                 source: 'IDEA_PROJECT' // Track that this project was created as an idea
             },
-            // Set creator information
-            created_by_user_id: currentUserId,
+            // Set display information
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,

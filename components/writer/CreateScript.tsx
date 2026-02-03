@@ -1285,7 +1285,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             assigned_to_user_id: null, // No specific user assigned yet
             status: TaskStatus.WAITING_APPROVAL,
             due_date: project.due_date || new Date().toISOString().split('T')[0], // Use original due date or today
-            created_by_user_id: currentUser.id,
             created_by_name: currentUser.full_name,
             writer_id: currentUser.id,
             writer_name: currentUser.full_name,
@@ -1338,7 +1337,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.priority
           );
           await (db.projects.update as any)(createdProject.id, {
-            created_by_user_id: currentUser.id,
             created_by_name: currentUser.full_name,
             assigned_to_user_id: currentUser.id,
             writer_id: currentUser.id,

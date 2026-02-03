@@ -77,8 +77,7 @@ export interface Project {
   status: TaskStatus;
   priority: Priority;
   due_date: string;
-  created_by: string; // User ID of the creator (deprecated, use created_by_user_id instead)
-  created_by_user_id?: string; // User ID of the creator
+  created_by_user_id?: string; // User ID of the creator (managed by backend)
   created_by_name?: string; // Name of the creator
   writer_id?: string; // User ID of the writer (optional)
   writer_name?: string; // Name of the writer (optional)

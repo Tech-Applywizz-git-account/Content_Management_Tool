@@ -44,7 +44,6 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
             status: item.status,
             priority: item.priority,
             due_date: item.due_date,
-            created_by: item.created_by,
             created_by_user_id: item.created_by_user_id,
             created_by_name: item.created_by_name,
             writer_id: item.writer_id,

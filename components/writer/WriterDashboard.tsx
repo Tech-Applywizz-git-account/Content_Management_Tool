@@ -103,7 +103,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             // project explicitly assigned to this writer
 
             // OR project created by this writer
-            p.created_by === user.id ||
             p.created_by_user_id === user.id ||
 
             // OR project currently with writer (important for rework)
@@ -134,7 +133,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             title: p.title,
             stage: p.current_stage,
             status: p.status,
-            created_by: p.created_by
+            created_by_user_id: p.created_by_user_id
         }))
     );
     // Use inboxProjects for dashboard view (role-based filtering)
