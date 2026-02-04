@@ -887,18 +887,16 @@ export const projects = {
         title: string;
         channel: Channel;
         content_type: ContentType;
-
-        // ✅ ADD THESE
         current_stage?: WorkflowStage;
         status?: TaskStatus;
-
         assigned_to_role: Role;
         assigned_to_user_id?: string;
         priority?: Priority;
         due_date: string;
         data: any;
 
-        // Creator info for display
+        // Creator info (display and workflow)
+        created_by_user_id?: string | null;
         created_by_name?: string | null;
         writer_id?: string | null;
         writer_name?: string | null;
@@ -916,6 +914,7 @@ export const projects = {
                 data: projectData.data,
 
                 // Creator info (display and workflow)
+                created_by_user_id: projectData.created_by_user_id ?? null,
                 created_by_name: projectData.created_by_name ?? null,
                 writer_id: projectData.writer_id ?? null,
                 writer_name: projectData.writer_name ?? null,
@@ -2409,11 +2408,21 @@ export const aiTools = {
         const FUNCTION_URL = 'https://kifpnlyljlxppuzizmsf.supabase.co/functions/v1/open-ai';
 
         try {
+            // Get the active Supabase session
+            const { data: { session }, error } = await supabase.auth.getSession();
+
+            if (error || !session) {
+                throw new Error('No active session found to authorize Edge Function');
+            }
+
+
+
             const response = await fetch(FUNCTION_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'apikey': supabaseKey
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({ text })
             });
@@ -2771,6 +2780,7 @@ export const db = {
             priority,
             data: {},
             // Set display information
+            created_by_user_id: currentUserId,
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,
@@ -2872,6 +2882,7 @@ export const db = {
                 source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
             },
             // Set display information
+            created_by_user_id: currentUserId,
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,
@@ -2922,6 +2933,7 @@ export const db = {
                 source: 'IDEA_PROJECT' // Track that this project was created as an idea
             },
             // Set display information
+            created_by_user_id: currentUserId,
             created_by_name: currentUserFullName,
             writer_id: currentUserId,
             writer_name: currentUserFullName,

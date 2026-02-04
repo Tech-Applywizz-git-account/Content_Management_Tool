@@ -267,12 +267,43 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   }, []);
 
 
-  // Function to check grammar and spelling using the central Edge Function
+  // Function to check grammar and spelling using OpenAI API
   const checkGrammarAndSpelling = async (text: string) => {
     try {
-      // Use the centralized aiTools service which calls the new Edge Function
-      const data = await db.aiTools.checkGrammar(text);
+      // Normalize text: clean whitespace but preserve structure
+      const normalizedText = text.replace(/\s+/g, ' ').trim();
 
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      // Add AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      let data;
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/openai-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'apikey': supabaseAnonKey,
+          },
+          body: JSON.stringify({ text: normalizedText }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Service error: ${response.status}`);
+        }
+
+        data = await response.json();
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') throw new Error('Correction request timed out. Please try again.');
+        throw fetchErr;
+      }
 
       const issues = data.issues || [];
       const errors: any[] = [];
@@ -285,11 +316,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
         // Find all occurrences of the incorrect string in the ORIGINAL text
         let searchIndex = 0;
-        let matchFound = false;
-
-        // We stick to the original text for searching
         while ((searchIndex = text.indexOf(incorrect, searchIndex)) !== -1) {
-          matchFound = true;
           const startIndex = searchIndex;
           const endIndex = startIndex + incorrect.length;
 
@@ -311,10 +338,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             break; // Just pick the first non-overlapping match for this issue
           }
           searchIndex++;
-        }
-
-        if (!matchFound) {
-          console.warn(`Could not find incorrect text "${incorrect}" in original content. This may be due to whitespace differences.`);
         }
       });
 
@@ -1285,6 +1308,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             assigned_to_user_id: null, // No specific user assigned yet
             status: TaskStatus.WAITING_APPROVAL,
             due_date: project.due_date || new Date().toISOString().split('T')[0], // Use original due date or today
+            created_by_user_id: currentUser.id,
             created_by_name: currentUser.full_name,
             writer_id: currentUser.id,
             writer_name: currentUser.full_name,
@@ -1337,10 +1361,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.priority
           );
           await (db.projects.update as any)(createdProject.id, {
+            created_by_user_id: currentUser.id,
             created_by_name: currentUser.full_name,
-            assigned_to_user_id: currentUser.id,
-            writer_id: currentUser.id,
-            writer_name: currentUser.full_name
+            assigned_to_user_id: currentUser.id
           });
 
           // Update project data with writer information
@@ -1362,8 +1385,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             ...formData,
           };
 
-          const updatesForColumns: any = {};
-
           if (creatorRole === Role.CMO) {
             // Store CMO information
             updateData.cmo_id = currentUser?.id;
@@ -1372,19 +1393,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             // Default to Writer information
             updateData.writer_id = currentUser?.id;
             updateData.writer_name = currentUser?.full_name;
-
-            // Also update top-level columns
-            updatesForColumns.writer_id = currentUser?.id;
-            updatesForColumns.writer_name = currentUser?.full_name;
           }
 
           await db.updateProjectData(realProjectId, updateData);
-
-          // Update top-level columns if needed
-          if (Object.keys(updatesForColumns).length > 0) {
-            await (db.projects.update as any)(realProjectId, updatesForColumns);
-          }
-
           console.log('✅ Existing project data updated');
         }
 
