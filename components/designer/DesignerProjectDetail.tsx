@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus, User } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
@@ -18,6 +18,9 @@ interface Props {
 }
 
 const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [userError, setUserError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     // For rework projects, keep existing data but track new inputs
     const processedProject = { ...project };
 
@@ -62,20 +65,30 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         setCreativeLink(processedProject.creative_link || '');
         setLocalProject(project); // Update localProject when the prop changes
 
-        // Set current user in db service for centralized workflow tracking
-        const setUser = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                db.setCurrentUser({
-                    id: session.user.id,
-                    email: session.user.email || '',
-                    full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
-                    role: Role.DESIGNER,
-                    status: UserStatus.ACTIVE
-                });
+        // Load public user profile on mount
+        // Requirement: Fetch public.users record ONCE using the logged-in user's email
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setUserError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
             }
         };
-        setUser();
+        loadUser();
     }, [project]);
 
     const handleSetDeliveryDate = async () => {
@@ -85,21 +98,20 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         }
 
         try {
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Record the action in workflow history
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // stage
-                user.id,
-                user.email || user.id, // userName (using email or ID as fallback)
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id, // userName
                 'SET_DELIVERY_DATE', // specific action
                 `Delivery date set to ${deliveryDate}`
             );
@@ -130,14 +142,13 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         }
 
         try {
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Record the action in workflow history with appropriate action type
             const actionType = isRework ? 'REWORK_DESIGN_SUBMITTED' : 'DESIGNER_ASSET_UPLOADED';
@@ -148,8 +159,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // Record action at current stage
-                user.id,
-                user.email || user.id, // userName (using email or ID as fallback)
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id, // userName
                 actionType, // Use appropriate action value
                 comment
             );
@@ -176,7 +187,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             await db.projects.update(localProject.id, {
                 ...updates,
                 designer_uploaded_at: new Date().toISOString(), // Store timestamp
-                designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
+                designer_name: publicUser.full_name || publicUser?.email || 'Unknown Designer', // Store designer name in direct column
             });
 
             // Update project data to persist any changes made during this session
@@ -218,7 +229,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 localProject.id,
                                 'ASSET_UPLOADED',
                                 'New Thumbnail/Creative Available',
-                                `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+                                `${publicUser?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
                             );
                         } catch (notificationError) {
                             console.error('Failed to send notification:', notificationError);
@@ -253,21 +264,20 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         }
 
         try {
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Record the action in workflow history
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // Record action at current stage
-                user.id,
-                user.email || user.id, // userName (using email or ID as fallback)
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id, // userName
                 'DIRECT_UPLOAD', // Use direct upload action
                 `Direct ${isVideo ? 'thumbnail' : 'creative'} upload: ${link}`
             );
@@ -284,7 +294,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             await db.projects.update(localProject.id, {
                 ...updates,
                 designer_uploaded_at: new Date().toISOString(), // Store timestamp
-                designer_name: user?.user_metadata?.full_name || user?.email || 'Unknown Designer', // Store designer name in direct column
+                designer_name: publicUser.full_name || publicUser?.email || 'Unknown Designer', // Store designer name in direct column
                 data: {
                     ...localProject.data
                 }
@@ -293,8 +303,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             // Skip to CMO review stage directly
             await db.workflow.approve(
                 localProject.id,
-                user.id,
-                user.email || user.id,
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id,
                 userRole,
                 WorkflowStage.FINAL_REVIEW_CMO, // Skip to CMO review
                 Role.CMO,
@@ -324,7 +334,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             localProject.id,
                             'ASSET_UPLOADED',
                             'New Direct Upload Available',
-                            `${user?.user_metadata?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} directly for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'Final Review CMO'}.`
+                            `${publicUser?.full_name || 'Designer'} has uploaded ${isVideo ? 'a thumbnail' : 'a creative'} directly for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[WorkflowStage.FINAL_REVIEW_CMO] || 'Final Review CMO'}.`
                         );
                     } catch (notificationError) {
                         console.error('Failed to send notification:', notificationError);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Project, WorkflowStage, STAGE_LABELS, Role } from '../../types';
-import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
+import { Project, WorkflowStage, STAGE_LABELS, Role, User as PublicUser } from '../../types';
+import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
@@ -130,6 +130,8 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
     const [selectedRoleForRework, setSelectedRoleForRework] = useState('');
     const [hasBeenRejected, setHasBeenRejected] = useState(false);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
+    const [publicUser, setPublicUser] = useState<PublicUser | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -146,6 +148,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     action,
                     comment,
                     actor_name,
+                    actor_id,
                     timestamp
                 `)
                 .eq('project_id', project.id)
@@ -163,7 +166,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
 
                 // Check if current writer has already approved or rejected this project
                 const currentUserAction = commentsData?.find(comment =>
-                    comment.actor_id === user?.id &&
+                    comment.actor_id === (publicUser?.id || user?.id) &&
                     (comment.action === 'APPROVED' || comment.action === 'REJECTED')
                 );
 
@@ -177,21 +180,39 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             }
         };
 
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as PublicUser);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+
+        loadUser();
         fetchData();
-    }, [project.id]);
+    }, [project.id, publicUser?.id]);
 
     const handleApprove = async () => {
+        if (!publicUser?.id) {
+            alert('User profile not loaded. Please refresh and try again.');
+            return;
+        }
+
         try {
             setLoading(true);
+            setIsSubmitting(true);
             setError(null);
-
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
 
             // Get the current approval status before approving
             const { data: currentApprovals, error: approvalsError } = await supabase
@@ -213,16 +234,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             const totalWriters = allWriters?.length || 0;
             const newApprovedCount = currentApprovedCount + 1;
 
-            // Use the centralized db service to approve the project
-            // Set the current user in the db service with proper User interface
-            db.setCurrentUser({
-                id: user.id,
-                email: user.email || '',
-                full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
-                role: 'WRITER' as any,
-                status: UserStatus.ACTIVE
-            });
-
             // Determine the next stage automatically
             const nextStageInfo = db.helpers.getNextStage(
                 project.current_stage,
@@ -234,8 +245,8 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             // Call the workflow approve function with correctly calculated next stage/role
             await db.workflow.approve(
                 project.id,
-                user.id,
-                user.user_metadata?.full_name || user.email || 'Unknown User',
+                publicUser.id,
+                publicUser.full_name || publicUser.email || 'Unknown User',
                 Role.WRITER,
                 nextStageInfo.stage,
                 nextStageInfo.role,
@@ -268,38 +279,26 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             }, 5500); // 5 seconds popup + 500ms buffer
         } catch (err: any) {
             console.error('Failed to approve video:', err);
-            // Show error popup
             setPopupMessage('Failed to approve video. Please try again.');
             setStageName('Error');
             setPopupDuration(5000);
             setShowPopup(true);
         } finally {
             setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
     const handleReject = async (reworkComment: string, roleForRework?: string) => {
+        if (!publicUser?.id) {
+            alert('User profile not loaded. Please refresh and try again.');
+            return;
+        }
+
         try {
             setLoading(true);
+            setIsSubmitting(true);
             setError(null);
-
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                throw new Error('User not authenticated');
-            }
-
-            // Use the centralized db service to reject the project
-            // Set the current user in the db service with proper User interface
-            db.setCurrentUser({
-                id: user.id,
-                email: user.email || '',
-                full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
-                role: 'WRITER' as any,
-                status: UserStatus.ACTIVE
-            });
 
             // Determine the stage to return the project to based on the selected role
             let targetStage;
@@ -318,7 +317,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             await db.rejectTask(project.id, targetStage, reworkComment || 'Writer rejected the video - needs rework');
 
             // Update the project to ensure it's not assigned to the writer anymore
-            // This ensures the project doesn't show in the writer's dashboard anymore
             await db.updateProjectData(project.id, {
                 assigned_to_role: roleForRework,
                 assigned_to_user_id: null  // Clear specific user assignment
@@ -336,20 +334,15 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             }, 5500); // 5 seconds popup + 500ms buffer
         } catch (err: any) {
             console.error('Failed to reject video:', err);
-            // Show error popup
             setPopupMessage('Failed to reject video. Please try again.');
             setStageName('Error');
             setPopupDuration(5000);
             setShowPopup(true);
         } finally {
             setLoading(false);
+            setIsSubmitting(false);
         }
     };
-
-    // Use the new workflow state logic
-    const workflowState = getWorkflowState(project);
-    const isRework = workflowState.isRework;
-    const isRejected = workflowState.isRejected;
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">
@@ -389,7 +382,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 border-2 border-black">
                                 <div className="flex items-center space-x-2 mb-2">
-                                    <User className="w-5 h-5 text-orange-600" />
+                                    <UserIcon className="w-5 h-5 text-orange-600" />
                                     <span className="text-xs font-bold uppercase text-slate-500">Current Stage</span>
                                 </div>
                                 <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
@@ -433,29 +426,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Video Content</h3>
 
                         <div className="space-y-6">
-                            {/* Show all available asset links */}
-                            {/* Show cinematographer video links history */}
-                            {project.cine_video_links_history && project.cine_video_links_history.length > 0 && (
-                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Raw Videos (from Cinematographer)</h4>
-                                    <div className="space-y-2">
-                                        {project.cine_video_links_history.map((link, index) => (
-                                            <div key={`prev-cine-${index}`} className="flex items-center">
-                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
-                                                <a
-                                                    href={link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 underline break-all"
-                                                >
-                                                    {link}
-                                                </a>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Raw Video (from Cinematographer)</h4>
@@ -467,28 +437,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     >
                                         {project.video_link}
                                     </a>
-                                </div>
-                            )}
-
-                            {/* Show edited video links history */}
-                            {project.editor_video_links_history && project.editor_video_links_history.length > 0 && (
-                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Edited Videos (from Editor)</h4>
-                                    <div className="space-y-2">
-                                        {project.editor_video_links_history.map((link, index) => (
-                                            <div key={`prev-edited-${index}`} className="flex items-center">
-                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
-                                                <a
-                                                    href={link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 underline break-all"
-                                                >
-                                                    {link}
-                                                </a>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
                             )}
 
@@ -506,28 +454,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
-                            {/* Show thumbnail links history */}
-                            {project.designer_video_links_history && project.designer_video_links_history.length > 0 && (
-                                <div className="bg-gray-100 p-6 border-2 border-gray-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Previous Thumbnails/Creatives (from Designer)</h4>
-                                    <div className="space-y-2">
-                                        {project.designer_video_links_history.map((link, index) => (
-                                            <div key={`prev-design-${index}`} className="flex items-center">
-                                                <span className="text-xs font-bold bg-gray-200 px-2 py-1 mr-2">OLD #{index + 1}</span>
-                                                <a
-                                                    href={link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 underline break-all"
-                                                >
-                                                    {link}
-                                                </a>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
                             {project.thumbnail_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">Thumbnail (from Designer)</h4>
@@ -542,27 +468,11 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
-                            {project.creative_link && (
-                                <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Creative Design (from Designer)</h4>
-                                    <a
-                                        href={project.creative_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline break-all"
-                                    >
-                                        {project.creative_link}
-                                    </a>
+                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link) && (
+                                <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
+                                    <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
                                 </div>
                             )}
-
-                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link && !project.creative_link &&
-                                !(project.editor_video_links_history && project.editor_video_links_history.length > 0) &&
-                                !(project.designer_video_links_history && project.designer_video_links_history.length > 0)) && (
-                                    <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
-                                        <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
-                                    </div>
-                                )}
                         </div>
                     </div>
 
@@ -573,7 +483,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <h3 className="font-black text-red-800 mb-2">Project Already Rejected</h3>
                                 <p className="text-red-700">
                                     Another writer has already rejected this project. No further actions can be taken.
-                                    The project has been sent back for rework.
                                 </p>
                             </div>
                         ) : writerAlreadyActed ? (
@@ -581,7 +490,6 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <h3 className="font-black text-green-800 mb-2">Action Already Taken</h3>
                                 <p className="text-green-700">
                                     You have already acted on this project.
-                                    No further action is required from you.
                                 </p>
                             </div>
                         ) : (
@@ -611,33 +519,29 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     </div>
 
                     {/* Comments Section */}
-                    {(comments.length > 0 || isRejected) && (
+                    {comments.length > 0 && (
                         <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex items-center space-x-2 mb-6">
                                 <MessageSquare className="w-6 h-6" />
                                 <h3 className="text-xl font-black uppercase text-slate-900">Comments & Feedback</h3>
                             </div>
 
-                            {comments.length > 0 ? (
-                                <div className="space-y-6">
-                                    {comments.map((comment, index) => (
-                                        <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <p className="font-bold text-slate-900">{comment.actor_name}</p>
-                                                    <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
-                                                </div>
-                                                <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                    {comment.action}
-                                                </span>
+                            <div className="space-y-6">
+                                {comments.map((comment, index) => (
+                                    <div key={index} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : 'border-red-500'}`}>
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold text-slate-900">{comment.actor_name}</p>
+                                                <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
                                             </div>
-                                            <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                            <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                {comment.action}
+                                            </span>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-slate-500 italic">No comments yet</p>
-                            )}
+                                        <p className="mt-2 text-slate-700">{comment.comment}</p>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -678,19 +582,15 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                         <textarea
                                             value={reworkComment}
                                             onChange={(e) => setReworkComment(e.target.value)}
-                                            placeholder="Enter specific feedback for the selected role..."
+                                            placeholder="Enter feedback..."
                                             className="w-full p-3 border-2 border-black text-sm focus:bg-yellow-50 focus:outline-none h-32 resize-none"
                                         />
                                     </div>
 
                                     <div className="flex justify-end space-x-3 pt-4">
                                         <button
-                                            onClick={() => {
-                                                setShowRejectModal(false);
-                                                setReworkComment('');
-                                                setSelectedRoleForRework('');
-                                            }}
-                                            className="px-4 py-2 border-2 border-black text-black font-bold uppercase hover:bg-slate-100 transition-colors"
+                                            onClick={() => setShowRejectModal(false)}
+                                            className="px-4 py-2 border-2 border-black text-black font-bold uppercase hover:bg-slate-100"
                                         >
                                             Cancel
                                         </button>
@@ -699,12 +599,10 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                                 if (reworkComment.trim() && selectedRoleForRework.trim()) {
                                                     handleReject(reworkComment.trim(), selectedRoleForRework);
                                                     setShowRejectModal(false);
-                                                    setReworkComment('');
-                                                    setSelectedRoleForRework('');
                                                 }
                                             }}
                                             disabled={!reworkComment.trim() || !selectedRoleForRework.trim()}
-                                            className="px-4 py-2 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="px-4 py-2 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] disabled:opacity-50"
                                         >
                                             Submit Rework
                                         </button>
@@ -716,14 +614,12 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 </div>
             </div>
 
-            {/* Popup */}
             {showPopup && (
                 <Popup
                     message={popupMessage}
                     stageName={stageName}
                     onClose={() => {
                         setShowPopup(false);
-                        // Navigate back when popup is manually closed
                         onApprove();
                     }}
                     duration={popupDuration}

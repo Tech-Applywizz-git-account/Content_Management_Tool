@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS, UserStatus } from '../../types';
+import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS, UserStatus, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -19,6 +19,9 @@ interface Props {
 }
 
 const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, onLogout, onNavigateToView, fromView }) => {
+  const [publicUser, setPublicUser] = useState<User | null>(null);
+  const [userError, setUserError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeView, setActiveView] = React.useState('project-detail'); // Track the current view
   const [localProject, setLocalProject] = useState<Project>(initialProject);
   const [deliveryDate, setDeliveryDate] = useState(initialProject.delivery_date || '');
@@ -45,20 +48,30 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
     setEditedVideoLink(initialProject.edited_video_link || '');
     setLocalProject(initialProject);
 
-    // Set current user in db service for centralized workflow tracking
-    const setUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        db.setCurrentUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
-          role: Role.SUB_EDITOR,
-          status: UserStatus.ACTIVE
-        });
+    // Load public user profile on mount
+    // Requirement: Fetch public.users record ONCE using the logged-in user's email
+    const loadUser = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.email) {
+          const { data: pUser, error: pError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', authUser.email)
+            .single();
+
+          if (!pError && pUser) {
+            setPublicUser(pUser as User);
+          } else {
+            console.error('Error fetching public user:', pError);
+            setUserError('User profile not found in database. Please contact support.');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user:', err);
       }
     };
-    setUser();
+    loadUser();
   }, [initialProject]);
 
   const handleSetDeliveryDate = async () => {
@@ -68,23 +81,21 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
     }
 
     try {
-      setLoading(true);
-
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) {
-        alert('User not authenticated');
+      // HARD GUARD: Prevent submission if publicUser.id is missing
+      if (!publicUser?.id) {
+        alert('User profile not loaded. Please refresh and try again.');
         return;
       }
+
+      setIsSubmitting(true);
+      setLoading(true);
 
       // Record the action in workflow history
       await db.workflow.recordAction(
         localProject.id,
         localProject.current_stage!,
-        user.id,
-        user.email || user.id,
+        publicUser.id,
+        publicUser.full_name || publicUser.email || publicUser.id,
         'SUB_EDITOR_SET_DELIVERY_DATE',
         `Delivery date set to ${deliveryDate}`
       );
@@ -120,25 +131,23 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
 
   const handleRescheduleDelivery = async () => {
     try {
-      setLoading(true);
-
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) {
-        alert('User not authenticated');
+      // HARD GUARD: Prevent submission if publicUser.id is missing
+      if (!publicUser?.id) {
+        alert('User profile not loaded. Please refresh and try again.');
         return;
       }
+
+      setIsSubmitting(true);
+      setLoading(true);
 
       // Record the action in workflow history
       await db.workflow.recordAction(
         localProject.id,
         localProject.current_stage!,
-        user.id,
-        user.email || user.id,
+        publicUser.id,
+        publicUser.full_name || publicUser.email || publicUser.id,
         'SUB_EDITOR_RESCHEDULE_DELIVERY',
-        `Delivery date cleared by ${user.email || user.id}`
+        `Delivery date cleared by ${publicUser.full_name || publicUser.email || publicUser.id}`
       );
 
       // Update the project to clear the delivery date
@@ -184,16 +193,14 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
     }
 
     try {
-      setLoading(true);
-
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) {
-        alert('User not authenticated');
+      // HARD GUARD: Prevent submission if publicUser.id is missing
+      if (!publicUser?.id) {
+        alert('User profile not loaded. Please refresh and try again.');
         return;
       }
+
+      setIsSubmitting(true);
+      setLoading(true);
 
       // Record the action in workflow history with appropriate action type
       const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUB_EDITOR_VIDEO_UPLOADED';
@@ -207,8 +214,8 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       await db.workflow.recordAction(
         localProject.id,
         localProject.current_stage!, // Record action at current stage
-        user.id,
-        user.user_metadata?.full_name || user.email || user.id, // UserName
+        publicUser.id,
+        publicUser.full_name || publicUser.email || publicUser.id, // UserName
         actionType, // Use appropriate action value
         comment,
         Role.SUB_EDITOR, // actor_role
@@ -222,10 +229,10 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       await db.projects.update(localProject.id, {
         edited_video_link: editedVideoLink,
         editor_uploaded_at: new Date().toISOString(), // Store timestamp for audit trail
-        sub_editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Store sub-editor name
+        sub_editor_name: publicUser.full_name || publicUser.email || 'Unknown Sub-Editor', // Store sub-editor name
         edited_by_role: 'SUB_EDITOR', // Track who actually edited
-        edited_by_user_id: user.id, // Track the specific user
-        edited_by_name: user?.user_metadata?.full_name || user?.email || 'Unknown Sub-Editor', // Track the name
+        edited_by_user_id: publicUser.id, // Track the specific user
+        edited_by_name: publicUser.full_name || publicUser.email || 'Unknown Sub-Editor', // Track the name
         edited_at: new Date().toISOString(), // Track when edited
         status: TaskStatus.WAITING_APPROVAL, // Set appropriate status
         data: {
@@ -294,7 +301,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 localProject.id,
                 'ASSET_UPLOADED',
                 'New Edited Video Available',
-                `${user?.user_metadata?.full_name || 'Sub-Editor'} has uploaded an edited video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[postWorkflowProject.current_stage] || postWorkflowProject.current_stage.replace(/_/g, ' ')}.`
+                `${publicUser.full_name || 'Sub-Editor'} has uploaded an edited video for: ${localProject.title}. Please review and proceed with ${STAGE_LABELS[postWorkflowProject.current_stage] || postWorkflowProject.current_stage.replace(/_/g, ' ')}.`
               );
             } catch (notificationError) {
               console.error('Failed to send notification:', notificationError);

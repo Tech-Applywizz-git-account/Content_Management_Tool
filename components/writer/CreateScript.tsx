@@ -102,6 +102,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const [canEdit, setCanEdit] = useState(true);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [publicUser, setPublicUser] = useState<any>(null);
   const [formData, setFormData] = useState<ProjectData>({
     ...(parsedProjectData || {}),
     script_content: parsedProjectData?.script_content || '',
@@ -734,6 +735,20 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         const user = await db.getCurrentUser();
         if (user) {
           setCurrentUser(user);
+
+          // Fetch the public user once using the logged-in user's email
+          const { data: pUser, error: pError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', user.email)
+            .single();
+
+          if (!pError && pUser) {
+            setPublicUser(pUser);
+          } else {
+            console.error('Error fetching public user:', pError);
+            setError('User profile not found in database. Please contact support.');
+          }
         } else {
           setError('No user session found');
         }
@@ -780,7 +795,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         // Writer can edit/delete ONLY if:
         // 1. The project was created by the writer
         // 2. CMO or CEO has not opened the project
-        const isCreator = project.created_by_user_id === currentUser.id;
+        const isCreator = project.created_by_user_id === publicUser.id;
 
         if (!isCreator) {
           setCanEdit(false);
@@ -1201,13 +1216,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
 
   const handleSaveDraft = async () => {
+    if (!publicUser?.id) {
+      alert('User profile not loaded. Please refresh and try again.');
+      return;
+    }
     console.log('🚀 Starting save draft process');
     if (project) {
       console.log('Updating existing project data...');
       try {
         await db.updateProjectData(project.id, {
           ...formData,
-          writer_id: currentUser?.id,
+          writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
         console.log('✅ Project data updated successfully');
@@ -1259,7 +1278,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         console.log('Created project with ID:', createdProject.id);
         await db.updateProjectData(createdProject.id, {
           ...formData,
-          writer_id: currentUser?.id,
+          writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
         console.log('✅ Project data saved successfully');
@@ -1279,6 +1298,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   // Main submit function that handles all workflow scenarios
   const handleSubmitForReview = async () => {
+    if (!publicUser?.id) {
+      alert('User profile not loaded. Please refresh and try again.');
+      return;
+    }
     setIsSubmitting(true);
     console.log('🚀 Starting submit process');
 
@@ -1308,9 +1331,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             assigned_to_user_id: null, // No specific user assigned yet
             status: TaskStatus.WAITING_APPROVAL,
             due_date: project.due_date || new Date().toISOString().split('T')[0], // Use original due date or today
-            created_by_user_id: currentUser.id,
+            created_by_user_id: publicUser.id,
             created_by_name: currentUser.full_name,
-            writer_id: currentUser.id,
+            writer_id: publicUser.id,
             writer_name: currentUser.full_name,
             data: {
               source: 'SCRIPT_FROM_IDEA',
@@ -1338,7 +1361,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         await db.workflow.recordAction(
           newScript.id,
           WorkflowStage.SCRIPT_REVIEW_L1,
-          currentUser.id,
+          publicUser.id,
           currentUser.full_name,
           'SUBMITTED',
           'Script created from CEO-approved idea',
@@ -1361,15 +1384,15 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.priority
           );
           await (db.projects.update as any)(createdProject.id, {
-            created_by_user_id: currentUser.id,
+            created_by_user_id: publicUser.id,
             created_by_name: currentUser.full_name,
-            assigned_to_user_id: currentUser.id
+            assigned_to_user_id: publicUser.id
           });
 
           // Update project data with writer information
           await db.updateProjectData(createdProject.id, {
             ...formData,
-            writer_id: currentUser.id,
+            writer_id: publicUser.id,
             writer_name: currentUser.full_name
           });
 
@@ -1387,11 +1410,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
           if (creatorRole === Role.CMO) {
             // Store CMO information
-            updateData.cmo_id = currentUser?.id;
+            updateData.cmo_id = publicUser.id;
             updateData.cmo_name = currentUser?.full_name;
           } else {
             // Default to Writer information
-            updateData.writer_id = currentUser?.id;
+            updateData.writer_id = publicUser.id;
             updateData.writer_name = currentUser?.full_name;
           }
 
@@ -1517,7 +1540,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               await db.workflow.recordAction(
                 realProjectId,
                 targetStage as WorkflowStage,
-                currentUser.id,
+                publicUser.id,
                 currentUser.full_name,
                 'SUBMITTED',
                 'Idea resubmitted after rework',
@@ -1586,7 +1609,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             await db.workflow.recordAction(
               realProjectId,
               targetStage as WorkflowStage,
-              currentUser.id,
+              publicUser.id,
               currentUser.full_name,
               'SUBMITTED',
               'Resubmitted after rework',
@@ -1629,7 +1652,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             await db.workflow.recordAction(
               realProjectId,
               WorkflowStage.SCRIPT_REVIEW_L1,
-              currentUser.id,
+              publicUser.id,
               currentUser.full_name,
               'SUBMITTED',
               'Script created from CEO-approved idea',
@@ -1659,7 +1682,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             await db.workflow.recordAction(
               realProjectId,
               targetStage,
-              currentUser.id,
+              publicUser.id,
               currentUser.full_name,
               'SUBMITTED',
               'Script submitted for CMO review',

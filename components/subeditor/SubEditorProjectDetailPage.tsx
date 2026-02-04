@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
+import { Project, Role, WorkflowStage, TaskStatus, User } from '../../types';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -10,10 +10,12 @@ import Layout from '../Layout';
 import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
 
 const SubEditorProjectDetailPage: React.FC<{
-    user: { full_name: string; role: Role };
+    user: User;
     onLogout: () => void;
     projects?: Project[];
 }> = ({ user, onLogout, projects = [] }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [userError, setUserError] = useState<string | null>(null);
     const { projectId } = useParams<{ projectId: string }>();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -88,6 +90,33 @@ const SubEditorProjectDetailPage: React.FC<{
         loadProject();
     }, [projectId]);
 
+    // Load public user profile on mount
+    // Requirement: Fetch public.users record ONCE using the logged-in user's email
+    useEffect(() => {
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setUserError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+        loadUser();
+    }, []);
+
     // Workflow state and permissions
     const workflowState = project ? getWorkflowStateForRole(project, user.role) : null;
     const isRework = workflowState?.isTargetedRework || workflowState?.isRework || false;
@@ -132,21 +161,19 @@ const SubEditorProjectDetailPage: React.FC<{
         }
 
         try {
-            setLoadingAction(true);
-
-            const { data: { session } } = await supabase.auth.getSession();
-            const currentUser = session?.user;
-
-            if (!currentUser) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setLoadingAction(true);
 
             await db.workflow.recordAction(
                 project.id,
                 project.current_stage!,
-                currentUser.id,
-                currentUser.email || currentUser.id,
+                publicUser.id,
+                publicUser.email || publicUser.id,
                 'SUB_EDITOR_SET_DELIVERY_DATE',
                 `Delivery date set to ${deliveryDate}`
             );
@@ -186,15 +213,13 @@ const SubEditorProjectDetailPage: React.FC<{
         }
 
         try {
-            setLoadingAction(true);
-
-            const { data: { session } } = await supabase.auth.getSession();
-            const currentUser = session?.user;
-
-            if (!currentUser) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setLoadingAction(true);
 
             const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'SUB_EDITOR_VIDEO_UPLOADED';
             const comment = isRework
@@ -206,8 +231,8 @@ const SubEditorProjectDetailPage: React.FC<{
             await db.workflow.recordAction(
                 project.id,
                 project.current_stage!,
-                currentUser.id,
-                currentUser.user_metadata?.full_name || currentUser.email || currentUser.id,
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id,
                 actionType,
                 comment,
                 Role.SUB_EDITOR,
@@ -218,10 +243,10 @@ const SubEditorProjectDetailPage: React.FC<{
             await db.projects.update(project.id, {
                 edited_video_link: editedVideoLink,
                 editor_uploaded_at: new Date().toISOString(),
-                sub_editor_name: currentUser?.user_metadata?.full_name || currentUser?.email || 'Unknown Sub-Editor',
+                sub_editor_name: publicUser.full_name || publicUser?.email || 'Unknown Sub-Editor',
                 edited_by_role: 'SUB_EDITOR',
-                edited_by_user_id: currentUser.id,
-                edited_by_name: currentUser?.user_metadata?.full_name || currentUser?.email || 'Unknown Sub-Editor',
+                edited_by_user_id: publicUser.id,
+                edited_by_name: publicUser.full_name || publicUser?.email || 'Unknown Sub-Editor',
                 edited_at: new Date().toISOString(),
                 status: TaskStatus.WAITING_APPROVAL,
                 data: {

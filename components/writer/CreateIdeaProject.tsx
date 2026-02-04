@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Channel, Project, ContentType, TaskStatus, WorkflowStage, Role } from '../../types';
+import { Channel, Project, ContentType, TaskStatus, WorkflowStage, Role, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Send } from 'lucide-react';
@@ -12,14 +12,37 @@ interface Props {
 }
 
 const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => {
-  const [title, setTitle] = useState('');
-  const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
-  const [contentType, setContentType] = useState<ContentType>('CREATIVE_ONLY');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<'HIGH' | 'NORMAL' | 'LOW'>('NORMAL');
-  const [thumbnailReferenceLink, setThumbnailReferenceLink] = useState('');
+  const [publicUser, setPublicUser] = useState<User | null>(null);
+  const [userError, setUserError] = useState<string | null>(null);
 
   const isRework = project?.status === 'REWORK';
+
+  // Load public user profile on mount
+  // Requirement: Fetch public.users record ONCE using the logged-in user's email
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.email) {
+          const { data: pUser, error: pError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', authUser.email)
+            .single();
+
+          if (!pError && pUser) {
+            setPublicUser(pUser as User);
+          } else {
+            console.error('Error fetching public user:', pError);
+            setUserError('User profile not found in database. Please contact support.');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user:', err);
+      }
+    };
+    loadUser();
+  }, []);
 
 
   // Initialize form state from project data when editing
@@ -49,6 +72,12 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
     }
   }, [project]);
 
+  const [title, setTitle] = useState('');
+  const [channel, setChannel] = useState<Channel>(Channel.LINKEDIN);
+  const [contentType, setContentType] = useState<ContentType>('CREATIVE_ONLY');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState<'HIGH' | 'NORMAL' | 'LOW'>('NORMAL');
+  const [thumbnailReferenceLink, setThumbnailReferenceLink] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
@@ -66,7 +95,11 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       return;
     }
 
-
+    // HARD GUARD: Prevent submission if publicUser.id is missing
+    if (!publicUser?.id) {
+      alert('User profile not loaded. Please refresh and try again.');
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -110,19 +143,6 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               if (!userError && reworkUser) {
                 let targetStage: WorkflowStage, targetRole: Role;
 
-                // Get current user and their details for routing
-                const { data: { user }, error: authUserError } = await supabase.auth.getUser();
-                if (authUserError || !user) throw new Error('Could not get current user');
-
-                const { data: currentUserData, error: userDataError } = await supabase
-                  .from('users')
-                  .select('id, full_name, role')
-                  .eq('id', user.id)
-                  .single();
-
-                if (userDataError || !currentUserData) {
-                  throw new Error('Could not get user details');
-                }
 
                 // ✅ Route based on WHO sent for rework, not current user role
                 if (reworkUser && reworkUser.role === 'CEO') {
@@ -146,14 +166,14 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                 await db.workflow.recordAction(
                   project.id,
                   targetStage as WorkflowStage,
-                  currentUserData.id,
-                  currentUserData.full_name,
+                  publicUser.id,
+                  publicUser.full_name,
                   'SUBMITTED',
                   'Idea resubmitted after rework',
                   undefined,
                   Role.WRITER, // fromRole
                   targetRole as Role, // toRole
-                  currentUserData.role as Role // actorRole
+                  publicUser.role as Role // actorRole
                 );
 
                 setPopupMessage(`Idea project "${title}" resubmitted successfully. Waiting for ${(targetStage as string).includes('CEO') ? 'CEO' : 'CMO'} review.`);

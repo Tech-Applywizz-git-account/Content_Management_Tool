@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel } from '../../types';
+import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
@@ -13,11 +13,14 @@ import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
+    user: User;
     onBack: () => void;
     onComplete: () => void;
 }
 
-const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
+const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [decision, setDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [comment, setComment] = useState('');
     const [reworkStage, setReworkStage] = useState<string>('');
@@ -44,6 +47,33 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     const isVideo = project.channel !== Channel.LINKEDIN;
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
+
+    // Load public user profile on mount
+    // Requirement: Fetch public.users record ONCE using the logged-in user's email
+    useEffect(() => {
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+        loadUser();
+    }, []);
 
 
     // Effect to track when CMO opens the project for the first time
@@ -280,6 +310,14 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
     };
 
     const handleSubmit = async () => {
+        if (!decision) return;
+
+        // HARD GUARD: Prevent submission if publicUser.id is missing
+        if (!publicUser?.id) {
+            alert('User profile not loaded. Please refresh and try again.');
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
@@ -299,15 +337,15 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                     );
 
                     // Ensure we have a valid user ID
-                    const currentUser = db.getCurrentUser();
-                    if (!currentUser?.id) {
-                        throw new Error('User not authenticated');
+                    if (!publicUser?.id) {
+                        throw new Error('Public user not loaded');
                     }
+
 
                     await db.workflow.approve(
                         project.id,
-                        currentUser.id,
-                        currentUser.full_name || 'CMO',
+                        publicUser.id,
+                        publicUser.full_name || 'CMO',
                         Role.CMO,
                         nextStageInfo.stage,
                         nextStageInfo.role,
@@ -329,15 +367,15 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         );
 
                         // Ensure we have a valid user ID
-                        const currentUser = db.getCurrentUser();
-                        if (!currentUser?.id) {
-                            throw new Error('User not authenticated');
+                        if (!publicUser?.id) {
+                            throw new Error('Public user not loaded');
                         }
+
 
                         await db.workflow.approve(
                             project.id,
-                            currentUser.id,
-                            currentUser.full_name || 'CMO',
+                            publicUser.id,
+                            publicUser.full_name || 'CMO',
                             Role.CMO,
                             nextStageInfo.stage,
                             nextStageInfo.role,
@@ -345,10 +383,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                         );
                     } else {
                         // Ensure we have a valid user ID
-                        const currentUser = db.getCurrentUser();
-                        if (!currentUser?.id) {
-                            throw new Error('User not authenticated');
+                        if (!publicUser?.id) {
+                            throw new Error('Public user not loaded');
                         }
+
 
                         await db.advanceWorkflow(project.id, comment || 'Approved by CMO');
                     }
@@ -415,14 +453,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
                 // Rework -> Send to the role selected by the user in the dropdown
                 // Respect the user's selection from the reworkStage dropdown
 
-                // Ensure we have a valid user ID
-                const currentUser = db.getCurrentUser();
-                if (!currentUser?.id) {
-                    throw new Error('User not authenticated');
-                }
-
-                // STORE SNAPSHOT FOR COMPARISON
-                // We store the 'before' state to show side-by-side comparison when it comes back
                 const beforeContext = {
                     video_link: project.video_link,
                     edited_video_link: project.edited_video_link,
@@ -466,13 +496,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, onBack, onComplete }) => {
 
             } else if (decision === 'REJECT') {
                 // Full Reject - don't send back to a specific role, just reject the project
-
-                // Ensure we have a valid user ID
-                const currentUser = db.getCurrentUser();
-                if (!currentUser?.id) {
-                    throw new Error('User not authenticated');
-                }
-
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, 'Project killed by CMO: ' + comment);
 
                 // Show popup for rejection

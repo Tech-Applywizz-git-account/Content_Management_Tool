@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Project, Role, WorkflowStage, STAGE_LABELS, Channel } from '../../types';
+import { Project, Role, WorkflowStage, STAGE_LABELS, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -14,12 +14,14 @@ import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 
 interface Props {
     project: Project;
-    user: { full_name: string; role: Role };
+    user: User;
     onBack: () => void;
     onComplete: () => void;
 }
 
 const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [decision, setDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [approveComment, setApproveComment] = useState('');
     const [reworkComment, setReworkComment] = useState('');
@@ -48,6 +50,33 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
+
+    // Load public user profile on mount
+    // Requirement: Fetch public.users record ONCE using the logged-in user's email
+    useEffect(() => {
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+        loadUser();
+    }, []);
 
 
     // Reset comment inputs when action changes
@@ -272,6 +301,13 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
     const handleSubmit = async () => {
         if (!decision) return;
+
+        // HARD GUARD: Prevent submission if publicUser.id is missing
+        if (!publicUser?.id) {
+            alert('User profile not loaded. Please refresh and try again.');
+            return;
+        }
+
         setIsSubmitting(true);
 
         try {
@@ -302,16 +338,10 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         project.data
                     );
 
-                    // Ensure we have a valid user ID
-                    const currentUser = db.getCurrentUser();
-                    if (!currentUser?.id) {
-                        throw new Error('User not authenticated');
-                    }
-
                     await db.workflow.approve(
                         project.id,
-                        currentUser.id,
-                        currentUser.full_name || 'CEO',
+                        publicUser.id,
+                        publicUser.full_name || 'CEO',
                         Role.CEO,
                         nextStageInfo.stage,
                         nextStageInfo.role,
@@ -375,12 +405,6 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 }, 0);
             } else if (decision === 'REWORK') {
                 // Send the project for rework
-                // Ensure we have a valid user ID
-                const currentUser = db.getCurrentUser();
-                if (!currentUser?.id) {
-                    throw new Error('User not authenticated');
-                }
-
                 await db.rejectTask(project.id, reworkStage as WorkflowStage, finalComment);
 
                 // Show popup for rework
@@ -401,12 +425,6 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 // For reject, we don't send back to a specific role, just reject the project
                 // Use comment that indicates this is a full rejection to distinguish from rework
                 // Adding 'Project terminated' to trigger reject behavior in backend logic
-
-                // Ensure we have a valid user ID
-                const currentUser = db.getCurrentUser();
-                if (!currentUser?.id) {
-                    throw new Error('User not authenticated');
-                }
 
                 const rejectCommentWithTermination = (finalComment ? finalComment + ' - Project terminated' : 'Rejected completely by CEO - Project terminated');
                 await db.rejectTask(project.id, WorkflowStage.SCRIPT, rejectCommentWithTermination);

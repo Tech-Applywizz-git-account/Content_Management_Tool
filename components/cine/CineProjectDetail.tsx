@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus } from '../../types';
+import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus, User } from '../../types';
 import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
@@ -21,6 +21,9 @@ interface Props {
 }
 
 const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole, onBack, onUpdate, fromView, activeFilter, uploadedSubTab }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [userError, setUserError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     // For rework projects, keep existing data but track new inputs
     const processedProject = { ...initialProject };
 
@@ -87,20 +90,30 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         setIsScriptEditing(false); // Reset edit mode when project changes
         setLocalProject(processedProject);
 
-        // Set current user in db service for centralized workflow tracking
-        const setUser = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                db.setCurrentUser({
-                    id: session.user.id,
-                    email: session.user.email || '',
-                    full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
-                    role: Role.CINE,
-                    status: UserStatus.ACTIVE
-                });
+        // Load public user profile on mount
+        // Requirement: Fetch public.users record ONCE using the logged-in user's email
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setUserError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
             }
         };
-        setUser();
+        loadUser();
     }, [initialProject]);
 
     // Ensure state is updated when localProject changes
@@ -120,16 +133,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         }
 
         try {
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            console.log('User session data:', session);
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Validate project data
             if (!localProject.id) {
@@ -144,12 +154,11 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             console.log('Project data:', localProject);
 
-            // Record the action in workflow history before updating the project
             console.log('About to record workflow history with:', {
                 projectId: localProject.id,
                 fromStage: localProject.current_stage,
                 toStage: localProject.current_stage,
-                userId: user.id,
+                userId: publicUser.id,
                 action: 'SUBMITTED',
                 comment: `Shoot date set to ${shootDate}`
             });
@@ -158,14 +167,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             console.log('Actual values:');
             console.log('  project.id:', localProject.id);
             console.log('  project.current_stage:', localProject.current_stage);
-            console.log('  user.id:', user.id);
+            console.log('  user.id:', publicUser.id);
             console.log('  shootDate:', shootDate);
 
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // stage
-                user.id,
-                user.email || user.id, // userName (using email or ID as fallback)
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id, // userName
                 'SET_SHOOT_DATE', // specific action
                 `Shoot date set to ${shootDate}`
             );
@@ -219,14 +228,13 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         }
 
         try {
-            // Get user session
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Update video link and comments first
             // We do this before advanceWorkflow to ensure the data is saved
@@ -283,21 +291,20 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
     const handleSaveCinematographyInstructions = async () => {
         try {
-            // Get user session for workflow history
-            const { data: { session } } = await supabase.auth.getSession();
-            const user = session?.user;
-
-            if (!user) {
-                alert('User not authenticated');
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
                 return;
             }
+
+            setIsSubmitting(true);
 
             // Record the action in workflow history
             await db.workflow.recordAction(
                 localProject.id,
                 localProject.current_stage, // Record action at current stage
-                user.id,
-                user.email || user.id, // UserName (using email or ID as fallback)
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id, // UserName
                 'CINE_INSTRUCTIONS_UPDATED', // Use appropriate action value
                 `Cinematographer updated instructions`
             );
@@ -552,21 +559,20 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 initialContent={scriptContent}
                                 onSave={async (content) => {
                                     try {
-                                        // Get user session for workflow history
-                                        const { data: { session } } = await supabase.auth.getSession();
-                                        const user = session?.user;
-
-                                        if (!user) {
-                                            alert('User not authenticated');
+                                        // HARD GUARD: Prevent submission if publicUser.id is missing
+                                        if (!publicUser?.id) {
+                                            alert('User profile not loaded. Please refresh and try again.');
                                             return;
                                         }
+
+                                        setIsSubmitting(true);
 
                                         // Record the CINE edit in workflow history
                                         await db.workflow.recordAction(
                                             localProject.id,
                                             localProject.current_stage,
-                                            user.id,
-                                            user.email || user.id,
+                                            publicUser.id,
+                                            publicUser.full_name || publicUser.email || publicUser.id,
                                             'CINE_SCRIPT_EDIT',
                                             `Cinematographer edited script content`,
                                             content, // Store the new script content
@@ -866,21 +872,20 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             }
 
                                             try {
-                                                // Get user session for workflow history
-                                                const { data: { session } } = await supabase.auth.getSession();
-                                                const user = session?.user;
-
-                                                if (!user) {
-                                                    alert('User not authenticated');
+                                                // HARD GUARD: Prevent submission if publicUser.id is missing
+                                                if (!publicUser?.id) {
+                                                    alert('User profile not loaded. Please refresh and try again.');
                                                     return;
                                                 }
+
+                                                setIsSubmitting(true);
 
                                                 // Record the action in workflow history
                                                 await db.workflow.recordAction(
                                                     localProject.id,
                                                     localProject.current_stage, // Record action at current stage
-                                                    user.id,
-                                                    user.email || user.id, // UserName (using email or ID as fallback)
+                                                    publicUser.id,
+                                                    publicUser.full_name || publicUser.email || publicUser.id, // UserName
                                                     'CINE_COMMENTS_ADDED', // Use appropriate action value
                                                     `Cinematographer added comments: ${cineComments.trim()} `
                                                 );

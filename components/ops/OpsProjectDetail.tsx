@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role } from '../../types';
+import { Project, TaskStatus, WorkflowStage, STAGE_LABELS, Role, User } from '../../types';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Link as LinkIcon, Video, Image, FileText, Upload, CheckCircle, Eye, Clock, ExternalLink, Play, EyeOff, AlertTriangle } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
@@ -17,6 +17,9 @@ interface Props {
 }
 
 const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
+    const [publicUser, setPublicUser] = useState<User | null>(null);
+    const [userError, setUserError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [postDate, setPostDate] = useState(project.post_scheduled_date || '');
     const [liveUrl, setLiveUrl] = useState(project.data?.live_url || '');
     const [caption, setCaption] = useState(project.data?.captions || '');
@@ -34,6 +37,32 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         };
 
         window.addEventListener('beforeLogout', handleBeforeLogout);
+
+        // Load public user profile on mount
+        // Requirement: Fetch public.users record ONCE using the logged-in user's email
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
+
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as User);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setUserError('User profile not found in database. Please contact support.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+        loadUser();
+
         return () => {
             window.removeEventListener('beforeLogout', handleBeforeLogout);
         };
@@ -47,18 +76,23 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         }
 
         try {
-            // Record action in history
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                await db.workflow.recordAction(
-                    project.id,
-                    project.current_stage,
-                    session.user.id,
-                    session.user.user_metadata?.full_name || session.user.email || 'OPS',
-                    'OPS_SCHEDULED',
-                    `Post scheduled for ${postDate}`
-                );
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
+                return;
             }
+
+            setIsSubmitting(true);
+
+            // Record action in history
+            await db.workflow.recordAction(
+                project.id,
+                project.current_stage,
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id,
+                'OPS_SCHEDULED',
+                `Post scheduled for ${postDate}`
+            );
 
             // Update the project with the post scheduled date in Supabase
             await db.projects.update(project.id, { post_scheduled_date: postDate });
@@ -71,6 +105,8 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         } catch (error) {
             console.error('Failed to set post date:', error);
             alert('❌ Failed to set post date. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -82,18 +118,23 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         }
 
         try {
-            // Record action in history
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-                await db.workflow.recordAction(
-                    project.id,
-                    project.current_stage,
-                    session.user.id,
-                    session.user.user_metadata?.full_name || session.user.email || 'OPS',
-                    'OPS_POSTED',
-                    `Project posted with live URL: ${liveUrl}`
-                );
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
+                return;
             }
+
+            setIsSubmitting(true);
+
+            // Record action in history
+            await db.workflow.recordAction(
+                project.id,
+                project.current_stage,
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id,
+                'OPS_POSTED',
+                `Project posted with live URL: ${liveUrl}`
+            );
 
             // Update the project with the live URL and mark as POSTED
             await db.projects.updateData(project.id, {

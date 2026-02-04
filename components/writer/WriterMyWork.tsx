@@ -669,9 +669,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   const { data, error } = await import('../../src/integrations/supabase/client')
                     .then(m => m.supabase)
                     .then(async (supabase) => {
-                      // First, get the current user's ID
-                      const { data: { session } } = await supabase.auth.getSession();
-                      const currentUserId = session?.user?.id;
+                      const currentUserId = user.id;
 
                       // Fetch all workflow history
                       const { data: historyData, error: historyError } = await supabase

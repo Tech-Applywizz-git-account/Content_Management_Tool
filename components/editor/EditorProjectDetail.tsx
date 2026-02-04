@@ -20,6 +20,9 @@ interface Props {
 
 
 const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpdate, fromView }) => {
+  const [publicUser, setPublicUser] = useState<User | null>(null);
+  const [userError, setUserError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // For rework projects, keep existing data but track new inputs
   const processedProject = { ...project };
 
@@ -59,20 +62,30 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     setDeliveryDate(processedProject.delivery_date || '');
     setEditedVideoLink(processedProject.edited_video_link || '');
 
-    // Set current user in db service for centralized workflow tracking
-    const setUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        db.setCurrentUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          full_name: session.user.user_metadata?.full_name || session.user.email || 'Unknown User',
-          role: Role.EDITOR,
-          status: UserStatus.ACTIVE
-        });
+    // Load public user profile on mount
+    // Requirement: Fetch public.users record ONCE using the logged-in user's email
+    const loadUser = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.email) {
+          const { data: pUser, error: pError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', authUser.email)
+            .single();
+
+          if (!pError && pUser) {
+            setPublicUser(pUser as User);
+          } else {
+            console.error('Error fetching public user:', pError);
+            setUserError('User profile not found in database. Please contact support.');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user:', err);
       }
     };
-    setUser();
+    loadUser();
   }, [project]);
 
   // Fetch sub-editors when component mounts
@@ -114,21 +127,20 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     }
 
     try {
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) {
-        alert('User not authenticated');
+      // HARD GUARD: Prevent submission if publicUser.id is missing
+      if (!publicUser?.id) {
+        alert('User profile not loaded. Please refresh and try again.');
         return;
       }
+
+      setIsSubmitting(true);
 
       // Record the action in workflow history
       await db.workflow.recordAction(
         project.id,
         project.current_stage, // stage
-        user.id,
-        user.email || user.id, // userName (using email or ID as fallback)
+        publicUser.id,
+        publicUser.full_name || publicUser.email || publicUser.id, // userName
         'SET_DELIVERY_DATE', // specific action
         `Delivery date set to ${deliveryDate}`
       );
@@ -161,14 +173,13 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
     }
 
     try {
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (!user) {
-        alert('User not authenticated');
+      // HARD GUARD: Prevent submission if publicUser.id is missing
+      if (!publicUser?.id) {
+        alert('User profile not loaded. Please refresh and try again.');
         return;
       }
+
+      setIsSubmitting(true);
 
       // Record the action in workflow history with appropriate action type
       const actionType = isRework ? 'REWORK_EDIT_SUBMITTED' : 'EDITOR_VIDEO_UPLOADED';
@@ -179,8 +190,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       await db.workflow.recordAction(
         project.id,
         project.current_stage, // Record action at current stage
-        user.id,
-        user.email || user.id, // userName (using email or ID as fallback)
+        publicUser.id,
+        publicUser.full_name || publicUser.email || publicUser.id, // userName
         actionType, // Use appropriate action value
         comment
       );
@@ -191,10 +202,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
         editor_uploaded_at: new Date().toISOString(),
-        editor_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Store editor name in direct column
+        editor_name: publicUser.full_name || publicUser?.email || 'Unknown Editor', // Store editor name in direct column
         edited_by_role: 'EDITOR', // Track who actually edited
-        edited_by_user_id: user.id, // Track the specific user
-        edited_by_name: user?.user_metadata?.full_name || user?.email || 'Unknown Editor', // Track the name
+        edited_by_user_id: publicUser.id, // Track the specific user
+        edited_by_name: publicUser.full_name || publicUser?.email || 'Unknown Editor', // Track the name
         edited_at: new Date().toISOString(), // Track when edited
         status: TaskStatus.WAITING_APPROVAL,
         data: {
@@ -237,7 +248,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 project.id,
                 'ASSET_UPLOADED',
                 'New Edited Video Available',
-                `${user?.user_metadata?.full_name || 'Editor'} has uploaded an edited video for: ${project.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
+                `${publicUser.full_name || 'Editor'} has uploaded an edited video for: ${project.title}. Please review and proceed with ${STAGE_LABELS[updatedProject.current_stage] || updatedProject.current_stage.replace(/_/g, ' ')}.`
               );
             } catch (notificationError) {
               console.error('Failed to send notification:', notificationError);
@@ -471,14 +482,14 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               <button
                 onClick={async () => {
                   try {
-                    // Get user session
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const user = session?.user;
-
-                    if (!user) {
-                      alert('User not authenticated');
+                    // HARD GUARD: Prevent submission if publicUser.id is missing
+                    if (!publicUser?.id) {
+                      alert('User profile not loaded. Please refresh and try again.');
                       return;
                     }
+
+                    setIsSubmitting(true);
+
 
                     // Use the selected sub-editor ID from React state
                     if (!selectedSubEditorId) {
@@ -493,8 +504,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     await db.workflow.recordAction(
                       localProject.id,
                       localProject.current_stage, // stage
-                      user.id,
-                      user.user_metadata?.full_name || user.email || user.id, // userName
+                      publicUser.id,
+                      publicUser.full_name || publicUser.email || publicUser.id, // userName
                       'SUB_EDITOR_ASSIGNED', // specific action
                       `Project assigned to sub-editor: ${selectedSubEditor.full_name}`,
                       Role.EDITOR, // actor_role

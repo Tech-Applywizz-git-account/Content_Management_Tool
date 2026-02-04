@@ -213,18 +213,19 @@ function App() {
         return;
       }
 
-      console.log('🔄 Session Restore: Supabase user found, fetching profile...', supabaseUser.id);
+      console.log('🔄 Session Restore: Supabase user found, fetching profile by email...', supabaseUser.email);
 
-      // Fetch user profile from database
-      const profile = await db.users.getById(supabaseUser.id);
+      // Fetch user profile from database using email for 100% ID consistency
+      // Requirement: Fetch public.users record ONCE using the logged-in user's email
+      const profile = await db.users.getByEmail(supabaseUser.email!);
 
       if (profile) {
-        console.log('✅ Session Restore: Profile loaded for:', profile.full_name);
+        console.log('✅ Session Restore: Profile loaded for:', profile.full_name, 'ID:', profile.id);
         setUser(profile);
         db.setCurrentUser(profile);
         await refreshData(profile);
       } else {
-        console.warn('⚠️ Session Restore: Supabase user exists but no database profile found');
+        console.warn('⚠️ Session Restore: Supabase user exists but no database profile found for email:', supabaseUser.email);
         // If we have a user but no profile, they might be partially registered
         // We shouldn't clear tokens here, just let it fall through to login
       }

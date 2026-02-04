@@ -116,6 +116,7 @@ const CmoReviewPage: React.FC<CmoReviewPageProps> = ({ user, onLogout, refreshDa
         <div className="min-h-screen bg-white">
             <CmoReviewScreen
                 project={project}
+                user={user}
                 onBack={handleBack}
                 onComplete={handleComplete}
             />

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage } from '../../types';
-import { ArrowLeft, Clock, User, FileText, MessageSquare } from 'lucide-react';
+import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage, User as PublicUser } from '../../types';
+import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState } from '../../services/workflowUtils';
@@ -8,6 +8,7 @@ import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import Timeline from '../Timeline';
 import ScriptDisplay from '../ScriptDisplay';
+import { db } from '../../services/supabaseDb';
 
 interface Props {
     project: Project;
@@ -16,6 +17,10 @@ interface Props {
 }
 
 const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowStatus = true }) => {
+    const [publicUser, setPublicUser] = useState<PublicUser | null>(null);
+    const [userError, setUserError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     interface WorkflowHistoryEntry {
         action: string;
         comment: string;
@@ -74,7 +79,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 ) as WorkflowHistoryEntry[];
 
                 // Show all unique events regardless of status
-                // This addresses the issue where the same workflow events were appearing multiple times
                 setComments(uniqueComments);
 
                 // Get current user session to check if this writer has already acted
@@ -83,7 +87,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
                 // Check if current writer has already approved or rejected this project
                 const currentUserAction = uniqueComments?.find(comment =>
-                    comment.actor_id === user?.id &&
+                    comment.actor_id === (publicUser?.id || user?.id) &&
                     (comment.action === 'APPROVED' || comment.action === 'REJECTED')
                 );
 
@@ -100,7 +104,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 setReturnType('rework');
             }
 
-            // Fetch the most recent workflow history entry to get script content and comparison metadata
+            // Fetch the most recent workflow history entry
             const { data: historyData, error: historyError } = await supabase
                 .from('workflow_history')
                 .select('script_content, video_link, edited_video_link, thumbnail_link, creative_link, action, comment, timestamp, actor_name, metadata')
@@ -114,15 +118,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
             }
 
             if (historyData && historyData.length > 0) {
-                // Find most recent rework action to get "Before" state
                 const lastRework = historyData.find(h => ['REWORK', 'REJECTED'].includes(h.action));
-                // Find most recent rework submission to get metadata
                 const reworkSubmission = historyData.find(h => h.action.startsWith('REWORK_') && h.metadata);
 
                 if (lastRework || reworkSubmission) {
                     const meta = reworkSubmission?.metadata;
 
-                    // Helper to get last history item
                     const getLastHistoryItem = (historyStrOrArray: any) => {
                         if (!historyStrOrArray) return null;
                         if (Array.isArray(historyStrOrArray)) return historyStrOrArray[historyStrOrArray.length - 1];
@@ -141,7 +142,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     });
                 }
 
-                // Get script content from latest history entry that has it
                 const scriptEntry = historyData.find(h => h.script_content);
                 if (scriptEntry) {
                     setPreviousScript(scriptEntry.script_content);
@@ -153,14 +153,33 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
             }
         };
 
-        fetchData();
-    }, [project.id, project.status, project.rejected_reason]);
+        const loadUser = async () => {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser?.email) {
+                    const { data: pUser, error: pError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .single();
 
-    // Use the new workflow state logic
-    const workflowState = getWorkflowState(project);
-    const isRework = workflowState.isRework;
-    const isRejected = workflowState.isRejected;
-    const rejectionComment = comments.find(comment => comment.action === 'REJECTED') as WorkflowHistoryEntry | undefined;
+                    if (!pError && pUser) {
+                        setPublicUser(pUser as PublicUser);
+                    } else {
+                        console.error('Error fetching public user:', pError);
+                        setUserError('User profile not found in database.');
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        };
+
+        loadUser();
+        fetchData();
+    }, [project.id, project.status, project.rejected_reason, publicUser?.id]);
+
+    const isRejected = getWorkflowState(project).isRejected;
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">
@@ -186,7 +205,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 <div className="max-w-5xl mx-auto p-8 space-y-8">
 
                     {showWorkflowStatus && (
-                        /* Current Status Card */
                         <div className="bg-gradient-to-br from-blue-50 to-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
                             <div className="flex items-start justify-between mb-6">
                                 <div>
@@ -201,7 +219,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div className="bg-white p-6 border-2 border-black">
                                     <div className="flex items-center space-x-2 mb-2">
-                                        <User className="w-5 h-5 text-blue-600" />
+                                        <UserIcon className="w-5 h-5 text-blue-600" />
                                         <span className="text-xs font-bold uppercase text-slate-500">Current Reviewer</span>
                                     </div>
                                     <p className="font-black text-lg uppercase">
@@ -230,7 +248,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 </div>
                             </div>
 
-                            {/* Progress Bar */}
                             <div className="mt-6">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs font-bold uppercase text-slate-500">Workflow Progress</span>
@@ -249,7 +266,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     )}
 
-                    {/* Cinematographer Comments - Show if cine_comments or cine_to_writer_feedback exist */}
                     {(project.data?.cine_comments || project.data?.cine_to_writer_feedback) && (
                         <div className="bg-blue-50 p-6 border-2 border-blue-400 space-y-4">
                             <div className="flex items-center space-x-2">
@@ -264,16 +280,13 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     )}
 
-                    {/* Content */}
                     <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">
                             {project.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
                         </h3>
 
                         {isRejected && previousScript ? (
-                            // Show both old and new content side by side for rework projects
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                {/* Previous Content */}
                                 <div className="flex flex-col">
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
@@ -281,7 +294,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <ScriptDisplay content={previousScript} showBox={true} />
                                 </div>
 
-                                {/* Current Content */}
                                 <div className="flex flex-col">
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Updated Idea' : 'Updated Script'}
@@ -303,7 +315,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         )}
                     </div>
 
-                    {/* Project Details */}
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Project Details</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -335,11 +346,9 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     </div>
 
-                    {/* Review History */}
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <Timeline project={{ ...project, history: comments }} />
 
-                        {/* Current Status Footer */}
                         <div className="flex items-start space-x-4 mt-8 pt-6 border-t-2 border-dashed border-slate-300">
                             <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
                             <div className="flex-1 pl-6">
@@ -356,7 +365,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     </div>
 
-                    {/* Multi-Writer Approval Section - Show if project is in multi-writer approval stage */}
                     {(project.current_stage === 'MULTI_WRITER_APPROVAL' || project.current_stage === 'WRITER_VIDEO_APPROVAL') && (
                         <div className="bg-orange-50 p-6 border-2 border-orange-400 mb-6">
                             <h3 className="text-lg font-black uppercase text-orange-900 mb-4">
@@ -435,101 +443,61 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <div className="flex space-x-4 pt-4">
                                         <button
                                             onClick={async () => {
+                                                if (!publicUser?.id) {
+                                                    alert('User profile not loaded. Please refresh and try again.');
+                                                    return;
+                                                }
                                                 try {
-                                                    // Get user session
-                                                    const { data: { session } } = await supabase.auth.getSession();
-                                                    const user = session?.user;
-
-                                                    if (!user) {
-                                                        alert('User not authenticated');
-                                                        return;
-                                                    }
-
-                                                    // Use the centralized db service to approve the project
-                                                    const { db } = await import('../../services/supabaseDb');
-                                                    // Set the current user in the db service with proper User interface
-                                                    db.setCurrentUser({
-                                                        id: user.id,
-                                                        email: user.email || '',
-                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
-                                                        role: Role.WRITER,
-                                                        status: UserStatus.ACTIVE
-                                                    });
-
-                                                    // Call the workflow advance function to move to next stage
+                                                    setIsSubmitting(true);
                                                     await db.advanceWorkflow(project.id, 'Writer approved the final video');
-
-                                                    // Show success popup
                                                     setPopupMessage('Video approved successfully! The project has been sent to the ops team.');
                                                     setStageName('Ops Scheduling');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
-
-                                                    // Navigate back after popup duration + small buffer
-                                                    setTimeout(() => {
-                                                        onBack(); // Navigate back to previous page
-                                                    }, 5500); // 5 seconds popup + 500ms buffer
+                                                    setTimeout(() => onBack(), 5500);
                                                 } catch (error) {
                                                     console.error('Failed to approve video:', error);
-                                                    // Show error popup
                                                     setPopupMessage('Failed to approve video. Please try again.');
                                                     setStageName('Error');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
+                                                } finally {
+                                                    setIsSubmitting(false);
                                                 }
                                             }}
-                                            className="px-6 py-3 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all"
+                                            disabled={isSubmitting}
+                                            className="px-6 py-3 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
                                         >
-                                            Approve Video
+                                            {isSubmitting ? 'Approving...' : 'Approve Video'}
                                         </button>
                                         <button
                                             onClick={async () => {
+                                                if (!publicUser?.id) {
+                                                    alert('User profile not loaded. Please refresh and try again.');
+                                                    return;
+                                                }
                                                 try {
-                                                    // Get user session
-                                                    const { data: { session } } = await supabase.auth.getSession();
-                                                    const user = session?.user;
-
-                                                    if (!user) {
-                                                        alert('User not authenticated');
-                                                        return;
-                                                    }
-
-                                                    // Use the centralized db service to reject the project
-                                                    const { db } = await import('../../services/supabaseDb');
-                                                    // Set the current user in the db service with proper User interface
-                                                    db.setCurrentUser({
-                                                        id: user.id,
-                                                        email: user.email || '',
-                                                        full_name: user.user_metadata?.full_name || user.email || 'Unknown User',
-                                                        role: Role.WRITER,
-                                                        status: UserStatus.ACTIVE
-                                                    });
-
-                                                    // Call the workflow reject function to send project back to editor
+                                                    setIsSubmitting(true);
                                                     await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, 'Writer rejected the video - needs rework');
-
-                                                    // Show rejection popup
                                                     setPopupMessage('Video rejected. Sent back to editor for rework.');
                                                     setStageName('Video Editing');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
-
-                                                    // Navigate back after popup duration + small buffer
-                                                    setTimeout(() => {
-                                                        onBack(); // Navigate back to previous page
-                                                    }, 5500); // 5 seconds popup + 500ms buffer
+                                                    setTimeout(() => onBack(), 5500);
                                                 } catch (error) {
                                                     console.error('Failed to reject video:', error);
-                                                    // Show error popup
                                                     setPopupMessage('Failed to reject video. Please try again.');
                                                     setStageName('Error');
                                                     setPopupDuration(5000);
                                                     setShowPopup(true);
+                                                } finally {
+                                                    setIsSubmitting(false);
                                                 }
                                             }}
-                                            className="px-6 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all"
+                                            disabled={isSubmitting}
+                                            className="px-6 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
                                         >
-                                            Reject Video
+                                            {isSubmitting ? 'Rejecting...' : 'Reject Video'}
                                         </button>
                                     </div>
                                 ) : (
@@ -547,7 +515,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     )}
 
-                    {/* Info Note */}
                     <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong>
@@ -568,14 +535,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                 </div>
             </div>
 
-            {/* Popup */}
             {showPopup && (
                 <Popup
                     message={popupMessage}
                     stageName={stageName}
                     onClose={() => {
                         setShowPopup(false);
-                        // Navigate back when popup is manually closed
                         onBack();
                     }}
                     duration={popupDuration}
