@@ -126,6 +126,41 @@ export const auth = {
         return user;
     },
 
+    // 🚀 HELPER: Get the full public.users record for the currently logged-in auth user
+    // This resolves FK violations by ensuring we use the public.users.id, NOT auth.users.id
+    async getPublicUser(): Promise<User | null> {
+        try {
+            // 1. Check cache first for performance
+            if (currentUserCache) return currentUserCache;
+
+            // 2. Get the authenticated user from Supabase Auth
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser?.email) {
+                console.warn('getPublicUser: No authenticated user or email found');
+                return null;
+            }
+
+            // 3. Look up the matching record in the public.users table by email
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('email', authUser.email)
+                .single();
+
+            if (error || !data) {
+                console.error('getPublicUser: Error fetching public user profile:', error);
+                return null;
+            }
+
+            // 4. Cache and return the public user record
+            currentUserCache = data as User;
+            return currentUserCache;
+        } catch (err) {
+            console.error('getPublicUser: Unexpected error:', err);
+            return null;
+        }
+    },
+
     // Send password reset email
     async resetPassword(email: string) {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -537,14 +572,17 @@ export const users = {
         // For now, just delete from database - auth user will remain but won't be able to login
 
         // Log user deletion
-        if (user && currentUserCache) {
-            await systemLogs.add({
-                actor_id: currentUserCache.id,
-                actor_name: currentUserCache.full_name,
-                actor_role: currentUserCache.role,
-                action: 'USER_DELETED',
-                details: `User ${user.full_name} (${user.email}) was deleted by ${currentUserCache.full_name}`
-            });
+        if (user) {
+            const publicUser = await auth.getPublicUser();
+            if (publicUser) {
+                await systemLogs.add({
+                    actor_id: publicUser.id,
+                    actor_name: publicUser.full_name,
+                    actor_role: publicUser.role,
+                    action: 'USER_DELETED',
+                    details: `User ${user.full_name} (${user.email}) was deleted by ${publicUser.full_name}`
+                });
+            }
         }
 
         return true;
@@ -898,10 +936,16 @@ export const projects = {
         // Creator info (display and workflow)
         created_by_user_id?: string | null;
         created_by_name?: string | null;
-        writer_id?: string | null;
+        writer_id: string;
         writer_name?: string | null;
     }) {
         console.log('Creating project with data:', projectData);
+
+        // HARD GUARD: Ensure writer_id is provided to prevent FK violations
+        if (!projectData.writer_id) {
+            throw new Error('writer_id is REQUIRED and must be a valid public.users.id');
+        }
+
         const { data, error } = await supabase
             .from('projects')
             .insert([{
@@ -916,7 +960,7 @@ export const projects = {
                 // Creator info (display and workflow)
                 created_by_user_id: projectData.created_by_user_id ?? null,
                 created_by_name: projectData.created_by_name ?? null,
-                writer_id: projectData.writer_id ?? null,
+                writer_id: projectData.writer_id,
                 writer_name: projectData.writer_name ?? null,
 
                 // Use provided values or defaults if not provided
@@ -981,7 +1025,15 @@ export const projects = {
         }
 
         // Remove ownership fields before update to let backend handle it
-        const { created_by, created_by_user_id, ...cleanUpdates } = updates as any;
+        // HARD SAFETY: writer_id must NEVER be updated after creation
+        const {
+            created_by,
+            created_by_user_id,
+            writer_id,
+            writer_name,
+            ...cleanUpdates
+        } = updates as any;
+
 
         const { error } = await supabase
             .from('projects')
@@ -1135,6 +1187,11 @@ export const workflow = {
         actorRole?: string,
         metadata: any = {}
     ) {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        const finalUserId = publicUser?.id || userId;
+        const finalUserName = publicUser?.full_name || userName;
+
         // 1. Fetch current stage from projects table BEFORE insertion (Mandatory Fix)
         // This ensures from_stage correctly captures the stage before the transition
         const { data: project, error: fetchError } = await supabase
@@ -1189,8 +1246,8 @@ export const workflow = {
                 from_stage: fromStage, // ROLE
                 to_stage: toStage,     // ROLE
                 stage: project.current_stage, // Keep original stage info here if field exists
-                actor_id: userId,
-                actor_name: userName,
+                actor_id: finalUserId,
+                actor_name: finalUserName,
                 action: dbAction,
                 comment: comment || '',
                 script_content: scriptContent || null,
@@ -1224,6 +1281,11 @@ export const workflow = {
         nextRole: Role,
         comment?: string
     ) {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        const finalUserId = publicUser?.id || userId;
+        const finalUserName = publicUser?.full_name || userName;
+
         // Fetch current state BEFORE any updates to ensure accurate from_stage recording
         const currentProject = await projects.getById(projectId);
         if (!currentProject) {
@@ -1234,8 +1296,8 @@ export const workflow = {
         await this.recordAction(
             projectId,
             nextRole, // to_stage is now the next ROLE
-            userId,
-            userName,
+            finalUserId,
+            finalUserName,
             'SUBMITTED',
             comment || 'Submitted for review',
             undefined, // scriptContent
@@ -1455,6 +1517,12 @@ export const workflow = {
         fromRoleOverride?: string,
         metadata?: any
     ) {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        const finalUserId = publicUser?.id || userId;
+        const finalUserName = publicUser?.full_name || userName;
+        const finalUserRole = publicUser?.role || userRole;
+
         // First get the current project to preserve important fields
         // First get the current project to preserve important fields
         let rawProject;
@@ -1469,10 +1537,6 @@ export const workflow = {
         const currentProject = {
             id: rawProject.id,
             current_stage: rawProject.current_stage,
-            created_by_user_id: rawProject.created_by_user_id,
-            created_by_name: rawProject.created_by_name,
-            writer_id: rawProject.writer_id,
-            writer_name: rawProject.writer_name,
             assigned_to_user_id: rawProject.assigned_to_user_id,
             // Fill in other required fields with defaults to satisfy Project type
             title: rawProject.title,
@@ -1510,7 +1574,7 @@ export const workflow = {
         if (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
             console.log('🔍 DEBUG: Handling MULTI_WRITER_APPROVAL in workflow.approve');
             console.log('📊 Current project stage:', currentProject.current_stage);
-            console.log('👤 Current user ID:', userId);
+            console.log('👤 Current user ID:', finalUserId);
             console.log('🎯 Next stage/role parameters:', { nextStage, nextRole });
 
             // Validate that only writers can approve in MULTI_WRITER_APPROVAL stage
@@ -1529,14 +1593,14 @@ export const workflow = {
                 await this.recordAction(
                     projectId,
                     nextRole, // to_stage
-                    userId,
-                    userName,
+                    finalUserId,
+                    finalUserName,
                     actionType,
-                    comment || `${userName} performed action in ${currentProject.current_stage}`,
+                    comment || `${finalUserName} performed action in ${currentProject.current_stage}`,
                     undefined,
                     currentProject.assigned_to_role as Role, // fromRole
                     nextRole, // toRole
-                    userRole, // actorRole
+                    finalUserRole, // actorRole
                     metadata // Pass through metadata
                 );
 
@@ -1562,7 +1626,7 @@ export const workflow = {
                 .select('id')
                 .eq('project_id', projectId)
                 .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
-                .eq('actor_id', userId)
+                .eq('actor_id', finalUserId)
                 .eq('action', 'APPROVED')
                 .maybeSingle();
 
@@ -1575,16 +1639,16 @@ export const workflow = {
             await this.recordAction(
                 projectId,
                 Role.WRITER, // Staying with writers for now
-                userId,
-                userName,
+                finalUserId,
+                finalUserName,
                 'APPROVED',
-                comment || `${userName} approved the project`,
+                comment || `${finalUserName} approved the project`,
                 undefined,
                 Role.WRITER, // fromRole
                 Role.WRITER, // toRole (indicates individual approval)
                 Role.WRITER // actorRole
             );
-            console.log('✅ Successfully recorded individual writer approval:', userId);
+            console.log('✅ Successfully recorded individual writer approval:', finalUserId);
 
             // Fetch progress data to decide if we should advance
             const { data: activeWriters } = await supabase
@@ -1605,8 +1669,8 @@ export const workflow = {
                 await this.recordAction(
                     projectId,
                     nextRole, // nextRole is the target
-                    userId,
-                    userName,
+                    finalUserId,
+                    finalUserName,
                     actionOverride || 'SUBMITTED',
                     comment || `All writers have approved - Project advanced to ${nextStage}.`,
                     undefined,
@@ -1672,9 +1736,6 @@ export const workflow = {
             const projectUpdateData: any = {
                 current_stage: nextStage,
                 // Preserve display information
-                created_by_name: currentProject?.created_by_name || null,
-                writer_id: currentProject?.writer_id || null,
-                writer_name: currentProject?.writer_name || null,
                 // Preserve assigned user ID if it exists
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
             };
@@ -1703,14 +1764,14 @@ export const workflow = {
             await this.recordAction(
                 projectId,
                 nextRole, // nextRole is the target
-                userId,
-                userName,
+                finalUserId,
+                finalUserName,
                 actionOverride || 'APPROVED',
                 comment || `Approved by ${userRole}`,
                 undefined,
                 fromRoleOverride ? fromRoleOverride as Role : userRole,
                 nextRole,
-                userRole,
+                finalUserRole,
                 metadata
             );
 
@@ -1788,15 +1849,21 @@ export const workflow = {
         userId: string,
         userName: string,
         userRole: Role,
-        returnToStage: WorkflowStage,
-        returnToRole: Role,
-        comment: string,
-        isRework: boolean = false  // Added parameter to distinguish between rework and reject
+        targetStage: WorkflowStage,
+        targetRole: Role,
+        comment?: string,
+        isRework: boolean = false
     ) {
-        // First get the current project to preserve important fields
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        const finalUserId = publicUser?.id || userId;
+        const finalUserName = publicUser?.full_name || userName;
+        const finalUserRole = publicUser?.role || userRole;
+
+        // Fetch current project state
         const { data: currentProject, error: fetchError } = await supabase
             .from('projects')
-            .select('current_stage, data, created_by_user_id, created_by_name, writer_id, writer_name, assigned_to_user_id')
+            .select('current_stage, data, assigned_to_user_id, video_link, edited_video_link, thumbnail_link, creative_link')
             .eq('id', projectId)
             .single();
 
@@ -1835,7 +1902,7 @@ export const workflow = {
         // SPECIAL CASE: For MULTI_WRITER_APPROVAL rework, determine correct role routing
         const actualReturnToRole = (currentProject?.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL && isRework && updatedProjectData.rework_target_role)
             ? updatedProjectData.rework_target_role
-            : returnToRole;
+            : targetRole;
 
         // Store rework initiator information in project metadata for routing back after completion
         let updatedData = {
@@ -1846,7 +1913,7 @@ export const workflow = {
 
         // Store the target role that should handle the rework for ALL rework scenarios
         // This ensures advanceWorkflow can correctly identify when the rework is done
-        if (isRework && returnToRole) {
+        if (isRework && targetRole) {
             updatedData = {
                 ...updatedData,
                 rework_target_role: actualReturnToRole
@@ -1866,14 +1933,14 @@ export const workflow = {
         await this.recordAction(
             projectId,
             actualReturnToRole, // to_stage is Role
-            userId,
-            userName,
+            finalUserId,
+            finalUserName,
             isRework ? 'REWORK' : 'REJECTED',
-            comment || (isRework ? `Rework requested by ${userRole}` : `Rejected by ${userRole}`),
+            comment || (isRework ? `Rework requested by ${finalUserRole}` : `Rejected by ${finalUserRole}`),
             currentProject?.data?.script_content || currentProject?.data?.idea_description || null,
-            userRole, // fromRole (the one who rejected)
+            finalUserRole, // fromRole (the one who rejected)
             actualReturnToRole, // toRole (the one who must fix it)
-            userRole, // actorRole
+            finalUserRole, // actorRole
             {
                 rework_reason: comment,
                 video_link: videoLink,
@@ -1888,15 +1955,11 @@ export const workflow = {
         const { error: updateError } = await supabase
             .from('projects')
             .update({
-                current_stage: returnToStage,
+                current_stage: targetStage,
                 assigned_to_role: actualReturnToRole,
                 status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED,
                 data: updatedData,
                 // Preserve creator information
-                created_by_user_id: currentProject?.created_by_user_id || null,
-                created_by_name: currentProject?.created_by_name || null,
-                writer_id: currentProject?.writer_id || null,
-                writer_name: currentProject?.writer_name || null,
                 // Preserve assigned user ID if it exists
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
             })
@@ -1927,7 +1990,7 @@ export const workflow = {
         const actionType = isRework ? 'REWORK' : 'REJECTED';
 
         // Update the appropriate timestamp based on the action
-        const timestampUpdates = getTimestampUpdate(actionType, userRole);
+        const timestampUpdates = getTimestampUpdate(actionType, finalUserRole);
         if (Object.keys(timestampUpdates).length > 0) {
             await supabase
                 .from('projects')
@@ -1939,7 +2002,7 @@ export const workflow = {
         const { data: returnRoleUsers } = await supabase
             .from('users')
             .select('id')
-            .eq('role', returnToRole)
+            .eq('role', targetRole)
             .eq('status', 'ACTIVE');
 
         if (returnRoleUsers && returnRoleUsers.length > 0) {
@@ -1970,12 +2033,17 @@ export const workflow = {
         userId: string,
         userName: string
     ) {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        const finalUserId = publicUser?.id || userId;
+        const finalUserName = publicUser?.full_name || userName;
+
         // 1. Add workflow history BEFORE project update (Mandatory Fix)
         await this.recordAction(
             projectId,
             Role.OPS, // TERMINATING AT OPS
-            userId,
-            userName,
+            finalUserId,
+            finalUserName,
             'APPROVED',
             'Project completed and published',
             undefined, // scriptContent
@@ -2687,14 +2755,15 @@ export const db = {
     },
 
     async logout() {
-        if (currentUserCache) {
+        const publicUser = await auth.getPublicUser();
+        if (publicUser) {
             try {
                 await systemLogs.add({
-                    actor_id: currentUserCache.id,
-                    actor_name: currentUserCache.full_name,
-                    actor_role: currentUserCache.role,
+                    actor_id: publicUser.id,
+                    actor_name: publicUser.full_name,
+                    actor_role: publicUser.role,
                     action: 'LOGOUT',
-                    details: `User ${currentUserCache.full_name} logged out`
+                    details: `User ${publicUser.full_name} logged out`
                 });
             } catch (logError) {
                 console.warn('Failed to log logout event:', logError);
@@ -2764,57 +2833,56 @@ export const db = {
     },
 
     async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'NORMAL'): Promise<Project> {
-        // Get current user information, either from cache or directly from auth
-        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.name ||
-            null;
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
 
         const projectData = {
             title,
             channel,
             content_type: contentType,
             assigned_to_role: Role.WRITER, // Always starts with writer
+            assigned_to_user_id: publicUser.id, // Explicitly assign to the creator (writer)
             due_date: dueDate,
             priority,
             data: {},
-            // Set display information
-            created_by_user_id: currentUserId,
-            created_by_name: currentUserFullName,
-            writer_id: currentUserId,
-            writer_name: currentUserFullName,
+            // Set display information using the verified public.users.id
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            writer_id: publicUser.id,
+            writer_name: publicUser.full_name,
         };
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
 
-        // Record the creation in workflow history
-        if (currentUserId && currentUserFullName) {
-            await workflow.recordAction(
-                createdProject.id,
-                Role.WRITER, // next responsible role is Writer
-                currentUserId,
-                currentUserFullName,
-                'CREATED',
-                'Project created by writer',
-                undefined,
-                Role.WRITER, // fromRole
-                Role.WRITER, // toRole
-                Role.WRITER  // actorRole
-            );
-        }
+        // Record the creation in workflow history using the verified public.users.id
+        await workflow.recordAction(
+            createdProject.id,
+            Role.WRITER, // next responsible role is Writer
+            publicUser.id,
+            publicUser.full_name,
+            'CREATED',
+            'Project created by writer',
+            undefined,
+            Role.WRITER, // fromRole
+            Role.WRITER, // toRole
+            Role.WRITER  // actorRole
+        );
 
         return createdProject;
     },
 
     async createDirectCreativeProject(title: string, channel: Channel, dueDate: string, priority: Priority = 'NORMAL'): Promise<Project> {
-        // Get current user information, either from cache or directly from auth
-        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.name ||
-            null;
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
 
         // Create a project that starts at the FINAL_REVIEW_CMO stage for direct creative uploads
         const projectData = {
@@ -2827,42 +2895,40 @@ export const db = {
             due_date: dueDate,
             priority,
             data: {},
-            // Set creator information
-            created_by_user_id: currentUserId,
-            created_by_name: currentUserFullName,
-            writer_id: currentUserId,
-            writer_name: currentUserFullName,
+            // Set creator information using the verified public.users.id
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            writer_id: publicUser.id,
+            writer_name: publicUser.full_name,
         };
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
 
-        // Record the creation in workflow history
-        if (currentUserId && currentUserFullName) {
-            await workflow.recordAction(
-                createdProject.id,
-                Role.CMO, // next responsible role is CMO
-                currentUserId,
-                currentUserFullName,
-                'CREATED',
-                'Direct Creative Upload project created',
-                undefined,
-                Role.CMO, // fromRole
-                Role.CMO, // toRole
-                Role.CMO  // actorRole
-            );
-        }
+        // Record the creation in workflow history using the verified public.users.id
+        await workflow.recordAction(
+            createdProject.id,
+            Role.CMO, // next responsible role is CMO
+            publicUser.id,
+            publicUser.full_name,
+            'CREATED',
+            'Direct Creative Upload project created',
+            undefined,
+            Role.CMO, // fromRole
+            Role.CMO, // toRole
+            Role.CMO  // actorRole
+        );
 
         return createdProject;
     },
 
     async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL', contentType: ContentType = 'CREATIVE_ONLY'): Promise<Project> {
-        // Get current user information, either from cache or directly from auth
-        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.name ||
-            null;
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
 
         // Create a project that starts at the FINAL_REVIEW_CMO stage for designer-initiated projects
         const projectData = {
@@ -2881,43 +2947,40 @@ export const db = {
                 creative_link: link, // Also store the creative link in the data object for consistency
                 source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
             },
-            // Set display information
-            created_by_user_id: currentUserId,
-            created_by_name: currentUserFullName,
-            writer_id: currentUserId,
-            writer_name: currentUserFullName,
+            // Set display information using the verified public.users.id
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            writer_id: publicUser.id,
+            writer_name: publicUser.full_name,
         };
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
 
-        // Record the creation in workflow history
-        if (currentUserId && currentUserFullName) {
-            await workflow.recordAction(
-                createdProject.id,
-                Role.CMO, // next responsible role is CMO
-                currentUserId,
-                currentUserFullName,
-                'CREATED',
-                'Designer-initiated creative project created',
-                undefined,
-                Role.DESIGNER, // fromRole
-                Role.CMO, // toRole
-                Role.DESIGNER  // actorRole
-            );
-        }
+        // Record the creation in workflow history using the verified public.users.id
+        await workflow.recordAction(
+            createdProject.id,
+            Role.CMO, // next responsible role is CMO
+            publicUser.id,
+            publicUser.full_name,
+            'CREATED',
+            'Designer-initiated creative project created',
+            undefined,
+            Role.DESIGNER, // fromRole
+            Role.CMO, // toRole
+            Role.DESIGNER  // actorRole
+        );
 
         return createdProject;
     },
 
     async createIdeaProject(title: string, channel: Channel, contentType: ContentType, description: string, priority: Priority = 'NORMAL'): Promise<Project> {
-        // Create an idea project that starts at the FINAL_REVIEW_CMO stage
-        // Get current user information, either from cache or directly from auth
-        const currentUserId = currentUserCache?.id || (await auth.getCurrentUser())?.id || null;
-        const currentUserFullName = currentUserCache?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.full_name ||
-            (await auth.getCurrentUser())?.user_metadata?.name ||
-            null;
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
 
         const projectData = {
             title,
@@ -2932,31 +2995,29 @@ export const db = {
                 idea_description: description, // Store the idea description
                 source: 'IDEA_PROJECT' // Track that this project was created as an idea
             },
-            // Set display information
-            created_by_user_id: currentUserId,
-            created_by_name: currentUserFullName,
-            writer_id: currentUserId,
-            writer_name: currentUserFullName,
+            // Set display information using the verified public.users.id
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            writer_id: publicUser.id,
+            writer_name: publicUser.full_name,
         };
 
         // Create the project and return the real project with Supabase UUID
         const createdProject = await projects.create(projectData);
 
-        // Record the creation in workflow history
-        if (currentUserCache) {
-            await workflow.recordAction(
-                createdProject.id,
-                Role.CMO, // next responsible role is CMO
-                currentUserCache.id,
-                currentUserCache.full_name,
-                'CREATED',
-                'Idea project created and submitted to CMO',
-                undefined,
-                Role.WRITER, // fromRole (assuming writer creates ideas)
-                Role.CMO,    // toRole
-                Role.WRITER  // actorRole
-            );
-        }
+        // Record the creation in workflow history using the verified public.users.id
+        await workflow.recordAction(
+            createdProject.id,
+            Role.CMO, // next responsible role is CMO
+            publicUser.id,
+            publicUser.full_name,
+            'CREATED',
+            'Idea project created and submitted to CMO',
+            undefined,
+            Role.WRITER, // fromRole (assuming writer creates ideas)
+            Role.CMO,    // toRole
+            Role.WRITER  // actorRole
+        );
 
         return createdProject;
     },
@@ -3081,10 +3142,16 @@ export const db = {
             project.data
         );
 
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot submit project without a valid public user ID.');
+        }
+
         const result = await workflow.submitForReview(
             projectId,
-            currentUserCache.id,
-            currentUserCache.full_name,
+            publicUser.id,
+            publicUser.full_name,
             nextStageInfo.stage,
             nextStageInfo.role,
             'Submitted for review'
@@ -3098,7 +3165,9 @@ export const db = {
     },
 
     async advanceWorkflow(projectId: string, comment?: string) {
-        if (!currentUserCache) {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        if (!publicUser) {
             console.error('No current user for advanceWorkflow');
             throw new Error('No current user for advanceWorkflow');
         }
@@ -3181,7 +3250,7 @@ export const db = {
 
         if (isFromRework) {
             advanceAction = 'SUBMITTED';
-            const role = currentUserCache.role;
+            const role = publicUser.role;
 
             // Calculate metadata for asset comparison (Before vs After)
             let beforeLink = null;
@@ -3211,9 +3280,9 @@ export const db = {
 
         const result = await workflow.approve(
             projectId,
-            currentUserCache.id,
-            currentUserCache.full_name,
-            currentUserCache.role,
+            publicUser.id,
+            publicUser.full_name,
+            publicUser.role,
             nextStageInfo.stage,
             nextStageInfo.role,
             comment,
@@ -3333,32 +3402,44 @@ export const db = {
 
         // Store rework metadata if this is a rework request
         if (isRework) {
+            // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+            const publicUser = await auth.getPublicUser();
+            if (!publicUser) {
+                throw new Error('User profile not found. Cannot set rework metadata without a valid public user ID.');
+            }
+
             console.log('📝 Storing rework metadata for initiator return:', {
-                role: currentUserCache.role,
+                role: publicUser.role,
                 stage: project.current_stage,
                 target: targetRole
             });
             const { data: currentData } = await supabase.from('projects').select('data').eq('id', projectId).single();
             const updatedProjectData = {
                 ...currentData?.data,
-                rework_initiator_role: currentUserCache.role,
+                rework_initiator_role: publicUser.role,
                 rework_initiator_stage: project.current_stage,
                 rework_target_role: targetRole
             };
 
             await supabase.from('projects').update({
                 data: updatedProjectData,
-                rework_initiator_role: currentUserCache.role,
+                rework_initiator_role: publicUser.role,
                 rework_initiator_stage: project.current_stage,
                 rework_target_role: targetRole
             }).eq('id', projectId);
         }
 
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot reject task without a valid public user ID.');
+        }
+
         const result = await workflow.reject(
             projectId,
-            currentUserCache.id,
-            currentUserCache.full_name,
-            currentUserCache.role,
+            publicUser.id,
+            publicUser.full_name,
+            publicUser.role,
             targetStage,
             targetRole,
             comment,
