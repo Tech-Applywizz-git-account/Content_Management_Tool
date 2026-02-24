@@ -120,38 +120,67 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, onLogout }) =
       <div className="md:hidden fixed top-0 w-full bg-slate-900 text-white z-50 flex items-center justify-between p-4 shadow-md">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-bold text-white">A</div>
-          <span className="font-bold">ApplyWizz Admin</span>
+          <span className="font-bold uppercase tracking-tight">ApplyWizz Admin</span>
         </div>
-        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 hover:bg-slate-800 rounded-md transition-colors"
+          aria-label="Toggle Menu"
+        >
           {isMobileMenuOpen ? <X /> : <Menu />}
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-slate-900 z-40 pt-20 px-6 md:hidden">
-          <div className="space-y-2">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => { handleNavigate(item.id as AdminView); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-colors ${currentView === item.id ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'
-                  }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </button>
-            ))}
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Menu Drawer */}
+      <div className={`fixed inset-y-0 left-0 w-64 bg-slate-900 text-white z-50 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out md:hidden border-r border-slate-800 flex flex-col`}>
+        <div className="p-6 flex items-center space-x-3 border-b border-slate-800">
+          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center font-bold text-white">A</div>
+          <span className="text-xl font-bold tracking-tight">ApplyWizz</span>
+        </div>
+
+        <div className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { handleNavigate(item.id as AdminView); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-colors ${currentView === item.id ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+            >
+              <item.icon className="w-5 h-5" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4 bg-slate-950 border-t border-slate-800">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
+              <span className="text-xs font-bold text-white">AD</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-medium text-white truncate">{user.full_name}</p>
+            </div>
           </div>
-          <button onClick={() => {
-            console.log('Logout button clicked (mobile)');
-            onLogout();
-          }} className="text-red-400 flex items-center space-x-2 mt-8 px-4">
-            <LogOut className="w-5 h-5" />
+          <button
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              onLogout();
+            }}
+            className="w-full flex items-center justify-center space-x-2 p-2 rounded bg-slate-800 text-red-400 hover:bg-red-900/20 transition-colors text-sm font-bold uppercase"
+          >
+            <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
         </div>
-      )}
+      </div>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-20 md:pt-0 bg-slate-50">

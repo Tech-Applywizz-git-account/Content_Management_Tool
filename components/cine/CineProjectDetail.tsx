@@ -346,34 +346,34 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         <div className="min-h-screen bg-slate-50 animate-fade-in">
             {/* Header */}
             <div className="bg-white border-b-2 border-black sticky top-0 z-10">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 md:gap-4">
                     <button
                         onClick={onBack}
-                        className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
+                        className="p-1.5 md:p-2 border-2 border-black hover:bg-slate-100 transition-colors"
                     >
-                        <ArrowLeft className="w-5 h-5" />
+                        <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
-                    <div className="flex-1">
-                        <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
-                        <div className="flex items-center gap-3 mt-1">
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-lg md:text-2xl font-black uppercase text-slate-900 truncate">{localProject.title}</h1>
+                        <div className="flex items-center gap-2 mt-0.5 md:mt-1">
                             <span
-                                className={`px - 2 py - 1 text - [10px] font - black uppercase border - 2 border - black ${localProject.channel === 'YOUTUBE'
+                                className={`px-1.5 py-0.5 text-[8px] md:text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
                                     ? 'bg-[#FF4F4F] text-white'
                                     : localProject.channel === 'LINKEDIN'
                                         ? 'bg-[#0085FF] text-white'
                                         : 'bg-[#D946EF] text-white'
-                                    } `}
+                                    }`}
                             >
                                 {localProject.channel}
                             </span>
 
                             <span
-                                className={`px - 2 py - 1 text - [10px] font - black uppercase border - 2 border - black ${localProject.priority === 'HIGH'
+                                className={`px-1.5 py-0.5 text-[8px] md:text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : localProject.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
                                         : 'bg-green-500 text-white'
-                                    } `}
+                                    }`}
                             >
                                 {localProject.priority}
                             </span>
@@ -384,91 +384,89 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             {/* Rework Information Box (Shown for rework projects assigned to Cine) */}
             {(isRework || isRejected) && localProject.assigned_to_role === Role.CINE && localProject.history && localProject.history.length > 0 && (
-                <div className="bg-red-50 border-2 border-red-400 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                    <div className="flex items-center space-x-2 mb-4">
-                        <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">!</span>
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-black uppercase text-red-800">
-                                {isRejected ? 'Project Rejected' : 'Rework Required'}
-                            </h2>
-                            <p className="text-sm font-bold text-red-600">
-                                {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                        <div className="p-4 bg-white border-l-4 border-red-500">
-                            <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
-                            <p className="text-red-700">
-                                {getLatestReworkRejectComment(localProject, userRole)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
-                            </p>
-                            <p className="text-sm text-red-600 mt-2">
-                                {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
-                            </p>
-                        </div>
-
-                        {/* Display forwarded comments from CMO and CEO - Show in all tabs */}
-                        {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
-                            <div className="mb-4">
-                                <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
-                                <div className="space-y-2 ml-2">
-                                    {localProject.forwarded_comments
-                                        .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
-                                        .map((comment, index) => {
-                                            const timestamp = new Date(comment.created_at).toLocaleString();
-
-                                            return (
-                                                <div key={`forwarded - ${comment.id || index} `} className="p-2 bg-blue-50 border border-blue-200 rounded">
-                                                    <div className="flex items-center">
-                                                        <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
-                                                        <span className="mx-2 text-slate-400">•</span>
-                                                        <span className="text-xs text-slate-500">{timestamp}</span>
-                                                    </div>
-                                                    <div className="mt-1">
-                                                        <span className="px-1.5 py-0.5 text-xs font-black uppercase border border-black bg-blue-500 text-white">
-                                                            {comment.action}
-                                                        </span>
-                                                        <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                <div className="p-4 md:p-6 bg-red-50 border-b-2 border-black">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="bg-white border-2 border-red-500 p-4 md:p-6 shadow-[4px_4px_0px_0px_rgba(239,68,68,1)]">
+                            <div className="flex items-center space-x-2 mb-4">
+                                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <span className="text-white font-bold text-sm">!</span>
+                                </div>
+                                <div className="min-w-0">
+                                    <h2 className="text-lg md:text-xl font-black uppercase text-red-800 truncate">
+                                        {isRejected ? 'Project Rejected' : 'Rework Required'}
+                                    </h2>
+                                    <p className="text-[10px] md:text-sm font-bold text-red-600">
+                                        {isRejected ? '(Limited editing capabilities)' : '(Full editing capabilities)'}
+                                    </p>
                                 </div>
                             </div>
-                        )}
+                            <div className="space-y-4">
+                                <div className="p-4 bg-white border-l-4 border-red-500">
+                                    <h4 className="font-bold text-red-800 mb-2">Reviewer Comments</h4>
+                                    <p className="text-red-700">
+                                        {getLatestReworkRejectComment(localProject, userRole)?.comment || 'No specific reason provided. Please review your submission and make necessary changes.'}
+                                    </p>
+                                    <p className="text-sm text-red-600 mt-2">
+                                        {isRejected ? 'Rejected by' : 'Feedback from'} {getLatestReworkRejectComment(localProject, userRole)?.actor_name || 'Reviewer'}
+                                    </p>
+                                </div>
 
-                        {/* Existing Data Display */}
-                        <div className="bg-white border-2 border-gray-300 p-4">
-                            <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {localProject.shoot_date && (
-                                    <div>
-                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
-                                        <p className="font-medium">{localProject.shoot_date}</p>
+                                {/* Display forwarded comments from CMO and CEO - Show in all tabs */}
+                                {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && (
+                                    <div className="mb-4">
+                                        <h4 className="font-bold text-blue-800 mb-2">Forwarded Comments from CMO/CEO</h4>
+                                        <div className="space-y-2 ml-2">
+                                            {localProject.forwarded_comments
+                                                .filter(comment => ['CMO', 'CEO'].includes(comment.from_role))
+                                                .map((comment, index) => {
+                                                    const timestamp = new Date(comment.created_at).toLocaleString();
+
+                                                    return (
+                                                        <div key={`forwarded - ${comment.id || index} `} className="p-2 bg-blue-50 border border-blue-200 rounded">
+                                                            <div className="flex items-center">
+                                                                <span className="font-bold text-blue-700">{comment.from_role} Comment</span>
+                                                                <span className="mx-2 text-slate-400">•</span>
+                                                                <span className="text-xs text-slate-500">{timestamp}</span>
+                                                            </div>
+                                                            <div className="mt-1">
+                                                                <span className="px-1.5 py-0.5 text-xs font-black uppercase border border-black bg-blue-500 text-white">
+                                                                    {comment.action}
+                                                                </span>
+                                                                <span className="ml-2 text-sm text-slate-800">{comment.comment}</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
                                     </div>
                                 )}
-                                {localProject.video_link && (
-                                    <div>
-                                        <span className="text-sm font-bold text-gray-600 block mb-1">Current Video Link</span>
-                                        <a
-                                            href={localProject.video_link}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-blue-600 hover:underline break-all"
-                                        >
-                                            {localProject.video_link}
-                                        </a>
+
+                                {/* Existing Data Display */}
+                                <div className="bg-white border-2 border-gray-300 p-4">
+                                    <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {localProject.shoot_date && (
+                                            <div>
+                                                <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
+                                                <p className="font-medium">{localProject.shoot_date}</p>
+                                            </div>
+                                        )}
+                                        {localProject.video_link && (
+                                            <div>
+                                                <span className="text-sm font-bold text-gray-600 block mb-1">Current Video Link</span>
+                                                <a
+                                                    href={localProject.video_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 hover:underline break-all"
+                                                >
+                                                    {localProject.video_link}
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
                             </div>
-                        </div>
-
-                        <div className="bg-red-100 border-2 border-red-200 p-3">
-                            <p className="text-sm text-red-800 font-bold">
-                                Please update the shoot date and/or video link below. Both old and new data will be visible for comparison.
-                            </p>
                         </div>
                     </div>
                 </div>
@@ -476,28 +474,28 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             {/* Forwarded Comments (General) - Visible when not in rework/rejected state */}
             {localProject?.forwarded_comments && localProject.forwarded_comments.length > 0 && !isRework && !isRejected && (
-                <div className="max-w-6xl mx-auto px-6 pt-6 pb-0">
-                    <div className="bg-blue-50 border-2 border-blue-200 p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-center">
-                        <h4 className="font-bold text-blue-800 mb-4 uppercase">Forwarded Reviewer Feedback</h4>
+                <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6 pb-0">
+                    <div className="bg-blue-50 border-2 border-blue-200 p-4 md:p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
+                        <h4 className="font-bold text-blue-800 mb-4 uppercase text-sm md:text-base">Forwarded Reviewer Feedback</h4>
                         <div className="space-y-3">
                             {localProject.forwarded_comments
                                 .filter((comment: any) => ['CMO', 'CEO'].includes(comment.from_role))
                                 .map((comment: any, index: number) => (
-                                    <div key={index} className="bg-white border-l-4 border-blue-500 p-4 shadow-sm text-left">
+                                    <div key={index} className="bg-white border-l-4 border-blue-500 p-3 md:p-4 shadow-sm text-left">
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex items-center gap-2">
-                                                <span className="font-black text-white bg-blue-500 px-2 py-0.5 uppercase text-xs">
+                                                <span className="font-black text-white bg-blue-500 px-2 py-0.5 uppercase text-[10px]">
                                                     {comment.from_role}
                                                 </span>
-                                                <span className="font-bold text-slate-400 text-xs uppercase">
+                                                <span className="font-bold text-slate-400 text-[10px] uppercase">
                                                     {comment.action}
                                                 </span>
                                             </div>
-                                            <span className="text-xs font-bold text-slate-400 uppercase">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">
                                                 {new Date(comment.created_at).toLocaleDateString()}
                                             </span>
                                         </div>
-                                        <p className="text-sm text-slate-900 font-bold whitespace-pre-wrap">
+                                        <p className="text-xs md:text-sm text-slate-900 font-bold whitespace-pre-wrap">
                                             {comment.comment}
                                         </p>
                                     </div>
@@ -508,33 +506,33 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             )}
 
             {/* Content */}
-            <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
                 {/* Project Info */}
-                <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                    <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+                <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-4 md:p-6">
+                    <h2 className="text-lg md:text-xl font-black uppercase mb-4">Project Details</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                        <div className="border-b md:border-b-0 pb-2 md:pb-0">
+                            <span className="font-bold text-slate-400 uppercase text-[10px]">Status</span>
+                            <p className="font-bold text-slate-900 mt-0.5">{localProject.status}</p>
                         </div>
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+                        <div className="border-b md:border-b-0 pb-2 md:pb-0">
+                            <span className="font-bold text-slate-400 uppercase text-[10px]">Priority</span>
+                            <p className="font-bold text-slate-900 mt-0.5">{localProject.priority}</p>
                         </div>
-                        <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                            <p className="font-bold text-slate-900 mt-1">
+                        <div className="border-b md:border-b-0 pb-2 md:pb-0">
+                            <span className="font-bold text-slate-400 uppercase text-[10px]">Created</span>
+                            <p className="font-bold text-slate-900 mt-0.5">
                                 {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
                             </p>
                         </div>
                         <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+                            <span className="font-bold text-slate-400 uppercase text-[10px]">Content Type</span>
+                            <p className="font-bold text-slate-900 mt-0.5">{localProject.content_type}</p>
                         </div>
                         {localProject.data?.niche && (
-                            <div className="col-span-2">
-                                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                                <p className="font-bold text-slate-900 mt-1 uppercase">
+                            <div className="col-span-full border-t pt-4 mt-2">
+                                <span className="font-bold text-slate-400 uppercase text-[10px]">Niche</span>
+                                <p className="font-bold text-slate-900 mt-0.5 uppercase">
                                     {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
@@ -1143,21 +1141,23 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     </div>
                 )}
             </div>
-            {showPopup && (
-                <Popup
-                    message={popupMessage}
-                    stageName={stageName}
-                    duration={popupDuration}
-                    onClose={() => {
-                        setShowPopup(false);
-                        // Only call onUpdate() for major state changes, not for script saves
-                        if (!popupMessage.includes('Script content updated successfully')) {
-                            onUpdate();
-                        }
-                    }}
-                />
-            )}
-        </div>
+            {
+                showPopup && (
+                    <Popup
+                        message={popupMessage}
+                        stageName={stageName}
+                        duration={popupDuration}
+                        onClose={() => {
+                            setShowPopup(false);
+                            // Only call onUpdate() for major state changes, not for script saves
+                            if (!popupMessage.includes('Script content updated successfully')) {
+                                onUpdate();
+                            }
+                        }}
+                    />
+                )
+            }
+        </div >
     );
 };
 

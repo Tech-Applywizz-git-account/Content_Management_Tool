@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { decodeHtmlEntities, stripHtmlTags } from '../utils/htmlDecoder';
 import ScriptDisplay from './ScriptDisplay';
+import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 
 interface ScriptComparisonProps {
   previousScript: string;
@@ -11,158 +12,81 @@ interface ScriptComparisonProps {
   currentTimestamp?: string;
 }
 
+const dmp = new DiffMatchPatch();
 
-// Simple diff algorithm for comparing text
-const getTextDifferences = (oldText: string, newText: string) => {
-  // Strip all HTML tags from both scripts for a clean text comparison
-  const cleanOldText = stripHtmlTags(oldText);
-  const cleanNewText = stripHtmlTags(newText);
-
-  const oldLines = cleanOldText.split('\n');
-  const newLines = cleanNewText.split('\n');
-  const maxLength = Math.max(oldLines.length, newLines.length);
-
-  const differences = [];
-
-  for (let i = 0; i < maxLength; i++) {
-    const oldLine = oldLines[i] || '';
-    const newLine = newLines[i] || '';
-
-    if (oldLine === newLine) {
-      differences.push({ type: 'unchanged', content: newLine, lineNumber: i + 1 });
-    } else if (!oldLine) {
-      differences.push({ type: 'added', content: newLine, lineNumber: i + 1 });
-    } else if (!newLine) {
-      differences.push({ type: 'removed', content: oldLine, lineNumber: i + 1 });
-    } else {
-      // For changed lines, we'll highlight the whole line as changed
-      differences.push({ type: 'removed', content: oldLine, lineNumber: i + 1 });
-      differences.push({ type: 'added', content: newLine, lineNumber: i + 1 });
-    }
-  }
-
-  return differences;
-};
-
-// Function to highlight added content in current script at word level
 const highlightAddedContent = (oldText: string, newText: string) => {
-  const cleanOldText = stripHtmlTags(oldText);
-  const cleanNewText = stripHtmlTags(newText);
+  const cleanOldText = stripHtmlTags(oldText || '');
+  const cleanNewText = stripHtmlTags(newText || '');
 
-  const oldLines = cleanOldText.split('\n');
-  const newLines = cleanNewText.split('\n');
-
-  const highlightedLines = [];
-
-  // Compare line by line
-  for (let i = 0; i < newLines.length; i++) {
-    const newLine = newLines[i];
-    const oldLine = oldLines[i] || '';
-
-    // For clear comparison, we use the already stripped lines
-    const cleanNewLine = newLine;
-    const cleanOldLine = oldLine;
-
-    if (cleanNewLine === cleanOldLine) {
-      // Line unchanged
-      highlightedLines.push({ type: 'unchanged', content: cleanNewLine });
-    } else if (!oldLine) {
-      // Completely new line - highlight entire line
-      highlightedLines.push({ type: 'added', content: cleanNewLine });
-    } else {
-      // Partially changed line - highlight individual words
-      const highlightedContent = highlightWordDifferences(cleanOldLine, cleanNewLine);
-      highlightedLines.push({ type: 'changed', content: highlightedContent });
-    }
+  if (cleanOldText === cleanNewText) {
+    return cleanNewText.split('\n').map(line => ({ type: 'unchanged', content: line }));
   }
 
-  return highlightedLines;
-};
+  // Use diff-match-patch for intelligent diffing
+  const diffs = dmp.diff_main(cleanOldText, cleanNewText);
+  dmp.diff_cleanupSemantic(diffs);
 
-// Function to highlight word-level differences
-const highlightWordDifferences = (oldLine: string, newLine: string) => {
-  // Split lines into words (split by spaces and punctuation)
-  const oldWords = oldLine.split(/(\s+)/);
-  const newWords = newLine.split(/(\s+)/);
+  const highlightedLines: Array<{ type: string, content: string }> = [];
 
-  let result = '';
+  // We want to reconstruct the NEW text with highlights
+  // A 'change' in our UI is often an addition following a deletion
+  diffs.forEach((diff, index) => {
+    const [type, text] = diff;
 
-  // Compare word by word
-  const maxLength = Math.max(oldWords.length, newWords.length);
+    if (type === 0) { // Unchanged
+      text.split('\n').forEach(line => {
+        highlightedLines.push({ type: 'unchanged', content: line });
+      });
+    } else if (type === 1) { // Added
+      // Check if this addition was preceded by a deletion (making it a 'change')
+      const prevDiff = index > 0 ? diffs[index - 1] : null;
+      const isChange = prevDiff && prevDiff[0] === -1;
 
-  for (let i = 0; i < maxLength; i++) {
-    const oldWord = oldWords[i] || '';
-    const newWord = newWords[i] || '';
-
-    if (oldWord === newWord) {
-      // Word unchanged
-      result += newWord;
-    } else if (!oldWord && newWord.trim() !== '') {
-      // New word - wrap in highlight span
-      result += `<span style="background-color: #bbf7d0; padding: 0 2px; border-radius: 2px;">${newWord}</span>`;
-    } else if (oldWord && !newWord) {
-      // Word removed (skip for current script)
-      continue;
-    } else {
-      // Word changed - highlight the new version
-      if (newWord.trim() !== '') {
-        result += `<span style="background-color: #fef08a; padding: 0 2px; border-radius: 2px;">${newWord}</span>`;
-      } else {
-        result += newWord;
-      }
+      text.split('\n').forEach(line => {
+        if (line.trim() === '') return;
+        highlightedLines.push({ type: isChange ? 'changed' : 'added', content: line });
+      });
     }
-  }
+    // Type -1 (Deleted) is ignored for the CURRENT script view
+  });
 
-  return result;
+  // Clean up: join fragments that belong to the same line if necessary
+  // (DMP can sometimes split lines awkwardly)
+  return highlightedLines.filter(l => l.content.trim() !== '' || l.type === 'unchanged');
 };
 
 const ScriptComparison: React.FC<ScriptComparisonProps> = ({
   previousScript,
   currentScript,
-  previousAuthor,
-  currentAuthor,
-  previousTimestamp,
-  currentTimestamp
 }) => {
   const [highlightedLines, setHighlightedLines] = useState<Array<{ type: string, content: string }>>([]);
 
   useEffect(() => {
-    // We still keep the highlight logic for comparison, but it works on stripped text
     const highlighted = highlightAddedContent(previousScript || '', currentScript || '');
     setHighlightedLines(highlighted);
   }, [previousScript, currentScript]);
 
   const renderHighlightedLine = (line: { type: string, content: string }, index: number) => {
-    const baseClasses = "py-1 px-2 font-serif text-xl";
+    const baseClasses = "py-2 px-4 font-serif text-xl border-l-4";
 
-    switch (line.type) {
-      case 'added':
-        return (
-          <div
-            key={`added-${index}`}
-            className={`${baseClasses} bg-green-100 border-l-4 border-green-500`}
-          >
-            <div dangerouslySetInnerHTML={{ __html: line.content }} />
-          </div>
-        );
-      case 'changed':
-        return (
-          <div
-            key={`changed-${index}`}
-            className={`${baseClasses} bg-yellow-100 border-l-4 border-yellow-500`}
-          >
-            <div dangerouslySetInnerHTML={{ __html: line.content }} />
-          </div>
-        );
-      default:
-        return (
-          <div
-            key={`unchanged-${index}`}
-            className={`${baseClasses} bg-white`}
-          >
-            <div dangerouslySetInnerHTML={{ __html: line.content }} />
-          </div>
-        );
+    if (line.type === 'added') {
+      return (
+        <div key={`added-${index}`} className={`${baseClasses} bg-green-100 border-green-500 mb-1`}>
+          {line.content}
+        </div>
+      );
+    } else if (line.type === 'changed') {
+      return (
+        <div key={`changed-${index}`} className={`${baseClasses} bg-yellow-100 border-yellow-500 mb-1`}>
+          {line.content}
+        </div>
+      );
+    } else {
+      return (
+        <div key={`unchanged-${index}`} className="py-1 px-4 font-serif text-xl border-l-4 border-transparent">
+          {line.content || '\u00A0'}
+        </div>
+      );
     }
   };
 
@@ -171,8 +95,8 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
       {/* Side-by-side comparison */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Previous Script */}
-        <div className="bg-white border-2 border-red-200 rounded-lg overflow-hidden flex flex-col">
-          <div className="bg-red-500 text-white p-3 font-bold uppercase text-sm">
+        <div className="bg-white border-2 border-red-100 rounded-lg overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-red-500 text-white p-3 font-bold uppercase text-xs tracking-wider">
             Previous Script
           </div>
           <div className="font-serif text-xl text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
@@ -182,14 +106,14 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
           </div>
         </div>
 
-        {/* Current Script with Highlights or Formatting */}
-        <div className="bg-white border-2 border-green-200 rounded-lg overflow-hidden flex flex-col">
-          <div className="bg-green-500 text-white p-3 font-bold uppercase text-sm">
-            Current Script
+        {/* Current Script with Highlights */}
+        <div className="bg-white border-2 border-green-100 rounded-lg overflow-hidden flex flex-col shadow-sm">
+          <div className="bg-green-600 text-white p-3 font-bold uppercase text-xs tracking-wider">
+            Current Script (With Highlights)
           </div>
           <div className="font-serif text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
             <div className="p-4 text-xl">
-              <div className="space-y-0">
+              <div className="space-y-1">
                 {highlightedLines.length > 0 ? (
                   highlightedLines.map((line, index) => renderHighlightedLine(line, index))
                 ) : (

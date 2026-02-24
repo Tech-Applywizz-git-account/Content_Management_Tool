@@ -157,10 +157,12 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     comment,
                     actor_name,
                     actor_id,
+                    actor_role,
                     timestamp
                 `)
-        .eq('actor_id', user.id)
-        .eq('action', 'APPROVED');
+        .eq('actor_role', Role.CMO)
+        .in('action', ['APPROVED', 'SUBMITTED'])
+        .order('timestamp', { ascending: true });
 
       if (error || !data) {
         setFilteredHistoryProjects([]);
@@ -179,8 +181,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         .select('*')
         .in('id', projectIds);
 
-      // Filter out idea projects (projects where data.source is 'IDEA_PROJECT')
-      const filteredProjects = projects?.filter(project => project.data?.source !== 'IDEA_PROJECT') || [];
+      // Show all projects approved by CMO (removed data.source !== 'IDEA_PROJECT' filter)
+      const filteredProjects = projects || [];
 
       setFilteredHistoryProjects(filteredProjects);
     };
@@ -188,24 +190,24 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     loadHistory();
   }, [activeTab, user.id]);
 
-  // Load counts from the workflow_history table (count by user actions)
+  // Load counts from the workflow_history table (count by role actions)
   const loadCounts = async () => {
     console.log('🔄 CMO Dashboard: Loading counts from workflow_history');
     try {
-      // Approved: count workflow_history records where actor_id = user.id and action = APPROVED
-      console.log('🔄 CMO Dashboard: Fetching approved count for user:', user.id);
+      // Approved: count workflow_history records where actor_role = 'CMO' and action = APPROVED
+      console.log('🔄 CMO Dashboard: Fetching approved count for CMO role');
       const { count: approvedCountResult, error: approvedErr } = await supabase
         .from('workflow_history')
         .select('*', { head: true, count: 'exact' })
-        .eq('actor_id', user.id)
-        .eq('action', 'APPROVED');
+        .eq('actor_role', Role.CMO)
+        .in('action', ['APPROVED', 'SUBMITTED']);
 
       if (approvedErr) throw approvedErr;
 
       console.log('✅ CMO Dashboard: Approved count loaded:', approvedCountResult);
       setApprovedCount(approvedCountResult || 0);
     } catch (err) {
-      console.error('❌ CMO Dashboard: Failed to load counts from projects:', err);
+      console.error('❌ CMO Dashboard: Failed to load counts:', err);
     }
   };
 
@@ -474,105 +476,95 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   ))}
                 </div>
 
-                {/* Column Headers */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-slate-100 border-2 border-black font-black text-slate-700 uppercase text-xs">
-                  <div className="col-span-4">Title</div>
-                  <div className="col-span-2">Channel</div>
-                  <div className="col-span-2">Stage</div>
-                  <div className="col-span-2">Submitted</div>
-                  <div className="col-span-2">Action</div>
-                </div>
-
+                {/* History View */}
                 <div className="space-y-4">
-                  {projects
-                    .filter(p => {
-                      if (historyFilter === 'ALL') return true;
+                  {/* Desktop View Header */}
+                  <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-slate-100 border-2 border-black font-black text-slate-700 uppercase text-xs">
+                    <div className="col-span-4">Title</div>
+                    <div className="col-span-2">Channel</div>
+                    <div className="col-span-2">Stage</div>
+                    <div className="col-span-2">Submitted</div>
+                    <div className="col-span-2">Action</div>
+                  </div>
 
-                      // Check if filter is a user ID (Writer)
-                      const isWriterFilter = users.some(u => u.id === historyFilter && u.role === Role.WRITER);
-                      if (isWriterFilter) {
-                        return p.created_by_user_id === historyFilter || p.data?.writer_id === historyFilter;
-                      }
+                  <div className="space-y-4">
+                    {projects
+                      .filter(p => {
+                        if (historyFilter === 'ALL') return true;
+                        const isWriterFilter = users.some(u => u.id === historyFilter && u.role === Role.WRITER);
+                        if (isWriterFilter) {
+                          return p.created_by_user_id === historyFilter || p.data?.writer_id === historyFilter;
+                        }
+                        if (historyFilter === 'POSTED') return p.status === 'DONE';
+                        if (historyFilter === 'OPS') return p.assigned_to_role === Role.OPS && p.status !== 'DONE';
+                        if (p.status === 'DONE') return false;
+                        if (historyFilter === 'EDITOR') return p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR;
+                        return p.assigned_to_role === historyFilter;
+                      })
+                      .map(p => {
+                        const history = historyMapRef.current.get(p.id);
 
-                      if (historyFilter === 'POSTED') return p.status === 'DONE';
-                      if (historyFilter === 'OPS') return p.assigned_to_role === Role.OPS && p.status !== 'DONE';
-                      if (p.status === 'DONE') return false;
-                      if (historyFilter === 'EDITOR') return p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR;
-                      return p.assigned_to_role === historyFilter;
-                    })
-                    .map(p => {
-                      const history = historyMapRef.current.get(p.id);
-
-                      return (
-                        <div
-                          key={p.id}
-                          onClick={() => handleHistoryDetail(p, history)}
-                          className="grid grid-cols-12 gap-4 items-center bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                        >
-                          <div className="col-span-4 font-black uppercase text-lg">
-                            {p.title}
-                          </div>
-
-                          <div className="col-span-2">
-                            <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE'
-                              ? 'bg-[#FF4F4F] text-white'
-                              : p.channel === 'LINKEDIN'
-                                ? 'bg-[#0085FF] text-white'
-                                : 'bg-[#D946EF] text-white'
-                              }`}>
-                              {p.channel}
-                            </span>
-                          </div>
-                          <div className="col-span-2">
-                            <span
-                              className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                ? 'bg-red-500 text-white'
-                                : p.priority === 'NORMAL'
-                                  ? 'bg-yellow-500 text-black'
-                                  : 'bg-green-500 text-white'
-                                }`}
-                            >
-                              {p.priority}
-                            </span>
-                          </div>
-
-                          <div className="col-span-2 text-xs font-black uppercase text-slate-500">
-                            {STAGE_LABELS[p.current_stage]}
-                          </div>
-                          <div className="col-span-2">
-                            <div className="text-xs font-bold uppercase text-slate-700">
-                              By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                            </div>
-                            {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && (
-                              <div className="text-xs font-bold text-slate-500 uppercase">
-                                Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => handleHistoryDetail(p, history)}
+                            className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] cursor-pointer transition-all overflow-hidden"
+                          >
+                            {/* Desktop View Row */}
+                            <div className="hidden md:grid grid-cols-12 gap-4 items-center p-6">
+                              <div className="col-span-4 font-black uppercase text-lg truncate">
+                                {p.title}
                               </div>
-                            )}
-                            <div className="text-xs font-bold text-slate-500 uppercase">
-                              {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                              <div className="col-span-2">
+                                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' : p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' : 'bg-[#D946EF] text-white'}`}>
+                                  {p.channel}
+                                </span>
+                              </div>
+                              <div className="col-span-2">
+                                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.priority === 'HIGH' ? 'bg-red-500 text-white' : p.priority === 'NORMAL' ? 'bg-yellow-500 text-black' : 'bg-green-500 text-white'}`}>
+                                  {p.priority}
+                                </span>
+                              </div>
+                              <div className="col-span-2 text-xs font-black uppercase text-slate-500">
+                                {STAGE_LABELS[p.current_stage]}
+                              </div>
+                              <div className="col-span-2">
+                                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${(history?.action === 'APPROVED' || history?.action === 'SUBMITTED') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {history?.action === 'SUBMITTED' ? 'APPROVED' : history?.action}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Mobile View Card */}
+                            <div className="md:hidden p-4 space-y-4">
+                              <div className="flex justify-between items-start">
+                                <h4 className="font-black text-base uppercase text-slate-900 leading-tight flex-1 mr-2">{p.title}</h4>
+                                <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' : 'bg-[#0085FF] text-white'}`}>
+                                  {p.channel}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center text-[10px] font-bold uppercase">
+                                <div className="space-y-1">
+                                  <p className="text-slate-500">Stage: <span className="text-slate-900">{STAGE_LABELS[p.current_stage]}</span></p>
+                                  <p className="text-slate-500">By: <span className="text-slate-900">{p.data?.writer_name || p.created_by_name || 'Unknown'}</span></p>
+                                </div>
+                                <div className="text-right">
+                                  <span className={`px-2 py-0.5 border-2 border-black ${(history?.action === 'APPROVED' || history?.action === 'SUBMITTED') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                    {history?.action === 'SUBMITTED' ? 'APPROVED' : history?.action}
+                                  </span>
+                                  <p className="mt-2 text-slate-400">{format(new Date(p.created_at), 'MMM dd')}</p>
+                                </div>
+                              </div>
                             </div>
                           </div>
-
-                          <div className="col-span-2">
-                            <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${history?.action === 'APPROVED'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                              }`}>
-                              {history?.action}
-                            </span>
-                            {history?.action === 'REJECTED' && history?.comment && (
-                              <div className="text-xs text-red-700 mt-1 truncate" title={history.comment}>
-                                Reason: {history.comment}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
                 {/* Column 1: Scripts Pending Approval at CMO */}
                 <div className="space-y-4">

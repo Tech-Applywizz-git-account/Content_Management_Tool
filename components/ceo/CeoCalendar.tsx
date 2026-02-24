@@ -154,43 +154,43 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
         });
 
     return (
-        <div className="space-y-8 animate-fade-in relative">
+        <div className="space-y-6 md:space-y-8 animate-fade-in relative">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <h1 className="text-4xl font-black uppercase text-slate-900">Workflow Calendar</h1>
+                <h1 className="text-3xl md:text-4xl font-black uppercase text-slate-900">Workflow Calendar</h1>
 
                 {/* Legend */}
-                <div className="flex flex-wrap gap-4 bg-white border-2 border-black p-3 text-[10px] font-black uppercase">
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-blue-500 border border-black"></div>
+                <div className="flex flex-wrap gap-2 md:gap-4 bg-white border-2 border-black p-2 md:p-3 text-[8px] md:text-[10px] font-black uppercase">
+                    <div className="flex items-center gap-1.5 md:gap-2">
+                        <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-blue-500 border border-black"></div>
                         <span>Shoot</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-green-500 border border-black"></div>
+                    <div className="flex items-center gap-1.5 md:gap-2">
+                        <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border border-black"></div>
                         <span>Delivery</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-purple-500 border border-black"></div>
+                    <div className="flex items-center gap-1.5 md:gap-2">
+                        <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-purple-500 border border-black"></div>
                         <span>Post</span>
                     </div>
                 </div>
             </div>
 
             {/* Month Navigation */}
-            <div className="flex items-center justify-between border-2 border-black p-4 bg-white">
+            <div className="flex items-center justify-between border-2 border-black p-3 md:p-4 bg-white">
                 <button
                     onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-                    className="p-2 hover:bg-slate-100 border-2 border-black"
+                    className="p-1 md:p-2 hover:bg-slate-100 border-2 border-black"
                 >
-                    <ChevronLeft size={24} />
+                    <ChevronLeft className="w-5 h-5 md:w-6 md:h-6" />
                 </button>
-                <h2 className="text-2xl font-black uppercase">
+                <h2 className="text-xl md:text-2xl font-black uppercase">
                     {format(currentDate, 'MMMM yyyy')}
                 </h2>
                 <button
                     onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                    className="p-2 hover:bg-slate-100 border-2 border-black"
+                    className="p-1 md:p-2 hover:bg-slate-100 border-2 border-black"
                 >
-                    <ChevronRight size={24} />
+                    <ChevronRight className="w-5 h-5 md:w-6 md:h-6" />
                 </button>
             </div>
 
@@ -198,9 +198,10 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
             <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 {/* Day Headers */}
                 <div className="grid grid-cols-7 border-b-2 border-black">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                        <div key={day} className="p-3 text-center font-black text-sm border-r border-black last:border-r-0 bg-slate-50">
-                            {day}
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
+                        <div key={i} className="p-2 md:p-3 text-center font-black text-[10px] md:text-sm border-r border-black last:border-r-0 bg-slate-50 uppercase">
+                            <span className="md:hidden">{day}</span>
+                            <span className="hidden md:inline">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}</span>
                         </div>
                     ))}
                 </div>
@@ -215,10 +216,10 @@ const CeoCalendar: React.FC<Props> = ({ projects = [] }) => {
                             <div
                                 key={day.toISOString()}
                                 onClick={() => dayProjects.length > 0 && setSelectedDay({ date: day, projects: dayProjects })}
-                                className={`min-h-[140px] p-2 border-r border-b border-black last:border-r-0 cursor-pointer transition-all hover:bg-slate-50 ${!isSameMonth(day, currentDate) ? 'bg-slate-50 opacity-40' : 'bg-white'
+                                className={`min-h-[80px] md:min-h-[140px] p-1 md:p-2 border-r border-b border-black last:border-r-0 cursor-pointer transition-all hover:bg-slate-50 ${!isSameMonth(day, currentDate) ? 'bg-slate-50 opacity-40' : 'bg-white'
                                     } ${isToday ? 'bg-amber-50 border-amber-500' : ''}`}
                             >
-                                <div className={`text-sm font-bold mb-2 flex items-center justify-center w-7 h-7 rounded-full ${isToday ? 'bg-amber-500 text-white' : 'text-slate-600'}`}>
+                                <div className={`text-[10px] md:text-sm font-bold mb-1 md:mb-2 flex items-center justify-center w-5 h-5 md:w-7 md:h-7 rounded-full ${isToday ? 'bg-amber-500 text-white' : 'text-slate-600'}`}>
                                     {format(day, 'd')}
                                 </div>
                                 <div className="space-y-1">

@@ -22,6 +22,7 @@ export const decodeHtmlEntities = (str: string): string => {
 
 /**
  * Utility function to strip all HTML tags while preserving line breaks
+ * Uses a robust DOM-based approach to handle nested tags and attributes
  * 
  * @param html - The HTML string to strip
  * @returns The stripped plain text
@@ -29,23 +30,56 @@ export const decodeHtmlEntities = (str: string): string => {
 export const stripHtmlTags = (html: string): string => {
     if (!html) return '';
 
-    // 1. Decode entities first to get actual tags
-    let decoded = decodeHtmlEntities(html);
+    // 1. First decode entities to handle &lt; etc.
+    const decoded = decodeHtmlEntities(html);
 
-    // 2. Replace common block-level tags and line breaks with newlines
-    // This ensures that <p>, <div>, <h3>, <br> etc. translate to visual separation
-    decoded = decoded.replace(/<br\s*\/?>/gi, '\n');
-    decoded = decoded.replace(/<\/(p|div|h[1-6])>/gi, '\n');
+    // 2. Use DOMParser to handle the removal of tags robustly
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(decoded, 'text/html');
 
-    // 3. Strip all remaining tags and their attributes entirely
-    const stripped = decoded.replace(/<[^>]*>/g, '');
+        // 1a. Remove hidden elements that often cause duplication (e.g. sr-only labels, ui artifacts)
+        const hidden = doc.querySelectorAll('.sr-only, .aria-hidden, .hidden, .ql-ui, [aria-hidden="true"]');
+        hidden.forEach(h => h.remove());
 
-    // 4. Clean up excess whitespace
-    // Replace triple+ newlines with double newlines, trim trailing whitespace per line
-    return stripped
-        .split('\n')
-        .map(line => line.trim())
-        .join('\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+        // 2a. Replace block elements with themselves + a newline to preserve formatting
+        const blocks = doc.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, br, li, tr');
+        blocks.forEach(block => {
+            if (block.tagName.toLowerCase() === 'br') {
+                block.parentNode?.replaceChild(doc.createTextNode('\n'), block);
+            } else {
+                const newline = doc.createTextNode('\n');
+                block.parentNode?.insertBefore(newline, block.nextSibling);
+            }
+        });
+
+        let text = doc.body.textContent || "";
+
+        // 2b. Remove leaked attribute-like strings (fix for specific observed artifacts like tabindex="0">)
+        text = text.replace(/[\w-]+="[^"]*">/g, '');
+
+        // 3. Final cleanup of whitespace and empty lines
+        return text
+            .split('\n')
+            .map(line => line.trim())
+            .filter((line, index, array) => {
+                // Remove redundant empty lines but keep single separators
+                if (line === '' && index > 0 && array[index - 1] === '') return false;
+                return true;
+            })
+            .join('\n')
+            .trim();
+    } catch (e) {
+        // Fallback to regex if DOMParser fails
+        console.warn('DOMParser failed in stripHtmlTags, falling back to regex:', e);
+        return decoded
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(p|div|h[1-6])>/gi, '\n')
+            .replace(/<[^>]*>/g, '')
+            .replace(/[\w-]+="[^"]*">/g, '') // Also apply fix in fallback
+            .split('\n')
+            .map(line => line.trim())
+            .join('\n')
+            .trim();
+    }
 };

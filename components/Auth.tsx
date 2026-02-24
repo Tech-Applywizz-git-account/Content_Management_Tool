@@ -39,28 +39,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
         setError('');
 
         try {
-            console.log('🔵 Auth: Attempting login for:', email);
+            console.log('🔵 Auth: Starting login sequence for:', email);
 
-            // Use the db.login function which properly sets currentUserCache
-            const userProfile = await db.auth.signIn(email, password);
-
-            console.log('🟢 Auth: Login successful, User:', userProfile.full_name);
-
-            // Pass user to parent callback with timeout race to prevent infinite hanging
-            console.log('🔵 Auth: Invoking parent onLogin...');
-
-            // Create a timeout promise that rejects after 5 seconds
+            // Create a timeout promise that rejects after 12 seconds
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Login initialization timed out")), 8000)
+                setTimeout(() => reject(new Error("Login process timed out")), 12000)
             );
 
-            // Race the onLogin callback against the timeout
+            // Wrap the entire login sequence in a race against the timeout
             await Promise.race([
-                onLogin(userProfile),
+                (async () => {
+                    // 1. Authenticate and get profile
+                    const userProfile = await db.auth.signIn(email, password);
+                    console.log('🟢 Auth: Credentials verified for:', userProfile.full_name);
+
+                    // 2. Initialize app state (fetches projects, etc.)
+                    console.log('🔵 Auth: Initializing app data...');
+                    await onLogin(userProfile);
+                    console.log('🟢 Auth: Login sequence completed successfully');
+                })(),
                 timeoutPromise
             ]);
-
-            console.log('🟢 Auth: Login sequence completed');
         } catch (err: any) {
             console.error('🔴 Auth: Login flow error:', err);
 

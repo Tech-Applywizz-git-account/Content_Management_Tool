@@ -231,35 +231,46 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans">
       {/* Header */}
-      <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 bg-white shadow-sm">
-        <div className="flex items-center space-x-6">
-          <button onClick={onClose} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
-            <ArrowLeft className="w-6 h-6 text-black" />
+      <header className="min-h-[4.5rem] md:h-20 border-b-2 border-black flex items-center justify-between px-3 md:px-6 bg-white shadow-sm gap-2">
+        <div className="flex items-center space-x-2 md:space-x-6 overflow-hidden">
+          <button onClick={onClose} className="p-2 md:p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all flex-shrink-0">
+            <ArrowLeft className="w-5 h-5 md:w-6 md:h-6 text-black" />
           </button>
-          <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-            {project ? 'Edit Idea Project' : 'Create Idea Project'}
+          <h1 className="text-base md:text-2xl font-black text-slate-900 uppercase tracking-tight truncate">
+            {project ? 'Edit Idea' : 'Create Idea'}
           </h1>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 md:space-x-4 flex-shrink-0">
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || !title.trim() || !description.trim()}
-            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !description.trim()) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
+            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !description.trim()) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
           >
-            {isSubmitting ? 'Submitting...' : project?.data?.source === 'IDEA_PROJECT' && project.current_stage === 'FINAL_REVIEW_CEO' ? 'Submit as Script' : 'Submit to CMO'}
-            <Send className="w-4 h-4 ml-2" />
+            <span className="inline">
+              {isSubmitting ? '...' : (
+                <>
+                  <span className="hidden sm:inline">
+                    {project?.data?.source === 'IDEA_PROJECT' && project.current_stage === 'FINAL_REVIEW_CEO' ? 'Submit as Script' : 'Submit to CMO'}
+                  </span>
+                  <span className="sm:hidden">
+                    Submit
+                  </span>
+                </>
+              )}
+            </span>
+            <Send className="w-4 h-4 ml-1 md:ml-2" />
           </button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-10">
+      <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-10">
         <div className="max-w-4xl mx-auto space-y-6">
           {isRework && (
             <div className="p-4 bg-red-50 border-l-4 border-red-500">
-              <h4 className="font-black text-red-800 uppercase mb-2">
-                Rework Comments from Reviewer
+              <h4 className="font-black text-red-800 uppercase text-xs md:text-sm mb-2">
+                Rework Comments
               </h4>
-              <p className="text-red-700 whitespace-pre-wrap">
+              <p className="text-red-700 text-sm md:text-base whitespace-pre-wrap">
                 {(() => {
                   // Get the rework comment from workflow history instead of project.rejected_reason
                   const reworkHistory = project.history?.find(h => h.action === 'REWORK');
@@ -268,17 +279,17 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               </p>
             </div>
           )}
-          <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
-            <h3 className="font-black uppercase text-lg text-slate-900">Idea Details</h3>
+          <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
+            <h3 className="font-black uppercase text-base md:text-lg text-slate-900 border-b-2 border-slate-100 pb-2">Idea Details</h3>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Title *</label>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Title *</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold"
-                placeholder="e.g. Marketing Campaign Idea"
+                className="w-full p-3 md:p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-bold text-sm md:text-base"
+                placeholder="e.g. Campaign Idea"
               />
             </div>
 
@@ -286,71 +297,97 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Channel</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {Object.values(Channel).map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setChannel(c)}
-                      className={`p-2 text-[10px] font-black uppercase border-2 border-black ${channel === c ? 'bg-black text-white' : 'bg-white hover:bg-slate-50'}`}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                  {Object.values(Channel).map(c => {
+                    const colors: Record<string, string> = {
+                      LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
+                      YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
+                      INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]'
+                    };
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => setChannel(c)}
+                        className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${channel === c
+                          ? `${colors[c] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                          : 'bg-white border-black hover:bg-slate-50'
+                          }`}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['VIDEO', 'CREATIVE_ONLY'] as ContentType[]).map(ct => (
-                    <button
-                      key={ct}
-                      onClick={() => setContentType(ct)}
-                      className={`p-2 text-xs font-black uppercase border-2 border-black ${contentType === ct ? 'bg-black text-white' : 'bg-white hover:bg-slate-50'}`}
-                    >
-                      {ct}
-                    </button>
-                  ))}
+                  {(['VIDEO', 'CREATIVE_ONLY'] as ContentType[]).map(ct => {
+                    const colors: Record<string, string> = {
+                      VIDEO: 'bg-[#0085FF] border-[#0085FF]',
+                      CREATIVE_ONLY: 'bg-[#D946EF] border-[#D946EF]'
+                    };
+                    return (
+                      <button
+                        key={ct}
+                        onClick={() => setContentType(ct)}
+                        className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${contentType === ct
+                          ? `${colors[ct] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                          : 'bg-white border-black hover:bg-slate-50'
+                          }`}
+                      >
+                        {ct === 'CREATIVE_ONLY' ? '🎨 Creative' : '📹 Video'}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Idea Description *</label>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Idea Description *</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium min-h-[150px] resize-none"
+                className="w-full p-3 md:p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium min-h-[150px] md:min-h-[200px] resize-none text-sm md:text-base"
                 placeholder="Describe your idea in detail..."
               />
             </div>
 
             {/* Thumbnail Reference Link */}
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Reference Thumbnail (Optional)</label>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Reference Thumbnail (Optional)</label>
               <input
                 type="text"
                 value={thumbnailReferenceLink}
                 onChange={(e) => setThumbnailReferenceLink(e.target.value)}
-                className="w-full p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none"
-                placeholder="Paste thumbnail link here"
+                className="w-full p-3 md:p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none text-sm md:text-base"
+                placeholder="Paste thumbnail link"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Priority</label>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Priority</label>
               <div className="grid grid-cols-3 gap-2">
-                {(['LOW', 'NORMAL', 'HIGH'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPriority(p)}
-                    className={`p-2 text-xs font-bold uppercase border-2 border-black ${priority === p
-                      ? 'bg-black text-white'
-                      : 'bg-white hover:bg-slate-50'
-                      }`}
-                  >
-                    {p}
-                  </button>
-                ))}
+                {(['LOW', 'NORMAL', 'HIGH'] as const).map(p => {
+                  const colors: Record<string, string> = {
+                    HIGH: 'bg-[#FF3131] border-[#FF3131]',
+                    NORMAL: 'bg-[#FFB800] border-[#FFB800]',
+                    LOW: 'bg-[#00D1FF] border-[#00D1FF]'
+                  };
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPriority(p)}
+                      className={`p-2 text-[10px] md:text-xs font-bold uppercase border-2 transition-all ${priority === p
+                        ? `${colors[p] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                        : 'bg-white border-black hover:bg-slate-50'
+                        }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

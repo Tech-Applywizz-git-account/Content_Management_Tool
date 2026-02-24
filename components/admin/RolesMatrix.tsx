@@ -58,13 +58,14 @@ const RolesMatrix: React.FC = () => {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                {/* Desktop view */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
-                                <th className="px-10 py-8 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-64">Role</th>
+                                <th className="px-6 py-6 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-64">Role</th>
                                 {PERMISSIONS.map(p => (
-                                    <th key={p.key} className="px-10 py-8 text-center text-xs font-bold text-slate-600 uppercase tracking-wider relative group cursor-help">
+                                    <th key={p.key} className="px-6 py-6 text-center text-xs font-bold text-slate-600 uppercase tracking-wider relative group cursor-help">
                                         <div className="flex items-center justify-center space-x-1">
                                             <span>{p.label}</span>
                                             <Info className="w-3.5 h-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -72,7 +73,6 @@ const RolesMatrix: React.FC = () => {
                                         {/* Tooltip */}
                                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 hidden group-hover:block w-56 bg-slate-800 text-white text-[12px] font-medium leading-relaxed rounded-lg p-4 z-10 shadow-xl pointer-events-none normal-case text-left">
                                             {p.description}
-                                            {/* Tooltip Arrow */}
                                             <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800"></div>
                                         </div>
                                     </th>
@@ -85,14 +85,14 @@ const RolesMatrix: React.FC = () => {
                                     key={role}
                                     className={`transition-colors hover:bg-blue-50/50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/80'}`}
                                 >
-                                    <td className="px-10 py-8 font-semibold text-sm text-slate-900 flex items-center">
+                                    <td className="px-6 py-6 font-semibold text-sm text-slate-900 flex items-center">
                                         <span className={`w-2.5 h-2.5 rounded-full mr-4 ${MATRIX[role]?.approve ? 'bg-purple-500 shadow-sm shadow-purple-200' : MATRIX[role]?.publish ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-slate-300'}`}></span>
                                         {role}
                                     </td>
                                     {PERMISSIONS.map(p => {
                                         const hasPerm = MATRIX[role]?.[p.key] || false;
                                         return (
-                                            <td key={p.key} className="px-10 py-8 text-center">
+                                            <td key={p.key} className="px-6 py-6 text-center">
                                                 {hasPerm ? (
                                                     <div className="flex justify-center">
                                                         <div className="bg-green-100 text-green-700 p-2 rounded-lg shadow-sm">
@@ -113,6 +113,33 @@ const RolesMatrix: React.FC = () => {
                             ))}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile view: Cards */}
+                <div className="md:hidden divide-y divide-slate-100">
+                    {Object.values(Role).map((role) => (
+                        <div key={role} className="p-6 space-y-4">
+                            <div className="flex items-center">
+                                <span className={`w-3 h-3 rounded-full mr-3 ${MATRIX[role]?.approve ? 'bg-purple-500' : MATRIX[role]?.publish ? 'bg-green-500' : 'bg-slate-300'}`}></span>
+                                <h3 className="font-bold text-slate-900 uppercase tracking-wide">{role}</h3>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {PERMISSIONS.map(p => {
+                                    const hasPerm = MATRIX[role]?.[p.key] || false;
+                                    return (
+                                        <div key={p.key} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
+                                            <span className="text-xs font-semibold text-slate-600">{p.label}</span>
+                                            {hasPerm ? (
+                                                <Check className="w-4 h-4 text-green-600" />
+                                            ) : (
+                                                <X className="w-4 h-4 text-slate-300" />
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
 

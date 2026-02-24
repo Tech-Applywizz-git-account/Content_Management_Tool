@@ -51,16 +51,16 @@ const CeoProjectDetailPage: React.FC<{
 
                 if (isHistory) {
                     // Fetch history entry
-                    const { data: historyData } = await supabase
+                    const { data: historyRecords } = await supabase
                         .from('workflow_history')
                         .select('*')
                         .eq('project_id', projectId)
                         .eq('actor_id', user.id)
-                        .eq('action', 'APPROVED')
-                        .maybeSingle();
+                        .in('action', ['APPROVED', 'SUBMITTED'])
+                        .order('timestamp', { ascending: false });
 
-                    if (historyData) {
-                        setSelectedHistory(historyData);
+                    if (historyRecords && historyRecords.length > 0) {
+                        setSelectedHistory(historyRecords[0]);
                     }
                 }
             } catch (err) {
@@ -117,28 +117,28 @@ const CeoProjectDetailPage: React.FC<{
 
     return (
         <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => { }}>
-            <div className="p-8 space-y-6">
+            <div className="p-4 md:p-8 space-y-4 md:space-y-6">
                 <div className="flex justify-between items-center">
                     <button
                         onClick={() => navigate(-1)}
-                        className="font-bold underline"
+                        className="font-bold underline text-sm md:text-base"
                     >
                         ← Back to History
                     </button>
                     {selectedHistory?.actor_id === user.id && (
                         <button
                             onClick={() => navigate(`/ceo/review/${project.id}`)}
-                            className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all text-sm"
                         >
                             Edit
                         </button>
                     )}
                 </div>
 
-                <h1 className="text-3xl font-black uppercase">
+                <h1 className="text-xl md:text-3xl font-black uppercase">
                     {project.title} - Approved
                 </h1>
-                <p className="text-slate-600">
+                <p className="text-slate-600 text-sm md:text-base">
                     Approved on {selectedHistory?.timestamp ? new Date(selectedHistory.timestamp).toLocaleString() : 'Unknown date'}
                 </p>
 
@@ -165,17 +165,17 @@ const CeoProjectDetailPage: React.FC<{
                 )}
 
                 {/* ACTION DETAILS */}
-                <div className="border-2 border-black p-4 flex justify-between">
-                    <div>
-                        <p><strong>Creator:</strong> {creatorName}</p>
-                        <p><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
-                        <p><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage as WorkflowStage] || selectedHistory?.stage}</p>
+                <div className="border-2 border-black p-4 md:p-6 flex flex-col md:flex-row justify-between gap-4">
+                    <div className="space-y-1">
+                        <p className="text-sm md:text-base"><strong>Creator:</strong> {creatorName}</p>
+                        <p className="text-sm md:text-base"><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
+                        <p className="text-sm md:text-base"><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage as WorkflowStage] || selectedHistory?.stage}</p>
                     </div>
-                    <div className="text-right">
-                        <p className="font-black text-green-600">
+                    <div className="md:text-right">
+                        <p className="font-black text-green-600 uppercase">
                             Approved
                         </p>
-                        <p className="text-sm text-slate-500">
+                        <p className="text-xs md:text-sm text-slate-500">
                             {selectedHistory?.timestamp
                                 ? new Date(selectedHistory.timestamp).toLocaleString()
                                 : ''}

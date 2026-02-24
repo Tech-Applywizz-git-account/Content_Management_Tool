@@ -77,14 +77,11 @@ const UserManagement: React.FC<Props> = ({ users, logs, onRefresh }) => {
                 </div>
             </div>
 
-            {/* Users Table */}
+            {/* Users Table / Mobile Cards */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                {/* Mobile: Show hint for horizontal scroll */}
-                <div className="md:hidden bg-slate-50 px-4 py-2 text-xs text-slate-500 border-b border-slate-200">
-                    ← Swipe to see more →
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px]">
+                {/* Desktop view */}
+                <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
@@ -135,14 +132,9 @@ const UserManagement: React.FC<Props> = ({ users, logs, onRefresh }) => {
                                                     if (window.confirm(`Are you sure you want to delete ${user.full_name}? This action cannot be undone.`)) {
                                                         try {
                                                             if (!supabaseAdmin) throw new Error("Admin client not initialized");
-
-                                                            // Delete from Auth
                                                             const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
                                                             if (authError) throw authError;
-
-                                                            // Ensure deleted from public table
                                                             await supabaseAdmin.from('users').delete().eq('id', user.id);
-
                                                             toast.success('User deleted successfully');
                                                             onRefresh();
                                                         } catch (error: any) {
@@ -159,15 +151,68 @@ const UserManagement: React.FC<Props> = ({ users, logs, onRefresh }) => {
                                     </td>
                                 </tr>
                             ))}
-                            {filteredUsers.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
-                                        No users found matching your filters.
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile view: Cards */}
+                <div className="md:hidden divide-y divide-slate-100">
+                    {filteredUsers.map(user => (
+                        <div key={user.id} className="p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
+                                        {user.full_name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-bold text-slate-900">{user.full_name}</div>
+                                        <div className="text-xs text-slate-500">{user.email}</div>
+                                    </div>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${user.status === UserStatus.ACTIVE ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>
+                                    {user.status === UserStatus.ACTIVE ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+
+                            <div className="flex justify-between items-center text-xs">
+                                <div className="space-y-1">
+                                    <p className="text-slate-500 font-medium">Role: <span className="text-slate-900">{user.role}</span></p>
+                                    <p className="text-slate-500 font-medium">Last Login: <span className="text-slate-900">{user.last_login ? format(new Date(user.last_login), 'MMM dd') : 'Never'}</span></p>
+                                </div>
+                                <div className="flex space-x-2">
+                                    <button
+                                        onClick={() => setEditingUser(user)}
+                                        className="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg font-bold text-sm"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (window.confirm(`Delete ${user.full_name}?`)) {
+                                                try {
+                                                    if (!supabaseAdmin) throw new Error("Admin client not initialized");
+                                                    await supabaseAdmin.auth.admin.deleteUser(user.id);
+                                                    await supabaseAdmin.from('users').delete().eq('id', user.id);
+                                                    toast.success('User deleted');
+                                                    onRefresh();
+                                                } catch (error: any) {
+                                                    toast.error(`Error: ${error.message}`);
+                                                }
+                                            }
+                                        }}
+                                        className="bg-red-50 text-red-600 p-2 rounded-lg"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    {filteredUsers.length === 0 && (
+                        <div className="p-8 text-center text-slate-400">
+                            No users found matching your filters.
+                        </div>
+                    )}
                 </div>
             </div>
 

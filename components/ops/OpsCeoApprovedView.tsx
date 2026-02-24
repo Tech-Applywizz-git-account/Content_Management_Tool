@@ -78,7 +78,7 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
             </div>
         );
     }
-    
+
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
             {/* Header matching CmoReviewScreen style */}
@@ -117,13 +117,17 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 flex flex-col md:flex-row w-full">
                 {/* LEFT COLUMN: Content (70%) */}
                 <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
                     {/* Info Block - Matching CmoReviewScreen Grid Structure */}
                     <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
-                        {/* Creator Section Hidden as per user request */}
-
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.writer_name || project.created_by_name || '—'}
+                            </div>
+                        </div>
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
                             <div className={`font-bold uppercase ${project?.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>

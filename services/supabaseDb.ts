@@ -29,13 +29,6 @@ export const auth = {
         console.log('🔐 Attempting login for:', email);
 
         try {
-            // Pre-login signOut to ensure clean state (safe to ignore errors)
-            try {
-                await supabase.auth.signOut();
-            } catch (signOutErr) {
-                console.warn('Pre-login signOut failed (safe to ignore if no session):', signOutErr);
-            }
-
             // Real authentication using Supabase
             console.log('Login: calling signInWithPassword...');
             const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
@@ -705,40 +698,27 @@ export const projects = {
         try {
             // ✅ FIX: Include all projects where user participated based on the My Work Visibility Persistence Rule
             // 1. Projects where user is actor in workflow_history
-            const { data: historyData, error: historyError } = await supabase
-                .from('workflow_history')
-                .select(`
-          project_id,
-          timestamp,
-          projects (*)
-        `)
-                .eq('actor_id', user.id);
+            // Perform all visibility queries in parallel for maximum performance
+            const [
+                { data: historyData, error: historyError },
+                { data: assignedByIdData, error: assignedByIdError },
+                { data: assignedByRoleData, error: assignedByRoleError },
+                { data: visibleToRoleData, error: visibleToRoleError }
+            ] = await Promise.all([
+                supabase.from('workflow_history').select('project_id, timestamp, projects (*)').eq('actor_id', user.id),
+                supabase.from('projects').select('*').eq('assigned_to_user_id', user.id),
+                supabase.from('projects').select('*').eq('assigned_to_role', user.role),
+                supabase.from('projects').select('*').overlaps('visible_to_roles', [user.role])
+            ]);
 
             if (historyError) throw historyError;
-
-            // 2. Projects assigned to the user by ID
-            const { data: assignedByIdData, error: assignedByIdError } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('assigned_to_user_id', user.id)
-
             if (assignedByIdError) throw assignedByIdError;
-
-            // 3. Projects assigned to the user's role
-            const { data: assignedByRoleData, error: assignedByRoleError } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('assigned_to_role', user.role);
-
             if (assignedByRoleError) throw assignedByRoleError;
-
-            // 4. Projects where user's role is in visible_to_roles
-            const { data: visibleToRoleData, error: visibleToRoleError } = await supabase
-                .from('projects')
-                .select('*')
-                .overlaps('visible_to_roles', [user.role]);
-
             if (visibleToRoleError) throw visibleToRoleError;
+
+            if (!historyData || !assignedByIdData || !assignedByRoleData || !visibleToRoleData) {
+                console.warn('One or more visibility queries returned null data');
+            }
 
             // ✅ Merge all results and remove duplicates
             const projectMap = new Map<string, Project & { latest_activity?: Date }>();
@@ -3244,8 +3224,17 @@ export const db = {
         console.log('🎯 Determined Next Stage:', nextStageInfo.stage, 'Role:', nextStageInfo.role);
 
         // 6️⃣ Execute Approval & Advance
-        // Use specialized action types for rework submissions if applicable
-        let advanceAction = 'SUBMITTED';
+        // Determine the action type: Reviewers (CMO/CEO) "APPROVE", Creators (Writer/Cine/Editor) "SUBMIT"
+        const reviewStages = [
+            WorkflowStage.SCRIPT_REVIEW_L1,
+            WorkflowStage.SCRIPT_REVIEW_L2,
+            WorkflowStage.FINAL_REVIEW_CMO,
+            WorkflowStage.FINAL_REVIEW_CEO,
+            WorkflowStage.POST_WRITER_REVIEW,
+            WorkflowStage.MULTI_WRITER_APPROVAL
+        ];
+
+        let advanceAction = reviewStages.includes(project.current_stage as WorkflowStage) ? 'APPROVED' : 'SUBMITTED';
         let reworkMetadata: any = undefined;
 
         if (isFromRework) {

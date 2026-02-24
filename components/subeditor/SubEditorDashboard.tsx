@@ -57,7 +57,6 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     }, { replace: true });
   };
 
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // SYNC STATE WITH URL ON REFRESH/NAVIGATE
   useEffect(() => {
@@ -101,10 +100,6 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   };
 
   // Handle top-level view changes (Dashboard / My Work / Calendar)
-  const handleInternalRefresh = async () => {
-    await onRefresh(); // MUST refetch from Supabase
-    setRefreshKey(prev => prev + 1); // force UI re-render
-  };
 
   // Update projects state with inboxProjects that are assigned to this specific sub-editor
   useEffect(() => {
@@ -251,7 +246,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
       ) : activeView === 'calendar' ? (
         <SubEditorCalendar projects={[...inboxProjects, ...historyProjects]} user={user} />
       ) : (
-        <div key={refreshKey} className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in">
           {/* Dashboard Content */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
@@ -260,12 +255,6 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               </h1>
               <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
-            <button
-              onClick={handleInternalRefresh}
-              className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
-            >
-              🔄 Refresh
-            </button>
           </div>
 
           {/* Stats */}

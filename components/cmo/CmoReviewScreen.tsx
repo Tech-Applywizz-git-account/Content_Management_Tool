@@ -579,20 +579,20 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
                             {project.title}
                         </h1>
-                        <div className="flex items-center space-x-2 mt-1">
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
                             {project.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                                     {'SCRIPT'}
                                 </span>
                             )}
-                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
                                 }`}>
                                 {project.channel}
                             </span>
-                            <span className="text-xs font-bold uppercase text-slate-500">
-                                Stage: {STAGE_LABELS[project.current_stage]}
+                            <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 border-2 border-black">
+                                {STAGE_LABELS[project.current_stage]}
                             </span>
                             <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
@@ -614,7 +614,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 flex flex-col md:flex-row w-full">
 
                 {/* LEFT COLUMN: Content (70%) */}
                 <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
@@ -760,15 +760,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             className="overflow-auto"
                         >
                             {(() => {
-                                console.log('CMO Review: Render - previousScript:', previousScript);
-                                console.log('CMO Review: Render - project.data.script_content:', project.data?.script_content);
-                                console.log('CMO Review: Render - isFinalReview:', isFinalReview);
-                                console.log('CMO Review: Render - cmo_rework_at:', project.cmo_rework_at);
-                                console.log('CMO Review: Render - writer_submitted_at:', project.writer_submitted_at);
-
                                 // For final review stages, always show only the current script
                                 if (isFinalReview) {
-                                    console.log('CMO Review: Showing current script only for final review');
                                     const displayContent = project.data?.source === 'DESIGNER_INITIATED'
                                         ? project.data?.creative_link || 'No creative link available.'
                                         : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
@@ -779,29 +772,15 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 } else {
                                     // For non-final review stages, show comparison if we have a previous script content
                                     if (previousScript && previousScript.trim() !== '') {
-                                        console.log('CMO Review: Showing script comparison - has previous script');
+                                        const currentScriptContent = project.data?.script_content || '';
 
-                                        // Recursive HTML entity decoding helper
-                                        // (ScriptComparison component handles decoding internally)
-
-                                        // Use project's script content as current if available, otherwise use a placeholder
-                                        const currentScriptContent = project.data?.script_content || '<p>No new script content submitted</p>';
-
-                                        // Show comparison for rework scenarios
                                         return (
                                             <ScriptComparison
                                                 previousScript={stripHtmlTags(previousScript)}
                                                 currentScript={stripHtmlTags(currentScriptContent)}
-                                                previousAuthor="Previous Version"
-                                                currentAuthor="Writer Rework Submission"
-                                                previousTimestamp=""
-                                                currentTimestamp=""
                                             />
                                         );
                                     } else {
-                                        console.log('CMO Review: Showing single script - previousScript exists:', !!previousScript, 'current exists:', !!project.data?.script_content, 'isFinalReview:', isFinalReview);
-                                        console.log('CMO Review: Conditions for comparison - hasPrevious:', !!previousScript, 'prev not empty:', previousScript && previousScript.trim() !== '', 'not final review:', !isFinalReview);
-                                        // Show single script for non-rework projects
                                         const displayContent = project.data?.source === 'DESIGNER_INITIATED'
                                             ? project.data?.creative_link || 'No creative link available.'
                                             : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
@@ -1019,7 +998,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 })()
                             ) : (
                                 // Show single assets for non-rework projects
-                                <div className="grid grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -1087,7 +1066,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 </div>
 
                 {/* RIGHT COLUMN: Approval Panel (30%) - Sticky */}
-                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 md:top-20 md:h-[calc(100vh-80px)] overflow-y-auto z-10 flex flex-col">
+                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky top-20 h-[calc(100vh-80px)] overflow-y-auto z-10 flex flex-col">
                     <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 inline-block">CMO Decision</h2>
 
                     <div className="space-y-4 flex-1">

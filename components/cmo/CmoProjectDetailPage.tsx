@@ -91,6 +91,7 @@ const CmoProjectDetailPage: React.FC<{
                 if (view === 'dashboard') navigate('/cmo');
                 else navigate(`/cmo/${view}`);
             }}
+            hideSidebar={true}
         >
             <CmoProjectDetails
                 project={project}

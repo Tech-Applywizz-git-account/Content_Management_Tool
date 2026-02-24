@@ -56,12 +56,6 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     }, { replace: true });
   };
 
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const handleInternalRefresh = async () => {
-    await onRefresh(); // MUST refetch from Supabase
-    setRefreshKey(prev => prev + 1); // force UI re-render
-  };
 
   // Popup state
   const [showPopup, setShowPopup] = useState(false);
@@ -225,25 +219,19 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       ) : activeView === 'calendar' ? (
         <CineCalendar projects={[...inboxProjects, ...historyProjects]} />
       ) : (
-        <div key={refreshKey} className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in px-4 md:px-0">
           {/* Dashboard Content */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+            <div className="min-w-0">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm truncate">
                 Cinematography
               </h1>
-              <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
+              <p className="font-bold text-base md:text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
-            <button
-              onClick={handleInternalRefresh}
-              className="px-6 py-3 border-2 border-black font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white text-black hover:bg-slate-50"
-            >
-              🔄 Refresh
-            </button>
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             {/* NEEDS SCHEDULE */}
             <div
               onClick={() => handleViewChange('mywork', true, 'NEEDS_SCHEDULE')}

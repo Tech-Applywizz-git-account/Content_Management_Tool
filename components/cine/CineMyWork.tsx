@@ -76,19 +76,19 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
     }
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-8 animate-fade-in px-4 md:px-0">
             <div>
-                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm truncate">
                     My Work
                 </h1>
-                <p className="font-bold text-lg text-slate-500">
+                <p className="font-bold text-base md:text-lg text-slate-500">
                     {myTasks.length} {myTasks.length === 1 ? 'project' : 'projects'} awaiting action
                 </p>
             </div>
 
             {/* Role Filters for SCRIPTS view */}
             {activeFilter === 'SCRIPTS' && (
-                <div className="overflow-x-auto pb-4">
+                <div className="overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
                     <div className="flex space-x-2 min-w-max">
                         {['ALL', 'POSTED', Role.WRITER, Role.CMO, Role.CEO, Role.CINE, Role.SUB_EDITOR, Role.DESIGNER, Role.OPS].map((role) => (
                             <button
@@ -108,10 +108,10 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
 
             {/* Sub-tabs for UPLOADED filter */}
             {activeFilter === 'UPLOADED' && onSetUploadedSubTab && (
-                <div className="flex space-x-4 border-b-2 border-black pb-2">
+                <div className="flex space-x-2 md:space-x-4 border-b-2 border-black pb-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
                     <button
                         onClick={() => onSetUploadedSubTab('EDITOR')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'EDITOR'
+                        className={`px-3 md:px-4 py-2 text-xs md:text-base font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] min-w-max ${uploadedSubTab === 'EDITOR'
                             ? 'bg-[#3B82F6] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
@@ -119,7 +119,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     </button>
                     <button
                         onClick={() => onSetUploadedSubTab('POST')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POST'
+                        className={`px-3 md:px-4 py-2 text-xs md:text-base font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] min-w-max ${uploadedSubTab === 'POST'
                             ? 'bg-[#10B981] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
@@ -127,7 +127,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                     </button>
                     <button
                         onClick={() => onSetUploadedSubTab('POSTED')}
-                        className={`px-4 py-2 font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${uploadedSubTab === 'POSTED'
+                        className={`px-3 md:px-4 py-2 text-xs md:text-base font-bold uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] min-w-max ${uploadedSubTab === 'POSTED'
                             ? 'bg-[#EC4899] text-white'
                             : 'bg-white text-black hover:bg-slate-100'}`}
                     >
@@ -136,7 +136,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
                     const isScheduled = !!project.shoot_date;
                     const isUploaded = !!project.video_link;

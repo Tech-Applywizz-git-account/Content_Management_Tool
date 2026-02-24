@@ -373,28 +373,28 @@ action,
 
 
 
-                        <div className="flex items-center space-x-2 mt-2">
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
                             {fullProject.data?.source === 'IDEA_PROJECT' && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                                     {fullProject.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                 </span>
                             )}
-                            <span className={`px - 2 py - 0.5 text - xs font - black uppercase border - 2 border - black text - white ${fullProject.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${fullProject.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 fullProject.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
-                                } `}>
+                                }`}>
                                 {fullProject.channel}
                             </span>
-                            <span className="text-xs font-bold uppercase text-slate-500">
-                                Stage: {STAGE_LABELS[fullProject.current_stage]}
+                            <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 border-2 border-black">
+                                {STAGE_LABELS[fullProject.current_stage]}
                             </span>
                             <span
-                                className={`px - 2 py - 0.5 text - [10px] font - black uppercase border - 2 border - black ${fullProject.priority === 'HIGH'
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${fullProject.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : fullProject.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
                                         : 'bg-green-500 text-white'
-                                    } `}
+                                    }`}
                             >
                                 {fullProject.priority}
                             </span>
@@ -403,21 +403,26 @@ action,
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 flex flex-col md:flex-row w-full">
                 {/* LEFT COLUMN: Content (70%) */}
                 <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
                     {/* Info Block */}
                     <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
-
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
+                            <div className="font-bold text-slate-900 uppercase truncate" title={assignedUserName || fullProject.assigned_to_user_id || '—'}>
+                                {assignedUserName || fullProject.assigned_to_user_id ? assignedUserName : '—'}
+                            </div>
+                        </div>
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
-                            <div className={`font - bold uppercase ${fullProject.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'} `}>
+                            <div className={`font-bold uppercase ${fullProject.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
                                 {fullProject.priority}
                             </div>
                         </div>
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Status</label>
-                            <div className="font-bold text-slate-900 uppercase">
+                            <div className="font-bold text-slate-900 uppercase break-words">
                                 {fullProject.status}
                             </div>
                         </div>
@@ -430,16 +435,8 @@ action,
                             </div>
                         </div>
                         <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Assigned To</label>
-                            <div className="font-bold text-slate-900 uppercase">
-                                {fullProject.assigned_to_role}
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Assigned User</label>
-                            <div className="font-bold text-slate-900 uppercase">
-                                {assignedUserName || fullProject.assigned_to_user_id ? assignedUserName : '—'}
-                            </div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Due Date</label>
+                            <div className="font-bold text-slate-900 uppercase">Today</div>
                         </div>
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Content Type</label>
@@ -453,6 +450,12 @@ action,
                                 {fullProject.data?.thumbnail_required === undefined ? '—' : fullProject.data.thumbnail_required ? 'Yes' : 'No'}
                             </div>
                         </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Assigned To</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {fullProject.assigned_to_role}
+                            </div>
+                        </div>
                         {fullProject.data?.thumbnail_notes && (
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>
@@ -461,7 +464,21 @@ action,
                                 </div>
                             </div>
                         )}
+                        {fullProject.data?.niche && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
+                                <div className="font-bold text-slate-900 uppercase">
+                                    {fullProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : fullProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : fullProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : fullProject.data.niche === 'OTHER' && fullProject.data.niche_other
+                                                    ? fullProject.data.niche_other
+                                                    : fullProject.data.niche}
+                                </div>
+                            </div>
+                        )}
                     </div>
+
 
                     {/* Brief Content */}
                     {fullProject.data?.brief && (
@@ -549,7 +566,7 @@ action,
                                                 const timestamp = new Date(comment.created_at).toLocaleString();
 
                                                 return (
-                                                    <div key={`forwarded - ${comment.id || index} `} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                    <div key={`forwarded-${comment.id || index}`} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                                         <div className="flex items-center mb-1">
                                                             <span className="font-bold text-blue-800">CEO Comment</span>
                                                             <span className="mx-2 text-slate-400">•</span>
@@ -646,13 +663,13 @@ action,
                                         }
 
                                         return (
-                                            <div key={`${comment.stage} -${comment.action} -${comment.timestamp} -${comment.actor_id || comment.actor_name} `} className={`border - l - 4 pl - 4 py - 2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'} `}>
+                                            <div key={`${comment.stage}-${comment.action}-${comment.timestamp}-${comment.actor_id || comment.actor_name}`} className={`border-l-4 pl-4 py-2 ${comment.action === 'APPROVED' ? 'border-green-500' : comment.action === 'REWORK' ? 'border-yellow-500' : 'border-red-500'}`}>
                                                 <div className="flex justify-between items-start">
                                                     <div>
                                                         <p className="font-bold text-slate-900">{comment.actor_name}</p>
                                                         <p className="text-sm text-slate-600">{format(new Date(comment.timestamp), 'MMM dd, yyyy h:mm a')}</p>
                                                     </div>
-                                                    <span className={`px - 2 py - 1 text - xs font - bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : comment.action === 'REWORK' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} `}>
+                                                    <span className={`px-2 py-1 text-xs font-bold uppercase ${comment.action === 'APPROVED' ? 'bg-green-100 text-green-800' : comment.action === 'REWORK' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
                                                         {comment.action}
                                                     </span>
                                                 </div>
@@ -754,7 +771,7 @@ action,
                 </div>
 
                 {/* RIGHT COLUMN: Project Status Panel (30%) - Information only */}
-                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 md:top-20 md:h-[calc(100vh-80px)] overflow-y-auto z-10">
+                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky top-20 h-[calc(100vh-80px)] overflow-y-auto z-10">
                     <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 inline-block">Project Status</h2>
 
                     <div className="space-y-6">

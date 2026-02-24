@@ -6,7 +6,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface HistoryEntry {
-  action: 'APPROVED' | 'REJECTED';
+  action: 'APPROVED' | 'REJECTED' | 'SUBMITTED';
   timestamp: string;
   actor_name: string;
   actor_id: string;
@@ -79,12 +79,12 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
           let userHistory = null;
           if (userId) {
             userHistory = data.workflow_history
-              .filter((h: any) => h.actor_id === userId && (h.action === 'APPROVED' || h.action === 'REJECTED'))
+              .filter((h: any) => h.actor_id === userId && (h.action === 'APPROVED' || h.action === 'REJECTED' || h.action === 'SUBMITTED'))
               .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
           } else {
             // Fallback: look for general CMO actions
             userHistory = data.workflow_history
-              .filter((h: any) => (h.action === 'APPROVED' || h.action === 'REJECTED')) // Broad filter if no user
+              .filter((h: any) => (h.action === 'APPROVED' || h.action === 'REJECTED' || h.action === 'SUBMITTED')) // Broad filter if no user
               .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
           }
 
@@ -92,7 +92,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             setHistoryData(userHistory as HistoryEntry);
           }
         }
-  
+
         // Load complete project history for Writers tab
         if (activeTab === 'WRITERS' && data.workflow_history && Array.isArray(data.workflow_history)) {
           // Sort by timestamp (most recent first)
@@ -256,7 +256,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
 
           setCompleteHistory(uniqueComments);
         }
-  
+
       } catch (err) {
         console.error('Error loading history detail:', err);
         setError('Failed to load project details');
@@ -264,7 +264,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
         setLoading(false);
       }
     };
-  
+
     loadData();
   }, [projectId, project, history, currentUser, activeTab]);
 
@@ -453,13 +453,19 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
         )}
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+      <div className="flex-1 flex flex-col md:flex-row w-full">
 
         {/* LEFT COLUMN: Content (70%) */}
         <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
 
           {/* Info Block */}
           <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div>
+              <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
+              <div className="font-bold text-slate-900 uppercase">
+                {writerName}
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-black text-slate-400 uppercase mb-1">Priority</label>
               <div className={`font-bold uppercase ${projectData.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
@@ -709,11 +715,11 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
                     {historyData.action}
                   </div>
                 </div>
-                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${historyData.action === 'APPROVED'
+                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${(historyData.action === 'APPROVED' || historyData.action === 'SUBMITTED')
                   ? 'bg-green-500 text-white'
                   : 'bg-red-500 text-white'
                   }`}>
-                  {historyData.action}
+                  {(historyData.action === 'APPROVED' || historyData.action === 'SUBMITTED') ? 'APPROVED' : historyData.action}
                 </span>
               </div>
             </div>

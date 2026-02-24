@@ -359,16 +359,16 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         <div className="min-h-screen bg-slate-50 animate-fade-in">
             {/* Header */}
             <div className="bg-white border-b-2 border-black sticky top-0 z-10">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-4">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 md:py-4 flex items-center gap-3 md:gap-4">
                     <button
                         onClick={onBack}
-                        className="p-2 border-2 border-black hover:bg-slate-100 transition-colors"
+                        className="p-1.5 md:p-2 border-2 border-black hover:bg-slate-100 transition-colors"
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <div className="flex-1">
-                        <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
-                        <div className="flex items-center gap-3 mt-1">
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-xl md:text-2xl font-black uppercase text-slate-900 truncate">{localProject.title}</h1>
+                        <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1">
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
                                     ? 'bg-[#FF4F4F] text-white'
@@ -403,13 +403,13 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
 
             {/* Rework Information Section */}
             {(isRework || isRejected) && (
-                <div className="max-w-6xl mx-auto px-6 pt-8">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 pt-6 md:pt-8">
                     <ReworkSection project={localProject} userRole={userRole} />
                 </div>
             )}
 
             {/* Content */}
-            <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
                 {/* Edited Video (for thumbnail tasks) */}
                 {isVideo && localProject.edited_video_link && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
@@ -425,7 +425,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                 href={localProject.edited_video_link}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
+                                className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all text-sm md:text-base"
                             >
                                 {localProject.edited_video_link}
                             </a>
@@ -514,17 +514,17 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             <p className="text-slate-600 font-medium">
                                 Set when you'll deliver the {isVideo ? 'thumbnail' : 'creative'}
                             </p>
-                            <div className="flex gap-3">
+                            <div className="flex flex-col sm:flex-row gap-3">
                                 <input
                                     type="date"
                                     value={deliveryDate}
                                     onChange={(e) => setDeliveryDate(e.target.value)}
                                     min={new Date().toISOString().split('T')[0]}
-                                    className="flex-1 p-4 border-2 border-black text-lg font-bold focus:bg-yellow-50 focus:outline-none"
+                                    className="flex-1 p-3 md:p-4 border-2 border-black text-base md:text-lg font-bold focus:bg-yellow-50 focus:outline-none"
                                 />
                                 <button
                                     onClick={handleSetDeliveryDate}
-                                    className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                    className="px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-purple-500 to-pink-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                                 >
                                     <CalendarIcon className="w-5 h-5 inline mr-2" />
                                     Set Delivery Date
@@ -599,7 +599,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                     )}
                                 </div>
 
-                                <div className="flex gap-3">
+                                <div className="flex flex-col sm:flex-row gap-3">
                                     <input
                                         type="url"
                                         value={isVideo ? thumbnailLink : creativeLink}
@@ -609,14 +609,14 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                                 : setCreativeLink(e.target.value)
                                         }
                                         placeholder="https://drive.google.com/file/d/..."
-                                        className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+                                        className="flex-1 p-3 md:p-4 border-2 border-black text-base md:text-lg focus:bg-yellow-50 focus:outline-none"
                                     />
                                     <button
                                         onClick={handleUploadFile}
-                                        className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                        className="px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                     >
                                         <Upload className="w-5 h-5 inline mr-2" />
-                                        {isRejected ? 'Submit Rejected Design' : isRework ? 'Submit Rework Design' : 'Upload'}
+                                        {isRejected ? 'Submit Rejected' : isRework ? 'Submit Rework' : 'Upload'}
                                     </button>
                                 </div>
 
@@ -647,27 +647,27 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 {/* Project Info */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                            <p className="font-bold text-slate-900 mt-1">{project.status}</p>
+                            <p className="font-bold text-slate-900 mt-1 uppercase leading-none">{project.status}</p>
                         </div>
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                            <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+                            <p className="font-bold text-slate-900 mt-1 uppercase leading-none">{localProject.priority}</p>
                         </div>
                         <div>
                             <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                            <p className="font-bold text-slate-900 mt-1">
-                                {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
+                            <p className="font-bold text-slate-900 mt-1 leading-none">
+                                {format(new Date(project.created_at), 'MMM dd, yyyy')}
                             </p>
                         </div>
                         <div>
-                            <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                            <p className="font-bold text-slate-900 mt-1">{project.content_type}</p>
+                            <span className="font-bold text-slate-400 uppercase text-xs">Type</span>
+                            <p className="font-bold text-slate-900 mt-1 uppercase leading-none">{project.content_type?.replace('_', ' ')}</p>
                         </div>
                         {localProject.data?.niche && (
-                            <div className="col-span-2">
+                            <div className="col-span-full">
                                 <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                                 <p className="font-bold text-slate-900 mt-1 uppercase">
                                     {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'

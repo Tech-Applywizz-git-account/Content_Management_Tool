@@ -1800,8 +1800,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans">
       {/* Header */}
-      <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 bg-white shadow-sm">
-        <div className="flex items-center space-x-6">
+      <header className="min-h-[4.5rem] md:h-20 border-b-2 border-black flex items-center justify-between px-3 md:px-6 bg-white shadow-sm gap-2">
+        <div className="flex items-center space-x-2 md:space-x-6 overflow-hidden">
           <button
             onClick={() => {
               console.log('⬅ Back clicked');
@@ -1809,12 +1809,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
               setShowPopup(false);
               setShowConfirmation(false);
               onClose();
-            }} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
-            <ArrowLeft className="w-6 h-6 text-black" />
+            }} className="p-2 md:p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all flex-shrink-0">
+            <ArrowLeft className="w-5 h-5 md:w-6 md:h-6 text-black" />
           </button>
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+              <h1 className="text-base md:text-2xl font-black text-slate-900 uppercase tracking-tight truncate">
                 {isScriptFromApprovedIdea
                   ? 'New Script'
                   : project
@@ -1822,48 +1822,60 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     : 'New Script'}
               </h1>
               {isFromIdea && (
-                <span className="bg-green-100 text-green-800 px-2 py-1 border-2 border-green-300 text-xs font-black uppercase">
-                  Script from CEO-approved idea
+                <span className="hidden sm:inline-block bg-green-100 text-green-800 px-2 py-1 border-2 border-green-300 text-[10px] font-black uppercase whitespace-nowrap">
+                  Approved Idea
                 </span>
               )}
             </div>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 md:space-x-4 flex-shrink-0">
           <button
             onClick={handleSaveDraft}
             disabled={!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
-            className={`px-6 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors flex items-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[2px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black text-black font-black uppercase text-xs md:text-sm hover:bg-slate-100 transition-colors flex items-center shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[1px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <Save className="w-4 h-4 mr-2" />
-            Draft
+            <Save className="w-4 h-4 md:mr-2" />
+            <span className="hidden sm:inline">Draft</span>
           </button>
           <button
             onClick={() => setShowConfirmation(true)}
             disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined))) || (project && getWorkflowState(project).isRejected && returnType !== 'reject')}
-            className={`px-6 py-3 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
           >
-            {isSubmitting ? 'Sending...' : project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected ? (returnType === 'reject' ? 'Resubmit for Review' : 'Cannot Submit (Rejected)') : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
-            <Send className="w-4 h-4 ml-2" />
+            <span className="inline">
+              {isSubmitting ? '...' : (
+                <>
+                  <span className="hidden lg:inline">
+                    {project && getWorkflowState(project).isRework ? 'Submit for Review' : project && getWorkflowState(project).isRejected ? (returnType === 'reject' ? 'Resubmit for Review' : 'Cannot Submit (Rejected)') : creatorRole === Role.CMO ? 'Submit to CEO' : 'Submit to CMO'}
+                  </span>
+                  <span className="lg:hidden">
+                    {project && getWorkflowState(project).isRework ? 'Submit' : 'Review'}
+                  </span>
+                </>
+              )}
+            </span>
+            <Send className="w-4 h-4 ml-1 md:ml-2" />
           </button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-10">
-        <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+      <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-10">
+        <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
 
           {/* ================= LEFT COLUMN ================= */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-4 md:space-y-6">
 
             {/* Project Info */}
             {!isPureIdeaEdit && (
-              <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
-                <h3 className="font-black uppercase text-lg text-slate-900">
+              <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
+                <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
                   Project Info
                 </h3>
 
                 {/* Title */}
-                <div className={`${!newProjectDetails.title.trim() ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                     Title *
                   </label>
@@ -1880,31 +1892,38 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </div>
 
                 {/* Channel */}
-                <div className={`${!newProjectDetails.channel ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                     Channel *
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {Object.values(Channel).map(c => (
-                      <button
-                        key={c}
-                        onClick={() =>
-                          canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
-                        }
-                        disabled={!canEdit}
-                        className={`p-2 text-[10px] font-black uppercase border-2 border-black ${newProjectDetails.channel === c
-                          ? 'bg-black text-white'
-                          : 'bg-white hover:bg-slate-50'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        {c}
-                      </button>
-                    ))}
+                    {Object.values(Channel).map(c => {
+                      const colors: Record<string, string> = {
+                        LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
+                        YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
+                        INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]'
+                      };
+                      return (
+                        <button
+                          key={c}
+                          onClick={() =>
+                            canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
+                          }
+                          disabled={!canEdit}
+                          className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${newProjectDetails.channel === c
+                            ? `${colors[c] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                            : 'bg-white border-black hover:bg-slate-50'
+                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Content Type */}
-                <div className={`${!newProjectDetails.contentType ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                     Content Type *
                   </label>
@@ -1941,7 +1960,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
                 {/* Thumbnail Required - Only for VIDEO content */}
                 {newProjectDetails.contentType === 'VIDEO' && (
-                  <div className={`${formData.thumbnail_required === undefined ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                  <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                       Thumbnail Required *
                     </label>
@@ -2009,7 +2028,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 )}
 
                 {/* Niche Selection */}
-                <div className={`${!formData.niche && !formData.niche_other ? 'border-l-4 border-red-500 pl-3 -ml-3' : ''}`}>
+                <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                     Niche *
                   </label>
@@ -2080,75 +2099,75 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </div>
 
                 {/* Cinematographer Instructions - Only for VIDEO content */}
-                {/* Cinematography Instructions (Optional) */}
-                <div className="bg-white p-8 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-6">
-                  <h3 className="font-black uppercase text-lg text-slate-900">
+                <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
+                  <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
                     Cinematography Instructions
-
                   </h3>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                      Actor
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.actor || ''}
-                      onChange={e =>
-                        canEdit ? setFormData({ ...formData, actor: e.target.value }) : null
-                      }
-                      readOnly={!canEdit}
-                      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                      placeholder="e.g. Female presenter, 30s, business attire"
-                    />
-                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                        Actor
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.actor || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, actor: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                        placeholder="Presenter info"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                      Location
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.location || ''}
-                      onChange={e =>
-                        canEdit ? setFormData({ ...formData, location: e.target.value }) : null
-                      }
-                      readOnly={!canEdit}
-                      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                      placeholder="e.g. Office, studio, outdoor street"
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                        Location
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.location || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, location: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                        placeholder="e.g. Office"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                      Lighting
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.lighting || ''}
-                      onChange={e =>
-                        canEdit ? setFormData({ ...formData, lighting: e.target.value }) : null
-                      }
-                      readOnly={!canEdit}
-                      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                      placeholder="e.g. Soft daylight, cinematic, low-key"
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                        Lighting
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.lighting || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, lighting: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                        placeholder="e.g. Soft daylight"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                      Angles
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.angles || ''}
-                      onChange={e =>
-                        canEdit ? setFormData({ ...formData, angles: e.target.value }) : null
-                      }
-                      readOnly={!canEdit}
-                      className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                      placeholder="e.g. Medium shot, close-up, over-the-shoulder"
-                    />
+                    <div>
+                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                        Angles
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.angles || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, angles: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                        placeholder="e.g. Medium shot"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2158,21 +2177,28 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     Priority
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {(['LOW', 'NORMAL', 'HIGH'] as const).map(p => (
-                      <button
-                        key={p}
-                        onClick={() =>
-                          canEdit ? setNewProjectDetails({ ...newProjectDetails, priority: p }) : null
-                        }
-                        disabled={!canEdit}
-                        className={`p-2 text-xs font-bold uppercase border-2 border-black ${newProjectDetails.priority === p
-                          ? 'bg-black text-white'
-                          : 'bg-white hover:bg-slate-50'
-                          } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        {p}
-                      </button>
-                    ))}
+                    {(['LOW', 'NORMAL', 'HIGH'] as const).map(p => {
+                      const colors: Record<string, string> = {
+                        HIGH: 'bg-[#FF3131] border-[#FF3131]',
+                        NORMAL: 'bg-[#FFB800] border-[#FFB800]',
+                        LOW: 'bg-[#00D1FF] border-[#00D1FF]'
+                      };
+                      return (
+                        <button
+                          key={p}
+                          onClick={() =>
+                            canEdit ? setNewProjectDetails({ ...newProjectDetails, priority: p }) : null
+                          }
+                          disabled={!canEdit}
+                          className={`p-2 text-xs font-bold uppercase border-2 transition-all ${newProjectDetails.priority === p
+                            ? `${colors[p] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                            : 'bg-white border-black hover:bg-slate-50'
+                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2272,7 +2298,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
                 <div className="bg-white p-4 border-2 border-yellow-200 min-h-[200px] max-h-60 overflow-y-auto">
                   <div className="text-slate-700 whitespace-pre-wrap font-serif">
-                    return <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(previousScript) }} />;
+                    <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(previousScript) }} />
                   </div>
                 </div>
               </div>
@@ -2280,32 +2306,35 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
             {/* Script Editor - Only show if NOT a pure idea edit */}
             {!isPureIdeaEdit && (
-              <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] min-h-[700px] flex flex-col">
-                <div className="border-b-2 border-black pb-4 mb-6 flex justify-between">
-                  <span className="font-black uppercase text-xs text-slate-400">
-                    Rich Text Editor
-                  </span>
-                  <div className="flex items-center space-x-3">
+              <div className="bg-white p-4 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] min-h-[500px] md:min-h-[700px] flex flex-col">
+                <div className="border-b-2 border-black pb-4 mb-6 flex flex-col sm:flex-row justify-between gap-4">
+                  <div className="flex items-center justify-between sm:justify-start sm:space-x-4">
+                    <span className="font-black uppercase text-[10px] text-slate-400">
+                      Rich Text Editor
+                    </span>
                     {canEdit && (
-                      <div className="text-[10px] font-black uppercase text-slate-400 mr-2">
+                      <div className="text-[10px] font-black uppercase text-slate-400">
                         {scriptCharCount} / 6000 chars
                       </div>
                     )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
                     {canEdit && (
-                      <div className="flex space-x-2">
+                      <div className="flex items-center space-x-2">
                         <button
                           onClick={applyCorrections}
                           disabled={correctionsRunning}
-                          className={`px-4 py-2 border-2 border-black font-black uppercase text-sm flex items-center transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${correctionsRunning ? 'bg-slate-200 text-slate-500 border-slate-400 shadow-none' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                          className={`px-3 py-1.5 md:px-4 md:py-2 border-2 border-black font-black uppercase text-[10px] md:text-sm flex items-center transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[1px] active:shadow-none ${correctionsRunning ? 'bg-slate-200 text-slate-500 border-slate-400 shadow-none' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                           title="Check grammar and spelling"
                         >
-                          {correctionsRunning ? 'Checking...' : 'Corrections'}
-                          <SpellCheck className="w-4 h-4 ml-2" />
+                          {correctionsRunning ? 'Wait...' : 'Corrections'}
+                          <SpellCheck className="w-3 h-3 md:w-4 md:h-4 ml-1 md:ml-2" />
                         </button>
                         {correctionsEnabled && (
                           <button
                             onClick={clearCorrections}
-                            className="px-4 py-2 border-2 border-black font-black uppercase text-sm bg-white hover:bg-slate-100 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            className="px-3 py-1.5 md:px-4 md:py-2 border-2 border-black font-black uppercase text-[10px] md:text-sm bg-white hover:bg-slate-100 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[1px] active:shadow-none"
                             title="Clear corrections"
                           >
                             Clear
@@ -2313,56 +2342,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         )}
                       </div>
                     )}
+
+                    {/* Color picker toolbar */}
+                    {canEdit && (
+                      <div className="flex items-center space-x-1 ml-auto sm:ml-0 bg-slate-50 p-1 border border-slate-200 rounded">
+                        <button onClick={() => applyColor('red')} className="w-5 h-5 md:w-6 md:h-6 bg-red-800 border border-black rounded-sm" title="Red" />
+                        <button onClick={() => applyColor('blue')} className="w-5 h-5 md:w-6 md:h-6 bg-blue-800 border border-black rounded-sm" title="Blue" />
+                        <button onClick={() => applyColor('green')} className="w-5 h-5 md:w-6 md:h-6 bg-green-800 border border-black rounded-sm" title="Green" />
+                        <button onClick={() => applyBold()} className="w-5 h-5 md:w-6 md:h-6 bg-gray-500 border border-black rounded-sm flex items-center justify-center font-bold text-white text-[10px]" title="Bold">B</button>
+                      </div>
+                    )}
                   </div>
-                  {/* Color picker toolbar - appears when text is selected */}
-                  {canEdit && (
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => applyColor('red')}
-                        className="w-6 h-6 bg-red-800 border border-black rounded-sm"
-                        title="Red"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={() => applyColor('blue')}
-                        className="w-6 h-6 bg-blue-800 border border-black rounded-sm"
-                        title="Blue"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={() => applyColor('green')}
-                        className="w-6 h-6 bg-green-800 border border-black rounded-sm"
-                        title="Green"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={() => applyColor('purple')}
-                        className="w-6 h-6 bg-purple-800 border border-black rounded-sm"
-                        title="Purple"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={() => applyColor('orange')}
-                        className="w-6 h-6 bg-orange-700 border border-black rounded-sm"
-                        title="Orange"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={() => applyColor('black')}
-                        className="w-6 h-6 bg-black border border-black rounded-sm"
-                        title="Black"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        onClick={applyBold}
-                        className="w-6 h-6 bg-gray-500 border border-black rounded-sm flex items-center justify-center font-bold text-white"
-                        title="Bold"
-                        disabled={!canEdit}
-                      >
-                        B
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 <div
@@ -2370,26 +2360,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   suppressContentEditableWarning={true}
                   onInput={(e) => {
                     if (canEdit) {
-                      // Only update formData if content actually changed
                       const content = e.currentTarget.innerHTML;
                       if (formData.script_content !== content) {
                         setFormData({ ...formData, script_content: content });
-                        // Clear corrections when user manually edits content
-                        if (correctionsEnabled) {
-                          clearCorrections();
-                        }
+                        if (correctionsEnabled) clearCorrections();
                       }
                     }
                   }}
                   onClick={(e) => {
                     const target = e.target as HTMLElement;
-                    if (target.classList.contains('grammar-error')) {
-                      applyCorrection(target);
-                    }
+                    if (target.classList.contains('grammar-error')) applyCorrection(target);
                   }}
                   onMouseUp={handleTextSelection}
+                  className="flex-1 w-full text-base md:text-lg resize-none outline-none font-serif p-3 md:p-4 border border-slate-200 rounded min-h-[400px] md:min-h-[700px] whitespace-pre-wrap"
+                  ref={editorRef}
                   onKeyDown={(e) => {
-                    // Handle Tab key to apply next correction
                     if (e.key === 'Tab' && correctionsEnabled) {
                       const firstError = editorRef.current?.querySelector('.grammar-error') as HTMLElement;
                       if (firstError) {
@@ -2398,16 +2383,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         return;
                       }
                     }
-
-                    // Prevent certain keys from triggering unwanted behavior
-                    if (e.key === 'Enter' && e.shiftKey) {
-                      // Allow shift+enter for line breaks
-                      return;
-                    }
                     handleTextSelection();
                   }}
                   onBlur={() => {
-                    // Ensure content is synced when editor loses focus
                     if (canEdit && editorRef.current) {
                       const content = editorRef.current.innerHTML;
                       if (formData.script_content !== content) {
@@ -2415,8 +2393,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       }
                     }
                   }}
-                  className="flex-1 w-full text-lg resize-none outline-none font-serif p-2 border border-gray-300 rounded min-h-[600px] whitespace-pre-wrap"
-                  ref={editorRef}
                 />
               </div>
             )}

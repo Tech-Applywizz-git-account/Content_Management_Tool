@@ -104,6 +104,18 @@ function App() {
   const [loading, setLoading] = useState(true); // Start loading by default
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
+  // Use a Ref to track loading state in event listeners without stale closures
+  const loadingRef = React.useRef(loading);
+  const isRestoringSessionRef = React.useRef(isRestoringSession);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    isRestoringSessionRef.current = isRestoringSession;
+  }, [isRestoringSession]);
+
   // Use a Ref to track user state in event listeners without stale closures
   const userRef = React.useRef<User | null>(user);
 
@@ -267,24 +279,32 @@ function App() {
 
       if (isRecoveryFlow) {
         console.log('App: Recovery flow detected, handling separately');
-        // In recovery, we trust the URL token but still verify user
-        const { data } = await supabase.auth.getUser();
-        if (data?.user) {
-          // Just fetch profile, don't do full restoreSession loop which might be strict
-          const profile = await db.users.getById(data.user.id);
-          if (profile && mounted) {
-            setUser(profile);
-            db.setCurrentUser(profile);
+        try {
+          // In recovery, we trust the URL token but still verify user
+          const { data, error } = await supabase.auth.getUser();
+          if (error) console.warn('App: Recovery user error:', error.message);
+
+          if (data?.user) {
+            // Just fetch profile, don't do full restoreSession loop which might be strict
+            const profile = await db.users.getById(data.user.id);
+            if (profile && mounted) {
+              setUser(profile);
+              db.setCurrentUser(profile);
+            }
           }
-        }
-        if (mounted) {
-          setLoading(false);
-          setIsRestoringSession(false);
+        } catch (recoverErr) {
+          console.error('App: Recovery flow failed:', recoverErr);
+        } finally {
+          if (mounted) {
+            setLoading(false);
+            setIsRestoringSession(false);
+          }
         }
         return;
       }
 
       try {
+        console.log('App: initAuth - fetching initial session...');
         // 1. Get initial session
         const { data: { session }, error } = await supabase.auth.getSession();
 
@@ -296,13 +316,19 @@ function App() {
           console.log('App: Active session found, verifying profile...');
           // If we have a session, ensure we have the full profile
           // We call restoreSession even if user is set, to ensure data freshness on reload
-          await restoreSession();
+          // Wrap in a timeout to prevent hanging the whole app
+          await Promise.race([
+            restoreSession(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Session restore timeout')), 5000))
+          ]).catch(err => {
+            console.error('App: restoreSession failed or timed out:', err);
+          });
         } else {
           console.log('App: No active Supabase session found');
           // Attempt mock session fallback here
           const mockSession = localStorage.getItem('mock_session');
           if (mockSession) {
-            await restoreSession();
+            await restoreSession().catch(err => console.error('App: mock session restore failed:', err));
           }
         }
       } catch (err) {
@@ -321,6 +347,13 @@ function App() {
     // 2. Listen for changes (Important for token refreshes and multi-tab sync)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log(`🔔 Auth Change: ${event}`);
+
+      // Skip processing onAuthStateChange events during initial restore to avoid redundant calls
+      // The initAuth/restoreSession loop handles the first load.
+      if (document.readyState !== 'complete' || (loadingRef.current && event === 'SIGNED_IN')) {
+        console.log('App: Skipping auth event processing during initial load');
+        return;
+      }
 
       const currentUser = userRef.current; // Use Ref to get latest state
 
@@ -349,8 +382,18 @@ function App() {
     // Run initialization
     initAuth();
 
+    // Safety fallback: ensure loading is released even if initAuth hangs indefinitely
+    const safetyTimer = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('⚠️ App: Safety timeout triggered! Forcing loading state to false.');
+        setLoading(false);
+        setIsRestoringSession(false);
+      }
+    }, 7000);
+
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []); // Empty dependency array as this is mount logic

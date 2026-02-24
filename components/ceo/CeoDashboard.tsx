@@ -103,7 +103,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         .from('workflow_history')
         .select('*', { head: true, count: 'exact' })
         .eq('actor_id', user.id)
-        .eq('action', 'APPROVED');
+        .in('action', ['APPROVED', 'SUBMITTED']);
 
       if (approvedErr) throw approvedErr;
 
@@ -219,7 +219,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         stage
       `)
         .eq('actor_id', user.id)
-        .eq('action', 'APPROVED')
+        .in('action', ['APPROVED', 'SUBMITTED'])
         .order('timestamp', { ascending: false });
 
       if (error || !data) {
@@ -463,10 +463,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       <div className="space-y-10 animate-fade-in">
 
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 md:gap-6">
           <div>
-            <h1 className="text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">Approvals</h1>
-            <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
+            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2 drop-shadow-sm">Approvals</h1>
+            <p className="font-bold text-base md:text-lg text-slate-500">Welcome back, {user.full_name}</p>
           </div>
 
           <div className="flex space-x-2">
@@ -481,7 +481,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
         </div>
 
         {/* Stats Cards Grid - Purely Approval Focused */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
           {/* Green Card - PENDING APPROVALS */}
           <div
             onClick={() => setActiveTab('PENDING')}
@@ -524,29 +524,29 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
         {/* List Section */}
         <div className="pt-8">
-          <div className="flex items-center space-x-6 mb-8 border-b-2 border-black">
+          <div className="flex items-center space-x-4 md:space-x-6 mb-8 border-b-2 border-black overflow-x-auto whitespace-nowrap scrollbar-hide">
             <button
               onClick={() => setActiveTab('PENDING')}
-              className={`text-2xl font-black uppercase pb-2 px-2 transition-all ${activeTab === 'PENDING' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`text-xl md:text-2xl font-black uppercase pb-2 px-1 md:px-2 transition-all ${activeTab === 'PENDING' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Inbox ({inboxPendingCount})
             </button>
             <button
               onClick={() => setActiveTab('HISTORY')}
-              className={`text-2xl font-black uppercase pb-2 px-2 transition-all ${activeTab === 'HISTORY' ? 'text-black border-b-4 border-black translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`text-xl md:text-2xl font-black uppercase pb-2 px-1 md:px-2 transition-all ${activeTab === 'HISTORY' ? 'text-black border-b-4 border-black translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               History
             </button>
             <button
               onClick={() => setActiveTab('REWORK')}
-              className={`text-2xl font-black uppercase pb-2 px-2 transition-all ${activeTab === 'REWORK' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`text-xl md:text-2xl font-black uppercase pb-2 px-1 md:px-2 transition-all ${activeTab === 'REWORK' ? 'text-[#D946EF] border-b-4 border-[#D946EF] translate-y-[2px]' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Rework ({reworkProjectsCount})
             </button>
           </div>
 
           {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
               {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).map(project => (
                 <div
                   key={project.id}
@@ -617,8 +617,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="font-bold text-slate-400 uppercase text-xs tracking-wider">Action</span>
-                          <span className={`font-bold text-slate-900 uppercase text-xs ${project.action === 'APPROVED' ? 'text-green-600' : 'text-red-600'}`}>
-                            {project.action}
+                          <span className={`font-bold text-slate-900 uppercase text-xs ${(project.action === 'APPROVED' || project.action === 'SUBMITTED') ? 'text-green-600' : 'text-red-600'}`}>
+                            {project.action === 'SUBMITTED' ? 'APPROVED' : project.action}
                           </span>
                         </div>
                         <div className="flex justify-between text-sm">

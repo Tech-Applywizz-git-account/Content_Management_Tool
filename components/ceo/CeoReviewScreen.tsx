@@ -503,21 +503,21 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
             {/* Header */}
-            <header className="border-b-2 border-black flex items-center justify-between px-6 py-4 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
-                <div className="flex items-center space-x-4">
-                    <button onClick={onBack} className="p-2 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
-                        <ArrowLeft className="w-5 h-5 text-black" />
+            <header className="min-h-[4.5rem] md:h-20 border-b-2 border-black flex items-center justify-between px-3 md:px-6 sticky top-0 bg-white z-20 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)] gap-2">
+                <div className="flex items-center space-x-2 md:space-x-4 overflow-hidden">
+                    <button onClick={onBack} className="p-2 md:p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all flex-shrink-0">
+                        <ArrowLeft className="w-5 h-5 md:w-6 md:h-6 text-black" />
                     </button>
-                    <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mb-1">
+                            <span className={`px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     'bg-[#D946EF]'
                                 }`}>
                                 {project.channel}
                             </span>
                             <span
-                                className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black ${project.priority === 'HIGH'
+                                className={`px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black ${project.priority === 'HIGH'
                                     ? 'bg-red-500 text-white'
                                     : project.priority === 'NORMAL'
                                         ? 'bg-yellow-500 text-black'
@@ -527,29 +527,29 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.priority}
                             </span>
                             {(previousScript || previousAssets) && (
-                                <span className="px-2 py-0.5 text-xs font-black uppercase border-2 border-black bg-[#FFD952] text-black">
+                                <span className="px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black bg-[#FFD952] text-black">
                                     REWORK
                                 </span>
                             )}
-                            <span className="text-xs font-bold uppercase text-slate-500">
-                                {STAGE_LABELS[project.current_stage]}
+                            <span className="hidden sm:inline text-[8px] md:text-xs font-bold uppercase text-slate-500">
+                                Stage: {STAGE_LABELS[project.current_stage]}
                             </span>
                         </div>
-                        <h1 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
+                        <h1 className="text-base md:text-2xl font-black text-slate-900 uppercase tracking-tight truncate">
+                            {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea: ' : 'Script: '}
                             {project.title}
                         </h1>
                     </div>
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col md:flex-row max-w-[1920px] mx-auto w-full">
+            <div className="flex-1 flex flex-col lg:flex-row w-full overflow-hidden">
 
-                {/* LEFT COLUMN: Content (70%) */}
-                <div className="flex-1 p-6 md:p-12 space-y-10 overflow-y-auto bg-slate-50">
+                {/* LEFT COLUMN: Content (70% on desktop) */}
+                <div className="flex-1 p-4 md:p-8 lg:p-12 space-y-6 md:space-y-10 overflow-y-auto bg-slate-50">
 
-                    {/* Info Block */}
-                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
+                    {/* Info Block - Responsive Grid */}
+                    <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-4 md:p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Creator</label>
                             <div className="font-bold text-slate-900 uppercase">
@@ -612,8 +612,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* CMO Notes Section */}
                     {(project as any).forwarded_comments && (project as any).forwarded_comments.length > 0 && (project as any).forwarded_comments.some((c: any) => c.from_role === 'CMO') && (
-                        <section className="space-y-4 pt-6 mt-6 border-t-4 border-black">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">CMO Notes</h3>
+                        <section className="space-y-4 pt-4 md:pt-6 mt-6 border-t-2 md:border-t-4 border-black">
+                            <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase">CMO Notes</h3>
                             <div className="space-y-4">
                                 {(project as any).forwarded_comments
                                     .filter((c: any) => c.from_role === 'CMO')
@@ -639,9 +639,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* Script Reference Link - Additional Section for clarity */}
                     {project.data?.script_reference_link && (
-                        <section className="space-y-4 pt-6 border-t-4 border-black">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">Writer's Script Reference</h3>
-                            <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <section className="space-y-4 pt-4 md:pt-6 border-t-2 md:border-t-4 border-black">
+                            <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase">Writer's Script Reference</h3>
+                            <div className="border-2 border-black bg-white p-4 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Script Link</p>
@@ -662,9 +662,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* Thumbnail Reference from Writer */}
                     {project.data?.thumbnail_reference_link && (
-                        <section className="space-y-4 pt-6 border-t-4 border-black">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">Writer's Thumbnail Reference</h3>
-                            <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <section className="space-y-4 pt-4 md:pt-6 border-t-2 md:border-t-4 border-black">
+                            <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase">Writer's Thumbnail Reference</h3>
+                            <div className="border-2 border-black bg-white p-4 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                 <div className="flex items-center justify-between">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold uppercase text-slate-500 mb-2">Reference Thumbnail Link</p>
@@ -685,9 +685,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* Script Viewer */}
                     <section className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link & Message' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message'}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase">
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script Content'}
                             </h3>
                             <button
                                 onClick={downloadPDF}
@@ -732,8 +732,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* Assets Section (Only for final review) */}
                     {project.current_stage === WorkflowStage.FINAL_REVIEW_CEO && (
-                        <section className="space-y-4 pt-6 border-t-4 border-black">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
+                        <section className="space-y-4 pt-4 md:pt-6 border-t-2 md:border-t-4 border-black">
+                            <h3 className="text-xl md:text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
 
                             {previousScript || previousAssets ? (
                                 (() => {
@@ -749,12 +749,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                                     return (
                                         // Show both previous and current assets side by side for rework projects
-                                        <div className="space-y-8 max-w-4xl mx-auto">
+                                        <div className="space-y-6 md:space-y-8 max-w-4xl mx-auto">
                                             {/* Raw Video Assets */}
                                             {isVideo && (project.video_link || previousAssets?.video_link) && (
                                                 <div className="space-y-2">
-                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
-                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showPreviousRaw && (
                                                             <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.video_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
@@ -798,9 +798,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                                             {/* Edited Video Assets */}
                                             {isVideo && (project.edited_video_link || previousAssets?.edited_video_link) && (
-                                                <div className="space-y-2">
-                                                    {(showPreviousEdited || project.edited_video_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Edited Video</h4>}
-                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                <div className="space-y-2 mt-6 md:mt-8">
+                                                    {(showPreviousEdited || project.edited_video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Edited Video</h4>}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                                         {/* Previous Edited Video */}
                                                         {showPreviousEdited && (
                                                             <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.edited_video_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
@@ -844,9 +844,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                                             {/* Thumbnail/Creative Assets */}
                                             {(project.thumbnail_link || previousAssets?.thumbnail_link || project.data?.creative_link || previousAssets?.creative_link) && (
-                                                <div className="space-y-2">
-                                                    {(showPreviousCreative || project.thumbnail_link || project.data?.creative_link) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Creative Assets</h4>}
-                                                    <div className="grid grid-cols-2 gap-4 items-start">
+                                                <div className="space-y-2 mt-6 md:mt-8">
+                                                    {(showPreviousCreative || project.thumbnail_link || project.data?.creative_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Creative Assets</h4>}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                                         {/* Previous Thumbnail/Creative */}
                                                         {showPreviousCreative && (
                                                             <div className={`border-2 border-slate-300 bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${project.thumbnail_link || project.data?.creative_link ? '' : 'col-span-2 max-w-lg mx-auto w-full'}`}>
@@ -900,7 +900,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 })()
                             ) : (
                                 // Show single assets for non-rework projects
-                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
                                     {/* Raw Video Asset */}
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
@@ -991,64 +991,64 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     )}
                 </div>
 
-                {/* RIGHT COLUMN: Approval Panel (30%) - Sticky */}
-                <div className="w-full md:w-[450px] bg-white border-l-2 border-black p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 md:top-20 md:h-[calc(100vh-80px)] overflow-y-auto z-10 flex flex-col">
-                    <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 inline-block">Final Decision</h2>
+                {/* RIGHT COLUMN: Approval Panel - Vertical on mobile/tablet, Sidebar on desktop */}
+                <div className="w-full lg:w-[400px] xl:w-[450px] bg-white border-t-2 lg:border-t-0 lg:border-l-2 border-black p-5 md:p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 lg:top-20 lg:h-[calc(100vh-80px)] overflow-y-auto z-30 flex flex-col">
+                    <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase mb-4 md:mb-8 border-b-4 border-black pb-2 inline-block">Final Decision</h2>
 
                     <div className="space-y-4 flex-1">
                         {/* Approve Option */}
-                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'APPROVE' ? 'border-black bg-[#4ADE80]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'APPROVE' ? 'border-black bg-[#4ADE80]' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
                                     name="decision"
-                                    className="w-5 h-5 accent-black"
+                                    className="w-4 h-4 md:w-5 md:h-5 accent-black"
                                     checked={decision === 'APPROVE'}
                                     onChange={() => setDecision('APPROVE')}
                                 />
-                                <div className="ml-4 flex-1">
-                                    <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
-                                    <span className="text-xs font-bold uppercase text-slate-600">
+                                <div className="ml-3 md:ml-4 flex-1">
+                                    <span className="block font-black text-base md:text-lg uppercase text-slate-900">Approve Content</span>
+                                    <span className="text-[10px] md:text-xs font-bold uppercase text-slate-600">
                                         {project.current_stage.includes('SCRIPT') ? 'Move to Production' : 'Ready for Publishing'}
                                     </span>
                                 </div>
-                                <Check className="w-8 h-8 ml-auto text-black" />
+                                <Check className="w-6 h-6 md:w-8 md:h-8 ml-auto text-black" />
                             </div>
                         </label>
 
                         {/* Rework Option */}
-                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REWORK' ? 'border-black bg-[#FFD952]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REWORK' ? 'border-black bg-[#FFD952]' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
                                     name="decision"
-                                    className="w-5 h-5 accent-black"
+                                    className="w-4 h-4 md:w-5 md:h-5 accent-black"
                                     checked={decision === 'REWORK'}
                                     onChange={() => { setDecision('REWORK'); setReworkStage(''); }}
                                 />
-                                <div className="ml-4 flex-1">
-                                    <span className="block font-black text-lg uppercase text-slate-900">Request Rework</span>
-                                    <span className="text-xs font-bold uppercase text-slate-600">Send back for edits</span>
+                                <div className="ml-3 md:ml-4 flex-1">
+                                    <span className="block font-black text-base md:text-lg uppercase text-slate-900">Request Rework</span>
+                                    <span className="text-[10px] md:text-xs font-bold uppercase text-slate-600">Send back for edits</span>
                                 </div>
-                                <RotateCcw className="w-8 h-8 ml-auto text-black" />
+                                <RotateCcw className="w-6 h-6 md:w-8 md:h-8 ml-auto text-black" />
                             </div>
                         </label>
 
                         {/* Reject Option */}
-                        <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REJECT' ? 'border-black bg-[#FF4F4F] text-white' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REJECT' ? 'border-black bg-[#FF4F4F] text-white' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
                                     name="decision"
-                                    className="w-5 h-5 accent-black"
+                                    className="w-4 h-4 md:w-5 md:h-5 accent-black"
                                     checked={decision === 'REJECT'}
                                     onChange={() => setDecision('REJECT')}
                                 />
-                                <div className="ml-4 flex-1">
-                                    <span className={`block font-black text-lg uppercase ${decision === 'REJECT' ? 'text-white' : 'text-slate-900'}`}>Reject</span>
-                                    <span className={`text-xs font-bold uppercase ${decision === 'REJECT' ? 'text-white/80' : 'text-slate-600'}`}>Terminate workflow</span>
+                                <div className="ml-3 md:ml-4 flex-1">
+                                    <span className={`block font-black text-base md:text-lg uppercase ${decision === 'REJECT' ? 'text-white' : 'text-slate-900'}`}>Reject</span>
+                                    <span className={`text-[10px] md:text-xs font-bold uppercase ${decision === 'REJECT' ? 'text-white/80' : 'text-slate-600'}`}>Terminate workflow</span>
                                 </div>
-                                <X className={`w-8 h-8 ml-auto ${decision === 'REJECT' ? 'text-white' : 'text-black'}`} />
+                                <X className={`w-6 h-6 md:w-8 md:h-8 ml-auto ${decision === 'REJECT' ? 'text-white' : 'text-black'}`} />
                             </div>
                         </label>
                     </div>
