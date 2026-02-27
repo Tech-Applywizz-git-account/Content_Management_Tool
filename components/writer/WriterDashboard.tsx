@@ -202,11 +202,27 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         ].includes(p.current_stage)
     );
 
-    // Projects that need video approval by the writer - visible to all writers
-    const videoApprovalProjects = dashboardProjects.filter(p =>
-        p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL &&
-        p.assigned_to_role === Role.WRITER
-    );
+    // Projects that need video approval by the writer - visible only to the specific assigned writer for single-approval stage
+    // Always use allWriterProjects to ensure they are visible even if the user is in 'mywork' view
+    const videoApprovalProjects = allWriterProjects.filter(p => {
+        const isWriterRole = p.assigned_to_role === Role.WRITER;
+
+        if (p.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL) {
+            // Single writer approval - if assigned to a specific user, only they see it
+            // Fallback for existing projects: show it to the person who wrote the script (writer_id)
+            if (p.assigned_to_user_id) {
+                return isWriterRole && p.assigned_to_user_id === user.id;
+            }
+            return isWriterRole && p.writer_id === user.id;
+        }
+
+        if (p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
+            // Multi-writer approval - visible to all writers (as the name implies)
+            return isWriterRole;
+        }
+
+        return false;
+    });
     const convertedIdeaIds = new Set(
         dashboardProjects
             .filter(p => p.data?.parent_idea_id)

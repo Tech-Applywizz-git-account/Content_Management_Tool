@@ -233,10 +233,11 @@ Deno.serve(async (req: Request) => {
         });
 
     } catch (err: any) {
-        console.error("Critical Error:", err.message);
-        return new Response(JSON.stringify({ error: err.message }), {
-            status: 500,
-            headers: corsHeaders,
+        console.error("Critical Webhook Error:", err.message);
+        // Returning 200 so we don't block the database transaction
+        return new Response(JSON.stringify({ ok: false, error: err.message }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     }
 });

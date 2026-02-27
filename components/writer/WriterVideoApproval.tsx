@@ -149,7 +149,8 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                     comment,
                     actor_name,
                     actor_id,
-                    timestamp
+                    timestamp,
+                    stage
                 `)
                 .eq('project_id', project.id)
                 .in('action', ['APPROVED', 'REJECTED', 'REWORK'])
@@ -164,10 +165,12 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 const { data: { session } } = await supabase.auth.getSession();
                 const user = session?.user;
 
-                // Check if current writer has already approved or rejected this project
+                // Check if current writer has already approved or rejected this project IN THE CURRENT STAGE
+                // This prevents old approvals (like for raw video) from blocking new approvals (like for edited video)
                 const currentUserAction = commentsData?.find(comment =>
                     comment.actor_id === (publicUser?.id || user?.id) &&
-                    (comment.action === 'APPROVED' || comment.action === 'REJECTED')
+                    (comment.action === 'APPROVED' || comment.action === 'REJECTED') &&
+                    comment.stage === project.current_stage
                 );
 
                 setWriterAlreadyActed(!!currentUserAction);
@@ -219,7 +222,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 .from('workflow_history')
                 .select('actor_id, actor_name')
                 .eq('project_id', project.id)
-                .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
+                .eq('stage', project.current_stage)
                 .eq('action', 'APPROVED');
 
             const currentApprovedCount = currentApprovals?.length || 0;
@@ -257,7 +260,11 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             let popupMsg, stageMsgName;
             const actualNextStageLabel = STAGE_LABELS[nextStageInfo.stage] || 'Next Stage';
 
-            if (newApprovedCount >= totalWriters) {
+            if (project.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL) {
+                // Single writer approval
+                popupMsg = `You approved the video. The project has been sent to ${actualNextStageLabel}.`;
+                stageMsgName = actualNextStageLabel;
+            } else if (newApprovedCount >= totalWriters) {
                 // All writers have approved, moving to next stage
                 popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to ${actualNextStageLabel}.`;
                 stageMsgName = actualNextStageLabel;

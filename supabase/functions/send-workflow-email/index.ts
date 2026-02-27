@@ -47,6 +47,7 @@ async function sendEmail(to: string[], subject: string, html: string) {
                 body: { contentType: "HTML", content: html },
                 toRecipients: to.map((email: string) => ({ emailAddress: { address: email } })),
             },
+            saveToSentItems: "true",
         }),
     });
     if (!res.ok) throw new Error(`Email failed: ${await res.text()}`);
@@ -64,29 +65,79 @@ async function getRoleEmails(role: string): Promise<string[]> {
     return data?.map((u: any) => u.email).filter(Boolean) || [];
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-    // Safety check: Webhook Secret
-    if (req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+    // Safety check: Webhook Secret or Service Role Key
+    const authHeader = req.headers.get("authorization");
+    const webhookSecret = req.headers.get("x-webhook-secret");
+    const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+    const isValidWebhook = webhookSecret === WEBHOOK_SECRET;
+
+    if (!isValidWebhook && !isServiceRole) {
+        console.error("Auth mismatch:", {
+            hasWebhookSecret: !!webhookSecret,
+            hasAuthHeader: !!authHeader,
+            isServiceRoleMatch: isServiceRole
+        });
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
 
     try {
-        const { record } = await req.json();
+        const body = await req.json();
         console.log("=== EMAIL ROUTING DEBUG ===");
-        console.log("Action:", record.action);
-        console.log("From Role:", record.from_role);
-        console.log("To Role:", record.to_role);
-        console.log("Project ID:", record.project_id);
-        console.log("Actor:", record.actor_name);
-        console.log("Processing Record:", JSON.stringify(record, null, 2));
+        console.log("Received Body:", JSON.stringify(body, null, 2));
 
-        if (!record || record.action === "CREATED") {
-            return new Response(JSON.stringify({ ok: true, msg: "Skipped" }), { headers: corsHeaders });
+        let project_id: string = "", action: string = "", from_role: string = "", to_role: string = "", actor_name: string = "", metadata: any = {}, comment: string = "", history_stage: string = "";
+        let recipient_user_id: string | undefined;
+
+        if (body.record) {
+            // Legacy / Standard Workflow History Trigger format
+            project_id = body.record.project_id;
+            action = (body.record.action || "").toUpperCase();
+            // Robust role identification: check specific role fields first, then fallback to stage-based roles
+            from_role = (body.record.from_role || body.record.from_stage || "").toUpperCase();
+            to_role = (body.record.to_role || body.record.to_stage || "").toUpperCase();
+            history_stage = (body.record.stage || "").toUpperCase();
+
+            actor_name = body.record.actor_name;
+            metadata = body.record.metadata || {};
+            comment = body.record.comment || "";
+        } else if (body.event) {
+            // New direct-from-table trigger format (e.g. from sub-editor assignment or video upload)
+            project_id = body.data?.project_id;
+            action = body.event.toUpperCase();
+            if (action === "VIDEO_UPLOADED") action = "SUBMITTED"; // Normalize
+
+            to_role = (body.recipient_role || body.data?.assigned_to_role || "").toUpperCase();
+            recipient_user_id = body.recipient_user_id || body.data?.assigned_to_user_id;
+            actor_name = body.data?.actor_name || "System";
+            metadata = body.data || {};
+            comment = body.data?.comment || "No comments provided.";
+            // For direct events, we might not have the history stage, but we can infer it if needed
         }
 
-        const { project_id, action, from_role, to_role, actor_name, metadata = {}, comment } = record;
+        if (!project_id) {
+            console.log("Missing project_id, skipping execution");
+            return new Response(JSON.stringify({ ok: true, msg: "Skipped - No Project ID" }), { headers: corsHeaders });
+        }
+
+        if (action === "CREATED") {
+            return new Response(JSON.stringify({ ok: true, msg: "Skipped - Created Action" }), { headers: corsHeaders });
+        }
+
+        console.log("Action:", action);
+        console.log("From Role:", from_role);
+        console.log("To Role:", to_role);
+        console.log("History Stage:", history_stage);
+        console.log("Project ID:", project_id);
+        console.log("Actor:", actor_name);
+
+        // Exit early if internal update (no role change and generic submitted action)
+        if (from_role === to_role && action === "SUBMITTED" && !body.event) {
+            console.log("Internal role update, skipping email");
+            return new Response(JSON.stringify({ ok: true, msg: "Skipped - Internal Update" }), { headers: corsHeaders });
+        }
 
         // Fetch Project Context (including assignment info for REWORK routing)
         const { data: project } = await supabaseAdmin
@@ -98,165 +149,220 @@ Deno.serve(async (req: Request) => {
 
         let recipientEmails: string[] = [];
 
-        // 🔹 Recipient Routing Logic (As per requirements)
-        switch (action) {
-            case "REJECTED":
-                // Send to WRITER (creator)
-                const writerId = project.writer_id || project.created_by_user_id;
-                const writerEmail = await getUserEmail(writerId);
-                if (writerEmail) recipientEmails.push(writerEmail);
-                break;
+        // 🔹 Direct Recipient (if user_id provided)
+        if (recipient_user_id) {
+            const directEmail = await getUserEmail(recipient_user_id);
+            if (directEmail) {
+                recipientEmails.push(directEmail);
+                console.log(`Using direct recipient email: ${directEmail}`);
+            }
+        }
 
-            case "REWORK_VIDEO_SUBMITTED":
-            case "REWORK_SUBMITTED":
-            case "REWORK_EDIT_SUBMITTED":
-            case "REWORK_DESIGN_SUBMITTED":
-                // Route back to the role that initiated the rework
-                const initiatorRole = project.rework_initiator_role || from_role;
-                if (initiatorRole) {
-                    const emails = await getRoleEmails(initiatorRole);
-                    // Strictly exclude CEO from receiving rework submission emails
-                    const filteredEmails = emails.filter(email => initiatorRole !== "CEO");
-                    recipientEmails.push(...filteredEmails);
-                    console.log(`REWORK_SUBMITTED: Routing back to initiator role: ${initiatorRole}`);
-                }
-                break;
-
-            case "PUBLISHED":
-                // Send to OPS
-                const opsEmails = await getRoleEmails("OPS");
-                recipientEmails.push(...opsEmails);
-                break;
-
-            case "SUBMITTED":
-            case "SUB_EDITOR_VIDEO_UPLOADED":
-                // For writer submissions after rework, don't email CEO
-                // Also handle Sub-Editor video uploads
-                if (to_role) {
-                    const emails = await getRoleEmails(to_role);
-
-                    // Filter out CEO emails for writer submissions
-                    if (to_role === "CMO") {
-                        // Get CMO emails but exclude CEO
-                        const ceoEmails = await getRoleEmails("CEO");
-                        const filteredEmails = emails.filter(email => !ceoEmails.includes(email));
-                        recipientEmails.push(...filteredEmails);
-                    }
-                    // For SUB_EDITOR_VIDEO_UPLOADED, check if thumbnail is required
-                    else if (action === "SUB_EDITOR_VIDEO_UPLOADED") {
-                        // Need to fetch project data to check thumbnail_required
-                        const { data: fullProject } = await supabaseAdmin
-                            .from("projects")
-                            .select("data")
-                            .eq("id", project_id)
-                            .single();
-
-                        if (fullProject && fullProject.data && fullProject.data.thumbnail_required === true) {
-                            // If thumbnail is required, send to Designer instead of Multi-Writer Approval
-                            const designerEmails = await getRoleEmails("DESIGNER");
-                            recipientEmails.push(...designerEmails);
-                            console.log(`SUB_EDITOR_VIDEO_UPLOADED: Sent to Designer role (thumbnail_required = true)`);
-                        } else {
-                            // If no thumbnail required, send to Multi-Writer Approval
-                            recipientEmails.push(...emails);
-                            console.log(`SUB_EDITOR_VIDEO_UPLOADED: Sent to Multi-Writer Approval role (thumbnail_required = false or undefined)`);
-                        }
-                    } else {
-                        recipientEmails.push(...emails);
-                    }
-                }
-                break;
-
-            case "APPROVED":
-                // When CMO approves, don't email CEO
-                // When other roles approve, apply appropriate filtering
-                if (to_role) {
-                    const emails = await getRoleEmails(to_role);
-
-                    // If CMO is approving and sending to next role, exclude CEO
-                    if (from_role === "CMO") {
-                        const ceoEmails = await getRoleEmails("CEO");
-                        const filteredEmails = emails.filter(email => !ceoEmails.includes(email));
-                        recipientEmails.push(...filteredEmails);
-                    }
-                    // For other approvals, apply general filtering
-                    else {
-                        // Exclude unnecessary cross-role emails
-                        const filteredEmails = emails.filter(email => {
-                            // Don't send approval emails to roles that don't need them
-                            if (to_role === "CEO" && from_role !== "CMO") {
-                                // Only CMO should send to CEO for approvals
-                                return false;
-                            }
-                            return true;
-                        });
-                        recipientEmails.push(...filteredEmails);
-                    }
-                }
-                break;
-
-            case "REWORK":
-                // REWORK emails should go to the targeted role
-                const targetedRole = project.rework_target_role || to_role;
-                if (targetedRole) {
-                    console.log(`REWORK: Sending to role: ${targetedRole}`);
-
-                    // Get all users with the target role
-                    const roleUsers = await getRoleEmails(to_role);
-
-                    if (roleUsers && roleUsers.length > 0) {
-                        recipientEmails.push(...roleUsers);
-                        console.log(`REWORK: Sending to ${roleUsers.length} users with role ${to_role}`);
-                    } else {
-                        console.warn(`REWORK: No active users found for role: ${to_role}`);
-                    }
-                } else {
-                    // Fallback to writer if no to_role specified
+        // 🔹 Recipient Routing Logic (If no direct recipient)
+        if (recipientEmails.length === 0) {
+            switch (action) {
+                case "REJECTED":
+                    // Send to WRITER (creator)
                     const writerId = project.writer_id || project.created_by_user_id;
                     const writerEmail = await getUserEmail(writerId);
-                    if (writerEmail) {
-                        recipientEmails.push(writerEmail);
-                        console.log(`REWORK: Fallback - sending to writer: ${writerEmail}`);
+                    if (writerEmail) recipientEmails.push(writerEmail);
+                    break;
+
+                case "REWORK_VIDEO_SUBMITTED":
+                case "REWORK_SUBMITTED":
+                case "REWORK_EDIT_SUBMITTED":
+                case "REWORK_DESIGN_SUBMITTED":
+                    // Route back to the role that initiated the rework
+                    const initiatorRole = project.rework_initiator_role || from_role;
+                    if (initiatorRole) {
+                        const emails = await getRoleEmails(initiatorRole);
+                        // Strictly exclude CEO from receiving rework submission emails
+                        const filteredEmails = emails.filter(email => initiatorRole !== "CEO");
+                        recipientEmails.push(...filteredEmails);
+                        console.log(`REWORK_SUBMITTED: Routing back to initiator role: ${initiatorRole}`);
                     }
-                }
+                    break;
 
-                // CRITICAL: No additional recipients for REWORK - only send to the specified role
-                break;
+                case "PUBLISHED":
+                    // Send to OPS
+                    const opsEmails = await getRoleEmails("OPS");
+                    recipientEmails.push(...opsEmails);
+                    break;
 
-            case "SUB_EDITOR_ASSIGNED":
-                // When an Editor assigns a project to a Sub-Editor, the Sub-Editor should receive an email
-                if (project.assigned_to_user_id) {
-                    const subEditorEmail = await getUserEmail(project.assigned_to_user_id);
-                    if (subEditorEmail) {
-                        recipientEmails.push(subEditorEmail);
-                        console.log(`SUB_EDITOR_ASSIGNED: Sending to assigned Sub-Editor: ${subEditorEmail}`);
+                case "SUBMITTED":
+                case "SUB_EDITOR_VIDEO_UPLOADED":
+                    // Determine if this is a rework submission
+                    // 1. If to_role is the rework initiator
+                    // 2. If action specifically says REWORK
+                    const isReworkSubmission = (to_role && to_role === project.rework_initiator_role) ||
+                        (action as string).includes("REWORK") ||
+                        (action as string) === "REWORK_SUBMITTED" ||
+                        (action as string) === "REWORK_VIDEO_SUBMITTED";
+
+                    if (isReworkSubmission) {
+                        const initiatorRole = project.rework_initiator_role || to_role;
+                        if (initiatorRole) {
+                            const emails = await getRoleEmails(initiatorRole);
+                            // Strictly exclude CEO from receiving rework submission emails
+                            const filteredEmails = emails.filter(email => initiatorRole !== "CEO");
+                            recipientEmails.push(...filteredEmails);
+                            console.log(`REWORK_SUBMITTED: Routing back to initiator role: ${initiatorRole}`);
+                        }
+                    } else {
+                        const targetRole = to_role || project.assigned_to_role;
+                        if (targetRole) {
+                            const emails = await getRoleEmails(targetRole);
+
+                            // Stage-based specialized routing
+
+                            // 1. Cine -> Writer (Single Writer Approval)
+                            if (targetRole === "WRITER" && (history_stage === "CINEMATOGRAPHY" || from_role === "CINE")) {
+                                const writerId = project.writer_id || project.created_by_user_id;
+                                const writerEmail = await getUserEmail(writerId);
+                                if (writerEmail) {
+                                    recipientEmails.push(writerEmail);
+                                    console.log(`CINE_UPLOAD: Routing to specific assigned writer: ${writerEmail}`);
+                                } else {
+                                    recipientEmails.push(...emails);
+                                }
+                            }
+                            // 2. Editor/Sub-Editor -> Designer or Writer
+                            else if (history_stage === "SUB_EDITOR_PROCESSING" || from_role === "SUB_EDITOR" || from_role === "EDITOR") {
+                                // Check thumbnail requirement
+                                const { data: fullProject } = await supabaseAdmin
+                                    .from("projects")
+                                    .select("data")
+                                    .eq("id", project_id)
+                                    .single();
+
+                                if (fullProject?.data?.thumbnail_required === true || fullProject?.data?.cine_thumbnail_required === true) {
+                                    const designerEmails = await getRoleEmails("DESIGNER");
+                                    recipientEmails.push(...designerEmails);
+                                    console.log(`EDITOR_UPLOAD: Sent to Designer (thumbnail required)`);
+                                } else {
+                                    // Multi-writer approval
+                                    recipientEmails.push(...emails);
+                                    console.log(`EDITOR_UPLOAD: Sent to Multi-Writer Approval`);
+                                }
+                            }
+                            // 3. Regular CMO submission
+                            else if (targetRole === "CMO") {
+                                const ceoEmails = await getRoleEmails("CEO");
+                                const filteredEmails = emails.filter(email => !ceoEmails.includes(email));
+                                recipientEmails.push(...filteredEmails);
+                            }
+                            else {
+                                recipientEmails.push(...emails);
+                            }
+                        }
                     }
-                } else if (to_role === "SUB_EDITOR") {
-                    // Fallback to all Sub-Editors if no specific user assigned
-                    const subEditorEmails = await getRoleEmails("SUB_EDITOR");
-                    recipientEmails.push(...subEditorEmails);
-                }
-                break;
+                    break;
 
+                case "APPROVED":
+                    // When CMO approves, don't email CEO
+                    // When other roles approve, apply appropriate filtering
+                    if (to_role) {
+                        const emails = await getRoleEmails(to_role);
 
-
-            case "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR":
-                // When rework is specifically routed to Sub-Editor, notify the Sub-Editor
-                if (project.assigned_to_user_id) {
-                    const subEditorEmail = await getUserEmail(project.assigned_to_user_id);
-                    if (subEditorEmail) {
-                        recipientEmails.push(subEditorEmail);
+                        // If moving to WRITER role, check if it's the specific assigned writer or all writers (multi-writer)
+                        if (to_role === "WRITER") {
+                            // If coming from CINEMATOGRAPHY, it's the single writer approval stage
+                            if (history_stage === "CINEMATOGRAPHY") {
+                                const writerId = project.writer_id || project.created_by_user_id;
+                                const writerEmail = await getUserEmail(writerId);
+                                if (writerEmail) {
+                                    recipientEmails.push(writerEmail);
+                                    console.log(`APPROVED: Routing to specific assigned writer: ${writerEmail}`);
+                                } else {
+                                    recipientEmails.push(...emails);
+                                }
+                            } else {
+                                // Default to all writers (e.g. MULTI_WRITER_APPROVAL)
+                                recipientEmails.push(...emails);
+                                console.log(`APPROVED: Routing to all writers for stage: ${history_stage}`);
+                            }
+                        }
+                        // If CMO is approving and sending to next role, exclude CEO
+                        else if (from_role === "CMO") {
+                            const ceoEmails = await getRoleEmails("CEO");
+                            const filteredEmails = emails.filter(email => !ceoEmails.includes(email));
+                            recipientEmails.push(...filteredEmails);
+                        }
+                        // For other approvals, apply general filtering
+                        else {
+                            // Exclude unnecessary cross-role emails
+                            const filteredEmails = emails.filter(email => {
+                                // Don't send approval emails to roles that don't need them
+                                if (to_role === "CEO" && from_role !== "CMO") {
+                                    // Only CMO should send to CEO for approvals
+                                    return false;
+                                }
+                                return true;
+                            });
+                            recipientEmails.push(...filteredEmails);
+                        }
                     }
-                } else {
-                    // Fallback to all Sub-Editors if no specific user assigned
-                    const subEditorEmails = await getRoleEmails("SUB_EDITOR");
-                    recipientEmails.push(...subEditorEmails);
-                }
-                break;
+                    break;
 
-            default:
-                console.log(`Action ${action} has no routing rule.`);
-                break;
+                case "REWORK":
+                    // REWORK emails should go to the targeted role
+                    const targetedRole = project.rework_target_role || to_role;
+                    if (targetedRole) {
+                        console.log(`REWORK: Sending to role: ${targetedRole}`);
+
+                        // Get all users with the target role
+                        const roleUsers = await getRoleEmails(targetedRole);
+
+                        if (roleUsers && roleUsers.length > 0) {
+                            recipientEmails.push(...roleUsers);
+                            console.log(`REWORK: Sending to ${roleUsers.length} users with role ${targetedRole}`);
+                        } else {
+                            console.warn(`REWORK: No active users found for role: ${targetedRole}`);
+                        }
+                    } else {
+                        // Fallback to writer if no to_role specified
+                        const writerId = project.writer_id || project.created_by_user_id;
+                        const writerEmail = await getUserEmail(writerId);
+                        if (writerEmail) {
+                            recipientEmails.push(writerEmail);
+                            console.log(`REWORK: Fallback - sending to writer: ${writerEmail}`);
+                        }
+                    }
+                    break;
+
+                case "SUB_EDITOR_ASSIGNED":
+                    // When an Editor assigns a project to a Sub-Editor, the Sub-Editor should receive an email
+                    if (project.assigned_to_user_id) {
+                        const subEditorEmail = await getUserEmail(project.assigned_to_user_id);
+                        if (subEditorEmail) {
+                            recipientEmails.push(subEditorEmail);
+                            console.log(`SUB_EDITOR_ASSIGNED: Sending to assigned Sub-Editor: ${subEditorEmail}`);
+                        }
+                    } else {
+                        // Fallback to all Sub-Editors
+                        const subEditorEmails = await getRoleEmails("SUB_EDITOR");
+                        recipientEmails.push(...subEditorEmails);
+                    }
+                    break;
+
+                case "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR":
+                    // When rework is specifically routed to Sub-Editor, notify the Sub-Editor
+                    if (project.assigned_to_user_id) {
+                        const subEditorEmail = await getUserEmail(project.assigned_to_user_id);
+                        if (subEditorEmail) {
+                            recipientEmails.push(subEditorEmail);
+                        }
+                    } else {
+                        // Fallback to all Sub-Editors
+                        const subEditorEmails = await getRoleEmails("SUB_EDITOR");
+                        recipientEmails.push(...subEditorEmails);
+                    }
+                    break;
+
+                default:
+                    console.log(`Action ${action} has no routing rule.`);
+                    break;
+            }
         }
 
         // Apply final filtering to prevent unnecessary emails
@@ -345,7 +451,11 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
-        await sendEmail(recipientEmails, subject, htmlBody);
+        try {
+            await sendEmail(recipientEmails, subject, htmlBody);
+        } catch (emailError: any) {
+            console.error("Email sending failed but continuing workflow:", emailError.message);
+        }
 
         return new Response(JSON.stringify({ ok: true, sentTo: recipientEmails }), { headers: corsHeaders });
 

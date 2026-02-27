@@ -236,24 +236,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
             setIsSubmitting(true);
 
-            // Update video link and comments first
-            // We do this before advanceWorkflow to ensure the data is saved
-            const updatedProjectData = {
-                ...localProject.data,
-                cine_comments: cineComments.trim() || undefined
-            };
-
-            await db.projects.update(localProject.id, {
-                video_link: videoLink,
-                // cine_uploaded_at will be updated by advanceWorkflow -> workflow.approve -> getTimestampUpdate
-            });
-
-            // Also update data object
-            await db.updateProjectData(localProject.id, updatedProjectData);
-
-            // Use advanceWorkflow to handle routing logic, history, and notifications matches the central logic
-            // This ensures rework routing (returning to initiator) works correctly
-            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments);
+            // Use advanceWorkflow to handle everything atomically
+            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments.trim(), videoLink);
 
             // Clear comments state
             setCineComments('');

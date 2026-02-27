@@ -609,10 +609,10 @@ export const projects = {
         // ✅ FIX: Filter by stage only, not assigned_to_role
         switch (role) {
             case Role.WRITER:
-                // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL, MULTI_WRITER_APPROVAL
+                // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL, WRITER_VIDEO_APPROVAL, MULTI_WRITER_APPROVAL
                 // Only show projects assigned to the writer role
                 query = query.or(
-                    `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL},current_stage.eq.${WorkflowStage.MULTI_WRITER_APPROVAL}`
+                    `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL},current_stage.eq.${WorkflowStage.WRITER_VIDEO_APPROVAL},current_stage.eq.${WorkflowStage.MULTI_WRITER_APPROVAL}`
                 ).eq('assigned_to_role', Role.WRITER);
                 break;
 
@@ -1495,7 +1495,9 @@ export const workflow = {
         comment?: string,
         actionOverride?: string,
         fromRoleOverride?: string,
-        metadata?: any
+        metadata?: any,
+        targetUserId?: string | null,
+        extraUpdates?: any
     ) {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
@@ -1715,9 +1717,9 @@ export const workflow = {
             // Update project
             const projectUpdateData: any = {
                 current_stage: nextStage,
-                // Preserve display information
-                // Preserve assigned user ID if it exists
-                assigned_to_user_id: currentProject?.assigned_to_user_id || null
+                // Use targetUserId if provided, otherwise preserve or set to null
+                assigned_to_user_id: targetUserId !== undefined ? targetUserId : (currentProject?.assigned_to_user_id || null),
+                ...extraUpdates
             };
 
             // Special handling for FINAL_REVIEW_CMO stage
@@ -2328,6 +2330,7 @@ export const helpers = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
+                [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
                 [WorkflowStage.THUMBNAIL_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }, // If multi-writer approval is rejected, send back to editor
@@ -2350,38 +2353,44 @@ export const helpers = {
                 role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
             },
 
-            // CINE -> MULTI_WRITER_APPROVAL (Writer)
-            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
+            // CINE -> WRITER_VIDEO_APPROVAL (Writer)
+            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
 
-            // MULTI_WRITER_APPROVAL -> VIDEO_EDITING (Editor)
-            [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            // WRITER_VIDEO_APPROVAL -> VIDEO_EDITING (Editor)
+            [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
-            // VIDEO_EDITING -> DESIGNER (if thumbnail) OR OPS/CMO (Post Review)
+            // VIDEO_EDITING -> MULTI_WRITER_APPROVAL
             [WorkflowStage.VIDEO_EDITING]: {
                 stage: projectData?.needs_sub_editor === true
                     ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
                     : (projectData?.rework_initiator_stage
                         ? projectData.rework_initiator_stage as WorkflowStage
-                        : (projectData?.thumbnail_required === true
-                            ? WorkflowStage.THUMBNAIL_DESIGN
-                            : WorkflowStage.POST_WRITER_REVIEW)), // Skip designer if no thumbnail
+                        : WorkflowStage.MULTI_WRITER_APPROVAL), // Skip designer here, go to multi writer approval
                 role: projectData?.needs_sub_editor === true
                     ? Role.EDITOR
                     : (projectData?.rework_initiator_stage
                         ? projectData.rework_initiator_role as Role
-                        : (projectData?.thumbnail_required === true
-                            ? Role.DESIGNER
-                            : Role.CMO)) // Assign to CMO for Post Review (Ops also sees it)
+                        : Role.WRITER) // Assign to WRITER for multi writer approval
             },
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                stage: projectData?.thumbnail_required === true
-                    ? WorkflowStage.THUMBNAIL_DESIGN
-                    : WorkflowStage.POST_WRITER_REVIEW,
-                role: projectData?.thumbnail_required === true
-                    ? Role.DESIGNER
-                    : Role.CMO
+                stage: WorkflowStage.MULTI_WRITER_APPROVAL,
+                role: Role.WRITER
+            },
+
+            // MULTI_WRITER_APPROVAL -> DESIGNER (if thumbnail) OR OPS/CMO (Post Review)
+            [WorkflowStage.MULTI_WRITER_APPROVAL]: {
+                stage: projectData?.rework_initiator_stage
+                    ? projectData.rework_initiator_stage as WorkflowStage
+                    : (projectData?.thumbnail_required === true
+                        ? WorkflowStage.THUMBNAIL_DESIGN
+                        : WorkflowStage.POST_WRITER_REVIEW),
+                role: projectData?.rework_initiator_stage
+                    ? projectData.rework_initiator_role as Role
+                    : (projectData?.thumbnail_required === true
+                        ? Role.DESIGNER
+                        : Role.CMO)
             },
 
             // THUMBNAIL_DESIGN -> OPS/CMO (Post Review)
@@ -2453,7 +2462,7 @@ export const aiTools = {
         }
 
         const supabaseKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || (process as any).env?.VITE_SUPABASE_ANON_KEY;
-        const FUNCTION_URL = 'https://kifpnlyljlxppuzizmsf.supabase.co/functions/v1/open-ai';
+        const FUNCTION_URL = 'https://kifpnlyljlxppuzizmsf.supabase.co/functions/v1/openai-correction';
 
         try {
             // Get the active Supabase session
@@ -3144,7 +3153,7 @@ export const db = {
         return result;
     },
 
-    async advanceWorkflow(projectId: string, comment?: string) {
+    async advanceWorkflow(projectId: string, comment?: string, videoLink?: string) {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
         if (!publicUser) {
@@ -3211,6 +3220,11 @@ export const db = {
             console.log('📊 Multi-writer intermediate approval - staying in same stage');
             nextStageInfo = { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER };
         }
+        // 4️⃣ Priority 3.5: Specific Cine to Writer transition
+        else if (project.current_stage === WorkflowStage.CINEMATOGRAPHY) {
+            console.log('🎬 Cine uploaded video: routing to writer for approval');
+            nextStageInfo = { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER };
+        }
         // 5️⃣ Priority 4: Standard Workflow Progression
         else {
             nextStageInfo = helpers.getNextStage(
@@ -3231,11 +3245,51 @@ export const db = {
             WorkflowStage.FINAL_REVIEW_CMO,
             WorkflowStage.FINAL_REVIEW_CEO,
             WorkflowStage.POST_WRITER_REVIEW,
-            WorkflowStage.MULTI_WRITER_APPROVAL
+            WorkflowStage.MULTI_WRITER_APPROVAL,
+            WorkflowStage.WRITER_VIDEO_APPROVAL
         ];
 
         let advanceAction = reviewStages.includes(project.current_stage as WorkflowStage) ? 'APPROVED' : 'SUBMITTED';
         let reworkMetadata: any = undefined;
+        let targetUserId: string | null | undefined = undefined;
+        let extraUpdates: any = {};
+
+        // 🎬 Special logic for Cine submission
+        if (project.current_stage === WorkflowStage.CINEMATOGRAPHY) {
+            targetUserId = (project as any).writer_id || null;
+            if (videoLink) {
+                extraUpdates.video_link = videoLink;
+            }
+            // Ensure status is WAITING_APPROVAL
+            extraUpdates.status = TaskStatus.WAITING_APPROVAL;
+
+            // Atomically update data object with comments
+            if (comment) {
+                const currentData = (project as any).data || {};
+                const parsedData = typeof currentData === 'string' ? JSON.parse(currentData) : currentData;
+
+                extraUpdates.data = {
+                    ...parsedData,
+                    cine_comments: comment.trim()
+                };
+            }
+
+            // If it's the first time Cine is uploading, use default comment if none provided
+            if (!comment) {
+                comment = "Raw video submitted for writer approval";
+            }
+        }
+
+        // 🎬 Special logic for Editor submission
+        if (project.current_stage === WorkflowStage.VIDEO_EDITING) {
+            targetUserId = (project as any).writer_id || null;
+            // Ensure status is WAITING_APPROVAL
+            extraUpdates.status = TaskStatus.WAITING_APPROVAL;
+
+            if (!comment) {
+                comment = "Edited video submitted for writer approval";
+            }
+        }
 
         if (isFromRework) {
             advanceAction = 'SUBMITTED';
@@ -3277,7 +3331,9 @@ export const db = {
             comment,
             advanceAction,
             undefined, // fromRoleOverride
-            reworkMetadata
+            reworkMetadata,
+            targetUserId,
+            extraUpdates
         );
 
         // 7️⃣ CLEAR rework tracking once project successfully returns to initiator
@@ -3357,6 +3413,7 @@ export const db = {
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
             [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.OPS,
+            [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO, // Assign to CMO for approval
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
