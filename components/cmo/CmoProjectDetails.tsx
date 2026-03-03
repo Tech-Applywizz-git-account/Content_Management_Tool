@@ -478,6 +478,22 @@ action,
                                 </div>
                             </div>
                         )}
+                        {fullProject.data?.influencer_name && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Influencer</label>
+                                <div className="font-bold text-slate-900 uppercase truncate" title={fullProject.data.influencer_name}>
+                                    {fullProject.data.influencer_name}
+                                </div>
+                            </div>
+                        )}
+                        {fullProject.data?.referral_link && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Referral Link</label>
+                                <a href={fullProject.data.referral_link} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline uppercase block truncate">
+                                    View Link
+                                </a>
+                            </div>
+                        )}
                     </div>
 
 

@@ -67,14 +67,14 @@ const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose, onSubmit }) => {
           <div>
             <label className="block text-xs md:text-sm font-bold uppercase text-slate-900 mb-2">Channel</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:grid-cols-3 md:gap-3">
-              {[Channel.LINKEDIN, Channel.YOUTUBE, Channel.INSTAGRAM].map((c) => (
+              {Object.values(Channel).map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setChannel(c)}
                   className={`p-2 md:p-3 text-[10px] md:text-sm font-black uppercase border-2 transition-all ${channel === c
-                      ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(100,100,100,0.5)] md:shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)]'
-                      : 'bg-white border-black text-slate-500 hover:bg-slate-100'
+                    ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(100,100,100,0.5)] md:shadow-[4px_4px_0px_0px_rgba(100,100,100,0.5)]'
+                    : 'bg-white border-black text-slate-500 hover:bg-slate-100'
                     }`}
                 >
                   {c}

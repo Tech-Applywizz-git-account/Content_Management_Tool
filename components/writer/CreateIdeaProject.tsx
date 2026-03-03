@@ -68,6 +68,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
       // Set thumbnail reference link if it exists
       setThumbnailReferenceLink(parsedData?.thumbnail_reference_link || '');
 
+      setInfluencerName(parsedData?.influencer_name || '');
+      setReferralLink(parsedData?.referral_link || '');
 
     }
   }, [project]);
@@ -78,6 +80,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'HIGH' | 'NORMAL' | 'LOW'>('NORMAL');
   const [thumbnailReferenceLink, setThumbnailReferenceLink] = useState('');
+  const [influencerName, setInfluencerName] = useState('');
+  const [referralLink, setReferralLink] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
@@ -90,8 +94,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
     }
 
     // Validate channel and content type combination
-    if (channel === Channel.LINKEDIN && contentType === 'VIDEO') {
-      alert('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
+    if ((channel === Channel.LINKEDIN || channel === Channel.JOBBOARD) && contentType === 'VIDEO') {
+      alert(`${channel === Channel.LINKEDIN ? 'LinkedIn' : 'Job Board'} does not support video content. Please select a different channel or change content type to Creative Only.`);
       return;
     }
 
@@ -110,6 +114,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
           idea_description: description,
           brief: description,
           thumbnail_reference_link: thumbnailReferenceLink,
+          influencer_name: influencerName,
+          referral_link: referralLink,
         });
 
         // Update project metadata
@@ -209,6 +215,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
         // Update the project data to include the thumbnail reference link
         await db.updateProjectData(createdProject.id, {
           thumbnail_reference_link: thumbnailReferenceLink,
+          influencer_name: influencerName,
+          referral_link: referralLink,
         });
 
         setPopupMessage(`Idea project "${title}" created successfully. Waiting for CMO review.`);
@@ -293,6 +301,30 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               />
             </div>
 
+            {/* Influencer Name */}
+            <div>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Influencer Name</label>
+              <input
+                type="text"
+                value={influencerName}
+                onChange={(e) => setInfluencerName(e.target.value)}
+                className="w-full p-3 md:p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none font-medium text-sm md:text-base"
+                placeholder="Enter influencer name"
+              />
+            </div>
+
+            {/* Referral Link */}
+            <div>
+              <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">Referral Link</label>
+              <input
+                type="url"
+                value={referralLink}
+                onChange={(e) => setReferralLink(e.target.value)}
+                className="w-full p-3 md:p-4 border-2 border-black bg-white focus:bg-yellow-50 focus:outline-none text-sm md:text-base"
+                placeholder="Enter referral link"
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Channel</label>
@@ -301,7 +333,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                     const colors: Record<string, string> = {
                       LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
                       YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
-                      INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]'
+                      INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
+                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]'
                     };
                     return (
                       <button

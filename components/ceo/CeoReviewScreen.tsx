@@ -600,6 +600,22 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     : '—'}
                             </div>
                         </div>
+                        {project.data?.influencer_name && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Influencer</label>
+                                <div className="font-bold text-slate-900 uppercase truncate" title={project.data.influencer_name}>
+                                    {project.data.influencer_name}
+                                </div>
+                            </div>
+                        )}
+                        {project.data?.referral_link && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Referral Link</label>
+                                <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline uppercase block truncate">
+                                    View Link
+                                </a>
+                            </div>
+                        )}
                         {project.data?.thumbnail_notes && (
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>

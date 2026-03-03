@@ -1891,6 +1891,40 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   />
                 </div>
 
+                {/* Influencer Name */}
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                    Influencer Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.influencer_name || ''}
+                    onChange={e =>
+                      canEdit ? setFormData({ ...formData, influencer_name: e.target.value }) : null
+                    }
+                    readOnly={!canEdit}
+                    className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                    placeholder="Enter influencer name"
+                  />
+                </div>
+
+                {/* Referral Link */}
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                    Referral Link
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.referral_link || ''}
+                    onChange={e =>
+                      canEdit ? setFormData({ ...formData, referral_link: e.target.value }) : null
+                    }
+                    readOnly={!canEdit}
+                    className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                    placeholder="Enter referral link"
+                  />
+                </div>
+
                 {/* Channel */}
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
@@ -1901,7 +1935,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       const colors: Record<string, string> = {
                         LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
                         YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
-                        INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]'
+                        INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
+                        JOBBOARD: 'bg-[#00A36C] border-[#00A36C]'
                       };
                       return (
                         <button

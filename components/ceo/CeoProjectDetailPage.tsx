@@ -170,6 +170,12 @@ const CeoProjectDetailPage: React.FC<{
                         <p className="text-sm md:text-base"><strong>Creator:</strong> {creatorName}</p>
                         <p className="text-sm md:text-base"><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
                         <p className="text-sm md:text-base"><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage as WorkflowStage] || selectedHistory?.stage}</p>
+                        {project.data?.influencer_name && <p className="text-sm md:text-base"><strong>Influencer:</strong> {project.data.influencer_name}</p>}
+                        {project.data?.referral_link && (
+                            <p className="text-sm md:text-base">
+                                <strong>Referral Link:</strong> <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Link</a>
+                            </p>
+                        )}
                     </div>
                     <div className="md:text-right">
                         <p className="font-black text-green-600 uppercase">

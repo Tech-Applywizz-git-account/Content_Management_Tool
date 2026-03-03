@@ -15,6 +15,7 @@ export enum Channel {
   LINKEDIN = 'LINKEDIN',
   YOUTUBE = 'YOUTUBE',
   INSTAGRAM = 'INSTAGRAM',
+  JOBBOARD = 'JOBBOARD',
 }
 
 export enum WorkflowStage {
@@ -148,6 +149,8 @@ export interface ProjectData {
   cine_thumbnail_photos?: string[];
   cine_to_writer_feedback?: string;
   script_reference_link?: string;
+  influencer_name?: string;
+  referral_link?: string;
   [key: string]: any;
 }
 

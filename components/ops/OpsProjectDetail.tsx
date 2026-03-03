@@ -254,6 +254,18 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 <span className="text-slate-600">Editor:</span>
                                 <span className="font-bold text-slate-900">{project.editor_name || 'N/A'}</span>
                             </div>
+                            {project.data?.influencer_name && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Influencer:</span>
+                                    <span className="font-bold text-slate-900">{project.data.influencer_name}</span>
+                                </div>
+                            )}
+                            {project.data?.referral_link && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Referral Link:</span>
+                                    <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">View Link</a>
+                                </div>
+                            )}
                         </div>
                     </div>
                     {/* Final Content */}

@@ -343,6 +343,18 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     </p>
                                 </div>
                             )}
+                            {project.data?.influencer_name && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Influencer Name</span>
+                                    <p className="text-slate-700 font-medium">{project.data.influencer_name}</p>
+                                </div>
+                            )}
+                            {project.data?.referral_link && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Referral Link</span>
+                                    <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 font-medium hover:underline">View Link</a>
+                                </div>
+                            )}
                         </div>
                     </div>
 
