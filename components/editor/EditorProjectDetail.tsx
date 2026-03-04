@@ -295,7 +295,13 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                     ? 'bg-[#FF4F4F] text-white'
                     : project.channel === 'LINKEDIN'
                       ? 'bg-[#0085FF] text-white'
-                      : 'bg-[#D946EF] text-white'
+                      : project.channel === 'INSTAGRAM'
+                        ? 'bg-[#D946EF] text-white'
+                        : project.channel === 'JOBBOARD'
+                          ? 'bg-[#00A36C] text-white'
+                          : project.channel === 'LEAD_MAGNET'
+                            ? 'bg-[#6366F1] text-white'
+                            : 'bg-black text-white'
                     }`}
                 >
                   {project.channel}

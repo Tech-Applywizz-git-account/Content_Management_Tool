@@ -874,8 +874,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Validation effect
   useEffect(() => {
     // Check for invalid channel/content type combinations and thumbnail requirement
-    if (newProjectDetails.channel === Channel.LINKEDIN && newProjectDetails.contentType === 'VIDEO') {
-      setValidationError('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
+    if ((newProjectDetails.channel === Channel.LINKEDIN || newProjectDetails.channel === Channel.JOBBOARD || newProjectDetails.channel === Channel.LEAD_MAGNET) && newProjectDetails.contentType === 'VIDEO') {
+      const channelLabel = newProjectDetails.channel === Channel.LINKEDIN ? 'LinkedIn' : newProjectDetails.channel === Channel.JOBBOARD ? 'Job Board' : 'Lead Magnet';
+      setValidationError(`${channelLabel} does not support video content. Please select a different channel or change content type to Creative Only.`);
     } else if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
       setValidationError('Thumbnail requirement must be specified for video content.');
     } else {
@@ -1936,7 +1937,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
                         YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
                         INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
-                        JOBBOARD: 'bg-[#00A36C] border-[#00A36C]'
+                        JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
+                        LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
                       };
                       return (
                         <button

@@ -420,7 +420,13 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                       ? 'bg-[#FF4F4F] text-white'
                       : localProject.channel === 'LINKEDIN'
                         ? 'bg-[#0085FF] text-white'
-                        : 'bg-[#D946EF] text-white'
+                        : localProject.channel === 'INSTAGRAM'
+                          ? 'bg-[#D946EF] text-white'
+                          : localProject.channel === 'JOBBOARD'
+                            ? 'bg-[#00A36C] text-white'
+                            : localProject.channel === 'LEAD_MAGNET'
+                              ? 'bg-[#6366F1] text-white'
+                              : 'bg-black text-white'
                       }`}
                   >
                     {localProject.channel}

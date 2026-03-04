@@ -14,6 +14,7 @@ import CmoOverview from './CmoOverview';
 import CmoFinalReview from './CmoFinalReview';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
+import LeadMagnetScripts from '../LeadMagnetScripts';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -46,6 +47,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     if (path.endsWith('/mywork')) return 'mywork';
     if (path.endsWith('/history')) return 'history';
     if (path.endsWith('/create')) return 'create';
+    if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
     return 'dashboard';
   };
 
@@ -371,6 +373,12 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           />
         ) : activeView === 'calendar' ? (
           <CmoCalendar projects={allProjects || []} />
+        ) : activeView === 'lead-magnet-scripts' ? (
+          <LeadMagnetScripts
+            user={user}
+            projects={allProjects || dashboardProjects}
+            onSelectProject={(p) => navigate(`/cmo/project/${p.id}`)}
+          />
         ) : (
           <div className="space-y-8 animate-fade-in">
             {/* Header */}
@@ -516,7 +524,12 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 {p.title}
                               </div>
                               <div className="col-span-2">
-                                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' : p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' : 'bg-[#D946EF] text-white'}`}>
+                                <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                  p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                    p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                      p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                          'bg-black text-white'}`}>
                                   {p.channel}
                                 </span>
                               </div>
@@ -539,7 +552,12 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <div className="md:hidden p-4 space-y-4">
                               <div className="flex justify-between items-start">
                                 <h4 className="font-black text-base uppercase text-slate-900 leading-tight flex-1 mr-2">{p.title}</h4>
-                                <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' : 'bg-[#0085FF] text-white'}`}>
+                                <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                  p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                    p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                      p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                          'bg-black text-white'}`}>
                                   {p.channel}
                                 </span>
                               </div>
@@ -578,7 +596,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                              'bg-[#D946EF] text-white'
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
                             }`}>
                             {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
@@ -636,7 +657,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                              'bg-[#D946EF] text-white'
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
                             }`}>
                             {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
@@ -695,7 +719,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                         <div className="flex flex-wrap gap-2 mb-4">
                           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                             p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                              'bg-[#D946EF] text-white'
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
                             }`}>
                             {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                           </span>
@@ -773,7 +800,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <div className="flex flex-wrap gap-2 mb-4">
                               <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                  'bg-[#D946EF] text-white'
+                                  p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                    p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                      p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                        'bg-black text-white'
                                 }`}>
                                 {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
                               </span>

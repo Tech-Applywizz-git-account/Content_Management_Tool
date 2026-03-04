@@ -10,6 +10,7 @@ import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import CeoCalendar from './CeoCalendar';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import LeadMagnetScripts from '../LeadMagnetScripts';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -49,6 +50,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const getActiveViewFromPath = () => {
     const path = location.pathname;
     if (path.endsWith('/calendar')) return 'calendar';
+    if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
     return 'dashboard';
   };
 
@@ -450,6 +452,24 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     );
   }
 
+  if (activeView === 'lead-magnet-scripts') {
+    return (
+      <Layout
+        user={user as any}
+        onLogout={onLogout}
+        onOpenCreate={() => { }}
+        activeView={activeView}
+        onChangeView={handleViewChange}
+      >
+        <LeadMagnetScripts
+          user={user}
+          projects={allProjects || inboxProjects || []}
+          onSelectProject={(p) => navigate(`/ceo/review/${p.id}`)}
+        />
+      </Layout>
+    );
+  }
+
 
 
   return (
@@ -579,7 +599,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     )}
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                       project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                        'bg-[#D946EF] text-white'
+                        project.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                          project.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                            project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                              'bg-black text-white'
                       }`}>
                       {project.channel}
                     </span>

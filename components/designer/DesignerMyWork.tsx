@@ -170,7 +170,11 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                             ? 'bg-[#FF4F4F] text-white'
                                             : project.channel === 'LINKEDIN'
                                                 ? 'bg-[#0085FF] text-white'
-                                                : 'bg-[#D946EF] text-white'
+                                                : project.channel === 'JOBBOARD'
+                                                    ? 'bg-[#F59E0B] text-white'
+                                                    : project.channel === 'LEAD_MAGNET'
+                                                        ? 'bg-[#10B981] text-white'
+                                                        : 'bg-[#D946EF] text-white'
                                             }`}
                                     >
                                         {project.channel}

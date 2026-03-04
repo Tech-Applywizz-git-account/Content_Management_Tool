@@ -8,6 +8,7 @@ import SubEditorProjectDetail from './SubEditorProjectDetail';
 import SubEditorMyWork from './SubEditorMyWork';
 import SubEditorCalendar from './SubEditorCalendar';
 import Layout from '../Layout';
+import LeadMagnetScripts from '../LeadMagnetScripts';
 
 interface Props {
   user: any;
@@ -30,6 +31,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     const path = location.pathname;
     if (path.endsWith('/calendar')) return 'calendar';
     if (path.endsWith('/mywork')) return 'mywork';
+    if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
     return 'dashboard';
   };
 
@@ -245,6 +247,12 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
         />
       ) : activeView === 'calendar' ? (
         <SubEditorCalendar projects={[...inboxProjects, ...historyProjects]} user={user} />
+      ) : activeView === 'lead-magnet-scripts' ? (
+        <LeadMagnetScripts
+          user={user}
+          projects={scriptProjects || []}
+          onSelectProject={(p) => navigate(`/sub_editor/project/${p.id}`)}
+        />
       ) : (
         <div className="space-y-8 animate-fade-in">
           {/* Dashboard Content */}

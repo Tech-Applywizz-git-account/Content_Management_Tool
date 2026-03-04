@@ -7,6 +7,7 @@ import WriterProjectDetail from './WriterProjectDetail';
 import WriterMyWork from './WriterMyWork';
 import WriterCalendar from './WriterCalendar';
 import WriterVideoApproval from './WriterVideoApproval';
+import LeadMagnetScripts from '../LeadMagnetScripts';
 import { format } from 'date-fns';
 import Layout from '../Layout';
 import Popup from '../Popup';
@@ -36,6 +37,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         const path = location.pathname;
         if (path.endsWith('/calendar')) return 'calendar';
         if (path.endsWith('/mywork')) return 'mywork';
+        if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
         return 'dashboard';
     };
 
@@ -394,6 +396,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                 <WriterMyWork user={user} projects={allWriterProjects} />
             )}
             {activeView === 'calendar' && <WriterCalendar projects={scriptProjects || inboxProjects} />}
+            {activeView === 'lead-magnet-scripts' && (
+                <LeadMagnetScripts
+                    user={user}
+                    projects={allWriterProjects}
+                    onSelectProject={(p) => navigate(`/writer/project/${p.id}`)}
+                />
+            )}
             {activeView === 'dashboard' && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -453,7 +462,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                    'bg-[#D946EF] text-white'
+                                                    p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                            'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
                                             </span>
@@ -604,7 +615,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                    'bg-[#D946EF] text-white'
+                                                    p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                            'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
                                             </span>

@@ -94,8 +94,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
     }
 
     // Validate channel and content type combination
-    if ((channel === Channel.LINKEDIN || channel === Channel.JOBBOARD) && contentType === 'VIDEO') {
-      alert(`${channel === Channel.LINKEDIN ? 'LinkedIn' : 'Job Board'} does not support video content. Please select a different channel or change content type to Creative Only.`);
+    if ((channel === Channel.LINKEDIN || channel === Channel.JOBBOARD || channel === Channel.LEAD_MAGNET) && contentType === 'VIDEO') {
+      alert(`${channel === Channel.LINKEDIN ? 'LinkedIn' : channel === Channel.JOBBOARD ? 'Job Board' : 'Lead Magnet'} does not support video content. Please select a different channel or change content type to Creative Only.`);
       return;
     }
 
@@ -334,7 +334,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                       LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
                       YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
                       INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
-                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]'
+                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
+                      LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
                     };
                     return (
                       <button

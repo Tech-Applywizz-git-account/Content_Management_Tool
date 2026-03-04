@@ -276,7 +276,7 @@ const EditorScripts: React.FC<Props> = ({ project: initialProject, userRole, onB
   };
 
   // Determine if the project is a video project
-  const isVideo = localProject.channel !== 'LINKEDIN';
+  const isVideo = localProject.channel === 'YOUTUBE' || localProject.channel === 'INSTAGRAM';
 
   // Determine which sections to show based on user role
   const showCinematographySection = userRole === Role.CINE;
@@ -301,7 +301,13 @@ const EditorScripts: React.FC<Props> = ({ project: initialProject, userRole, onB
                   ? 'bg-[#FF4F4F] text-white'
                   : localProject.channel === 'LINKEDIN'
                     ? 'bg-[#0085FF] text-white'
-                    : 'bg-[#D946EF] text-white'
+                    : localProject.channel === 'INSTAGRAM'
+                      ? 'bg-[#D946EF] text-white'
+                      : localProject.channel === 'JOBBOARD'
+                        ? 'bg-[#00A36C] text-white'
+                        : localProject.channel === 'LEAD_MAGNET'
+                          ? 'bg-[#6366F1] text-white'
+                          : 'bg-black text-white'
                   }`}
               >
                 {localProject.channel}

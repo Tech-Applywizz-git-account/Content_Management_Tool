@@ -15,7 +15,7 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
         return dateString ? format(new Date(dateString), 'MMM dd, yyyy h:mm a') : '—';
     };
 
-    const isVideo = project?.channel !== Channel.LINKEDIN;
+    const isVideo = project?.channel === Channel.YOUTUBE || project?.channel === Channel.INSTAGRAM;
 
     // Helpers for timestamps
     const getMostRecentTimestampForStage = (currentStage: WorkflowStage): string => {
@@ -94,9 +94,12 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
                         </h1>
 
                         <div className="flex items-center space-x-2 mt-2">
-                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project?.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
-                                project?.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
-                                    'bg-[#D946EF]'
+                            <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project?.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
+                                project?.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
+                                    project?.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
+                                        project?.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
+                                            project?.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
+                                                'bg-black'
                                 }`}>
                                 {project?.channel || '—'}
                             </span>

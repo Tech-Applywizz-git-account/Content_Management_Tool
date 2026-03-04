@@ -246,7 +246,7 @@ action,
 
         fetchComments();
     }, [fullProject.id]);
-    const isVideo = fullProject.channel !== Channel.LINKEDIN;
+    const isVideo = fullProject.channel === Channel.YOUTUBE || fullProject.channel === Channel.INSTAGRAM;
 
     const getRoleForStage = (stage: WorkflowStage): string => {
         const stageToRoleMap: Record<WorkflowStage, Role> = {
@@ -380,9 +380,12 @@ action,
                                     {fullProject.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                 </span>
                             )}
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${fullProject.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
-                                fullProject.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
-                                    'bg-[#D946EF]'
+                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${fullProject.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
+                                fullProject.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
+                                    fullProject.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
+                                        fullProject.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
+                                            fullProject.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
+                                                'bg-black'
                                 }`}>
                                 {fullProject.channel}
                             </span>

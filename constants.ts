@@ -48,6 +48,16 @@ export const WORKFLOWS: Record<Channel, { stage: WorkflowStage; role: Role }[]> 
         { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
         { stage: WorkflowStage.POSTED, role: Role.OPS },
     ],
+    [Channel.LEAD_MAGNET]: [
+        { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+        { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
+        { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+        { stage: WorkflowStage.CREATIVE_DESIGN, role: Role.DESIGNER },
+        { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+        { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+        { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+        { stage: WorkflowStage.POSTED, role: Role.OPS },
+    ],
 };
 
 export const DEMO_USERS = [

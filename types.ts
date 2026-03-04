@@ -16,6 +16,7 @@ export enum Channel {
   YOUTUBE = 'YOUTUBE',
   INSTAGRAM = 'INSTAGRAM',
   JOBBOARD = 'JOBBOARD',
+  LEAD_MAGNET = 'LEAD_MAGNET',
 }
 
 export enum WorkflowStage {

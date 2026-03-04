@@ -808,7 +808,10 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                     )}
                     <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                       project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                        'bg-[#D946EF] text-white'
+                        project.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                          project.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                            project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                              'bg-black text-white'
                       }`}>
                       {project.channel}
                     </span>

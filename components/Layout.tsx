@@ -12,7 +12,8 @@ import {
   Menu,
   X,
   Calendar,
-  Eye
+  Eye,
+  FileText
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -139,6 +140,20 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   <span>Calendar</span>
                 </button>
               )}
+
+              {/* Lead Magnet Scripts - Visible for WRITER, CMO, CEO, SUB_EDITOR */}
+              {(user.role === Role.WRITER || user.role === Role.CMO || user.role === Role.CEO || user.role === Role.SUB_EDITOR) && (
+                <button
+                  onClick={() => handleNavigate('lead-magnet-scripts')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'lead-magnet-scripts'
+                    ? 'bg-[#6366F1] text-white border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <FileText className="w-5 h-5 text-[#6366F1]" />
+                  <span>Lead Magnet Scripts</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -239,6 +254,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             >
               <Calendar className="w-5 h-5" />
               <span>Calendar</span>
+            </button>
+          )}
+
+          {/* Mobile Lead Magnet Scripts */}
+          {(user.role === Role.WRITER || user.role === Role.CMO || user.role === Role.CEO || user.role === Role.SUB_EDITOR) && (
+            <button
+              onClick={() => { handleNavigate('lead-magnet-scripts'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'lead-magnet-scripts' ? 'bg-[#6366F1] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <FileText className={`w-5 h-5 ${activeView === 'lead-magnet-scripts' ? 'text-white' : 'text-[#6366F1]'}`} />
+              <span>Lead Magnet Scripts</span>
             </button>
           )}
         </div>

@@ -44,7 +44,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    const isVideo = project.channel !== Channel.LINKEDIN;
+    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM;
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
@@ -585,9 +585,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     {'SCRIPT'}
                                 </span>
                             )}
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
-                                project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
-                                    'bg-[#D946EF]'
+                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
+                                project.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
+                                    project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
+                                        project.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
+                                            project.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
+                                                'bg-black'
                                 }`}>
                                 {project.channel}
                             </span>

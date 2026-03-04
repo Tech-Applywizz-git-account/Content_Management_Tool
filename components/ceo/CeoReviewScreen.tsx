@@ -487,7 +487,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             }
 
             // If video channel, add Editor/Cine
-            if (project.channel !== Channel.LINKEDIN) {
+            if (project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM) {
                 options.push({ value: WorkflowStage.VIDEO_EDITING, label: 'Editor (Fix Video)' });
                 options.push({ value: WorkflowStage.CINEMATOGRAPHY, label: 'Cinematographer (Reshoot)' });
             }
@@ -498,7 +498,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         return [{ value: WorkflowStage.SCRIPT, label: 'Writer' }];
     };
 
-    const isVideo = project.channel !== Channel.LINKEDIN;
+    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM;
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
@@ -510,9 +510,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     </button>
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mb-1">
-                            <span className={`px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
-                                project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
-                                    'bg-[#D946EF]'
+                            <span className={`px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black text-white ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
+                                project.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
+                                    project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
+                                        project.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
+                                            project.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
+                                                'bg-black'
                                 }`}>
                                 {project.channel}
                             </span>

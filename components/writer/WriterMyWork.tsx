@@ -730,7 +730,13 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                     ? 'bg-[#FF4F4F] text-white'
                     : task.channel === 'LINKEDIN'
                       ? 'bg-[#0085FF] text-white'
-                      : 'bg-[#D946EF] text-white'
+                      : task.channel === 'INSTAGRAM'
+                        ? 'bg-[#D946EF] text-white'
+                        : task.channel === 'JOBBOARD'
+                          ? 'bg-[#00A36C] text-white'
+                          : task.channel === 'LEAD_MAGNET'
+                            ? 'bg-[#6366F1] text-white'
+                            : 'bg-black text-white'
                     }`}
                 >
                   {task.channel}
