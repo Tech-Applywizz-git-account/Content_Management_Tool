@@ -155,7 +155,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
         case 'CEO':
           return p.assigned_to_role === Role.CEO ||
             p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-            p.current_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL ||
             p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2;
         case 'CINE':
           return p.assigned_to_role === Role.CINE ||
@@ -303,7 +302,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
         }
 
         // Include all actions for other CEO-related stages
-        if (['FINAL_REVIEW_CEO_POST_APPROVAL', 'POST_WRITER_REVIEW'].includes(item.stage)) {
+        if (['POST_WRITER_REVIEW'].includes(item.stage)) {
           return true;
         }
 
@@ -531,7 +530,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
           {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date || selectedProject?.data?.script_reference_link) && (
             <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {selectedProject?.shoot_date && (
+                {!['JOBBOARD', 'LEAD_MAGNET'].includes(selectedProject.content_type) && selectedProject?.shoot_date && (
                   <div className="flex items-center">
                     <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                     <span className="font-bold text-green-600">{formatDateDDMMYYYY(selectedProject.shoot_date)}</span>
@@ -752,7 +751,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                       case 'CEO':
                         return p.assigned_to_role === Role.CEO ||
                           p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                          p.current_stage === WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL ||
                           p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2;
                       case 'CINE':
                         return p.assigned_to_role === Role.CINE ||
@@ -813,7 +811,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                             project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
                               'bg-black text-white'
                       }`}>
-                      {project.channel}
+                      {project.channel} | {project.content_type ? project.content_type.replace(/_/g, ' ') : (project.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                     </span>
                     <span
                       className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'

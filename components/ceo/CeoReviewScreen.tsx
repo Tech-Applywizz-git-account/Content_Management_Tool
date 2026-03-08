@@ -351,12 +351,22 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     await db.advanceWorkflow(project.id, finalComment);
                 }
 
+                let stageLabel;
+                const nextStageDetails = db.helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+                const nextStage = nextStageDetails.stage;
+                const nextRole = nextStageDetails.role;
+
                 // Store comments in forwarded_comments if comment exists
                 if (finalComment && finalComment.trim() !== '' && finalComment !== 'Approved by CEO') {
                     const newComment = {
                         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9),
                         from_role: Role.CEO,
-                        to_role: 'CINE', // Forward to CINE and EDITOR
+                        to_role: project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? Role.WRITER : nextRole,
                         comment: finalComment,
                         created_at: new Date().toISOString(),
                         action: 'APPROVED'
@@ -380,21 +390,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 }
 
                 // Show popup for approval
-                let nextStage, displayStage, stageLabel;
-
                 // SPECIAL CASE: If this is an idea project, it goes back to writer
                 if (project.data?.source === 'IDEA_PROJECT' && project.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
-                    nextStage = WorkflowStage.SCRIPT;
-                    displayStage = WorkflowStage.SCRIPT;
                     stageLabel = STAGE_LABELS[WorkflowStage.SCRIPT] || 'SCRIPT';
                     setPopupMessage(`CEO has approved the idea. Sent back to writer to convert into script.`);
                 } else {
-                    // For regular projects (including rework), always advance to the next stage with single CEO approval
-                    nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ?
-                        WorkflowStage.CINEMATOGRAPHY : WorkflowStage.OPS_SCHEDULING;
-                    // For final review CEO stage (non-idea), show OPS_SCHEDULING as current stage
-                    displayStage = project.current_stage === WorkflowStage.FINAL_REVIEW_CEO ? WorkflowStage.OPS_SCHEDULING : nextStage;
-                    stageLabel = STAGE_LABELS[displayStage] || 'Next Stage';
+                    stageLabel = STAGE_LABELS[nextStage] || nextStage;
                     setPopupMessage(`CEO has approved. Current stage: ${stageLabel}.`);
                 }
 
@@ -513,9 +514,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             <span className={`px-1.5 py-0.5 text-[8px] md:text-xs font-black uppercase border border-black text-white ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
                                 project.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
                                     project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
-                                        project.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
-                                            project.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
-                                                'bg-black'
+                                        'bg-black'
                                 }`}>
                                 {project.channel}
                             </span>
@@ -568,7 +567,22 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : (previousScript || previousAssets) ? 'Rework' : 'New'}
+                                {(() => {
+                                    if (project.data?.source === 'DESIGNER_INITIATED') return 'Creative';
+                                    if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) return 'Idea';
+                                    
+                                    // Check if this is a CINE-initiated rework
+                                    const isCineRework = project.history?.some(h => 
+                                        h.action === 'REWORK' && 
+                                        h.actor_role === 'CINE' &&
+                                        h.from_role === 'CINE' &&
+                                        h.to_role === 'WRITER'
+                                    );
+                                    
+                                    if (isCineRework) return 'Cine Rework';
+                                    if (previousScript || previousAssets) return 'Rework';
+                                    return 'New';
+                                })()}
                             </div>
                         </div>
                         <div>
@@ -772,7 +786,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             {/* Raw Video Assets */}
                                             {isVideo && (project.video_link || previousAssets?.video_link) && (
                                                 <div className="space-y-2">
-                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
+                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Footage'}</h4>}
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showPreviousRaw && (
@@ -924,7 +938,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                                             <div className="p-2 bg-slate-900 border-b-2 border-black">
-                                                <h4 className="font-black text-white text-xs uppercase text-center">Raw Video</h4>
+                                                <h4 className="font-black text-white text-xs uppercase text-center">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video'}</h4>
                                             </div>
                                             <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
                                                 <Video className="w-10 h-10 opacity-50" />
@@ -934,8 +948,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             </div>
                                             <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-[10px] uppercase">Raw_Video.mp4</p>
-                                                    <p className="text-[10px] text-slate-500 font-bold">Original</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer_Video.mp4' : 'Raw_Video.mp4'}</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Original'}</p>
                                                 </div>
                                                 <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
                                             </div>

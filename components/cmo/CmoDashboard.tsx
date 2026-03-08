@@ -601,7 +601,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
                                     'bg-black text-white'
                             }`}>
-                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -662,7 +662,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
                                     'bg-black text-white'
                             }`}>
-                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -724,7 +724,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
                                     'bg-black text-white'
                             }`}>
-                            {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                           </span>
                           <span
                             className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -805,7 +805,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                       p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
                                         'bg-black text-white'
                                 }`}>
-                                {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
+                                {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -821,6 +821,23 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   REWORK
                                 </span>
                               )}
+                              {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
+                              {(() => {
+                                // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
+                                // This happens when CINE clicks the rework button and sends script back to writer
+                                const cineInitiatedRework = p.history?.some(h => 
+                                  h.action === 'REWORK' && 
+                                  h.actor_role === 'CINE' &&
+                                  h.from_role === 'CINE' &&
+                                  h.to_role === 'WRITER'
+                                );
+                                // Only show badge if CINE initiated the rework
+                                return cineInitiatedRework ? (
+                                  <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    ↻ CINE REWORKED
+                                  </span>
+                                ) : null;
+                              })()}
                               <span className="bg-purple-100 text-purple-800 px-2 py-0.5 border border-purple-200 text-[10px] font-bold uppercase">
                                 WITH CINE
                               </span>
@@ -863,7 +880,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                   'bg-[#D946EF] text-white'
                                 }`}>
-                                {p.channel} | {(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') ? 'Creative' : p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script'}
+                                {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                               </span>
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
@@ -879,6 +896,23 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                   REWORK
                                 </span>
                               )}
+                              {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
+                              {(() => {
+                                // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
+                                // This happens when CINE clicks the rework button and sends script back to writer
+                                const cineInitiatedRework = p.history?.some(h => 
+                                  h.action === 'REWORK' && 
+                                  h.actor_role === 'CINE' &&
+                                  h.from_role === 'CINE' &&
+                                  h.to_role === 'WRITER'
+                                );
+                                // Only show badge if CINE initiated the rework
+                                return cineInitiatedRework ? (
+                                  <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    ↻ CINE REWORKED
+                                  </span>
+                                ) : null;
+                              })()}
                               <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 border border-yellow-200 text-[10px] font-bold uppercase">
                                 WITH EDITOR
                               </span>

@@ -444,12 +444,16 @@ const SubEditorProjectDetailPage: React.FC<{
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Video className="w-5 h-5" />
-                            <h2 className="text-xl font-black uppercase">Raw Video (from Cinematographer)</h2>
+                            <h2 className="text-xl font-black uppercase">
+                                {['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video (from Cinematographer)'}
+                            </h2>
                         </div>
                         <div className="bg-blue-50 border-2 border-blue-400 p-4">
-                            <p className="text-sm font-bold text-blue-800 mb-2">
-                                📹 Shoot Date: {project.shoot_date || 'Not specified'}
-                            </p>
+                            {!['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) && (
+                                <p className="text-sm font-bold text-blue-800 mb-2">
+                                    📹 Shoot Date: {project.shoot_date || 'Not specified'}
+                                </p>
+                            )}
                             <a
                                 href={project.video_link}
                                 target="_blank"
@@ -559,7 +563,13 @@ const SubEditorProjectDetailPage: React.FC<{
                         {project.edited_video_link && !isRework && (
                             <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
                                 <p className="text-sm font-bold uppercase text-green-800">✓ Edited Video Delivered</p>
-                                <p className="text-sm text-green-800 mt-1">→ Project has been moved to Designer for thumbnail creation</p>
+                                <p className="text-sm text-green-800 mt-1">→ Project has been moved to {
+                                    project.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation' :
+                                        project.assigned_to_role === 'CMO' ? 'CMO for review' :
+                                            project.assigned_to_role === 'CEO' ? 'CEO for review' :
+                                                project.assigned_to_role === 'WRITER' ? 'Writer for approval' :
+                                                    (project.assigned_to_role ? project.assigned_to_role.replace('_', ' ') : 'the next stage')
+                                }</p>
                                 {project.sub_editor_uploaded_at && (
                                     <div className="mt-3 pt-3 border-t border-green-300">
                                         <span className="text-xs font-bold uppercase text-green-700">Uploaded At</span>

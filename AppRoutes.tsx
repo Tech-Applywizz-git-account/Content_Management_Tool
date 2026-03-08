@@ -28,6 +28,7 @@ import OpsProjectDetailPage from './components/ops/OpsProjectDetailPage';
 import OpsCeoApprovedViewWrapper from './components/ops/OpsCeoApprovedViewWrapper';
 import ObserverDashboard from './components/observer/ObserverDashboard';
 import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
+import WriterApprovedVideoDetailPage from './components/writer/WriterApprovedVideoDetailPage';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
 import CmoHistoryDetail from './components/cmo/CmoHistoryDetail';
 
@@ -105,6 +106,7 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.WRITER]}>
                     <Routes>
                         <Route path="project/:projectId" element={<WriterProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history]} />} />
+                        <Route path="approved-video/:projectId" element={<WriterApprovedVideoDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history]} />} />
                         <Route path="edit/:projectId" element={<WriterDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                         <Route path="*" element={<WriterDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} scriptProjects={subEditorScriptProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
@@ -117,7 +119,7 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                         <Route path="project/:projectId" element={<CmoProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
                         <Route path="review/:projectId" element={<CmoReviewPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
                         <Route path="history_detail/:projectId" element={
-                          <CmoHistoryDetailWithParams currentUser={user!} onBack={() => window.history.back()} />
+                            <CmoHistoryDetailWithParams currentUser={user!} onBack={() => window.history.back()} />
                         } />
                         <Route path="*" element={<CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
@@ -213,16 +215,16 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
 
 // Wrapper component to pass URL parameters to CmoHistoryDetail
 const CmoHistoryDetailWithParams: React.FC<any> = (props) => {
-  const [searchParams] = useSearchParams();
-  const historyFilter = searchParams.get('filter') || 'ALL';
-  
-  // Pass activeTab as 'WRITERS' when historyFilter is 'WRITER' or writer ID
-  const activeTab = historyFilter === 'WRITER' || 
-                   (historyFilter && !['ALL', 'CMO', 'CEO', 'CINE', 'EDITOR', 'DESIGNER', 'OPS', 'POSTED'].includes(historyFilter)) 
-                   ? 'WRITERS' 
-                   : undefined;
-  
-  return <CmoHistoryDetail {...props} activeTab={activeTab} />;
+    const [searchParams] = useSearchParams();
+    const historyFilter = searchParams.get('filter') || 'ALL';
+
+    // Pass activeTab as 'WRITERS' when historyFilter is 'WRITER' or writer ID
+    const activeTab = historyFilter === 'WRITER' ||
+        (historyFilter && !['ALL', 'CMO', 'CEO', 'CINE', 'EDITOR', 'DESIGNER', 'OPS', 'POSTED'].includes(historyFilter))
+        ? 'WRITERS'
+        : undefined;
+
+    return <CmoHistoryDetail {...props} activeTab={activeTab} />;
 };
 
 export default AppRoutes;

@@ -94,8 +94,8 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
     }
 
     // Validate channel and content type combination
-    if ((channel === Channel.LINKEDIN || channel === Channel.JOBBOARD || channel === Channel.LEAD_MAGNET) && contentType === 'VIDEO') {
-      alert(`${channel === Channel.LINKEDIN ? 'LinkedIn' : channel === Channel.JOBBOARD ? 'Job Board' : 'Lead Magnet'} does not support video content. Please select a different channel or change content type to Creative Only.`);
+    if (channel === Channel.LINKEDIN && contentType === 'VIDEO') {
+      alert('LinkedIn does not support video content. Please select a different channel or change content type to Creative Only.');
       return;
     }
 
@@ -334,8 +334,6 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                       LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
                       YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
                       INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
-                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
-                      LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
                     };
                     return (
                       <button
@@ -355,11 +353,13 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
 
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['VIDEO', 'CREATIVE_ONLY'] as ContentType[]).map(ct => {
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  {(['VIDEO', 'CREATIVE_ONLY', 'JOBBOARD', 'LEAD_MAGNET'] as ContentType[]).map(ct => {
                     const colors: Record<string, string> = {
                       VIDEO: 'bg-[#0085FF] border-[#0085FF]',
-                      CREATIVE_ONLY: 'bg-[#D946EF] border-[#D946EF]'
+                      CREATIVE_ONLY: 'bg-[#D946EF] border-[#D946EF]',
+                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
+                      LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
                     };
                     return (
                       <button
@@ -370,7 +370,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                           : 'bg-white border-black hover:bg-slate-50'
                           }`}
                       >
-                        {ct === 'CREATIVE_ONLY' ? '🎨 Creative' : '📹 Video'}
+                        {ct === 'CREATIVE_ONLY' ? '🎨 Creative' : ct === 'VIDEO' ? '📹 Video' : ct === 'JOBBOARD' ? '📋 Job Board' : '🧲 Lead Magnet'}
                       </button>
                     );
                   })}

@@ -32,6 +32,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         thumbnail_link: string | null;
         creative_link: string | null;
     } | null>(null);
+    const [cineReworkInfo, setCineReworkInfo] = useState<{ actor_name: string; timestamp: string; comment: string } | null>(null);
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -44,7 +45,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
     const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM;
+    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM || project.channel === Channel.JOBBOARD || project.channel === Channel.LEAD_MAGNET;
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +100,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const getReworkRoleLabel = (stage: WorkflowStage) => {
         switch (stage) {
             case WorkflowStage.SCRIPT:
+                return 'Writer';
+            case WorkflowStage.WRITER_REVISION:
                 return 'Writer';
             case WorkflowStage.VIDEO_EDITING:
                 return 'Editor';
@@ -232,6 +235,26 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 // Set previous script
                 if (reworkEntry.script_content) {
                     setPreviousScript(reworkEntry.script_content);
+                    
+                    // Check if this was a CINE-initiated rework (when CINE clicked rework button)
+                    // We look for REWORK action where CINE was the actor (initiator)
+                    // This distinguishes between CINE initiating rework vs other roles rejecting
+                    const cineInitiatedRework = recentHistory.find(h => 
+                        h.action === 'REWORK' && 
+                        h.actor_role === 'CINE' &&
+                        h.from_role === 'CINE' &&
+                        h.to_role === 'WRITER'
+                    );
+                    
+                    // Only show cineReworkInfo if CINE initiated the rework (clicked rework button)
+                    // NOT when other roles rejected or in other scenarios
+                    if (cineInitiatedRework) {
+                        setCineReworkInfo({
+                            actor_name: cineInitiatedRework.actor_name || 'Cinematographer',
+                            timestamp: new Date(cineInitiatedRework.timestamp).toLocaleString(),
+                            comment: cineInitiatedRework.comment || ''
+                        });
+                    }
                 }
 
                 // Helper to get last history item
@@ -392,12 +415,24 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     }
                 }
 
+                // Show popup for approval
+                let stageLabel, message;
+                const nextStageDetails = db.helpers.getNextStage(
+                    project.current_stage,
+                    project.content_type,
+                    'APPROVED',
+                    project.data
+                );
+                const nextStage = nextStageDetails.stage;
+                const nextRole = nextStageDetails.role;
+                stageLabel = STAGE_LABELS[nextStage] || nextStage;
+
                 // Store comments in forwarded_comments if comment exists
                 if (comment && comment.trim() !== '') {
                     const newComment = {
                         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9),
                         from_role: Role.CMO,
-                        to_role: project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW ? 'CEO' : 'CINEMATOGRAPHER',
+                        to_role: nextRole,
                         comment: comment,
                         created_at: new Date().toISOString(),
                         action: 'APPROVED'
@@ -424,21 +459,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     }
                 }
 
-                // Show popup for approval
-                let stageLabel, message;
                 if (project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) {
-                    const nextStage = WorkflowStage.FINAL_REVIEW_CEO;
-
-                    stageLabel = STAGE_LABELS[nextStage] || 'FINAL_REVIEW_CEO';
                     message = `CMO has approved. Moved to ${stageLabel}.`;
-
                 } else {
-                    // For regular review, show next stage
-                    const nextStage = project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ?
-                        WorkflowStage.SCRIPT_REVIEW_L2 : WorkflowStage.CINEMATOGRAPHY;
-                    stageLabel = STAGE_LABELS[nextStage] || 'Next Stage';
                     message = `CMO has approved. Current stage: ${stageLabel}.`;
                 }
+
                 setPopupMessage(message);
                 setStageName(stageLabel);
                 setPopupDuration(5000); // auto-close for approval
@@ -588,11 +614,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
                                 project.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
                                     project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
-                                        project.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
-                                            project.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
-                                                'bg-black'
+                                        'bg-black'
                                 }`}>
-                                {project.channel}
+                                {project.channel} | {project.content_type ? project.content_type.replace(/_/g, ' ') : (project.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                             </span>
                             <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 border-2 border-black">
                                 {STAGE_LABELS[project.current_stage]}
@@ -645,7 +669,22 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Type</label>
                             <div className="font-bold text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea' : (previousScript || previousAssets) ? 'Rework' : 'New'}
+                                {(() => {
+                                    if (project.data?.source === 'DESIGNER_INITIATED') return 'Creative';
+                                    if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) return 'Idea';
+                                    
+                                    // Check if this is a CINE-initiated rework
+                                    const isCineRework = project.history?.some(h => 
+                                        h.action === 'REWORK' && 
+                                        h.actor_role === 'CINE' &&
+                                        h.from_role === 'CINE' &&
+                                        h.to_role === 'WRITER'
+                                    );
+                                    
+                                    if (isCineRework) return 'Cine Rework';
+                                    if (previousScript || previousAssets) return 'Rework';
+                                    return 'New';
+                                })()}
                             </div>
                         </div>
                         <div>
@@ -685,6 +724,24 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     : '—'}
                             </div>
                         </div>
+                        {project.data?.influencer_name && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Influencer</label>
+                                <div className="font-bold text-slate-900 uppercase">
+                                    {project.data.influencer_name}
+                                </div>
+                            </div>
+                        )}
+                        {project.data?.referral_link && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Referral Link</label>
+                                <div className="font-bold">
+                                    <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
+                                        View Link
+                                    </a>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Brief Content */}
@@ -745,9 +802,33 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                     {/* Script Viewer */}
                     <section className="space-y-4">
+                        {cineReworkInfo && previousScript && project.data?.script_content && (
+                            <div className="bg-yellow-50 border-2 border-yellow-500 p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <span className="text-white font-bold text-lg">↻</span>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm font-black text-yellow-900 uppercase mb-1">
+                                            Cine Reworked This Script
+                                        </p>
+                                        <p className="text-xs text-yellow-800 mb-2">
+                                            <strong>{cineReworkInfo.actor_name}</strong> requested changes on {cineReworkInfo.timestamp}
+                                        </p>
+                                        {cineReworkInfo.comment && (
+                                            <div className="bg-white border border-yellow-300 p-2 mt-2">
+                                                <p className="text-xs font-bold text-yellow-900 mb-1">Reason for rework:</p>
+                                                <p className="text-sm text-slate-700 italic">{cineReworkInfo.comment}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
                         <div className="flex items-center justify-between">
                             <h3 className="text-2xl font-black text-slate-900 uppercase">
-                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link & Message' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message'}
+                                {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link & Message' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Description' : 'Script & Message (Revised)'}
                             </h3>
                             <button
                                 onClick={downloadPDF}
@@ -854,7 +935,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             {/* Raw Video Assets */}
                                             {isVideo && (currVideo || prevVideo) && (
                                                 <div className="space-y-2">
-                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">Raw Footage</h4>}
+                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Video Footage'}</h4>}
                                                     <div className="grid grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showRaw && (
@@ -1010,8 +1091,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">Original footage</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer_Video.mp4' : 'Video_Footage.mp4'}</p>
+                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw footage'}</p>
                                                 </div>
                                                 <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>
@@ -1086,7 +1167,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <div className="ml-4 flex-1">
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
-                                        {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' : 'Ready for Publishing'}
+                                        {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' :
+                                            ((project.content_type === 'JOBBOARD' || project.content_type === 'LEAD_MAGNET') && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
+                                                'Ready for Publishing'}
                                     </span>
                                 </div>
                                 <Check className="w-8 h-8 ml-auto text-black" />

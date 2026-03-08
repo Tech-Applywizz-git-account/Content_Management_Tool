@@ -194,7 +194,6 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                                     // Infer Final Review Status from Stage because timestamps might capture Script Approval
                                     const isCmoFinalApproved = [
                                         WorkflowStage.FINAL_REVIEW_CEO,
-                                        WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL,
                                         WorkflowStage.OPS_SCHEDULING,
                                         WorkflowStage.POSTED
                                     ].includes(project.current_stage) || !!project.data?.live_url;

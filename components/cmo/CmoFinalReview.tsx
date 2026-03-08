@@ -156,7 +156,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                             'bg-[#D946EF] text-white'
                           }`}
                       >
-                        {project.channel}
+                        {project.channel} | {project.content_type ? project.content_type.replace(/_/g, ' ') : (project.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                       </span>
                       <span
                         className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH' ? 'bg-red-500 text-white' :

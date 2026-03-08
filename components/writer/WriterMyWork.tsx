@@ -426,7 +426,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date) && (
               <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {selectedProject?.shoot_date && (
+                  {!['JOBBOARD', 'LEAD_MAGNET'].includes(selectedProject.content_type) && selectedProject?.shoot_date && (
                     <div className="flex items-center">
                       <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                       <span className="font-bold text-green-600">{format(new Date(selectedProject.shoot_date), 'dd-MM-yyyy')}</span>

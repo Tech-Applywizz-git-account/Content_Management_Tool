@@ -31,13 +31,13 @@ export enum WorkflowStage {
   CREATIVE_DESIGN = 'CREATIVE_DESIGN', // Designer creates creative (creative-only path)
   FINAL_REVIEW_CMO = 'FINAL_REVIEW_CMO', // CMO Round 2
   FINAL_REVIEW_CEO = 'FINAL_REVIEW_CEO', // CEO Round 2
-  FINAL_REVIEW_CEO_POST_APPROVAL = 'FINAL_REVIEW_CEO_POST_APPROVAL', // CEO final approval before ops posting
   WRITER_VIDEO_APPROVAL = 'WRITER_VIDEO_APPROVAL', // Writer approves CINE video
   MULTI_WRITER_APPROVAL = 'MULTI_WRITER_APPROVAL', // Multiple writers approve in parallel
   POST_WRITER_REVIEW = 'POST_WRITER_REVIEW', // Post multi-writer approval - visible to OPS and CMO in parallel
   OPS_SCHEDULING = 'OPS_SCHEDULING', // Ops schedules post
   POSTED = 'POSTED', // Content posted/completed
   REWORK = 'REWORK', // Rework stage
+  WRITER_REVISION = 'WRITER_REVISION', // Custom revision stage for specific content types
 }
 
 export enum TaskStatus {
@@ -55,7 +55,7 @@ export enum UserStatus {
 }
 
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
-export type ContentType = 'VIDEO' | 'CREATIVE_ONLY';
+export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET';
 
 export interface User {
   id: string;
@@ -218,13 +218,13 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.CREATIVE_DESIGN]: 'Creative Design',
   [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review',
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
-  [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: 'Final Review (CEO) Post Approval',
   [WorkflowStage.MULTI_WRITER_APPROVAL]: 'Multi-Writer Approval',
   [WorkflowStage.WRITER_VIDEO_APPROVAL]: 'Writer Video Approval',
   [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',
+  [WorkflowStage.WRITER_REVISION]: 'Writer Revision',
 };
 
 // Notification types

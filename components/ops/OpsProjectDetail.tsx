@@ -175,9 +175,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                             <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black text-white ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F]' :
                                 project.channel === 'LINKEDIN' ? 'bg-[#0085FF]' :
                                     project.channel === 'INSTAGRAM' ? 'bg-[#D946EF]' :
-                                        project.channel === 'JOBBOARD' ? 'bg-[#00A36C]' :
-                                            project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1]' :
-                                                'bg-black'
+                                        'bg-black'
                                 }`}>
                                 {project.channel}
                             </span>

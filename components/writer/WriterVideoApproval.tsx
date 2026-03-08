@@ -8,6 +8,7 @@ import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { db } from '../../services/supabaseDb';
 import { UserStatus } from '../../types';
 import Popup from '../Popup';
+import WriterProjectDetail from './WriterProjectDetail';
 
 interface Props {
     projects: Project[];
@@ -19,6 +20,19 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
     if (selectedProject) {
+        if (selectedProject.current_stage === WorkflowStage.WRITER_REVISION) {
+            return (
+                <div className="animate-fade-in">
+                    <WriterProjectDetail
+                        project={selectedProject}
+                        onBack={() => {
+                            setSelectedProject(null);
+                            refreshProjects();
+                        }}
+                    />
+                </div>
+            );
+        }
         return (
             <VideoApprovalDetail
                 project={selectedProject}
@@ -77,8 +91,8 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                             >
                                                 {project.channel}
                                             </span>
-                                            <span className="bg-orange-100 text-orange-800 px-2 py-1 border-2 border-orange-300 text-[10px] font-black uppercase">
-                                                Needs Approval
+                                            <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'bg-blue-600 text-white' : 'bg-orange-100 text-orange-800 border-orange-300'}`}>
+                                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Upload Video' : 'Needs Approval'}
                                             </span>
                                         </div>
 
@@ -99,8 +113,8 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                         </div>
 
                                         <div className="mt-4 pt-4 border-t-2 border-slate-100">
-                                            <button className="w-full bg-orange-500 text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                                Review & Approve
+                                            <button className={`w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'bg-blue-600' : 'bg-orange-500'}`}>
+                                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Open Project Detail' : 'Review & Approve'}
                                             </button>
                                         </div>
                                     </div>
@@ -435,7 +449,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                         <div className="space-y-6">
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Raw Video (from Cinematographer)</h4>
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video (from Cinematographer)'}</h4>
                                     <a
                                         href={project.video_link}
                                         target="_blank"

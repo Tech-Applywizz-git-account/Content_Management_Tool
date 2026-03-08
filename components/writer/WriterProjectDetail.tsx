@@ -40,6 +40,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
     const [rejectionReason, setRejectionReason] = useState<string | null>(null);
     const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
+    const [videoLink, setVideoLink] = useState('');
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -195,9 +196,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                         project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                             project.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                                project.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                                    project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                                        'bg-black text-white'
+                                'bg-black text-white'
                         }`}>
                         {project.channel}
                     </span>
@@ -530,6 +529,57 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                         </div>
                     )}
 
+                    {project.current_stage === WorkflowStage.WRITER_REVISION && (
+                        <div className="bg-blue-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold">Upload Processed Video</h3>
+                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the raw video link for the editor to process.</p>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">Video Link (Google Drive / S3 / Direct)</label>
+                                    <input
+                                        type="text"
+                                        value={videoLink}
+                                        onChange={(e) => setVideoLink(e.target.value)}
+                                        placeholder="Enter the video link here"
+                                        className="w-full p-3 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                                    />
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!videoLink.trim()) {
+                                            alert('Please provide a video link');
+                                            return;
+                                        }
+                                        try {
+                                            setIsSubmitting(true);
+                                            // Update project with video link and then advance
+                                            await db.projects.update(project.id, { video_link: videoLink });
+                                            await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
+
+                                            setPopupMessage('Video uploaded and project sent for final CMO review!');
+                                            setStageName('Final Review (CMO)');
+                                            setPopupDuration(5000);
+                                            setShowPopup(true);
+                                            setTimeout(() => onBack(), 5500);
+                                        } catch (error) {
+                                            console.error('Failed to upload video and advance:', error);
+                                            setPopupMessage('Failed to upload video. Please try again.');
+                                            setStageName('Error');
+                                            setShowPopup(true);
+                                        } finally {
+                                            setIsSubmitting(false);
+                                        }
+                                    }}
+                                    disabled={isSubmitting}
+                                    className="px-6 py-3 bg-blue-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
+                                >
+                                    {isSubmitting ? 'Submitting...' : 'Upload Video & Advance'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>
                             <strong className="uppercase">Note:</strong>
@@ -546,7 +596,6 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         : 'You will be notified once the review is complete. If changes are requested, the project will return to your Drafts/Rework section.'}
                         </p>
                     </div>
-
                 </div>
             </div>
 

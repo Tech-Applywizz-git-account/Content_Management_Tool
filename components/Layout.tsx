@@ -141,19 +141,22 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 </button>
               )}
 
-              {/* Lead Magnet Scripts - Visible for WRITER, CMO, CEO, SUB_EDITOR */}
-              {(user.role === Role.WRITER || user.role === Role.CMO || user.role === Role.CEO || user.role === Role.SUB_EDITOR) && (
+              {/* Approved Videos - Visible for WRITER */}
+              {user.role === Role.WRITER && (
                 <button
-                  onClick={() => handleNavigate('lead-magnet-scripts')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'lead-magnet-scripts'
-                    ? 'bg-[#6366F1] text-white border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                  onClick={() => handleNavigate('approved-videos')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'approved-videos'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <FileText className="w-5 h-5 text-[#6366F1]" />
-                  <span>Lead Magnet Scripts</span>
+                  <Video className="w-5 h-5" />
+                  <span>Approved Influencer Videos</span>
                 </button>
               )}
+
+              {/* Lead Magnet Scripts - Visible for WRITER, CMO, CEO, SUB_EDITOR */}
+
             </div>
           </div>
 
@@ -254,6 +257,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             >
               <Calendar className="w-5 h-5" />
               <span>Calendar</span>
+            </button>
+          )}
+
+          {/* Mobile Approved Influencer Videos */}
+          {user.role === Role.WRITER && (
+            <button
+              onClick={() => { handleNavigate('approved-videos'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'approved-videos' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <Video className="w-5 h-5" />
+              <span>Approved Influencer Videos</span>
             </button>
           )}
 

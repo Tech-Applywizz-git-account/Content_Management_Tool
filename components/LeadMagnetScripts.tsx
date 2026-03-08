@@ -14,7 +14,7 @@ const LeadMagnetScripts: React.FC<Props> = ({ user, projects, onSelectProject })
     const [searchTerm, setSearchTerm] = useState('');
 
     const leadMagnetProjects = projects.filter(p =>
-        p.channel === Channel.LEAD_MAGNET &&
+        p.content_type === 'LEAD_MAGNET' &&
         (searchTerm === '' || p.title.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 

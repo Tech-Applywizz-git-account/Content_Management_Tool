@@ -183,7 +183,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             }
 
             // Include all actions for other CEO-related stages
-            if (['FINAL_REVIEW_CEO_POST_APPROVAL', 'POST_WRITER_REVIEW'].includes(item.stage)) {
+            if (['POST_WRITER_REVIEW'].includes(item.stage)) {
               return true;
             }
 
@@ -540,7 +540,7 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
               {(projectData?.shoot_date || projectData?.delivery_date || projectData?.post_scheduled_date || projectData?.data?.script_reference_link) && (
                 <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {projectData?.shoot_date && (
+                    {!['JOBBOARD', 'LEAD_MAGNET'].includes(projectData.content_type) && projectData?.shoot_date && (
                       <div className="flex items-center">
                         <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                         <span className="font-bold text-green-600">{format(new Date(projectData.shoot_date), 'dd/MM/yyyy')}</span>

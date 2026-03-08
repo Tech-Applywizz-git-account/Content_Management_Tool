@@ -6,6 +6,7 @@ import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Timeline from '../../components/Timeline';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
+import ScriptComparison from '../ScriptComparison';
 
 // Helper function to format date to DD-MM-YYYY
 const formatDateDDMMYYYY = (dateString: string | undefined): string => {
@@ -33,6 +34,9 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
     const [assignedUserName, setAssignedUserName] = useState<string | undefined>(undefined);
     const [editorName, setEditorName] = useState<string | undefined>(undefined);
     const [comments, setComments] = useState<any[]>([]);
+    const [previousScript, setPreviousScript] = useState<string | null>(null);
+    const [showScriptComparison, setShowScriptComparison] = useState(false);
+    const [cineReworkInfo, setCineReworkInfo] = useState<{ actor_name: string; timestamp: string; comment: string } | null>(null);
 
     useEffect(() => {
         // Fetch full project details including history
@@ -50,6 +54,50 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
         };
 
         fetchFullProject();
+
+        // Fetch previous script content if this is a rework submission from writer after CINE rework
+        const fetchPreviousScript = async () => {
+            try {
+                // Check if project has rework history from CINE
+                const hasCineRework = project.history?.some(h => 
+                    h.action === 'REWORK' && h.from_role === 'CINE' && h.to_role === 'WRITER'
+                );
+
+                if (hasCineRework) {
+                    // Fetch the most recent REWORK entry from CINE to get the previous script
+                    const { data: reworkHistory, error } = await supabase
+                        .from('workflow_history')
+                        .select('script_content, metadata, actor_name, timestamp, comment')
+                        .eq('project_id', project.id)
+                        .eq('action', 'REWORK')
+                        .eq('from_role', 'CINE')
+                        .order('timestamp', { ascending: false })
+                        .limit(1);
+
+                    if (!error && reworkHistory && reworkHistory.length > 0) {
+                        // Try to get script from metadata first (cine_previous_script), then from script_content field
+                        const reworkEntry = reworkHistory[0];
+                        const prevScript = reworkEntry.metadata?.cine_previous_script || reworkEntry.script_content;
+                        
+                        if (prevScript) {
+                            setPreviousScript(prevScript);
+                            setShowScriptComparison(true);
+                            
+                            // Store cine rework details for display
+                            setCineReworkInfo({
+                                actor_name: reworkEntry.actor_name || 'Cinematographer',
+                                timestamp: new Date(reworkEntry.timestamp).toLocaleString(),
+                                comment: reworkEntry.comment || ''
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching previous script:', error);
+            }
+        };
+
+        fetchPreviousScript();
 
         const fetchUsers = async () => {
             try {
@@ -246,7 +294,10 @@ action,
 
         fetchComments();
     }, [fullProject.id]);
-    const isVideo = fullProject.channel === Channel.YOUTUBE || fullProject.channel === Channel.INSTAGRAM;
+    const isVideo = fullProject.channel === Channel.YOUTUBE ||
+        fullProject.channel === Channel.INSTAGRAM ||
+        fullProject.channel === Channel.JOBBOARD ||
+        fullProject.channel === Channel.LEAD_MAGNET;
 
     const getRoleForStage = (stage: WorkflowStage): string => {
         const stageToRoleMap: Record<WorkflowStage, Role> = {
@@ -261,13 +312,13 @@ action,
             [WorkflowStage.CREATIVE_DESIGN]: Role.DESIGNER,
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
-            [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.CEO,
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO,
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
-            [WorkflowStage.REWORK]: Role.WRITER
+            [WorkflowStage.REWORK]: Role.WRITER,
+            [WorkflowStage.WRITER_REVISION]: Role.WRITER
         };
         return stageToRoleMap[stage] || 'UNKNOWN';
     };
@@ -383,11 +434,9 @@ action,
                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black text-white ${fullProject.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
                                 fullProject.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
                                     fullProject.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
-                                        fullProject.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
-                                            fullProject.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
-                                                'bg-black'
+                                        'bg-black'
                                 }`}>
-                                {fullProject.channel}
+                                {fullProject.channel} | {fullProject.content_type ? fullProject.content_type.replace(/_/g, ' ') : (fullProject.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
                             </span>
                             <span className="text-[10px] font-bold uppercase text-slate-500 bg-slate-100 px-2 py-0.5 border-2 border-black">
                                 {STAGE_LABELS[fullProject.current_stage]}
@@ -512,31 +561,62 @@ action,
 
                     {/* Script/Content Viewer */}
                     <section className="space-y-4">
+                        {showScriptComparison && previousScript && fullProject.data?.script_content && cineReworkInfo && (
+                            <div className="bg-yellow-50 border-2 border-yellow-500 p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                        <span className="text-white font-bold text-lg">↻</span>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-sm font-black text-yellow-900 uppercase mb-1">
+                                            Cine Reworked This Script
+                                        </p>
+                                        <p className="text-xs text-yellow-800 mb-2">
+                                            <strong>{cineReworkInfo.actor_name}</strong> requested changes on {cineReworkInfo.timestamp}
+                                        </p>
+                                        {cineReworkInfo.comment && (
+                                            <div className="bg-white border border-yellow-300 p-2 mt-2">
+                                                <p className="text-xs font-bold text-yellow-900 mb-1">Reason for rework:</p>
+                                                <p className="text-sm text-slate-700 italic">{cineReworkInfo.comment}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
                         <h3 className="text-2xl font-black text-slate-900 uppercase">
                             {fullProject.data?.source === 'DESIGNER_INITIATED' ? 'Creative Link' :
                                 fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content ? 'Idea Description' :
-                                    fullProject.data?.source === 'IDEA_PROJECT' && fullProject.data?.script_content ? 'Script Content' : 'Content'}
+                                    fullProject.data?.source === 'IDEA_PROJECT' && fullProject.data?.script_content ? 'Script Content (Revised)' : 'Content'}
                         </h3>
 
-                        <div className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            {fullProject.data?.source === 'DESIGNER_INITIATED'
-                                ? fullProject.data?.creative_link || 'No creative link available.'
-                                : fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content
-                                    ? <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(fullProject.data.idea_description) }} />
-                                    : fullProject.data?.script_content
-                                        ? (() => {
-                                            // Decode HTML entities to properly display the content
-                                            let decodedContent = fullProject.data.script_content
-                                                .replace(/&lt;/g, '<')
-                                                .replace(/&gt;/g, '>')
-                                                .replace(/&amp;/g, '&')
-                                                .replace(/&quot;/g, '"')
-                                                .replace(/&#39;/g, "'")
-                                                .replace(/&nbsp;/g, ' ');
-                                            return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
-                                        })()
-                                        : 'No content available.'}
-                        </div>
+                        {showScriptComparison && previousScript && fullProject.data?.script_content ? (
+                            <ScriptComparison
+                                previousScript={previousScript}
+                                currentScript={fullProject.data.script_content}
+                            />
+                        ) : (
+                            <div className="border-2 border-black bg-white p-8 min-h-[300px] whitespace-pre-wrap font-serif text-lg leading-relaxed text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                {fullProject.data?.source === 'DESIGNER_INITIATED'
+                                    ? fullProject.data?.creative_link || 'No creative link available.'
+                                    : fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content
+                                        ? <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(fullProject.data.idea_description) }} />
+                                        : fullProject.data?.script_content
+                                            ? (() => {
+                                                // Decode HTML entities to properly display the content
+                                                let decodedContent = fullProject.data.script_content
+                                                    .replace(/&lt;/g, '<')
+                                                    .replace(/&gt;/g, '>')
+                                                    .replace(/&amp;/g, '&')
+                                                    .replace(/&quot;/g, '"')
+                                                    .replace(/&#39;/g, "'")
+                                                    .replace(/&nbsp;/g, ' ');
+                                                return <div dangerouslySetInnerHTML={{ __html: decodedContent }} />;
+                                            })()
+                                            : 'No content available.'}
+                            </div>
+                        )}
                     </section>
 
                     {/* Comments & Feedback Section */}
@@ -551,7 +631,7 @@ action,
                             {(fullProject?.shoot_date || fullProject?.delivery_date || fullProject?.post_scheduled_date) && (
                                 <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {fullProject?.shoot_date && (
+                                        {!['JOBBOARD', 'LEAD_MAGNET'].includes(fullProject.content_type) && fullProject?.shoot_date && (
                                             <div className="flex items-center">
                                                 <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                                                 <span className="font-bold text-green-600">{formatDateDDMMYYYY(fullProject.shoot_date)}</span>
@@ -733,8 +813,8 @@ action,
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Raw_Video.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">Original footage</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">Video_Footage.mp4</p>
+                                                    <p className="text-xs text-slate-500 font-bold">Raw footage</p>
                                                 </div>
                                                 <a href={fullProject.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>

@@ -39,13 +39,13 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
             [WorkflowStage.CREATIVE_DESIGN]: Role.DESIGNER,
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
-            [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.CEO,
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO,
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
-            [WorkflowStage.REWORK]: Role.WRITER
+            [WorkflowStage.REWORK]: Role.WRITER,
+            [WorkflowStage.WRITER_REVISION]: Role.WRITER
         };
         return stageToRoleMap[stage] || 'UNKNOWN';
     };
@@ -97,9 +97,7 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
                             <span className={`px-2 py-0.5 text-xs font-black uppercase border-2 border-black text-white ${project?.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F]' :
                                 project?.channel === Channel.LINKEDIN ? 'bg-[#0085FF]' :
                                     project?.channel === Channel.INSTAGRAM ? 'bg-[#D946EF]' :
-                                        project?.channel === Channel.JOBBOARD ? 'bg-[#00A36C]' :
-                                            project?.channel === Channel.LEAD_MAGNET ? 'bg-[#6366F1]' :
-                                                'bg-black'
+                                        'bg-black'
                                 }`}>
                                 {project?.channel || '—'}
                             </span>
@@ -183,6 +181,22 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
                                     : '—'}
                             </div>
                         </div>
+                        {project?.data?.influencer_name && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Influencer</label>
+                                <div className="font-bold text-slate-900 uppercase">
+                                    {project.data.influencer_name}
+                                </div>
+                            </div>
+                        )}
+                        {project?.data?.referral_link && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Referral Link</label>
+                                <div className="font-bold text-slate-900 uppercase">
+                                    <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">View Link</a>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Brief Content */}

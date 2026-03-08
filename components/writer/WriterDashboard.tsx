@@ -7,6 +7,7 @@ import WriterProjectDetail from './WriterProjectDetail';
 import WriterMyWork from './WriterMyWork';
 import WriterCalendar from './WriterCalendar';
 import WriterVideoApproval from './WriterVideoApproval';
+import WriterApprovedVideos from './WriterApprovedVideos';
 import LeadMagnetScripts from '../LeadMagnetScripts';
 import { format } from 'date-fns';
 import Layout from '../Layout';
@@ -38,6 +39,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         if (path.endsWith('/calendar')) return 'calendar';
         if (path.endsWith('/mywork')) return 'mywork';
         if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
+        if (path.endsWith('/approved-videos')) return 'approved-videos';
         return 'dashboard';
     };
 
@@ -178,7 +180,8 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             WorkflowStage.CINEMATOGRAPHY,
             WorkflowStage.VIDEO_EDITING,
             WorkflowStage.THUMBNAIL_DESIGN,
-            WorkflowStage.CREATIVE_DESIGN
+            WorkflowStage.CREATIVE_DESIGN,
+            WorkflowStage.WRITER_REVISION
         ].includes(p.current_stage)
     );
 
@@ -220,6 +223,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         if (p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL) {
             // Multi-writer approval - visible to all writers (as the name implies)
+            return isWriterRole;
+        }
+
+        if (p.current_stage === WorkflowStage.WRITER_REVISION) {
+            // Writer revision (upload processed video)
             return isWriterRole;
         }
 
@@ -401,6 +409,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     user={user}
                     projects={allWriterProjects}
                     onSelectProject={(p) => navigate(`/writer/project/${p.id}`)}
+                />
+            )}
+            {activeView === 'approved-videos' && (
+                <WriterApprovedVideos
+                    user={user}
+                    projects={allWriterProjects}
+                    onSelectProject={(p) => navigate(`/writer/approved-video/${p.id}`)}
                 />
             )}
             {activeView === 'dashboard' && (

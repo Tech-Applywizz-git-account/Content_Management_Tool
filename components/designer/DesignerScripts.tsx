@@ -87,7 +87,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
           }
 
           // Include all actions for other CEO-related stages
-          if (['FINAL_REVIEW_CEO_POST_APPROVAL', 'POST_WRITER_REVIEW'].includes(item.stage)) {
+          if (['POST_WRITER_REVIEW'].includes(item.stage)) {
             return true;
           }
 
@@ -350,7 +350,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
             )}
 
             {/* Conditionally show shoot date for cinematography stage */}
-            {localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
+            {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Shoot Date</h3>
                 <p className="font-medium bg-slate-50 p-2">{formatDateDDMMYYYY(localProject.shoot_date)}</p>
@@ -491,7 +491,7 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
           {(localProject?.shoot_date || localProject?.delivery_date || localProject?.post_scheduled_date) && (
             <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {localProject?.shoot_date && (
+                {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject?.shoot_date && (
                   <div className="flex items-center">
                     <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                     <span className="font-bold text-green-600">{formatDateDDMMYYYY(localProject.shoot_date)}</span>

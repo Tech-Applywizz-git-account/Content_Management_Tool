@@ -609,10 +609,10 @@ export const projects = {
         // ✅ FIX: Filter by stage only, not assigned_to_role
         switch (role) {
             case Role.WRITER:
-                // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL, WRITER_VIDEO_APPROVAL, MULTI_WRITER_APPROVAL
+                // Writer inbox: SCRIPT, REJECTED, REWORK, WAITING_APPROVAL, WRITER_VIDEO_APPROVAL, MULTI_WRITER_APPROVAL, WRITER_REVISION
                 // Only show projects assigned to the writer role
                 query = query.or(
-                    `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL},current_stage.eq.${WorkflowStage.WRITER_VIDEO_APPROVAL},current_stage.eq.${WorkflowStage.MULTI_WRITER_APPROVAL}`
+                    `current_stage.eq.${WorkflowStage.SCRIPT},status.eq.${TaskStatus.REJECTED},status.eq.${TaskStatus.REWORK},status.eq.${TaskStatus.WAITING_APPROVAL},current_stage.eq.${WorkflowStage.WRITER_VIDEO_APPROVAL},current_stage.eq.${WorkflowStage.MULTI_WRITER_APPROVAL},current_stage.eq.${WorkflowStage.WRITER_REVISION}`
                 ).eq('assigned_to_role', Role.WRITER);
                 break;
 
@@ -2335,13 +2335,41 @@ export const helpers = {
                 [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }, // If multi-writer approval is rejected, send back to editor
                 [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, // If post-writer review is rejected, send back to multi-writer approval
-                [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
-                [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER }
+                [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO }
             };
 
+            if (contentType === 'JOBBOARD' || contentType === 'LEAD_MAGNET') {
+                const customRejectMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
+                    [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                    [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
+                    [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+                    [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
+                    [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+                    [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }
+                };
+                const customNext = customRejectMap[currentStage];
+                if (customNext) return customNext;
+            }
+
             return rejectMap[currentStage];
+        }
+
+        // Special workflow for Job Board and Lead Magnet: Writer -> CMO -> CEO -> Writer -> CMO -> Editor -> Writer
+        if (contentType === 'JOBBOARD' || contentType === 'LEAD_MAGNET') {
+            const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
+                [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
+                [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
+                [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
+                [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
+                [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POSTED, role: Role.OPS }
+            };
+            const next = customMap[currentStage];
+            if (next) return next;
         }
 
         // Approval flow
@@ -2405,7 +2433,6 @@ export const helpers = {
 
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
-            [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
 
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },
@@ -3412,13 +3439,13 @@ export const db = {
             [WorkflowStage.CREATIVE_DESIGN]: Role.DESIGNER,
             [WorkflowStage.FINAL_REVIEW_CMO]: Role.CMO,
             [WorkflowStage.FINAL_REVIEW_CEO]: Role.CEO,
-            [WorkflowStage.FINAL_REVIEW_CEO_POST_APPROVAL]: Role.OPS,
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO, // Assign to CMO for approval
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
-            [WorkflowStage.REWORK]: Role.WRITER
+            [WorkflowStage.REWORK]: Role.WRITER,
+            [WorkflowStage.WRITER_REVISION]: Role.WRITER
         };
 
         // Determine base target role from stage

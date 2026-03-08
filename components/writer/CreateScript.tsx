@@ -874,8 +874,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Validation effect
   useEffect(() => {
     // Check for invalid channel/content type combinations and thumbnail requirement
-    if ((newProjectDetails.channel === Channel.LINKEDIN || newProjectDetails.channel === Channel.JOBBOARD || newProjectDetails.channel === Channel.LEAD_MAGNET) && newProjectDetails.contentType === 'VIDEO') {
-      const channelLabel = newProjectDetails.channel === Channel.LINKEDIN ? 'LinkedIn' : newProjectDetails.channel === Channel.JOBBOARD ? 'Job Board' : 'Lead Magnet';
+    if (newProjectDetails.channel === Channel.LINKEDIN && newProjectDetails.contentType === 'VIDEO') {
+      const channelLabel = 'LinkedIn';
       setValidationError(`${channelLabel} does not support video content. Please select a different channel or change content type to Creative Only.`);
     } else if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
       setValidationError('Thumbnail requirement must be specified for video content.');
@@ -1447,9 +1447,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             throw new Error('Content type is required. Please select a content type for your script.');
           }
 
-          // Validate thumbnail requirement for video content
-          if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
-            throw new Error('Thumbnail requirement must be specified for video content. Please select Yes or No.');
+          // Validate thumbnail requirement for video-based content
+          const isVideoBased = ['VIDEO', 'JOBBOARD', 'LEAD_MAGNET'].includes(newProjectDetails.contentType);
+          if (isVideoBased && formData.thumbnail_required === undefined) {
+            throw new Error('Thumbnail requirement must be specified for this content type. Please select Yes or No.');
           }
         }
 
@@ -1932,30 +1933,30 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     Channel *
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {Object.values(Channel).map(c => {
-                      const colors: Record<string, string> = {
-                        LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
-                        YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
-                        INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]',
-                        JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
-                        LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
-                      };
-                      return (
-                        <button
-                          key={c}
-                          onClick={() =>
-                            canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
-                          }
-                          disabled={!canEdit}
-                          className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${newProjectDetails.channel === c
-                            ? `${colors[c] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
-                            : 'bg-white border-black hover:bg-slate-50'
-                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          {c}
-                        </button>
-                      );
-                    })}
+                    {Object.values(Channel)
+                      .filter(c => c !== Channel.JOBBOARD && c !== Channel.LEAD_MAGNET)
+                      .map(c => {
+                        const colors: Record<string, string> = {
+                          LINKEDIN: 'bg-[#0A66C2] border-[#0A66C2]',
+                          YOUTUBE: 'bg-[#FF0000] border-[#FF0000]',
+                          INSTAGRAM: 'bg-gradient-to-tr from-[#405DE6] via-[#E1306C] to-[#FFDC80] border-[#E1306C]'
+                        };
+                        return (
+                          <button
+                            key={c}
+                            onClick={() =>
+                              canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
+                            }
+                            disabled={!canEdit}
+                            className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${newProjectDetails.channel === c
+                              ? `${colors[c] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
+                              : 'bg-white border-black hover:bg-slate-50'
+                              } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {c}
+                          </button>
+                        );
+                      })}
                   </div>
                 </div>
 
@@ -1992,11 +1993,35 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     >
                       🎨 Creative Only
                     </button>
+                    <button
+                      onClick={() =>
+                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'JOBBOARD' }) : null
+                      }
+                      disabled={!canEdit}
+                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'JOBBOARD'
+                        ? 'bg-[#00A36C] text-white'
+                        : 'bg-white hover:bg-slate-50'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      💼 Job Board
+                    </button>
+                    <button
+                      onClick={() =>
+                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'LEAD_MAGNET' }) : null
+                      }
+                      disabled={!canEdit}
+                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'LEAD_MAGNET'
+                        ? 'bg-[#6366F1] text-white'
+                        : 'bg-white hover:bg-slate-50'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      🧲 Lead Magnet
+                    </button>
                   </div>
                 </div>
 
-                {/* Thumbnail Required - Only for VIDEO content */}
-                {newProjectDetails.contentType === 'VIDEO' && (
+                {/* Thumbnail Required - Only for Video-based content */}
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET') && (
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                       Thumbnail Required *
@@ -2135,78 +2160,80 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   />
                 </div>
 
-                {/* Cinematographer Instructions - Only for VIDEO content */}
-                <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
-                  <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
-                    Cinematography Instructions
-                  </h3>
+                {/* Cinematographer Instructions - Only for Video-based content */}
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET') && (
+                  <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
+                    <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
+                      Cinematography Instructions
+                    </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
-                        Actor
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.actor || ''}
-                        onChange={e =>
-                          canEdit ? setFormData({ ...formData, actor: e.target.value }) : null
-                        }
-                        readOnly={!canEdit}
-                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
-                        placeholder="Presenter info"
-                      />
-                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                          Actor
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.actor || ''}
+                          onChange={e =>
+                            canEdit ? setFormData({ ...formData, actor: e.target.value }) : null
+                          }
+                          readOnly={!canEdit}
+                          className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                          placeholder="Presenter info"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
-                        Location
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.location || ''}
-                        onChange={e =>
-                          canEdit ? setFormData({ ...formData, location: e.target.value }) : null
-                        }
-                        readOnly={!canEdit}
-                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
-                        placeholder="e.g. Office"
-                      />
-                    </div>
+                      <div>
+                        <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.location || ''}
+                          onChange={e =>
+                            canEdit ? setFormData({ ...formData, location: e.target.value }) : null
+                          }
+                          readOnly={!canEdit}
+                          className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                          placeholder="e.g. Office"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
-                        Lighting
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.lighting || ''}
-                        onChange={e =>
-                          canEdit ? setFormData({ ...formData, lighting: e.target.value }) : null
-                        }
-                        readOnly={!canEdit}
-                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
-                        placeholder="e.g. Soft daylight"
-                      />
-                    </div>
+                      <div>
+                        <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                          Lighting
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.lighting || ''}
+                          onChange={e =>
+                            canEdit ? setFormData({ ...formData, lighting: e.target.value }) : null
+                          }
+                          readOnly={!canEdit}
+                          className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                          placeholder="e.g. Soft daylight"
+                        />
+                      </div>
 
-                    <div>
-                      <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
-                        Angles
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.angles || ''}
-                        onChange={e =>
-                          canEdit ? setFormData({ ...formData, angles: e.target.value }) : null
-                        }
-                        readOnly={!canEdit}
-                        className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
-                        placeholder="e.g. Medium shot"
-                      />
+                      <div>
+                        <label className="block text-[10px] md:text-xs font-bold uppercase text-slate-500 mb-2">
+                          Angles
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.angles || ''}
+                          onChange={e =>
+                            canEdit ? setFormData({ ...formData, angles: e.target.value }) : null
+                          }
+                          readOnly={!canEdit}
+                          className="w-full p-3 md:p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none text-sm"
+                          placeholder="e.g. Medium shot"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Priority */}
                 <div>

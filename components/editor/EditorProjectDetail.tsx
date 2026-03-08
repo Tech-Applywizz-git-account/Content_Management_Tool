@@ -337,12 +337,16 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
-              <h2 className="text-xl font-black uppercase">Raw Video (from Cinematographer)</h2>
+              <h2 className="text-xl font-black uppercase">
+                {['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) ? 'Influencer Video' : 'Raw Video Assets'}
+              </h2>
             </div>
             <div className="bg-blue-50 border-2 border-blue-400 p-4">
-              <p className="text-sm font-bold text-blue-800 mb-2">
-                📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
-              </p>
+              {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && (
+                <p className="text-sm font-bold text-blue-800 mb-2">
+                  📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
+                </p>
+              )}
               <a
                 href={localProject.video_link}
                 target="_blank"
@@ -675,7 +679,14 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                   ✓ Edited Video Delivered
                 </p>
                 <p className="text-sm text-green-800 mt-1">
-                  → Project has been moved to Designer for thumbnail creation
+                  → Project has been moved to {
+                    localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation' :
+                      localProject.assigned_to_role === 'SUB_EDITOR' ? 'Sub-Editor for processing' :
+                        localProject.assigned_to_role === 'CMO' ? 'CMO for review' :
+                          localProject.assigned_to_role === 'CEO' ? 'CEO for review' :
+                            localProject.assigned_to_role === 'WRITER' ? 'Writer for approval' :
+                              (localProject.assigned_to_role ? localProject.assigned_to_role.replace('_', ' ') : 'the next stage')
+                  }
                 </p>
                 {/* Show upload timestamp */}
                 {localProject.editor_uploaded_at && (
@@ -723,6 +734,24 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                         : localProject.data.niche === 'OTHER' && localProject.data.niche_other
                           ? localProject.data.niche_other
                           : localProject.data.niche}
+                </p>
+              </div>
+            )}
+            {localProject.data?.influencer_name && (
+              <div className="col-span-1">
+                <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
+                <p className="font-bold text-slate-900 mt-1 uppercase">
+                  {localProject.data.influencer_name}
+                </p>
+              </div>
+            )}
+            {localProject.data?.referral_link && (
+              <div className="col-span-1">
+                <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
+                <p className="font-bold text-slate-900 mt-1">
+                  <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
+                    View Link
+                  </a>
                 </p>
               </div>
             )}

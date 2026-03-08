@@ -76,6 +76,11 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
+    // Rework script state
+    const [isReworkModalOpen, setIsReworkModalOpen] = useState(false);
+    const [reworkReason, setReworkReason] = useState('');
+    const [isSubmittingRework, setIsSubmittingRework] = useState(false);
+
     // Reset form fields when project changes
     useEffect(() => {
         const processedProject = { ...initialProject };
@@ -325,6 +330,106 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
         }
     };
 
+    const handleReworkScript = async () => {
+        if (!reworkReason.trim()) {
+            alert('Please provide a reason for sending the script for rework');
+            return;
+        }
+
+        try {
+            // HARD GUARD: Prevent submission if publicUser.id is missing
+            if (!publicUser?.id) {
+                alert('User profile not loaded. Please refresh and try again.');
+                return;
+            }
+
+            setIsSubmittingRework(true);
+
+            // Get the writer's user ID (creator of the project)
+            const writerUserId = localProject.created_by_user_id || localProject.writer_id;
+
+            if (!writerUserId) {
+                alert('Could not determine the original writer. Please contact support.');
+                setIsSubmittingRework(false);
+                return;
+            }
+
+            // Fetch writer's role information
+            const { data: writerData, error: writerError } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', writerUserId)
+                .single();
+
+            if (writerError || !writerData) {
+                console.error('Error fetching writer info:', writerError);
+                alert('Could not find writer information');
+                setIsSubmittingRework(false);
+                return;
+            }
+
+            // Record the rework request in workflow history
+            await db.workflow.recordAction(
+                localProject.id,
+                WorkflowStage.SCRIPT_REVIEW_L1, // Send back to script review stage
+                publicUser.id,
+                publicUser.full_name || publicUser.email || publicUser.id,
+                'REWORK',
+                reworkReason.trim(),
+                localProject.data.script_content || null, // Store current script content as previous version
+                Role.CINE, // fromRole
+                Role.WRITER, // toRole - send back to writer
+                Role.CINE, // actorRole
+                {
+                    rework_reason: reworkReason.trim(),
+                    rework_requested_by: 'CINEMATOGRAPHER',
+                    original_writer_id: writerUserId,
+                    cine_previous_script: localProject.data.script_content || null // Store previous script in metadata for comparison
+                }
+            );
+
+            // Update project status and assignment
+            const { error: updateError } = await supabase
+                .from('projects')
+                .update({
+                    status: TaskStatus.REWORK,
+                    current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+                    assigned_to_role: Role.WRITER,
+                    assigned_to_user_id: writerUserId,
+                    rework_target_role: Role.WRITER,
+                    rework_initiator_role: Role.CINE,
+                    rework_initiator_stage: WorkflowStage.CINEMATOGRAPHY
+                })
+                .eq('id', localProject.id);
+
+            if (updateError) {
+                console.error('Error updating project after rework:', updateError);
+                throw updateError;
+            }
+
+            // Close modal and reset state
+            setIsReworkModalOpen(false);
+            setReworkReason('');
+
+            // Show success popup
+            setPopupMessage(`Script sent back for rework to ${localProject.data.writer_name || 'the writer'}. They will see your comments and resubmit.`);
+            setStageName('Rework → Writer');
+            setPopupDuration(8000);
+            setShowPopup(true);
+
+            console.log('Script sent for rework successfully');
+        } catch (error) {
+            console.error('Failed to send script for rework:', error);
+            if (error instanceof Error) {
+                alert(`❌ Failed to send script for rework: ${error.message}`);
+            } else {
+                alert('❌ Failed to send script for rework. Please try again.');
+            }
+        } finally {
+            setIsSubmittingRework(false);
+        }
+    };
+
 
     return (
         <div className="min-h-screen bg-slate-50 animate-fade-in">
@@ -429,7 +534,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 <div className="bg-white border-2 border-gray-300 p-4">
                                     <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {localProject.shoot_date && (
+                                        {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject.shoot_date && (
                                             <div>
                                                 <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
                                                 <p className="font-medium">{localProject.shoot_date}</p>
@@ -608,7 +713,25 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <>
                                 <ScriptDisplay content={localProject.data.script_content || ''} showBox={false} />
 
-                                {canEdit && (
+                                {canEdit && !isRejected && (
+                                    <div className="mt-4 flex justify-end gap-3">
+                                        <button
+                                            onClick={() => setIsScriptEditing(true)}
+                                            className="px-6 py-3 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+                                        >
+                                            <FileText className="w-5 h-5" />
+                                            Edit Script & Format
+                                        </button>
+                                        <button
+                                            onClick={() => setIsReworkModalOpen(true)}
+                                            className="px-6 py-3 bg-red-500 text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+                                        >
+                                            <span>↻</span>
+                                            Rework Script
+                                        </button>
+                                    </div>
+                                )}
+                                {canEdit && isRejected && (
                                     <div className="mt-4 flex justify-end">
                                         <button
                                             onClick={() => setIsScriptEditing(true)}
@@ -1125,6 +1248,60 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                     </div>
                 )}
             </div>
+            
+            {/* Rework Script Modal */}
+            {isReworkModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 md:p-8 max-w-lg w-full">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-white font-bold text-xl">↻</span>
+                            </div>
+                            <h3 className="text-xl md:text-2xl font-black uppercase text-slate-900">Send Script for Rework</h3>
+                        </div>
+                        
+                        <div className="space-y-4 mb-6">
+                            <p className="text-sm font-bold text-slate-700 uppercase">
+                                This will send the script back to {localProject.data.writer_name || 'the writer'} for revisions.
+                            </p>
+                            
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 uppercase mb-2">
+                                    Reason for Rework <span className="text-red-500">*</span>
+                                </label>
+                                <textarea
+                                    value={reworkReason}
+                                    onChange={(e) => setReworkReason(e.target.value)}
+                                    placeholder="Explain what needs to be improved or changed in the script..."
+                                    className="w-full p-3 border-2 border-black text-base font-medium focus:bg-yellow-50 focus:outline-none min-h-[120px]"
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => {
+                                    setIsReworkModalOpen(false);
+                                    setReworkReason('');
+                                }}
+                                disabled={isSubmittingRework}
+                                className="px-6 py-3 bg-slate-200 text-slate-800 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleReworkScript}
+                                disabled={isSubmittingRework || !reworkReason.trim()}
+                                className="px-6 py-3 bg-red-500 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSubmittingRework ? 'Sending...' : 'Send for Rework'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {
                 showPopup && (
                     <Popup
