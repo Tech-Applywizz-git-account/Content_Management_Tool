@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import Layout from '../Layout';
 import Popup from '../Popup';
 import { supabase } from '../../src/integrations/supabase/client';
+import FestivalNotifications from './FestivalNotifications';
 
 interface Props {
     user: { full_name: string; role: Role };
@@ -453,6 +454,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                             )}
                         </button>
                     </div>
+
+                    {/* Festival Notifications */}
+                    <FestivalNotifications />
 
                     {/* Kanban Columns */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
