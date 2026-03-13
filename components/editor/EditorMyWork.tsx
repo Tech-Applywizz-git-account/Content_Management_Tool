@@ -143,7 +143,8 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
-                    const isDelivered = !!project.edited_video_link;
+                    const isDirectUpload = project.data?.source === 'EDITOR_DIRECT_UPLOAD';
+                    const isDelivered = !!project.edited_video_link || isDirectUpload;
 
                     // Use the canonical rework condition
                     const isRework = isActiveRework(project, user.role);
@@ -220,9 +221,14 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                             </p>
                                         </div>
                                     )}
-                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date && (
+                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date && !isDirectUpload && (
                                         <div className="bg-red-50 border-2 border-red-400 p-2">
                                             <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
+                                        </div>
+                                    )}
+                                    {activeFilter !== 'SCRIPTS' && isDirectUpload && (
+                                        <div className="bg-blue-50 border-2 border-blue-400 p-2">
+                                            <p className="text-[10px] font-bold text-blue-800 uppercase">⬆ Direct Upload</p>
                                         </div>
                                     )}
                                     {activeFilter !== 'SCRIPTS' && project.delivery_date && (
@@ -268,7 +274,15 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#FF4F4F] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'SCRIPTS' || activeFilter === 'CINE' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : project.edited_video_link ? 'View Details' : 'Upload Edited Video'}
+                                        {activeFilter === 'SCRIPTS' || activeFilter === 'CINE'
+                                            ? 'View Script'
+                                            : isDirectUpload
+                                                ? 'View Details'
+                                                : !project.delivery_date
+                                                    ? 'Set Delivery Date'
+                                                    : project.edited_video_link
+                                                        ? 'View Details'
+                                                        : 'Upload Edited Video'}
                                     </button>
                                 </div>
                             </div>

@@ -359,6 +359,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           </div>
         )}
 
+
         {/* Script Reference */}
         <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -561,8 +562,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           </div>
         ) : null)}
 
-        {/* Delivery Date Section - Only show if project is not assigned to sub-editor */}
-        {fromView !== 'SCRIPTS' && localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
+        {/* Delivery Date Section - Only show if project is not assigned to sub-editor AND not a direct upload */}
+        {fromView !== 'SCRIPTS' && localProject.data?.source !== 'EDITOR_DIRECT_UPLOAD' && localProject.current_stage !== WorkflowStage.SUB_EDITOR_ASSIGNMENT && localProject.current_stage !== WorkflowStage.SUB_EDITOR_PROCESSING && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <CalendarIcon className="w-5 h-5" />
@@ -609,98 +610,112 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         )}
 
         {/* Edited Video Upload Section */}
-        {fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework) && (
-          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Film className="w-5 h-5" />
-              <h2 className="text-xl font-black uppercase">
-                {isRejected
-                  ? 'Rejected Edited Video Upload'
-                  : isRework
-                    ? 'Rework Edited Video Upload'
-                    : 'Edited Video Upload'}
-              </h2>
-            </div>
+        {fromView !== 'SCRIPTS' && (localProject.delivery_date || isRework || localProject.data?.source === 'EDITOR_DIRECT_UPLOAD') && (() => {
+          const isDirectUpload = localProject.data?.source === 'EDITOR_DIRECT_UPLOAD';
+          // For direct uploads, fall back to data.video_link if edited_video_link not set (older records)
+          const videoLink = localProject.edited_video_link || (isDirectUpload ? localProject.data?.video_link : null);
+          const hasVideo = !!videoLink;
 
-            {/* Show previous edited video if exists */}
-            {hasEditedVideo && (
-              <div className="bg-blue-50 border-2 border-blue-600 p-4 mb-4">
-                <p className="text-sm font-bold uppercase text-blue-800 mb-2">
-                  Previous Submission
-                </p>
-                <a
-                  href={localProject.edited_video_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block break-all text-blue-600 underline"
-                >
-                  {localProject.edited_video_link}
-                </a>
+          return (
+            <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Film className="w-5 h-5" />
+                <h2 className="text-xl font-black uppercase">
+                  {isDirectUpload
+                    ? 'Uploaded Video'
+                    : isRejected
+                      ? 'Rejected Edited Video Upload'
+                      : isRework
+                        ? 'Rework Edited Video Upload'
+                        : 'Edited Video Upload'}
+                </h2>
               </div>
-            )}
 
-            {/* Show input if user has edit permissions OR is in rework */}
-            {(isRework || canEdit || !hasEditedVideo) && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-600 font-medium">
-                    {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+              {/* Show submitted video if exists */}
+              {hasVideo && (
+                <div className="bg-blue-50 border-2 border-blue-600 p-4 mb-4">
+                  <p className="text-sm font-bold uppercase text-blue-800 mb-2">
+                    {isDirectUpload ? 'Submitted Video' : 'Previous Submission'}
                   </p>
-                  {isRework && (
-                    <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
-                      Comparison Mode Active
-                    </span>
+                  <a
+                    href={videoLink!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block break-all text-blue-600 underline"
+                  >
+                    {videoLink}
+                  </a>
+                </div>
+              )}
+
+              {/* Show upload input only for non-direct-upload projects */}
+              {!isDirectUpload && (isRework || canEdit || !hasEditedVideo) && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-slate-600 font-medium">
+                      {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+                    </p>
+                    {isRework && (
+                      <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
+                        Comparison Mode Active
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <input
+                      type="url"
+                      value={editedVideoLink}
+                      onChange={(e) => setEditedVideoLink(e.target.value)}
+                      placeholder="https://drive.google.com/file/d/..."
+                      className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleUploadEditedVideo}
+                      className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      <Upload className="w-5 h-5 inline mr-2" />
+                      {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Delivered / submitted state */}
+              {hasVideo && !isRework && localProject.status !== 'REWORK' && (
+                <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
+                  <p className="text-sm font-bold uppercase text-green-800">
+                    {isDirectUpload ? '✓ Video Submitted for Approval' : '✓ Edited Video Delivered'}
+                  </p>
+                  <p className="text-sm text-green-800 mt-1">
+                    → Project has been moved to {
+                      isDirectUpload
+                        ? 'Writers for Multi-Writer Approval'
+                        : localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation'
+                          : localProject.assigned_to_role === 'SUB_EDITOR' ? 'Sub-Editor for processing'
+                            : localProject.assigned_to_role === 'CMO' ? 'CMO for review'
+                              : localProject.assigned_to_role === 'CEO' ? 'CEO for review'
+                                : localProject.assigned_to_role === 'WRITER' ? 'Writer for approval'
+                                  : (localProject.assigned_to_role ? localProject.assigned_to_role.replace('_', ' ') : 'the next stage')
+                    }
+                  </p>
+                  {/* Show upload timestamp */}
+                  {(localProject.editor_uploaded_at || localProject.created_at) && (
+                    <div className="mt-3 pt-3 border-t border-green-300">
+                      <span className="text-xs font-bold uppercase text-green-700">Submitted At</span>
+                      <p className="text-sm font-medium text-green-800">
+                        {format(
+                          new Date(localProject.editor_uploaded_at || localProject.created_at),
+                          'MMM dd, yyyy h:mm a'
+                        )}
+                      </p>
+                    </div>
                   )}
                 </div>
-
-                <div className="flex gap-3">
-                  <input
-                    type="url"
-                    value={editedVideoLink}
-                    onChange={(e) => setEditedVideoLink(e.target.value)}
-                    placeholder="https://drive.google.com/file/d/..."
-                    className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
-                  />
-                  <button
-                    onClick={handleUploadEditedVideo}
-                    className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                  >
-                    <Upload className="w-5 h-5 inline mr-2" />
-                    {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Delivered state ONLY for non-rework - Check status explicitly to override historical data */}
-            {hasEditedVideo && !isRework && localProject.status !== 'REWORK' && (
-              <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
-                <p className="text-sm font-bold uppercase text-green-800">
-                  ✓ Edited Video Delivered
-                </p>
-                <p className="text-sm text-green-800 mt-1">
-                  → Project has been moved to {
-                    localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation' :
-                      localProject.assigned_to_role === 'SUB_EDITOR' ? 'Sub-Editor for processing' :
-                        localProject.assigned_to_role === 'CMO' ? 'CMO for review' :
-                          localProject.assigned_to_role === 'CEO' ? 'CEO for review' :
-                            localProject.assigned_to_role === 'WRITER' ? 'Writer for approval' :
-                              (localProject.assigned_to_role ? localProject.assigned_to_role.replace('_', ' ') : 'the next stage')
-                  }
-                </p>
-                {/* Show upload timestamp */}
-                {localProject.editor_uploaded_at && (
-                  <div className="mt-3 pt-3 border-t border-green-300">
-                    <span className="text-xs font-bold uppercase text-green-700">Uploaded At</span>
-                    <p className="text-sm font-medium text-green-800">
-                      {format(new Date(localProject.editor_uploaded_at), 'MMM dd, yyyy h:mm a')}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         {/* Project Info */}
         <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">

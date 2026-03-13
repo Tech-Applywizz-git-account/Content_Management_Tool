@@ -140,7 +140,12 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         // Filtered views (from dashboard cards)
         switch (activeFilter) {
             case 'NEEDS_DELIVERY':
-                return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
+                // Exclude direct upload projects - they already have a video link and don't need a delivery date set
+                return (historyProjects || []).filter(p =>
+                    !p.delivery_date &&
+                    p.status !== TaskStatus.DONE &&
+                    p.data?.source !== 'EDITOR_DIRECT_UPLOAD'
+                );
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
                     const workflowState = getWorkflowStateForRole(p, user.role);
@@ -148,12 +153,14 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
                 });
             case 'COMPLETED':
-                // Base completed projects (have processed video)
-                let completedProjects = (historyProjects || []).filter(p => !!p.edited_video_link);
+                // Completed projects = have an edited_video_link (includes direct uploads)
+                let completedProjects = (historyProjects || []).filter(p =>
+                    !!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD'
+                );
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
-                    // Show projects that are not yet fully posted (waiting for ops/review)
+                    // Show projects not yet fully posted (waiting for ops/review)
                     return completedProjects.filter(p => p.status !== TaskStatus.DONE);
                 } else if (completedSubTab === 'POSTED') {
                     // Show projects that are fully completed and posted
@@ -180,8 +187,11 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     // Calculate counts when historyProjects, scriptProjects or user.role change
     useEffect(() => {
         // Calculate counts based on EXACT SAME logic as filteredProjects memo
+        // Exclude direct upload projects from Needs Delivery
         setNeedsDeliveryCount((historyProjects || []).filter(p =>
-            !p.delivery_date && p.status !== TaskStatus.DONE
+            !p.delivery_date &&
+            p.status !== TaskStatus.DONE &&
+            p.data?.source !== 'EDITOR_DIRECT_UPLOAD'
         ).length);
 
         setInProgressCount((historyProjects || []).filter(p => {
@@ -190,7 +200,10 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
         }).length);
 
-        setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
+        // Include direct upload projects in Completed Edits
+        setCompletedEditsCount((historyProjects || []).filter(p =>
+            !!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD'
+        ).length);
 
         // Count script projects from props
         setScriptsCount((scriptProjects || []).length);
