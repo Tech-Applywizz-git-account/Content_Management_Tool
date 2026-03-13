@@ -918,6 +918,14 @@ export const projects = {
         created_by_name?: string | null;
         writer_id: string;
         writer_name?: string | null;
+
+        // Direct Video Upload properties
+        edited_video_link?: string;
+        edited_at?: string;
+        editor_uploaded_at?: string;
+        edited_by_user_id?: string;
+        edited_by_name?: string;
+        visible_to_roles?: Role[] | null;
     }) {
         console.log('Creating project with data:', projectData);
 
@@ -942,6 +950,14 @@ export const projects = {
                 created_by_name: projectData.created_by_name ?? null,
                 writer_id: projectData.writer_id,
                 writer_name: projectData.writer_name ?? null,
+
+                // Direct Video properties
+                edited_video_link: projectData.edited_video_link,
+                edited_at: projectData.edited_at,
+                editor_uploaded_at: projectData.editor_uploaded_at,
+                edited_by_user_id: projectData.edited_by_user_id,
+                edited_by_name: projectData.edited_by_name,
+                visible_to_roles: projectData.visible_to_roles ?? null,
 
                 // Use provided values or defaults if not provided
                 current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
@@ -1402,7 +1418,7 @@ export const workflow = {
         // Get all users with the writer role
         const { data: writerUsers, error: writerError } = await supabase
             .from('users')
-            .select('id')
+            .select('id, full_name')
             .eq('role', Role.WRITER)
             .eq('status', 'ACTIVE');
 
@@ -1438,6 +1454,26 @@ export const workflow = {
             return false;
         }
 
+        // Get the IDs of active writers
+        let finalWriterUsers = writerUsers;
+
+        // Look for Varshini and Kishore specifically
+        const specialWriters = writerUsers.filter(w =>
+            (w as any).full_name?.toLowerCase().includes('varshini') ||
+            (w as any).full_name?.toLowerCase().includes('kishore')
+        );
+
+        // If we found either Varshini or Kishore, they (and only they) are required
+        if (specialWriters.length > 0) {
+            console.log('📝 Found Varshini/Kishore - setting them as required writers');
+            finalWriterUsers = specialWriters;
+        } else {
+            console.log('⚠️ No writers named Varshini or Kishore found. Requiring all active writers.');
+            finalWriterUsers = writerUsers;
+        }
+
+        console.log('📋 Required writers:', finalWriterUsers.map(w => (w as any).full_name));
+
         // Get all approvals for this project in MULTI_WRITER_APPROVAL stage
         const { data: approvals, error: approvalsError } = await supabase
             .from('workflow_history')
@@ -1458,27 +1494,27 @@ export const workflow = {
             return false;
         }
 
-        // Get the IDs of active writers
-        const writerIds = new Set(writerUsers.map(writer => writer.id));
+        // Get the IDs of required writers
+        const requiredWriterIds = new Set(finalWriterUsers.map(writer => writer.id));
 
-        // Filter approvals to only include those from active writers
-        const approvedWriterIds = new Set(approvals.filter(approval =>
-            writerIds.has(approval.actor_id)
+        // Filter approvals to only include those from required writers
+        const approvedRequiredWriterIds = new Set(approvals.filter(approval =>
+            requiredWriterIds.has(approval.actor_id)
         ).map(approval => approval.actor_id));
 
-        console.log('✅ Approved writer IDs:', Array.from(approvedWriterIds));
+        console.log('✅ Approved required writer IDs:', Array.from(approvedRequiredWriterIds));
 
-        // Check if all writers have approved
-        const allWritersHaveApproved = writerUsers.every(writer =>
-            approvedWriterIds.has(writer.id)
+        // Check if all required writers have approved
+        const allWritersHaveApproved = finalWriterUsers.every(writer =>
+            approvedRequiredWriterIds.has(writer.id)
         );
 
-        console.log('🎯 All writers approved:', allWritersHaveApproved);
+        console.log('🎯 All required writers approved:', allWritersHaveApproved);
         console.log('📊 Comparison:', {
-            totalWriters: writerUsers.length,
-            approvedWriters: approvedWriterIds.size,
-            writerIds: writerUsers.map(w => w.id),
-            approvedIds: Array.from(approvedWriterIds)
+            totalRequiredWriters: finalWriterUsers.length,
+            approvedWriters: approvedRequiredWriterIds.size,
+            requiredWriterIds: Array.from(requiredWriterIds),
+            approvedIds: Array.from(approvedRequiredWriterIds)
         });
 
         return allWritersHaveApproved;
@@ -1567,7 +1603,8 @@ export const workflow = {
 
                 // Determine the appropriate action type based on the comment
                 let actionType = 'SUBMITTED'; // Default action
-                if (comment.toLowerCase().includes('uploaded')) {
+                const lowerComment = (comment || '').toLowerCase();
+                if (lowerComment.includes('uploaded')) {
                     actionType = 'SUBMITTED';
                 }
 
@@ -1600,6 +1637,27 @@ export const workflow = {
                 }
 
                 return await projects.getById(projectId);
+            }
+
+            // Check if special writers exist in the system
+            const { data: allWriters } = await supabase
+                .from('users')
+                .select('full_name')
+                .eq('role', Role.WRITER)
+                .eq('status', 'ACTIVE');
+
+            const hasSpecialWriters = allWriters?.some(w =>
+                w.full_name?.toLowerCase().includes('varshini') ||
+                w.full_name?.toLowerCase().includes('kishore')
+            );
+
+            // If special writers exist, only they can approve
+            if (hasSpecialWriters) {
+                const name = finalUserName?.toLowerCase() || '';
+                if (!name.includes('varshini') && !name.includes('kishore')) {
+                    console.log(`⚠️ User ${finalUserName} is not authorized to approve in this stage. Only Varshini and Kishore can approve.`);
+                    return await projects.getById(projectId);
+                }
             }
 
             // First, check if this writer has already approved this project in the MULTI_WRITER_APPROVAL stage
@@ -1641,10 +1699,11 @@ export const workflow = {
 
             const totalWritersRequired = activeWriters?.length || 0;
             const approvedCount = await this.getApprovedWritersCount(projectId);
+            const allRequiredApproved = await this.checkAllWritersApproved(projectId);
 
-            console.log(`🎯 Approval Progress: ${approvedCount}/${totalWritersRequired}`);
+            console.log(`🎯 Approval Progress: ${approvedCount}. All required approved: ${allRequiredApproved}`);
 
-            if (totalWritersRequired > 0 && approvedCount >= totalWritersRequired) {
+            if (allRequiredApproved) {
                 console.log('🚀 All writers have approved, advancing to VIDEO_EDITING stage');
 
                 // 1. Record the final TRANSITION action BEFORE update (Mandatory Fix)
@@ -2377,8 +2436,8 @@ export const helpers = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
             [WorkflowStage.SCRIPT_REVIEW_L2]: {
-                stage: contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN,
-                role: contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER
+                stage: contentType === 'CAPTION_BASED' ? WorkflowStage.VIDEO_EDITING : (contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
+                role: contentType === 'CAPTION_BASED' ? Role.EDITOR : (contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER)
             },
 
             // CINE -> WRITER_VIDEO_APPROVAL (Writer)
@@ -2411,14 +2470,18 @@ export const helpers = {
             [WorkflowStage.MULTI_WRITER_APPROVAL]: {
                 stage: projectData?.rework_initiator_stage
                     ? projectData.rework_initiator_stage as WorkflowStage
-                    : (projectData?.thumbnail_required === true
-                        ? WorkflowStage.THUMBNAIL_DESIGN
-                        : WorkflowStage.POST_WRITER_REVIEW),
+                    : (contentType === 'CAPTION_BASED'
+                        ? WorkflowStage.POST_WRITER_REVIEW
+                        : (projectData?.thumbnail_required === true
+                            ? WorkflowStage.THUMBNAIL_DESIGN
+                            : WorkflowStage.POST_WRITER_REVIEW)),
                 role: projectData?.rework_initiator_stage
                     ? projectData.rework_initiator_role as Role
-                    : (projectData?.thumbnail_required === true
-                        ? Role.DESIGNER
-                        : Role.CMO)
+                    : (contentType === 'CAPTION_BASED'
+                        ? Role.CMO
+                        : (projectData?.thumbnail_required === true
+                            ? Role.DESIGNER
+                            : Role.CMO))
             },
 
             // THUMBNAIL_DESIGN -> OPS/CMO (Post Review)
@@ -2933,6 +2996,63 @@ export const db = {
             Role.CMO, // fromRole
             Role.CMO, // toRole
             Role.CMO  // actorRole
+        );
+
+        return createdProject;
+    },
+
+    async createDirectVideoProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL'): Promise<Project> {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
+
+        // Create a project that starts at the MULTI_WRITER_APPROVAL stage for direct video uploads
+        // Flow: Editor -> 2 writers approval -> cmo -> ceo -> ops
+        const projectData = {
+            title,
+            channel,
+            content_type: 'VIDEO' as ContentType,
+            current_stage: WorkflowStage.MULTI_WRITER_APPROVAL, 
+            assigned_to_role: Role.WRITER, 
+            status: TaskStatus.WAITING_APPROVAL,
+            due_date: dueDate,
+            priority,
+            edited_video_link: videoLink,
+            data: {
+                video_link: videoLink,
+                source: 'EDITOR_DIRECT_UPLOAD'
+            },
+            // Set creator information
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            edited_by_user_id: publicUser.id,
+            edited_by_name: publicUser.full_name,
+            edited_at: new Date().toISOString(),
+            editor_uploaded_at: new Date().toISOString(),
+            writer_id: publicUser.id,
+            writer_name: publicUser.full_name,
+            // Important for parallel visibility in multi-writer approval
+            visible_to_roles: [Role.WRITER, Role.CMO, Role.CEO, Role.OPS] as any
+        };
+
+        // Create the project and return the real project with Supabase UUID
+        const createdProject = await projects.create(projectData);
+
+        // Record the action in workflow history
+        await workflow.recordAction(
+            createdProject.id,
+            Role.WRITER, // next responsible role is Writer
+            publicUser.id,
+            publicUser.full_name,
+            'SUBMITTED',
+            'Direct Video Upload: Video submitted directly by Editor. Moving to Multi-Writer Approval.',
+            undefined,
+            Role.EDITOR, // fromRole
+            Role.WRITER, // toRole
+            Role.EDITOR  // actorRole
         );
 
         return createdProject;

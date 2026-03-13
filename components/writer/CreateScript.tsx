@@ -2017,11 +2017,23 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     >
                       🧲 Lead Magnet
                     </button>
+                    <button
+                      onClick={() =>
+                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'CAPTION_BASED' }) : null
+                      }
+                      disabled={!canEdit}
+                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'CAPTION_BASED'
+                        ? 'bg-[#F97316] text-white'
+                        : 'bg-white hover:bg-slate-50'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      📝 Caption Based
+                    </button>
                   </div>
                 </div>
 
                 {/* Thumbnail Required - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET') && (
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED') && (
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                       Thumbnail Required *
@@ -2161,7 +2173,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </div>
 
                 {/* Cinematographer Instructions - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET') && (
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED') && (
                   <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
                     <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
                       Cinematography Instructions

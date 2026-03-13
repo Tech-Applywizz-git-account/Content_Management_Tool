@@ -55,7 +55,7 @@ export enum UserStatus {
 }
 
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
-export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET';
+export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET' | 'CAPTION_BASED';
 
 export interface User {
   id: string;

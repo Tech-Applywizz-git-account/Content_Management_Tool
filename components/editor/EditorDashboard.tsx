@@ -6,6 +6,7 @@ import { getWorkflowStateForRole } from '../../services/workflowUtils';
 import EditorMyWork from './EditorMyWork';
 import EditorCalendar from './EditorCalendar';
 import EditorProjectDetail from './EditorProjectDetail';
+import UploadVideoModal from './UploadVideoModal';
 import Layout from '../Layout';
 import { supabase } from '../../src/integrations/supabase/client';
 
@@ -30,6 +31,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         const path = location.pathname;
         if (path.endsWith('/calendar')) return 'calendar';
         if (path.endsWith('/mywork')) return 'mywork';
+        if (path.endsWith('/create')) return 'create-video';
         return 'dashboard';
     };
 
@@ -91,6 +93,8 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         if (view === 'dashboard') {
             navigate(`/${rolePath}${searchStr}`);
+        } else if (view === 'create-video') {
+            navigate(`/${rolePath}/create${searchStr}`);
         } else {
             navigate(`/${rolePath}/${view}${searchStr}`);
         }
@@ -209,6 +213,14 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     navigate(`/editor/project/${selectedProject.id}`);
                     return null;
                 })()
+            ) : activeView === 'create-video' ? (
+                <UploadVideoModal
+                    onClose={() => handleViewChange('dashboard')}
+                    onSuccess={() => {
+                        handleViewChange('dashboard');
+                        onRefresh();
+                    }}
+                />
             ) : activeView === 'mywork' ? (
                 <EditorMyWork user={user} projects={activeFilter ? filteredProjects : historyProjects}
                     onSelectProject={(project) => {
@@ -230,6 +242,15 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 Edit Suite
                             </h1>
                             <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                onClick={() => handleViewChange('create-video')}
+                                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                Upload Video
+                            </button>
                         </div>
                     </div>
 

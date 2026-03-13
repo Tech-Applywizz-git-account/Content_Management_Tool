@@ -241,14 +241,20 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
 
             const currentApprovedCount = currentApprovals?.length || 0;
 
-            // Get total number of active writers
-            const { data: allWriters, error: writersError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('role', Role.WRITER)
-                .eq('status', 'ACTIVE');
+            // For MULTI_WRITER_APPROVAL (direct video upload flow), only 2 writers are required.
+            // For WRITER_VIDEO_APPROVAL (regular flow), count all active writers.
+            let totalWriters: number;
+            if (project.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL || project.data?.source === 'EDITOR_DIRECT_UPLOAD') {
+                totalWriters = 2; // Only Varshini & Kishore required for direct upload flow
+            } else {
+                const { data: allWriters } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', Role.WRITER)
+                    .eq('status', 'ACTIVE');
+                totalWriters = allWriters?.length || 0;
+            }
 
-            const totalWriters = allWriters?.length || 0;
             const newApprovedCount = currentApprovedCount + 1;
 
             // Determine the next stage automatically
@@ -279,13 +285,13 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 popupMsg = `You approved the video. The project has been sent to ${actualNextStageLabel}.`;
                 stageMsgName = actualNextStageLabel;
             } else if (newApprovedCount >= totalWriters) {
-                // All writers have approved, moving to next stage
-                popupMsg = `You approved the video. All ${totalWriters} writers have now approved. The project has been sent to ${actualNextStageLabel}.`;
+                // Both required writers have approved, moving to next stage
+                popupMsg = `You approved the video. Both writers have now approved. The project has been sent to ${actualNextStageLabel}.`;
                 stageMsgName = actualNextStageLabel;
             } else {
-                // Still need more approvals
-                popupMsg = `You approved the video. ${newApprovedCount} of ${totalWriters} writers have approved so far.`;
-                stageMsgName = 'Waiting for Other Writers';
+                // Still need the other writer's approval
+                popupMsg = `You approved the video. ${newApprovedCount} of ${totalWriters} writers have approved so far. Waiting for the other writer.`;
+                stageMsgName = 'Waiting for Other Writer';
             }
 
             // Show success popup
@@ -463,7 +469,9 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
 
                             {project.edited_video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Edited Video (from Editor)</h4>
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">
+                                        {project.data?.source === 'EDITOR_DIRECT_UPLOAD' ? 'Direct Upload Video (from Editor)' : 'Edited Video (from Editor)'}
+                                    </h4>
                                     <a
                                         href={project.edited_video_link}
                                         target="_blank"
@@ -471,6 +479,24 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                         className="text-blue-600 underline break-all"
                                     >
                                         {project.edited_video_link}
+                                    </a>
+                                </div>
+                            )}
+
+                            {/* Fallback: show data.video_link if edited_video_link column is empty (older direct-upload projects) */}
+                            {!project.edited_video_link && project.data?.video_link && (
+                                <div className="bg-white p-6 border-2 border-blue-400">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white border border-blue-800">Direct Upload</span>
+                                        <h4 className="font-black text-lg text-slate-900">Video Link (from Editor)</h4>
+                                    </div>
+                                    <a
+                                        href={project.data.video_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 underline break-all font-medium"
+                                    >
+                                        {project.data.video_link}
                                     </a>
                                 </div>
                             )}
@@ -489,7 +515,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 </div>
                             )}
 
-                            {(!project.video_link && !project.edited_video_link && !project.thumbnail_link) && (
+                            {(!project.video_link && !project.edited_video_link && !project.data?.video_link && !project.thumbnail_link) && (
                                 <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
                                     <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
                                 </div>
