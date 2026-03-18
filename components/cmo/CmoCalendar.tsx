@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project } from '../../types';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { db } from '../../services/supabaseDb';
 import {
   format,
   startOfMonth,
@@ -273,7 +274,7 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-white/20 rounded">
                       {entry.type}
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <span className="text-[10px] font-black uppercase px-2 py-0.5 border-2 border-white/30 bg-black/20 rounded">
                         {entry.channel}
                       </span>

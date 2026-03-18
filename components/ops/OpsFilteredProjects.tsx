@@ -172,22 +172,22 @@ const OpsFilteredProjects: React.FC<Props> = ({ user, projects, viewMode, onSele
 
                             {/* Asset Status */}
                             <div className="mb-4">
-                                {project.content_type === 'VIDEO' && project.video_link && (
+                                {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) && project.video_link && (
                                     <div className="flex items-center gap-2 text-sm mb-2">
                                         <Video size={16} className="text-blue-500" />
                                         <span className="text-blue-700 font-bold">Video Ready</span>
                                     </div>
                                 )}
 
-                                {(project.content_type === 'VIDEO' && project.thumbnail_link) || (project.content_type === 'CREATIVE_ONLY' && project.creative_link) ? (
+                                {(['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) && project.thumbnail_link) || (project.content_type === 'CREATIVE_ONLY' && project.creative_link) ? (
                                     <div className="flex items-center gap-2 text-sm">
-                                        {project.content_type === 'VIDEO' ? (
+                                        {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? (
                                             <Image size={16} className="text-purple-500" />
                                         ) : (
                                             <FileText size={16} className="text-purple-500" />
                                         )}
                                         <span className="text-purple-700 font-bold">
-                                            {project.content_type === 'VIDEO' ? 'Thumbnail' : 'Creative'} Delivered
+                                            {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Thumbnail' : 'Creative'} Delivered
                                         </span>
                                     </div>
                                 ) : null}

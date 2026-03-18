@@ -90,7 +90,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                         const dayProjects = getDeliveriesForDay(date);
                         const isCurrentDay = isToday(date);
                         const hasHighPriority = dayProjects.some(p => p.priority === 'HIGH');
-                        const hasVideo = dayProjects.some(p => p.content_type === 'VIDEO');
+                        const hasVideo = dayProjects.some(p => p.content_type === 'VIDEO' || p.content_type === 'APPLYWIZZ_USA_JOBS');
 
                         return (
                             <div
@@ -110,7 +110,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                                 </div>
                                 <div className="w-full space-y-0.5 overflow-hidden">
                                     {dayProjects.slice(0, 3).map(project => (
-                                        <div key={project.id} className={`text-[7px] text-white px-1 py-0.5 rounded font-black uppercase truncate w-full text-center ${project.content_type === 'VIDEO' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                                        <div key={project.id} className={`text-[7px] text-white px-1 py-0.5 rounded font-black uppercase truncate w-full text-center ${['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'bg-blue-600' : 'bg-purple-600'}`}>
                                             {project.title}
                                         </div>
                                     ))}
@@ -146,7 +146,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                         </div>
                         <div className="p-4 max-h-[60vh] overflow-y-auto space-y-3 bg-slate-50">
                             {selectedDay.projects.map(project => {
-                                const isVideo = project.content_type === 'VIDEO';
+                                const isVideo = project.content_type === 'VIDEO' || project.content_type === 'APPLYWIZZ_USA_JOBS';
                                 return (
                                     <div
                                         key={project.id}
@@ -203,7 +203,7 @@ const DesignerCalendar: React.FC<Props> = ({ projects }) => {
                 {deliveryDates.length > 0 ? (
                     <div className="space-y-3">
                         {deliveryDates.map(({ date, project }) => {
-                            const isVideo = project.content_type === 'VIDEO';
+                            const isVideo = project.content_type === 'VIDEO' || project.content_type === 'APPLYWIZZ_USA_JOBS';
                             return (
                                 <div
                                     key={project.id}

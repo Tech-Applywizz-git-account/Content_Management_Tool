@@ -479,6 +479,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
+                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
+                                                    USA JOBS
+                                                </span>
+                                            )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
@@ -571,6 +576,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             CREATIVE
                                                         </span>
                                                     )}
+                                                    {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                                        <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
+                                                            USA JOBS
+                                                        </span>
+                                                    )}
                                                     <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
                                                     {/* Show IDEA badge for idea projects */}
                                                     {p.data?.source === 'IDEA_PROJECT' && (
@@ -630,6 +640,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             {p.content_type === 'CREATIVE_ONLY' && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
                                                     CREATIVE
+                                                </span>
+                                            )}
+                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
+                                                    USA JOBS
                                                 </span>
                                             )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -718,6 +733,11 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             {p.content_type === 'CREATIVE_ONLY' && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
                                                     CREATIVE
+                                                </span>
+                                            )}
+                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
+                                                    USA JOBS
                                                 </span>
                                             )}
                                             <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">

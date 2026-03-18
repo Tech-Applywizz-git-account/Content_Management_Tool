@@ -1,8 +1,9 @@
 import React from 'react';
 import { Project, Role, TaskStatus } from '../../types';
-import { Clock, FileText, CheckCircle } from 'lucide-react';
+import { Clock, FileText, CheckCircle, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isReworkProject } from '../../services/workflowUtils';
+import { db } from '../../services/supabaseDb';
 
 interface Props {
   user: { full_name: string; role: Role };
@@ -104,7 +105,7 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                 </div>
               )}
 
-              <div className="flex justify-between pt-3 border-t">
+                <div className="flex justify-between pt-3 border-t">
                 <div className="flex flex-col">
                   <div className="flex items-center text-xs font-bold uppercase text-slate-500">
                     <Clock className="w-4 h-4 mr-2" />
@@ -115,9 +116,11 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
                   </div>
                 </div>
 
-                <div className="flex items-center text-xs font-bold uppercase text-blue-600">
-                  <FileText className="w-4 h-4 mr-2" />
-                  Review Now
+                <div className="flex items-center">
+                  <div className="flex items-center text-xs font-bold uppercase text-blue-600">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Review Now
+                  </div>
                 </div>
               </div>
             </div>

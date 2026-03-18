@@ -2375,12 +2375,12 @@ export const helpers = {
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.FINAL_REVIEW_CMO]: {
-                    stage: contentType === 'VIDEO' ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
-                    role: contentType === 'VIDEO' ? Role.EDITOR : Role.DESIGNER
+                    stage: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.EDITOR : Role.DESIGNER
                 },
                 [WorkflowStage.FINAL_REVIEW_CEO]: {
-                    stage: contentType === 'VIDEO' ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
-                    role: contentType === 'VIDEO' ? Role.EDITOR : Role.DESIGNER
+                    stage: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.EDITOR : Role.DESIGNER
                 },
                 // New sub-editor stages
                 [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
@@ -2436,8 +2436,8 @@ export const helpers = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
             [WorkflowStage.SCRIPT_REVIEW_L2]: {
-                stage: contentType === 'CAPTION_BASED' ? WorkflowStage.VIDEO_EDITING : (contentType === 'VIDEO' ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
-                role: contentType === 'CAPTION_BASED' ? Role.EDITOR : (contentType === 'VIDEO' ? Role.CINE : Role.DESIGNER)
+                stage: contentType === 'CAPTION_BASED' ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
+                role: contentType === 'CAPTION_BASED' ? Role.EDITOR : ((contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.CINE : Role.DESIGNER)
             },
 
             // CINE -> WRITER_VIDEO_APPROVAL (Writer)

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Project, Role, Channel, TaskStatus } from '../types';
 import { db } from '../services/supabaseDb';
 import { format } from 'date-fns';
-import { FileText, Clock, ExternalLink, Search } from 'lucide-react';
+import { FileText, Clock, ExternalLink, Search, Trash2 } from 'lucide-react';
 
 interface Props {
     user: { id: string; role: Role };
@@ -55,8 +55,26 @@ const LeadMagnetScripts: React.FC<Props> = ({ user, projects, onSelectProject })
                         <div
                             key={project.id}
                             onClick={() => onSelectProject(project)}
-                            className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
+                            className="relative bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
                         >
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (window.confirm(`Are you sure you want to delete the project "${project.title}"? This action cannot be undone.`)) {
+                                        try {
+                                            await db.projects.delete(project.id);
+                                            window.location.reload();
+                                        } catch (error) {
+                                            console.error('Error deleting project:', error);
+                                            alert('Failed to delete project. Please try again.');
+                                        }
+                                    }
+                                }}
+                                className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10 opacity-0 group-hover:opacity-100"
+                                title="Delete Project"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                             <div className="flex justify-between items-start mb-4">
                                 <span className="px-2 py-1 text-[10px] font-black uppercase border-2 border-black bg-[#6366F1] text-white">
                                     {project.channel}

@@ -313,7 +313,11 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
   };
 
   // Determine if the project is a video project
-  const isVideo = localProject.channel === 'YOUTUBE' || localProject.channel === 'INSTAGRAM';
+  const isVideo = localProject.channel === 'YOUTUBE' || 
+    localProject.channel === 'INSTAGRAM' || 
+    localProject.channel === 'JOBBOARD' || 
+    localProject.channel === 'LEAD_MAGNET' ||
+    localProject.content_type === 'APPLYWIZZ_USA_JOBS';
 
   // Determine which sections to show based on user role
   const showCinematographySection = userRole === Role.CINE;
@@ -414,7 +418,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
             )}
 
             {/* Conditionally show shoot date for cinematography stage */}
-            {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
+            {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Shoot Date</h3>
                 <p className="font-medium bg-slate-50 p-2">{formatDateDDMMYYYY(localProject.shoot_date)}</p>
@@ -489,7 +493,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
           <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
-              <h2 className="text-xl font-black uppercase">Completed Video Link</h2>
+              <h2 className="text-xl font-black uppercase">Edited Video</h2>
             </div>
             <div className="space-y-4">
               <div className="bg-green-50 border-2 border-green-400 p-3">
@@ -539,7 +543,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
                 <div className="pt-4 border-t-2 border-gray-200">
                   <h3 className="text-md font-bold text-slate-700 mb-2">Raw Video Reference</h3>
                   <div className="bg-blue-50 border-2 border-blue-200 p-3">
-                    <p className="text-sm font-bold text-blue-800 mb-1">Raw Video Link:</p>
+                    <p className="text-sm font-bold text-blue-800 mb-1">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot Video' : 'Shoot Video'}:</p>
                     <a
                       href={localProject.video_link}
                       target="_blank"
@@ -565,7 +569,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
           {(localProject?.shoot_date || localProject?.delivery_date || localProject?.post_scheduled_date || localProject?.data?.script_reference_link) && (
             <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject?.shoot_date && (
+                {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject?.shoot_date && (
                   <div className="flex items-center">
                     <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                     <span className="font-bold text-green-600">{formatDateDDMMYYYY(localProject.shoot_date)}</span>
@@ -669,7 +673,7 @@ const CineScripts: React.FC<Props> = ({ project: initialProject, userRole, onBac
                     break;
                   case 'CINEMATOGRAPHY':
                     if (comment.action === 'SUBMITTED') {
-                      description = 'Raw video uploaded by cinematographer';
+                      description = `${['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot' : 'Shoot'} video uploaded by cinematographer`;
                     }
                     break;
                   case 'VIDEO_EDITING':

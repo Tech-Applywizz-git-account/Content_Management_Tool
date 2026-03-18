@@ -426,7 +426,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date) && (
               <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {!['JOBBOARD', 'LEAD_MAGNET'].includes(selectedProject.content_type) && selectedProject?.shoot_date && (
+                  {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(selectedProject.content_type) && selectedProject?.shoot_date && (
                     <div className="flex items-center">
                       <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                       <span className="font-bold text-green-600">{format(new Date(selectedProject.shoot_date), 'dd-MM-yyyy')}</span>
@@ -491,7 +491,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                       break;
                     case 'CINEMATOGRAPHY':
                       if (comment.action === 'SUBMITTED') {
-                        description = 'Raw video uploaded by cinematographer';
+                        description = ['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(selectedProject.content_type) ? 'Influencer video uploaded by writer' : 'Shoot video uploaded by cinematographer';
                       }
                       break;
                     case 'VIDEO_EDITING':
@@ -745,6 +745,12 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                 {task.content_type === 'CREATIVE_ONLY' && (
                   <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-yellow-400 text-black">
                     CREATIVE
+                  </span>
+                )}
+
+                {task.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                  <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-orange-400 text-white">
+                    USA JOBS
                   </span>
                 )}
 

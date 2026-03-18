@@ -531,17 +531,17 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
                     {project.current_stage === WorkflowStage.WRITER_REVISION && (
                         <div className="bg-blue-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold">Upload Processed Video</h3>
-                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the raw video link for the editor to process.</p>
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold">Upload {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} Video</h3>
+                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'influencer' : 'shoot'} video link for the editor to process.</p>
 
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">Video Link (Google Drive / S3 / Direct)</label>
+                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} Video Link (Google Drive / S3 / Direct)</label>
                                     <input
                                         type="text"
                                         value={videoLink}
                                         onChange={(e) => setVideoLink(e.target.value)}
-                                        placeholder="Enter the video link here"
+                                        placeholder={`Enter the ${['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'influencer' : 'shoot'} video link here`}
                                         className="w-full p-3 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                                     />
                                 </div>
@@ -557,7 +557,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                             await db.projects.update(project.id, { video_link: videoLink });
                                             await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
 
-                                            setPopupMessage('Video uploaded and project sent for final CMO review!');
+                                            setPopupMessage(`${['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
                                             setStageName('Final Review (CMO)');
                                             setPopupDuration(5000);
                                             setShowPopup(true);

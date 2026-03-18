@@ -877,7 +877,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     if (newProjectDetails.channel === Channel.LINKEDIN && newProjectDetails.contentType === 'VIDEO') {
       const channelLabel = 'LinkedIn';
       setValidationError(`${channelLabel} does not support video content. Please select a different channel or change content type to Creative Only.`);
-    } else if (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) {
+    } else if ((newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && formData.thumbnail_required === undefined) {
       setValidationError('Thumbnail requirement must be specified for video content.');
     } else {
       setValidationError(null);
@@ -1448,7 +1448,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           }
 
           // Validate thumbnail requirement for video-based content
-          const isVideoBased = ['VIDEO', 'JOBBOARD', 'LEAD_MAGNET'].includes(newProjectDetails.contentType);
+          const isVideoBased = ['VIDEO', 'JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(newProjectDetails.contentType);
           if (isVideoBased && formData.thumbnail_required === undefined) {
             throw new Error('Thumbnail requirement must be specified for this content type. Please select Yes or No.');
           }
@@ -2029,11 +2029,23 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     >
                       📝 Caption Based
                     </button>
+                    <button
+                      onClick={() =>
+                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'APPLYWIZZ_USA_JOBS' }) : null
+                      }
+                      disabled={!canEdit}
+                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS'
+                        ? 'bg-[#8B5CF6] text-white'
+                        : 'bg-white hover:bg-slate-50'
+                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      🇺🇸 Applywizz USA Jobs
+                    </button>
                   </div>
                 </div>
 
                 {/* Thumbnail Required - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED') && (
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && (
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                       Thumbnail Required *
@@ -2173,7 +2185,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </div>
 
                 {/* Cinematographer Instructions - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED') && (
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && (
                   <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
                     <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
                       Cinematography Instructions

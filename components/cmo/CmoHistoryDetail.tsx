@@ -4,6 +4,7 @@ import { Project, Role } from '../../types';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
+import { Trash2 } from 'lucide-react';
 
 interface HistoryEntry {
   action: 'APPROVED' | 'REJECTED' | 'SUBMITTED';
@@ -442,15 +443,16 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             </div>
           </div>
         </div>
-
-        {isActor && onEdit && (
-          <button
-            onClick={onEdit}
-            className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-          >
-            Edit
-          </button>
-        )}
+        <div className="flex items-center space-x-2">
+          {isActor && onEdit && (
+            <button
+              onClick={onEdit}
+              className="px-4 py-2 bg-[#0085FF] text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              Edit
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row w-full">

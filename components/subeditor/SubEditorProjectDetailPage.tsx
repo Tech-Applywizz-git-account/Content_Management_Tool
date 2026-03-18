@@ -445,7 +445,7 @@ const SubEditorProjectDetailPage: React.FC<{
                         <div className="flex items-center gap-2 mb-4">
                             <Video className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase">
-                                {['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video (from Cinematographer)'}
+                                {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}
                             </h2>
                         </div>
                         <div className="bg-blue-50 border-2 border-blue-400 p-4">
@@ -517,7 +517,7 @@ const SubEditorProjectDetailPage: React.FC<{
                         <div className="flex items-center gap-2 mb-4">
                             <Film className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase">
-                                {isRejected ? 'Rejected Edited Video Upload' : isRework ? 'Rework Edited Video Upload' : 'Edited Video Upload'}
+                                {isRejected ? 'Rejected Edited Video Upload' : isRework ? 'Rework Edited Video Upload' : 'Edited Video'}
                             </h2>
                         </div>
 

@@ -338,11 +338,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
               <h2 className="text-xl font-black uppercase">
-                {['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) ? 'Influencer Video' : 'Raw Video Assets'}
+                {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Influencer Video' : 'Shoot Video'}
               </h2>
             </div>
             <div className="bg-blue-50 border-2 border-blue-400 p-4">
-              {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && (
+              {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && (
                 <p className="text-sm font-bold text-blue-800 mb-2">
                   📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                 </p>
@@ -621,13 +621,13 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               <div className="flex items-center gap-2 mb-4">
                 <Film className="w-5 h-5" />
                 <h2 className="text-xl font-black uppercase">
-                  {isDirectUpload
-                    ? 'Uploaded Video'
-                    : isRejected
-                      ? 'Rejected Edited Video Upload'
-                      : isRework
-                        ? 'Rework Edited Video Upload'
-                        : 'Edited Video Upload'}
+                    {isDirectUpload
+                      ? 'Edited Video'
+                      : isRejected
+                        ? 'Rejected Edited Video Upload'
+                        : isRework
+                          ? 'Rework Edited Video Upload'
+                          : 'Edited Video'}
                 </h2>
               </div>
 

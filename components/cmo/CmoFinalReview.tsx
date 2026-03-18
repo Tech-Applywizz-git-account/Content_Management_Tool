@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, Role, WorkflowStage } from '../../types';
 import { format } from 'date-fns';
-import { Eye, Calendar, FileText, CheckCircle, Clock } from 'lucide-react';
+import { Eye, Calendar, FileText, CheckCircle, Clock, Trash2 } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoReviewScreen from './CmoReviewScreen';
@@ -140,7 +140,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
             <div
               key={project.id}
               onClick={() => onProjectSelect(project)}
-              className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
+              className="relative bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer group"
             >
               <div className="p-6 space-y-4">
                 {/* Project Header */}

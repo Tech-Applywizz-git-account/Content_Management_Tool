@@ -534,7 +534,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 <div className="bg-white border-2 border-gray-300 p-4">
                                     <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {!['JOBBOARD', 'LEAD_MAGNET'].includes(localProject.content_type) && localProject.shoot_date && (
+                                        {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject.shoot_date && (
                                             <div>
                                                 <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
                                                 <p className="font-medium">{localProject.shoot_date}</p>

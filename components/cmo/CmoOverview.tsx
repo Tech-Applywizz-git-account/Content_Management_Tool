@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, Role, TaskStatus, WorkflowStage, User } from '../../types';
 import { format } from 'date-fns';
+import { Trash2 } from 'lucide-react';
 import { supabase } from '../../src/integrations/supabase/client';
 import { db } from '../../services/supabaseDb';
 import CmoTimelineView from './CmoTimelineView';
@@ -927,6 +928,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                       View Details
                     </button>
                   )}
+
                 </div>
               </div>
             ))}

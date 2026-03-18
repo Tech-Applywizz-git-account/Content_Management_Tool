@@ -35,7 +35,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
-    const isVideo = project.content_type === 'VIDEO';
+    const isVideo = project.content_type === 'VIDEO' || project.content_type === 'APPLYWIZZ_USA_JOBS';
     // Use canonical rework condition
     const isRework = isActiveRework(localProject, userRole);
 

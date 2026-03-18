@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, Channel, TaskStatus } from '../../types';
 import { format } from 'date-fns';
-import { ArrowLeft, Video, Image as ImageIcon, MessageSquare, Clock, CheckCircle, AlertTriangle, FileText, Palette, Link as LinkIcon, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Video, Image as ImageIcon, MessageSquare, Clock, CheckCircle, AlertTriangle, FileText, Palette, Link as LinkIcon, ExternalLink, Trash2 } from 'lucide-react';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Timeline from '../../components/Timeline';
 import { db } from '../../services/supabaseDb';
@@ -297,7 +297,8 @@ action,
     const isVideo = fullProject.channel === Channel.YOUTUBE ||
         fullProject.channel === Channel.INSTAGRAM ||
         fullProject.channel === Channel.JOBBOARD ||
-        fullProject.channel === Channel.LEAD_MAGNET;
+        fullProject.channel === Channel.LEAD_MAGNET ||
+        fullProject.content_type === 'APPLYWIZZ_USA_JOBS';
 
     const getRoleForStage = (stage: WorkflowStage): string => {
         const stageToRoleMap: Record<WorkflowStage, Role> = {
@@ -454,6 +455,7 @@ action,
                         </div>
                     </div>
                 </div>
+
             </header>
 
             <div className="flex-1 flex flex-col md:flex-row w-full">
@@ -631,7 +633,7 @@ action,
                             {(fullProject?.shoot_date || fullProject?.delivery_date || fullProject?.post_scheduled_date) && (
                                 <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {!['JOBBOARD', 'LEAD_MAGNET'].includes(fullProject.content_type) && fullProject?.shoot_date && (
+                                        {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) && fullProject?.shoot_date && (
                                             <div className="flex items-center">
                                                 <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                                                 <span className="font-bold text-green-600">{formatDateDDMMYYYY(fullProject.shoot_date)}</span>
@@ -727,7 +729,8 @@ action,
                                                 break;
                                             case 'CINEMATOGRAPHY':
                                                 if (comment.action === 'SUBMITTED') {
-                                                    description = 'Raw video uploaded by cinematographer';
+                                                    const videoLabel = ['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot video' : 'Raw video';
+                                                    description = `${videoLabel} uploaded by cinematographer`;
                                                 }
                                                 break;
                                             case 'VIDEO_EDITING':
@@ -813,8 +816,8 @@ action,
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">Video_Footage.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">Raw footage</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
+                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
                                                 </div>
                                                 <a href={fullProject.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>
@@ -830,7 +833,7 @@ action,
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
                                                     <p className="font-black text-slate-900 text-sm uppercase">Edited_Video.mp4</p>
-                                                    <p className="text-xs text-slate-500 font-bold">1080p • 24mb</p>
+                                                    <p className="text-xs text-slate-500 font-bold">Edited Video</p>
                                                 </div>
                                                 <a href={fullProject.edited_video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>

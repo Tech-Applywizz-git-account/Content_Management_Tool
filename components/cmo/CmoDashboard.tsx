@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, User } from '../../types';
 import { isReworkProject, isReworkInitiatedByRole } from '../../services/workflowUtils';
 import { format } from 'date-fns';
-import { Clock, Plus } from 'lucide-react';
+import { Clock, Plus, Trash2 } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
 import CmoProjectDetails from './CmoProjectDetails';
@@ -117,6 +117,24 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
+
+  // Delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirmed = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      await db.projects.delete(deleteConfirm.id);
+      setDeleteConfirm(null);
+      onRefresh();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const path = location.pathname;
@@ -597,7 +615,14 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     </div>
                     <div className="space-y-4">
                       {pendingApprovalProjects.map(p => (
-                        <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}>
+                        <div key={p.id} className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
+                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           <div className="flex flex-wrap gap-2 mb-4">
                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                               p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -656,9 +681,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       {ideasPendingAtCMO.map(p => (
                         <div
                           key={p.id}
-                          className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
                           onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}
                         >
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
+                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           <div className="flex flex-wrap gap-2 mb-4">
                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                               p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -718,9 +750,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                       {pendingAtCEO.map(p => (
                         <div
                           key={p.id}
-                          className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                          className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
                           onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                         >
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
+                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
+                            title="Delete Project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           <div className="flex flex-wrap gap-2 mb-4">
                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                               p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -799,9 +838,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           {inShoot.map(p => (
                             <div
                               key={p.id}
-                              className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                              className="relative bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                               onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                             >
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
+                                className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                               <div className="flex flex-wrap gap-2 mb-4">
                                 <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                   p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -877,9 +923,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           {inEditor.map(p => (
                             <div
                               key={p.id}
-                              className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                              className="relative bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                               onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
                             >
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
+                                className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                               <div className="flex flex-wrap gap-2 mb-4">
                                 <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                   p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
@@ -970,6 +1023,44 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             stageName={stageName}
             onClose={() => setShowPopup(false)}
           />
+        )}
+
+        {/* Centered Delete Confirmation Modal */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50" onClick={() => !isDeleting && setDeleteConfirm(null)} />
+            <div className="relative bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 max-w-md w-full mx-4">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 bg-red-100 border-2 border-black flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <h2 className="text-xl font-black uppercase text-slate-900">Delete Project</h2>
+              </div>
+              <p className="text-sm font-bold text-slate-600 mb-2">
+                Are you sure you want to delete:
+              </p>
+              <p className="font-black text-slate-900 uppercase mb-6 bg-red-50 border-2 border-red-200 px-3 py-2">
+                &ldquo;{deleteConfirm.title}&rdquo;
+              </p>
+              <p className="text-xs font-bold text-red-600 uppercase mb-6">⚠ This action cannot be undone.</p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleDeleteConfirmed}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-white text-slate-900 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </Layout>
     </>

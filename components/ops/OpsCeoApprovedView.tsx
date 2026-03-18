@@ -15,7 +15,11 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
         return dateString ? format(new Date(dateString), 'MMM dd, yyyy h:mm a') : '—';
     };
 
-    const isVideo = project?.channel === Channel.YOUTUBE || project?.channel === Channel.INSTAGRAM;
+    const isVideo = project?.channel === Channel.YOUTUBE || 
+        project?.channel === Channel.INSTAGRAM || 
+        project?.channel === Channel.JOBBOARD || 
+        project?.channel === Channel.LEAD_MAGNET ||
+        project?.content_type === 'APPLYWIZZ_USA_JOBS';
 
     // Helpers for timestamps
     const getMostRecentTimestampForStage = (currentStage: WorkflowStage): string => {
@@ -293,7 +297,7 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
                                         </div>
                                         <div className="p-4 flex justify-between items-center bg-white">
                                             <div>
-                                                <p className="font-black text-slate-900 text-sm uppercase">Raw Video</p>
+                                                <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
                                             </div>
                                             <a href={project?.video_link || ''} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View</a>
                                         </div>

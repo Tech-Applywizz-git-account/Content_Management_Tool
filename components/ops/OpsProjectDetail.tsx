@@ -156,7 +156,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         }
     };
 
-    const isVideo = project.content_type === 'VIDEO';
+    const isVideo = ['VIDEO', 'APPLYWIZZ_USA_JOBS', 'JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type);
     const isPosted = project.data?.live_url || project.status === 'DONE';
 
     return (
@@ -283,7 +283,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                                         <div className="flex items-center gap-2 mb-2">
                                             <Video size={16} className="text-slate-700" />
-                                            <label className="text-sm font-bold text-slate-700">Raw Video (Cine):</label>
+                                            <label className="text-sm font-bold text-slate-700">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}:</label>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <a

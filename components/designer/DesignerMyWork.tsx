@@ -48,8 +48,8 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
         const sortedProjects = [...(projects || [])].sort((a, b) => {
             const aHasDeliveryDate = !!a.delivery_date;
             const bHasDeliveryDate = !!b.delivery_date;
-            const isVideoA = a.content_type === 'VIDEO';
-            const isVideoB = b.content_type === 'VIDEO';
+            const isVideoA = a.content_type === 'VIDEO' || a.content_type === 'APPLYWIZZ_USA_JOBS';
+            const isVideoB = b.content_type === 'VIDEO' || b.content_type === 'APPLYWIZZ_USA_JOBS';
             const aHasCreative = isVideoA ? !!a.thumbnail_link : !!a.creative_link;
             const bHasCreative = isVideoB ? !!b.thumbnail_link : !!b.creative_link;
 
@@ -143,7 +143,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
-                    const isVideo = project.content_type === 'VIDEO';
+                    const isVideo = project.content_type === 'VIDEO' || project.content_type === 'APPLYWIZZ_USA_JOBS';
                     const isDelivered = isVideo ? !!project.thumbnail_link : !!project.creative_link;
 
                     // Use the canonical rework condition

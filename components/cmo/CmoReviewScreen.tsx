@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
+import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download, Trash2 } from 'lucide-react';
 import Popup from '../Popup';
 import ScriptComparison from '../ScriptComparison';
 import ScriptDisplay from '../ScriptDisplay';
@@ -44,8 +44,16 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [confirmationAction, setConfirmationAction] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
 
+    // Delete confirmation state
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM || project.channel === Channel.JOBBOARD || project.channel === Channel.LEAD_MAGNET;
+    const isVideo = project.channel === Channel.YOUTUBE || 
+        project.channel === Channel.INSTAGRAM || 
+        project.channel === Channel.JOBBOARD || 
+        project.channel === Channel.LEAD_MAGNET ||
+        project.content_type === 'APPLYWIZZ_USA_JOBS';
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
@@ -639,6 +647,13 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </div>
                     </div>
                 </div>
+                <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center space-x-2 px-4 py-2 bg-red-50 text-red-600 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Script</span>
+                </button>
             </header>
 
             <div className="flex-1 flex flex-col md:flex-row w-full">
@@ -935,7 +950,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             {/* Raw Video Assets */}
                                             {isVideo && (currVideo || prevVideo) && (
                                                 <div className="space-y-2">
-                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Video Footage'}</h4>}
+                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</h4>}
                                                     <div className="grid grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showRaw && (
@@ -1091,8 +1106,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer_Video.mp4' : 'Video_Footage.mp4'}</p>
-                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw footage'}</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
+                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
                                                 </div>
                                                 <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>
@@ -1168,7 +1183,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
                                         {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' :
-                                            ((project.content_type === 'JOBBOARD' || project.content_type === 'LEAD_MAGNET') && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
+                                            ((project.content_type === 'JOBBOARD' || project.content_type === 'LEAD_MAGNET' || project.content_type === 'APPLYWIZZ_USA_JOBS') && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
                                                 'Ready for Publishing'}
                                     </span>
                                 </div>
@@ -1328,6 +1343,54 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                     </div>
                 </div>
             )}
+        {/* Centered Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/50" onClick={() => !isDeleting && setShowDeleteConfirm(false)} />
+                <div className="relative bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 max-w-md w-full mx-4">
+                    <div className="flex items-center space-x-3 mb-4">
+                        <div className="w-10 h-10 bg-red-100 border-2 border-black flex items-center justify-center flex-shrink-0">
+                            <Trash2 className="w-5 h-5 text-red-600" />
+                        </div>
+                        <h2 className="text-xl font-black uppercase text-slate-900">Delete Project</h2>
+                    </div>
+                    <p className="text-sm font-bold text-slate-600 mb-2">
+                        Are you sure you want to delete:
+                    </p>
+                    <p className="font-black text-slate-900 uppercase mb-6 bg-red-50 border-2 border-red-200 px-3 py-2">
+                        &ldquo;{project.title}&rdquo;
+                    </p>
+                    <p className="text-xs font-bold text-red-600 uppercase mb-6">⚠ This action cannot be undone.</p>
+                    <div className="flex space-x-3">
+                        <button
+                            onClick={async () => {
+                                setIsDeleting(true);
+                                try {
+                                    await db.projects.delete(project.id);
+                                    setShowDeleteConfirm(false);
+                                    onBack();
+                                } catch (error) {
+                                    console.error('Error deleting project:', error);
+                                } finally {
+                                    setIsDeleting(false);
+                                }
+                            }}
+                            disabled={isDeleting}
+                            className="flex-1 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+                        >
+                            {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                        </button>
+                        <button
+                            onClick={() => setShowDeleteConfirm(false)}
+                            disabled={isDeleting}
+                            className="flex-1 py-3 bg-white text-slate-900 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
         </div>
     );
 };

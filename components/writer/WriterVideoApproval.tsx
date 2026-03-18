@@ -455,7 +455,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                         <div className="space-y-6">
                             {project.video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video (from Cinematographer)'}</h4>
+                                    <h4 className="font-black text-lg text-slate-900 mb-4">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Shoot Video'}</h4>
                                     <a
                                         href={project.video_link}
                                         target="_blank"
@@ -470,7 +470,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             {project.edited_video_link && (
                                 <div className="bg-white p-6 border-2 border-slate-300">
                                     <h4 className="font-black text-lg text-slate-900 mb-4">
-                                        {project.data?.source === 'EDITOR_DIRECT_UPLOAD' ? 'Direct Upload Video (from Editor)' : 'Edited Video (from Editor)'}
+                                        Edited Video
                                     </h4>
                                     <a
                                         href={project.edited_video_link}
@@ -488,7 +488,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <div className="bg-white p-6 border-2 border-blue-400">
                                     <div className="flex items-center gap-2 mb-3">
                                         <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white border border-blue-800">Direct Upload</span>
-                                        <h4 className="font-black text-lg text-slate-900">Video Link (from Editor)</h4>
+                                        <h4 className="font-black text-lg text-slate-900">Edited Video</h4>
                                     </div>
                                     <a
                                         href={project.data.video_link}

@@ -55,7 +55,7 @@ export enum UserStatus {
 }
 
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
-export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET' | 'CAPTION_BASED';
+export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET' | 'CAPTION_BASED' | 'APPLYWIZZ_USA_JOBS';
 
 export interface User {
   id: string;
