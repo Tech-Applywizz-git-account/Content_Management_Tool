@@ -6,7 +6,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
-import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import { isActiveRework, getCanonicalReworkComment, canUserEdit, isInfluencerVideo } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
 import ScriptDisplay from '../ScriptDisplay';
 
@@ -35,7 +35,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [thumbnailLink, setThumbnailLink] = useState(processedProject.thumbnail_link || '');
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
-    const isVideo = project.content_type === 'VIDEO' || project.content_type === 'APPLYWIZZ_USA_JOBS';
+    const isVideo = project.content_type === 'VIDEO' || isInfluencerVideo(project);
     // Use canonical rework condition
     const isRework = isActiveRework(localProject, userRole);
 
@@ -672,16 +672,25 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             <span className="font-bold text-slate-400 uppercase text-xs">Type</span>
                             <p className="font-bold text-slate-900 mt-1 uppercase leading-none">{project.content_type?.replace('_', ' ')}</p>
                         </div>
+                        {localProject.brand && (
+                            <div className="col-span-full border-t border-slate-100 pt-3">
+                                <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
+                                <p className="font-black text-[#0085FF] mt-1 uppercase">
+                                    {localProject.brand.replace(/_/g, ' ')}
+                                </p>
+                            </div>
+                        )}
                         {localProject.data?.niche && (
-                            <div className="col-span-full">
+                            <div className="col-span-full border-t border-slate-100 pt-3">
                                 <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                                 <p className="font-bold text-slate-900 mt-1 uppercase">
                                     {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                                                    ? localProject.data.niche_other
-                                                    : localProject.data.niche}
+                                                : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                    : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                                        ? localProject.data.niche_other
+                                                        : localProject.data.niche}
                                 </p>
                             </div>
                         )}

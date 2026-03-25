@@ -25,10 +25,11 @@ interface LayoutProps {
   activeView?: string;
   onChangeView?: (view: string) => void;
   finalReviewCount?: number;
+  approvedVideosCount?: number;
   hideSidebar?: boolean;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate, activeView = 'dashboard', onChangeView, finalReviewCount, hideSidebar = false }) => {
+const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate, activeView = 'dashboard', onChangeView, finalReviewCount, approvedVideosCount, hideSidebar = false }) => {
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
@@ -151,7 +152,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                     }`}
                 >
                   <Video className="w-5 h-5" />
-                  <span>Approved Influencer Videos</span>
+                  <span className="flex items-center">
+                    Approved Influencer Videos
+                    {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
+                      <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                        {approvedVideosCount}
+                      </span>
+                    )}
+                  </span>
                 </button>
               )}
 
@@ -267,7 +275,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'approved-videos' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
             >
               <Video className="w-5 h-5" />
-              <span>Approved Influencer Videos</span>
+              <span className="flex items-center">
+                Approved Influencer Videos
+                {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
+                  <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                    {approvedVideosCount}
+                  </span>
+                )}
+              </span>
             </button>
           )}
 

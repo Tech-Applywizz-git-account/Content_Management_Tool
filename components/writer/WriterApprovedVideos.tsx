@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Project, WorkflowStage } from '../../types';
 import { Video, Clock, Search } from 'lucide-react';
 import { format } from 'date-fns';
+import { isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
     user: any;
@@ -14,16 +15,24 @@ const WriterApprovedVideos: React.FC<Props> = ({ user, projects, onSelectProject
 
     // Filter for JOBBOARD and LEAD_MAGNET projects that have passed video approval or are in POSTED
     const approvedProjects = projects.filter(p => {
-        if (!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(p.content_type)) return false;
+        if (!isInfluencerVideo(p)) return false;
 
-        // Has a history of WRITER_VIDEO_APPROVAL
+        // Project has passed the editor stage and is now available for the writer (or beyond)
+        const isPostEditor = [
+            WorkflowStage.WRITER_VIDEO_APPROVAL,
+            WorkflowStage.MULTI_WRITER_APPROVAL,
+            WorkflowStage.WRITER_REVISION,
+            WorkflowStage.FINAL_REVIEW_CMO,
+            WorkflowStage.FINAL_REVIEW_CEO,
+            WorkflowStage.POSTED
+        ].includes(p.current_stage);
+
+        // Or it has explicitly been approved in history
         const hasApproved = p.history?.some(
-            h => h.stage === WorkflowStage.WRITER_VIDEO_APPROVAL && h.action === 'APPROVED' &&
-                // Check if current user is the one who approved it
-                (h.actor_id === user.id || p.created_by === user.id)
+            h => h.stage === WorkflowStage.WRITER_VIDEO_APPROVAL && h.action === 'APPROVED'
         );
 
-        return hasApproved || (p.current_stage === WorkflowStage.POSTED && p.writer_id === user.id);
+        return isPostEditor || hasApproved || p.status === 'COMPLETED';
     });
 
     const filteredProjects = approvedProjects.filter(p =>
@@ -66,9 +75,9 @@ const WriterApprovedVideos: React.FC<Props> = ({ user, projects, onSelectProject
                             className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex flex-col h-full"
                         >
                             <div className="flex justify-between items-start mb-4">
-                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.content_type === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' : 'bg-[#10B981] text-white'
+                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${isInfluencerVideo(p) ? 'bg-[#F59E0B] text-white' : 'bg-[#10B981] text-white'
                                     }`}>
-                                    {p.content_type}
+                                    {p.brand?.replace(/_/g, ' ') || p.content_type?.replace(/_/g, ' ')}
                                 </span>
                                 {p.data?.influencer_name && (
                                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 border-2 border-black uppercase">
@@ -80,8 +89,18 @@ const WriterApprovedVideos: React.FC<Props> = ({ user, projects, onSelectProject
                             <h3 className="font-black text-lg text-slate-900 mb-2 uppercase line-clamp-2" title={p.title}>{p.title}</h3>
 
                             <div className="mt-auto pt-4 border-t-2 border-slate-100 flex items-center justify-between">
-                                <span className="px-2 py-1 text-xs font-black uppercase bg-green-100 text-green-800 border-2 border-black">
-                                    Approved
+                                <span className={`px-2 py-1 text-xs font-black uppercase border-2 border-black ${
+                                    [WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.MULTI_WRITER_APPROVAL].includes(p.current_stage) 
+                                      ? 'bg-orange-100 text-orange-800 border-orange-400' 
+                                      : p.current_stage === WorkflowStage.WRITER_REVISION 
+                                        ? 'bg-blue-100 text-blue-800 border-blue-400'
+                                        : 'bg-green-100 text-green-800 border-green-400'
+                                }`}>
+                                    {[WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.MULTI_WRITER_APPROVAL].includes(p.current_stage) 
+                                      ? 'Awaiting Approval' 
+                                      : p.current_stage === WorkflowStage.WRITER_REVISION 
+                                        ? 'Ready for Upload' 
+                                        : 'Approved'}
                                 </span>
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                                     <Clock className="w-3 h-3 mr-1" />

@@ -2,6 +2,7 @@ import React from 'react';
 import { Project, TaskStatus, WorkflowStage } from '../../types';
 import { FileText, Video, Image, Link as LinkIcon, Eye, Clock, CheckCircle, AlertTriangle, CalendarCheck, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
+import { isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
     user: { full_name: string };
@@ -172,22 +173,22 @@ const OpsFilteredProjects: React.FC<Props> = ({ user, projects, viewMode, onSele
 
                             {/* Asset Status */}
                             <div className="mb-4">
-                                {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) && project.video_link && (
+                                {(['VIDEO'].includes(project.content_type) || isInfluencerVideo(project)) && project.video_link && (
                                     <div className="flex items-center gap-2 text-sm mb-2">
                                         <Video size={16} className="text-blue-500" />
                                         <span className="text-blue-700 font-bold">Video Ready</span>
                                     </div>
                                 )}
 
-                                {(['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) && project.thumbnail_link) || (project.content_type === 'CREATIVE_ONLY' && project.creative_link) ? (
+                                {((['VIDEO'].includes(project.content_type) || isInfluencerVideo(project)) && project.thumbnail_link) || (project.content_type === 'CREATIVE_ONLY' && project.creative_link) ? (
                                     <div className="flex items-center gap-2 text-sm">
-                                        {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? (
+                                        {(['VIDEO'].includes(project.content_type) || isInfluencerVideo(project)) ? (
                                             <Image size={16} className="text-purple-500" />
                                         ) : (
                                             <FileText size={16} className="text-purple-500" />
                                         )}
                                         <span className="text-purple-700 font-bold">
-                                            {['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Thumbnail' : 'Creative'} Delivered
+                                            {(['VIDEO'].includes(project.content_type) || isInfluencerVideo(project)) ? 'Thumbnail' : 'Creative'} Delivered
                                         </span>
                                     </div>
                                 ) : null}

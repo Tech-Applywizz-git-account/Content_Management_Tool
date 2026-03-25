@@ -541,6 +541,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <div className="hidden md:grid grid-cols-12 gap-4 items-center p-6">
                               <div className="col-span-4 font-black uppercase text-lg truncate">
                                 {p.title}
+                                {p.brand && (
+                                  <div className="text-[10px] font-black text-[#0085FF] uppercase">
+                                    {p.brand.replace(/_/g, ' ')}
+                                  </div>
+                                )}
                               </div>
                               <div className="col-span-2">
                                 <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -651,6 +656,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             </span>
                           </div>
                           <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
+                          {p.brand && (
+                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                              Brand: {p.brand.replace(/_/g, ' ')}
+                            </div>
+                          )}
                           <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                               <Clock className="w-3 h-3 mr-1" />
@@ -720,6 +730,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             </span>
                           </div>
                           <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                          {p.brand && (
+                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                              Brand: {p.brand.replace(/_/g, ' ')}
+                            </div>
+                          )}
                           <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                               <Clock className="w-3 h-3 mr-1" />
@@ -789,6 +804,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             </span>
                           </div>
                           <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                          {p.brand && (
+                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                              Brand: {p.brand.replace(/_/g, ' ')}
+                            </div>
+                          )}
                           <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                             <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                               <Clock className="w-3 h-3 mr-1" />
@@ -894,6 +914,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 </span>
                               </div>
                               <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                              {p.brand && (
+                                <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                                  Brand: {p.brand.replace(/_/g, ' ')}
+                                </div>
+                              )}
                               <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                                   <Clock className="w-3 h-3 mr-1" />
@@ -976,6 +1001,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 </span>
                               </div>
                               <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                              {p.brand && (
+                                <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                                  Brand: {p.brand.replace(/_/g, ' ')}
+                                </div>
+                              )}
                               <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                                   <Clock className="w-3 h-3 mr-1" />

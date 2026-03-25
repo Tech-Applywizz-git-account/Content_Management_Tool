@@ -5,7 +5,7 @@ import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare } from 'lucide-react';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
-import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
   project: Project;
@@ -318,9 +318,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
   // Determine if the project is a video project
   const isVideo = localProject.channel === 'YOUTUBE' || 
     localProject.channel === 'INSTAGRAM' || 
-    localProject.channel === 'JOBBOARD' || 
-    localProject.channel === 'LEAD_MAGNET' ||
-    localProject.content_type === 'APPLYWIZZ_USA_JOBS';
+    isInfluencerVideo(localProject);
 
   // Determine which sections to show based on user role
   const showCinematographySection = userRole === Role.CINE;
@@ -429,7 +427,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
             )}
 
             {/* Conditionally show shoot date for cinematography stage */}
-            {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
+            {!isInfluencerVideo(localProject) && localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.shoot_date && (
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Shoot Date</h3>
                 <p className="font-medium bg-slate-50 p-2">{formatDateDDMMYYYY(localProject.shoot_date)}</p>
@@ -475,13 +473,13 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
               </div>
 
               <div>
-                <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot Video Link' : 'Shoot Video Link'}</label>
+                <label className="text-sm font-bold text-slate-500 uppercase mb-2 block">{isInfluencerVideo(localProject) ? 'Influencer Video Link' : 'Shoot Video Link'}</label>
                 <input
                   type="text"
                   value={rawVideoLink}
                   onChange={(e) => setRawVideoLink(e.target.value)}
                   className="w-full p-2 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                  placeholder={['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Paste link for shoot video' : 'Paste link for shoot video'}
+                  placeholder={isInfluencerVideo(localProject) ? 'Paste link for influencer video' : 'Paste link for shoot video'}
                   readOnly={!canEdit}
                 />
               </div>
@@ -529,9 +527,9 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
 
               {localProject.video_link && (
                 <div className="pt-4 border-t-2 border-gray-200">
-                  <h3 className="text-md font-bold text-slate-700 mb-2">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot Video Reference' : 'Shoot Video Reference'}</h3>
+                  <h3 className="text-md font-bold text-slate-700 mb-2">{isInfluencerVideo(localProject) ? 'Influencer Video Reference' : 'Shoot Video Reference'}</h3>
                   <div className="bg-blue-50 border-2 border-blue-200 p-3">
-                    <p className="text-sm font-bold text-blue-800 mb-1">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot Video Link:' : 'Shoot Video Link:'}</p>
+                    <p className="text-sm font-bold text-blue-800 mb-1">{isInfluencerVideo(localProject) ? 'Influencer Video Link:' : 'Shoot Video Link:'}</p>
                     <a
                       href={localProject.video_link}
                       target="_blank"
@@ -557,7 +555,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
           {(localProject?.shoot_date || localProject?.delivery_date || localProject?.post_scheduled_date || localProject?.data?.script_reference_link) && (
             <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject?.shoot_date && (
+                {!isInfluencerVideo(localProject) && localProject?.shoot_date && (
                   <div className="flex items-center">
                     <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                     <span className="font-bold text-green-600">{formatDateDDMMYYYY(localProject.shoot_date)}</span>
@@ -661,7 +659,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
                     break;
                   case 'CINEMATOGRAPHY':
                     if (comment.action === 'SUBMITTED') {
-                      description = ['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot video uploaded by cinematographer' : 'Shoot video uploaded by cinematographer';
+                      description = isInfluencerVideo(localProject) ? 'Influencer video uploaded by writer' : 'Shoot video uploaded by cinematographer';
                     }
                     break;
                   case 'VIDEO_EDITING':

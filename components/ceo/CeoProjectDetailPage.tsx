@@ -170,6 +170,18 @@ const CeoProjectDetailPage: React.FC<{
                         <p className="text-sm md:text-base"><strong>Creator:</strong> {creatorName}</p>
                         <p className="text-sm md:text-base"><strong>Approved By:</strong> {selectedHistory?.actor_name}</p>
                         <p className="text-sm md:text-base"><strong>Stage:</strong> {STAGE_LABELS[selectedHistory?.stage as WorkflowStage] || selectedHistory?.stage}</p>
+                        {project.brand && <p className="text-sm md:text-base"><strong>Brand:</strong> <span className="font-black text-[#0085FF] uppercase">{project.brand.replace(/_/g, ' ')}</span></p>}
+                        {project.data?.niche && (
+                            <p className="text-sm md:text-base">
+                                <strong>Niche:</strong> <span className="uppercase">{project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                    : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                        : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                            : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche}</span>
+                            </p>
+                        )}
                         {project.data?.influencer_name && <p className="text-sm md:text-base"><strong>Influencer:</strong> {project.data.influencer_name}</p>}
                         {project.data?.referral_link && (
                             <p className="text-sm md:text-base">

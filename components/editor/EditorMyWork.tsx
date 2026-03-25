@@ -2,7 +2,7 @@ import React from 'react';
 import { Project, Role, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video, Film } from 'lucide-react';
-import { isActiveRework } from '../../services/workflowUtils';
+import { isActiveRework, isInfluencerVideo } from '../../services/workflowUtils';
 import EditorScripts from './EditorScripts';
 
 interface Props {
@@ -217,7 +217,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                         <div className="bg-blue-50 border-2 border-blue-400 p-2">
                                             <p className="text-[10px] font-bold text-blue-800">
                                                 <Video className="w-3 h-3 inline mr-1" />
-                                                {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer Video' : 'Shoot Video'} Ready
+                                                {isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video'} Ready
                                             </p>
                                         </div>
                                     )}

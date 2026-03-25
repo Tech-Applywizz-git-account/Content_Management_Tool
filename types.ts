@@ -55,7 +55,7 @@ export enum UserStatus {
 }
 
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
-export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'JOBBOARD' | 'LEAD_MAGNET' | 'CAPTION_BASED' | 'APPLYWIZZ_USA_JOBS';
+export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'CAPTION_BASED' | 'APPLYWIZZ_USA_JOBS';
 
 export interface User {
   id: string;
@@ -78,6 +78,7 @@ export interface Project {
   assigned_to_role: Role;
   assigned_to_user_id?: string; // Optional, usually assigned by role
   status: TaskStatus;
+  brand?: string;
   priority: Priority;
   due_date: string;
   created_by_user_id?: string; // User ID of the creator (managed by backend)
@@ -144,7 +145,8 @@ export interface ProjectData {
   location?: string;
   lighting?: string;
   angles?: string;
-  niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'OTHER';
+  niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'CAPTION_BASED' | 'OTHER';
+  brand?: 'APPLYWIZZ' | 'APPLYWIZZ_JOB_BOARD' | 'LEAD_MAGNET_RTW' | 'SHYAMS_PERSONAL_BRANDING' | 'APPLYWIZZ_USA_JOBS';
   niche_other?: string;
   cine_thumbnail_link?: string;
   cine_thumbnail_photos?: string[];

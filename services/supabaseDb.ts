@@ -12,7 +12,7 @@ import {
 } from '../types';
 
 import { Notification } from '../types';
-import { getTimestampUpdate, isReworkProject } from './workflowUtils';
+import { getTimestampUpdate, isReworkProject, isInfluencerVideo } from './workflowUtils';
 
 console.log('🔍 Initializing supabaseDb service');
 
@@ -912,6 +912,7 @@ export const projects = {
         priority?: Priority;
         due_date: string;
         data: any;
+        brand?: string;
 
         // Creator info (display and workflow)
         created_by_user_id?: string | null;
@@ -925,6 +926,8 @@ export const projects = {
         editor_uploaded_at?: string;
         edited_by_user_id?: string;
         edited_by_name?: string;
+        video_link?: string;
+        cine_uploaded_at?: string;
         visible_to_roles?: Role[] | null;
     }) {
         console.log('Creating project with data:', projectData);
@@ -957,9 +960,12 @@ export const projects = {
                 editor_uploaded_at: projectData.editor_uploaded_at,
                 edited_by_user_id: projectData.edited_by_user_id,
                 edited_by_name: projectData.edited_by_name,
+                video_link: projectData.video_link,
+                cine_uploaded_at: projectData.cine_uploaded_at,
                 visible_to_roles: projectData.visible_to_roles ?? null,
 
                 // Use provided values or defaults if not provided
+                brand: projectData.brand,
                 current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
                 status: projectData.status || TaskStatus.TODO,
                 priority: projectData.priority || 'NORMAL'
@@ -2365,22 +2371,26 @@ export const storage = {
 
 export const helpers = {
     // Get workflow next stage based on content type
-    getNextStage(currentStage: WorkflowStage, contentType: ContentType, action: 'APPROVED' | 'REJECTED', projectData?: any): {
+    getNextStage(currentStage: WorkflowStage, contentType: ContentType, action: 'APPROVED' | 'REJECTED', project?: Project | any): {
         stage: WorkflowStage;
         role: Role;
     } {
+        const projectData = project?.data || project;
+        const isInfluencer = isInfluencerVideo(project);
+        const isCaptionBased = contentType === 'CAPTION_BASED' || projectData?.niche === 'CAPTION_BASED';
+
         if (action === 'REJECTED') {
             // Return to previous stage based on current stage
             const rejectMap: Record<WorkflowStage, { stage: WorkflowStage; role: Role }> = {
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.FINAL_REVIEW_CMO]: {
-                    stage: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
-                    role: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.EDITOR : Role.DESIGNER
+                    stage: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? Role.EDITOR : Role.DESIGNER
                 },
                 [WorkflowStage.FINAL_REVIEW_CEO]: {
-                    stage: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
-                    role: (contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.EDITOR : Role.DESIGNER
+                    stage: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
+                    role: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? Role.EDITOR : Role.DESIGNER
                 },
                 // New sub-editor stages
                 [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
@@ -2400,7 +2410,7 @@ export const helpers = {
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO }
             };
 
-            if (contentType === 'JOBBOARD' || contentType === 'LEAD_MAGNET') {
+            if (isInfluencer || projectData?.niche === 'LEAD_MAGNET') {
                 const customRejectMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                     [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                     [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
@@ -2417,14 +2427,18 @@ export const helpers = {
         }
 
         // Special workflow for Job Board and Lead Magnet: Writer -> CMO -> CEO -> Writer -> CMO -> Editor -> Writer
-        if (contentType === 'JOBBOARD' || contentType === 'LEAD_MAGNET') {
+        if (isInfluencer || projectData?.niche === 'LEAD_MAGNET') {
             const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: isCaptionBased 
+                    ? { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }
+                    : { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
                 [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
+                [WorkflowStage.VIDEO_EDITING]: isCaptionBased
+                    ? { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }
+                    : { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
                 [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POSTED, role: Role.OPS }
             };
             const next = customMap[currentStage];
@@ -2436,28 +2450,33 @@ export const helpers = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
             [WorkflowStage.SCRIPT_REVIEW_L2]: {
-                stage: contentType === 'CAPTION_BASED' ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
-                role: contentType === 'CAPTION_BASED' ? Role.EDITOR : ((contentType === 'VIDEO' || contentType === 'APPLYWIZZ_USA_JOBS') ? Role.CINE : Role.DESIGNER)
+                stage: isCaptionBased ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || isInfluencer) ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
+                role: isCaptionBased ? Role.EDITOR : ((contentType === 'VIDEO' || isInfluencer) ? Role.CINE : Role.DESIGNER)
             },
 
-            // CINE -> WRITER_VIDEO_APPROVAL (Writer)
-            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
-
-            // WRITER_VIDEO_APPROVAL -> VIDEO_EDITING (Editor)
+            // CINE -> VIDEO_EDITING (Editor)
+            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            
+            // Note: WRITER_VIDEO_APPROVAL now primarily used for direct video uploads / caption based flows if needed,
+            // but the main approval flow is updated to move Cine -> Editor.
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
-            // VIDEO_EDITING -> MULTI_WRITER_APPROVAL
+            // VIDEO_EDITING -> DESIGNER (if thumbnail) OR MULTI_WRITER_APPROVAL
             [WorkflowStage.VIDEO_EDITING]: {
                 stage: projectData?.needs_sub_editor === true
                     ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
                     : (projectData?.rework_initiator_stage
                         ? projectData.rework_initiator_stage as WorkflowStage
-                        : WorkflowStage.MULTI_WRITER_APPROVAL), // Skip designer here, go to multi writer approval
+                        : (projectData?.thumbnail_required === true
+                            ? WorkflowStage.THUMBNAIL_DESIGN
+                            : WorkflowStage.MULTI_WRITER_APPROVAL)),
                 role: projectData?.needs_sub_editor === true
                     ? Role.EDITOR
                     : (projectData?.rework_initiator_stage
                         ? projectData.rework_initiator_role as Role
-                        : Role.WRITER) // Assign to WRITER for multi writer approval
+                        : (projectData?.thumbnail_required === true
+                            ? Role.DESIGNER
+                            : Role.WRITER))
             },
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
@@ -2466,28 +2485,20 @@ export const helpers = {
                 role: Role.WRITER
             },
 
-            // MULTI_WRITER_APPROVAL -> DESIGNER (if thumbnail) OR OPS/CMO (Post Review)
+            // MULTI_WRITER_APPROVAL -> OPS/CMO (Post Review)
             [WorkflowStage.MULTI_WRITER_APPROVAL]: {
                 stage: projectData?.rework_initiator_stage
                     ? projectData.rework_initiator_stage as WorkflowStage
-                    : (contentType === 'CAPTION_BASED'
-                        ? WorkflowStage.POST_WRITER_REVIEW
-                        : (projectData?.thumbnail_required === true
-                            ? WorkflowStage.THUMBNAIL_DESIGN
-                            : WorkflowStage.POST_WRITER_REVIEW)),
+                    : WorkflowStage.POST_WRITER_REVIEW,
                 role: projectData?.rework_initiator_stage
                     ? projectData.rework_initiator_role as Role
-                    : (contentType === 'CAPTION_BASED'
-                        ? Role.CMO
-                        : (projectData?.thumbnail_required === true
-                            ? Role.DESIGNER
-                            : Role.CMO))
+                    : Role.CMO
             },
 
-            // THUMBNAIL_DESIGN -> OPS/CMO (Post Review)
+            // THUMBNAIL_DESIGN -> MULTI_WRITER_APPROVAL
             [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage
                 ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }
-                : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },
+                : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
 
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
 
@@ -2911,7 +2922,7 @@ export const db = {
         }
     },
 
-    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'NORMAL'): Promise<Project> {
+    async createProject(title: string, channel: Channel, dueDate: string, contentType: ContentType = 'VIDEO', priority: Priority = 'NORMAL', brand?: string): Promise<Project> {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
 
@@ -2922,12 +2933,13 @@ export const db = {
         const projectData = {
             title,
             channel,
+            brand,
             content_type: contentType,
             assigned_to_role: Role.WRITER, // Always starts with writer
             assigned_to_user_id: publicUser.id, // Explicitly assign to the creator (writer)
             due_date: dueDate,
             priority,
-            data: {},
+            data: { brand },
             // Set display information using the verified public.users.id
             created_by_user_id: publicUser.id,
             created_by_name: publicUser.full_name,
@@ -3001,7 +3013,7 @@ export const db = {
         return createdProject;
     },
 
-    async createDirectVideoProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL'): Promise<Project> {
+    async createDirectVideoProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
 
@@ -3020,8 +3032,10 @@ export const db = {
             status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,
+            brand,
             edited_video_link: videoLink,
             data: {
+                brand,
                 video_link: videoLink,
                 source: 'EDITOR_DIRECT_UPLOAD'
             },
@@ -3058,7 +3072,7 @@ export const db = {
         return createdProject;
     },
 
-    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL', contentType: ContentType = 'CREATIVE_ONLY'): Promise<Project> {
+    async createCineDirectProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
 
@@ -3066,19 +3080,86 @@ export const db = {
             throw new Error('User profile not found. Cannot create project without a valid public user ID.');
         }
 
-        // Create a project that starts at the FINAL_REVIEW_CMO stage for designer-initiated projects
+        // Create a project that starts at the VIDEO_EDITING stage for direct cine footage uploads
+        // Flow: Cine -> Editor -> Designer -> 2 writers approval -> cmo -> ceo -> ops
         const projectData = {
             title,
             channel,
-            content_type: contentType, // Use the provided content type
-            current_stage: WorkflowStage.FINAL_REVIEW_CMO, // Start at CMO review
-            assigned_to_role: Role.CMO, // Assign to CMO first
-            assigned_to_user_id: null, // No specific user assigned yet
-            status: TaskStatus.WAITING_APPROVAL, // Waiting for approval
+            content_type: 'VIDEO' as ContentType,
+            current_stage: WorkflowStage.VIDEO_EDITING, 
+            assigned_to_role: Role.EDITOR, 
+            status: TaskStatus.IN_PROGRESS,
             due_date: dueDate,
             priority,
+            brand,
+            niche,
+            niche_other: nicheOther,
+            video_link: videoLink,
+            data: {
+                brand,
+                niche,
+                niche_other: nicheOther,
+                raw_footage_link: videoLink,
+                source: 'CINE_DIRECT_UPLOAD'
+            },
+            // Set creator information
+            created_by_user_id: publicUser.id,
+            created_by_name: publicUser.full_name,
+            cine_uploaded_at: new Date().toISOString(),
+            writer_id: publicUser.id, // Set cine as initial writer/creator for visibility
+            writer_name: publicUser.full_name,
+            visible_to_roles: [Role.EDITOR, Role.WRITER, Role.CMO, Role.CEO, Role.OPS] as any
+        };
+
+        // Create the project
+        const createdProject = await projects.create(projectData);
+
+        // Record the action in workflow history
+        await workflow.recordAction(
+            createdProject.id,
+            Role.EDITOR, // next responsible role is Editor
+            publicUser.id,
+            publicUser.full_name,
+            'SUBMITTED',
+            'Direct Footage Upload: Footage submitted directly by Cinematographer. Moving to Video Editing.',
+            undefined,
+            Role.CINE,   // fromRole
+            Role.EDITOR, // toRole
+            Role.CINE    // actorRole
+        );
+
+        return createdProject;
+    },
+
+    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL', contentType: ContentType = 'CREATIVE_ONLY', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
+        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+        const publicUser = await auth.getPublicUser();
+
+        if (!publicUser) {
+            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+        }
+
+        // Special workflow for Shyam's Personal Branding Videos:
+        // Designer -> Writers (2) -> CMO -> CEO -> Ops
+        const isShyamVideo = brand === 'SHYAMS_PERSONAL_BRANDING' && contentType === 'VIDEO';
+
+        // Create a project that starts at the appropriate stage based on content and brand
+        const projectData = {
+            title,
+            channel,
+            content_type: contentType,
+            current_stage: isShyamVideo ? WorkflowStage.MULTI_WRITER_APPROVAL : WorkflowStage.FINAL_REVIEW_CMO,
+            assigned_to_role: isShyamVideo ? Role.WRITER : Role.CMO,
+            assigned_to_user_id: null,
+            status: TaskStatus.WAITING_APPROVAL,
+            due_date: dueDate,
+            priority,
+            brand,
+            niche,
+            niche_other: nicheOther,
             creative_link: link, // Store the creative link in the main project record
             data: {
+                brand,
                 brief: description, // Store description as brief
                 creative_link: link, // Also store the creative link in the data object for consistency
                 source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
@@ -3096,11 +3177,11 @@ export const db = {
         // Record the creation in workflow history using the verified public.users.id
         await workflow.recordAction(
             createdProject.id,
-            Role.CMO, // next responsible role is CMO
+            isShyamVideo ? Role.WRITER : Role.CMO, // next responsible role
             publicUser.id,
             publicUser.full_name,
             'CREATED',
-            'Designer-initiated creative project created',
+            isShyamVideo ? 'Shyam\'s Video project created - Sent for Writer Approval' : 'Designer-initiated creative project created',
             undefined,
             Role.DESIGNER, // fromRole
             Role.CMO, // toRole
@@ -3275,7 +3356,7 @@ export const db = {
             project.current_stage,
             project.content_type,
             'APPROVED',
-            project.data
+            project
         );
 
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
@@ -3378,7 +3459,7 @@ export const db = {
                 project.current_stage as WorkflowStage,
                 project.content_type,
                 'APPROVED',
-                project.data
+                project
             );
         }
 

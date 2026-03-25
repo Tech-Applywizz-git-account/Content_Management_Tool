@@ -117,19 +117,28 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         // Filtered views (from dashboard cards)
         switch (activeFilter) {
             case 'NEEDS_DELIVERY':
-                return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
+                return (historyProjects || []).filter(p => {
+                    const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+                    return !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
+                });
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
                     const isNotDone = p.status !== TaskStatus.DONE;
-                    // Include rework projects assigned to designer
-                    const isDesignerRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-                    if (isDesignerRework) return true;
+                    // Exclude rework projects
+                    if (p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER) return false;
                     // Regular in-progress logic
                     if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link && isNotDone;
                     return p.delivery_date && !p.thumbnail_link && isNotDone;
                 });
+            case 'REWORK':
+                return (historyProjects || []).filter(p => {
+                    return p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+                });
             case 'DELIVERED':
-                let deliveredProjects = (historyProjects || []).filter(p => !!p.creative_link || !!p.thumbnail_link);
+                let deliveredProjects = (historyProjects || []).filter(p => {
+                    const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+                    return (!!p.creative_link || !!p.thumbnail_link) && !isRework && p.status !== TaskStatus.DONE;
+                });
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
@@ -149,6 +158,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState<number>(0);
     const [inProgressCount, setInProgressCount] = useState<number>(0);
     const [deliveredCount, setDeliveredCount] = useState<number>(0);
+    const [reworkCount, setReworkCount] = useState<number>(0);
     const [scriptsCount, setScriptsCount] = useState<number>(0);
     const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
 
@@ -167,21 +177,28 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         setScriptsCount((scriptProjects || []).length);
 
         // Calculate other counts based on EXACT SAME logic as filteredProjects memo
-        setNeedsDeliveryCount((historyProjects || []).filter(p =>
-            !p.delivery_date && p.status !== TaskStatus.DONE
-        ).length);
+        setNeedsDeliveryCount((historyProjects || []).filter(p => {
+            const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+            return !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
+        }).length);
 
         setInProgressCount((historyProjects || []).filter(p => {
             const isNotDone = p.status !== TaskStatus.DONE;
-            // Include rework projects assigned to designer
-            const isDesignerRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-            if (isDesignerRework) return true;
+            // Exclude rework projects
+            if (p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER) return false;
             // Regular in-progress logic
             if (p.content_type === 'CREATIVE_ONLY') return p.delivery_date && !p.creative_link && isNotDone;
             return p.delivery_date && !p.thumbnail_link && isNotDone;
         }).length);
 
-        setDeliveredCount((historyProjects || []).filter(p => !!p.creative_link || !!p.thumbnail_link).length);
+        setReworkCount((historyProjects || []).filter(p => {
+            return p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+        }).length);
+
+        setDeliveredCount((historyProjects || []).filter(p => {
+            const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
+            return (!!p.creative_link || !!p.thumbnail_link) && !isRework;
+        }).length);
     }, [inboxProjects, historyProjects, scriptProjects]);
 
     return (
@@ -243,7 +260,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                         <div
                             onClick={() => {
                                 handleViewChange('mywork', true, 'NEEDS_DELIVERY');
@@ -265,6 +282,17 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
                                 {inProgressCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
+                        </div>
+                        <div
+                            onClick={() => {
+                                handleViewChange('mywork', true, 'REWORK');
+                            }}
+                            className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {reworkCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Rework</div>
                         </div>
                         <div
                             onClick={() => {

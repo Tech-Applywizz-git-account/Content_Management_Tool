@@ -3,7 +3,7 @@ import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage, User as PublicU
 import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
 import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import Timeline from '../Timeline';
@@ -332,6 +332,14 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <p className="text-slate-700 font-medium">{project.data.keywords}</p>
                                 </div>
                             )}
+                            {project.brand && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brand</span>
+                                    <p className="font-black uppercase text-[#0085FF]">
+                                        {project.brand.replace(/_/g, ' ')}
+                                    </p>
+                                </div>
+                            )}
                             {project.data.niche && (
                                 <div>
                                     <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
@@ -339,9 +347,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                             : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                                 : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche}
+                                                    : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                        : project.data.niche === 'OTHER' && project.data.niche_other
+                                                            ? project.data.niche_other
+                                                            : project.data.niche}
                                     </p>
                                 </div>
                             )}
@@ -531,17 +540,17 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
                     {project.current_stage === WorkflowStage.WRITER_REVISION && (
                         <div className="bg-blue-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold">Upload {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} Video</h3>
-                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'influencer' : 'shoot'} video link for the editor to process.</p>
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold Greenland-900">Upload {isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} Video</h3>
+                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the {isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link for the editor to process.</p>
 
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} Video Link (Google Drive / S3 / Direct)</label>
+                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">{isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} Video Link (Google Drive / S3 / Direct)</label>
                                     <input
                                         type="text"
                                         value={videoLink}
                                         onChange={(e) => setVideoLink(e.target.value)}
-                                        placeholder={`Enter the ${['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'influencer' : 'shoot'} video link here`}
+                                        placeholder={`Enter the ${isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link here`}
                                         className="w-full p-3 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                                     />
                                 </div>
@@ -557,7 +566,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                             await db.projects.update(project.id, { video_link: videoLink });
                                             await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
 
-                                            setPopupMessage(`${['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
+                                            setPopupMessage(`${isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
                                             setStageName('Final Review (CMO)');
                                             setPopupDuration(5000);
                                             setShowPopup(true);

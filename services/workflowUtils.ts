@@ -10,6 +10,27 @@ export interface WorkflowState {
 }
 
 /**
+ * Check if the project is an influencer video (JOBBOARD or LEAD MAGNET)
+ */
+export function isInfluencerVideo(project: Project | any): boolean {
+  if (!project) return false;
+  
+  // Check brand (new)
+  const brandSelection = project.brand || project.data?.brand || project.brandSelected; // Handle different object shapes
+  if (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'APPLYWIZZ_USA_JOBS', 'SHYAMS_PERSONAL_BRANDING'].includes(brandSelection)) {
+    return true;
+  }
+  
+  // Backward compatibility with legacy content_type
+  const contentType = project.content_type || project.contentType;
+  if (['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(contentType)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Canonical rework condition for all roles
  */
 export function isActiveRework(project: Project | undefined, userRole: string): boolean {

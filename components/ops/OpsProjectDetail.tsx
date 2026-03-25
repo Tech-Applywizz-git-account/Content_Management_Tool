@@ -9,6 +9,7 @@ import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
 import ApprovalStatusIndicator from '../ApprovalStatusIndicator';
 import Timeline from '../Timeline';
+import { isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
     project: Project;
@@ -156,7 +157,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
         }
     };
 
-    const isVideo = ['VIDEO', 'APPLYWIZZ_USA_JOBS', 'JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type);
+    const isVideo = project.content_type === 'VIDEO' || isInfluencerVideo(project);
     const isPosted = project.data?.live_url || project.status === 'DONE';
 
     return (
@@ -234,6 +235,14 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                     {project.content_type}
                                 </span>
                             </div>
+                             {project.brand && (
+                                <div className="flex justify-between">
+                                    <span className="text-slate-600">Brand:</span>
+                                    <span className="font-black text-[#0085FF] uppercase">
+                                        {project.brand.replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                            )}
                             {project.data?.niche && (
                                 <div className="flex justify-between">
                                     <span className="text-slate-600">Niche:</span>
@@ -241,9 +250,10 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                         {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                             : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                                 : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche}
+                                                    : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                        : project.data.niche === 'OTHER' && project.data.niche_other
+                                                            ? project.data.niche_other
+                                                            : project.data.niche}
                                     </span>
                                 </div>
                             )}

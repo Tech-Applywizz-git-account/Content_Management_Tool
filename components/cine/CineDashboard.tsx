@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Upload, Video } from 'lucide-react';
@@ -8,6 +8,7 @@ import CineCalendar from './CineCalendar';
 import CineProjectDetail from './CineProjectDetail';
 import Layout from '../Layout';
 import Popup from '../Popup';
+import CineUploadModal from './CineUploadModal';
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
@@ -31,6 +32,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const path = location.pathname;
     if (path.endsWith('/calendar')) return 'calendar';
     if (path.endsWith('/mywork')) return 'mywork';
+    if (path.endsWith('/upload')) return 'upload-footage';
     return 'dashboard';
   };
 
@@ -81,6 +83,8 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
 
     if (view === 'dashboard') {
       navigate(`/${rolePath}${searchStr}`);
+    } else if (view === 'upload-footage') {
+      navigate(`/${rolePath}/upload${searchStr}`);
     } else {
       navigate(`/${rolePath}/${view}${searchStr}`);
     }
@@ -101,21 +105,34 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     let baseFilteredProjects = (historyProjects || []).filter(project => {
       switch (activeFilter) {
         case 'NEEDS_SCHEDULE':
-          return !project.shoot_date;
+          {
+            const workflowState = getWorkflowStateForRole(project, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return !project.shoot_date && !isRework && project.status !== TaskStatus.DONE;
+          }
 
         case 'SCHEDULED':
           {
             const workflowState = getWorkflowStateForRole(project, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            return (project.shoot_date && !project.video_link) || isRework;
+            return (project.shoot_date && !project.video_link && !isRework);
+          }
+        case 'REWORK':
+          {
+            const workflowState = getWorkflowStateForRole(project, user.role);
+            return (workflowState.isTargetedRework || workflowState.isRework) && project.status !== TaskStatus.DONE;
           }
 
         case 'UPLOADED':
-          return (
-            !!project.video_link ||
-            !!project.video_url ||
-            !!project.data?.raw_footage_link
-          );
+          {
+            const workflowState = getWorkflowStateForRole(project, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return (
+              (!!project.video_link ||
+                !!project.video_url ||
+                !!project.data?.raw_footage_link) && !isRework && project.status !== TaskStatus.DONE
+            );
+          }
 
         case 'POSTED':
           // Show projects that are completed and have live URLs from Ops
@@ -156,28 +173,42 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
   const [needsScheduleCount, setNeedsScheduleCount] = useState<number>(0);
   const [scheduledShootsCount, setScheduledShootsCount] = useState<number>(0);
   const [footageUploadedCount, setFootageUploadedCount] = useState<number>(0);
+  const [reworkCount, setReworkCount] = useState<number>(0);
   const [activeProjectsCount, setActiveProjectsCount] = useState<number>(0);
   const [scriptCount, setScriptCount] = useState<number>(0);
 
   useEffect(() => {
     const list = historyProjects || [];
 
-    // 1. Needs Schedule: !project.shoot_date
-    const needsSchedule = list.filter(p => !p.shoot_date);
+    // 1. Needs Schedule: !project.shoot_date BUT not in rework
+    const needsSchedule = list.filter(p => {
+      const workflowState = getWorkflowStateForRole(p, user.role);
+      const isRework = workflowState.isTargetedRework || workflowState.isRework;
+      return !p.shoot_date && !isRework && p.status !== TaskStatus.DONE;
+    });
     setNeedsScheduleCount(needsSchedule.length);
 
     // 2. Scheduled: (project.shoot_date && !project.video_link) || isRework
     const scheduled = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      return (p.shoot_date && !p.video_link) || isRework;
+      return (p.shoot_date && !p.video_link && !isRework);
     });
     setScheduledShootsCount(scheduled.length);
 
-    // 3. Footage Uploaded: !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link
-    const uploaded = list.filter(p =>
-      !!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)
-    );
+    // Rework: isRework
+    const rework = list.filter(p => {
+      const workflowState = getWorkflowStateForRole(p, user.role);
+      return (workflowState.isTargetedRework || workflowState.isRework) && p.status !== TaskStatus.DONE;
+    });
+    setReworkCount(rework.length);
+
+    // 3. Footage Uploaded: has link BUT not in rework
+    const uploaded = list.filter(p => {
+      const workflowState = getWorkflowStateForRole(p, user.role);
+      const isRework = workflowState.isTargetedRework || workflowState.isRework;
+      return (!!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)) && !isRework;
+    });
     setFootageUploadedCount(uploaded.length);
 
     // 4. Scripts
@@ -196,12 +227,33 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       activeView={activeView}
       onChangeView={handleViewChange}
     >
+      {/* Upload Button */}
+      {activeView === 'dashboard' && (
+        <div className="mb-6 flex justify-end">
+          <button
+            onClick={() => handleViewChange('upload-footage')}
+            className="px-6 py-3 bg-[#D946EF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+          >
+            <Upload className="w-5 h-5" />
+            Upload Footage
+          </button>
+        </div>
+      )}
+
       {selectedProject ? (
         // Navigate to the route-based project detail page instead of rendering inline
         (() => {
           navigate(`/cine/project/${selectedProject.id}`);
           return null;
         })()
+      ) : activeView === 'upload-footage' ? (
+        <CineUploadModal
+          onClose={() => handleViewChange('dashboard')}
+          onSuccess={() => {
+            handleViewChange('dashboard');
+            onRefresh();
+          }}
+        />
       ) : activeView === 'mywork' ? (
         <CineMyWork
           user={user}
@@ -231,7 +283,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
             {/* NEEDS SCHEDULE */}
             <div
               onClick={() => handleViewChange('mywork', true, 'NEEDS_SCHEDULE')}
@@ -255,6 +307,19 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
               </div>
               <div className="text-sm font-bold uppercase text-white/80">
                 Scheduled Shoots
+              </div>
+            </div>
+
+            {/* REWORK */}
+            <div
+              onClick={() => handleViewChange('mywork', true, 'REWORK')}
+              className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <div className="text-4xl font-black text-white mb-1">
+                {reworkCount}
+              </div>
+              <div className="text-sm font-bold uppercase text-white/80">
+                Rework
               </div>
             </div>
 

@@ -25,68 +25,73 @@ const NICHES = [
   { value: 'OTHER', label: 'Other' },
 ] as const;
 
-const UploadVideoModal: React.FC<Props> = ({ onClose, onSuccess }) => {
+const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [title, setTitle] = useState('');
   const [videoLink, setVideoLink] = useState('');
-  const [tempVideoLink, setTempVideoLink] = useState('');
-  const [isLinkSaved, setIsLinkSaved] = useState(false);
   const [channel, setChannel] = useState<Channel>(Channel.YOUTUBE);
   const [brand, setBrand] = useState<string>('');
   const [niche, setNiche] = useState<string>('');
-  const [nicheOther, setNicheOther] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [nicheOther, setNicheOther] = useState('');
+  const [tempVideoLink, setTempVideoLink] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLinkSaved, setIsLinkSaved] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
 
   const handleSubmit = async () => {
-    if (!title.trim() || !videoLink.trim()) {
-      alert('Title and Video Link are required');
+    // Basic validation
+    if (!title.trim() || !videoLink.trim() || !brand) {
+      alert('Title, Brand, and Video Link are required');
       return;
     }
+
+
 
     setIsSubmitting(true);
 
     try {
-      const createdProject = await db.createDirectVideoProject(
+      // Default due date to today if field is removed
+      const defaultDueDate = new Date().toISOString().split('T')[0];
+      
+      const createdProject = await db.createCineDirectProject(
         title,
         channel,
-        dueDate,
+        defaultDueDate,
         videoLink,
         'NORMAL',
         brand,
         niche,
-        nicheOther
+        niche === 'OTHER' ? nicheOther : undefined
       );
 
       setPopupMessage(
-        `Video project "${title}" submitted successfully. Waiting for Multi-Writer approval.`
+        `Footage for "${title}" uploaded successfully. Moving to Video Editing.`
       );
-      setStageName('Multi-Writer Approval');
+      setStageName('Video Editing');
       setShowPopup(true);
 
       setTimeout(() => {
         onSuccess();
-      }, 1200);
+      }, 1500);
 
     } catch (err) {
-      console.error('Video submit failed:', err);
-      alert('Failed to submit video project');
+      console.error('Footage submit failed:', err);
+      alert('Failed to submit footage');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans">
-      <header className="h-16 md:h-20 border-b-2 border-black flex items-center justify-between px-4 md:px-6 bg-white sticky top-0 z-10 shadow-[0_4px_0px_0px_rgba(0,0,0,0.05)]">
+    <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans text-slate-900 overflow-hidden">
+      <header className="h-16 md:h-20 border-b-2 border-black flex items-center justify-between px-4 md:px-6 bg-white sticky top-0 z-10 font-sans shadow-[0_4px_0px_0px_rgba(0,0,0,0.05)]">
         <div className="flex items-center space-x-3 md:space-x-6 min-w-0">
-          <button onClick={onClose} className="p-2 border-2 border-black hover:bg-slate-100 flex-shrink-0 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+          <button onClick={onClose} className="p-2 md:p-2 border-2 border-black hover:bg-slate-100 flex-shrink-0 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
             <ArrowLeft className="w-5 h-5 md:w-6 md:h-6 text-black" />
           </button>
-          <h1 className="text-lg md:text-2xl font-black text-slate-900 uppercase truncate">
-            Direct Video Upload
+          <h1 className="text-lg md:text-2xl font-black text-slate-900 uppercase tracking-tight truncate">
+            Direct Footage Upload
           </h1>
         </div>
         <div className="flex items-center">
@@ -95,74 +100,72 @@ const UploadVideoModal: React.FC<Props> = ({ onClose, onSuccess }) => {
             disabled={isSubmitting || !title.trim() || !videoLink.trim() || !brand}
             className={`px-4 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !videoLink.trim() || !brand) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
           >
-            {isSubmitting ? '...' : 'Submit'}
+            {isSubmitting ? 'Submitting...' : 'Submit Footage'}
             <Send className="w-4 h-4 ml-2" />
           </button>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-10 font-sans pb-24">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="max-w-5xl mx-auto space-y-6">
           <div className="bg-white p-6 md:p-10 border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] space-y-10">
             <div className="flex items-center gap-3 border-b-4 border-black pb-4">
               <div className="w-10 h-10 bg-black flex items-center justify-center">
                 <Send className="w-6 h-6 text-white" />
               </div>
-              <h3 className="font-black uppercase text-xl md:text-3xl text-slate-900">Project Details</h3>
+              <h3 className="font-black uppercase text-xl md:text-3xl text-slate-900">Footage Details</h3>
             </div>
 
             <div className="space-y-8">
               <div>
-                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Title *</label>
+                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Project Title <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full p-3 md:p-4 border-2 border-black bg-white focus:outline-none focus:ring-2 focus:ring-black font-bold text-sm md:text-base placeholder:text-slate-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                  placeholder="e.g. November Highlight Reel"
+                  placeholder="e.g. Cinematic Brand Intro"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Video Link (G-Drive / Frame.io) *</label>
-                <div className="flex gap-3">
-                  <input
-                    type="url"
-                    value={tempVideoLink}
-                    onChange={(e) => {
-                        setTempVideoLink(e.target.value);
-                        setIsLinkSaved(false);
-                    }}
-                    className="flex-1 p-3 md:p-4 border-2 border-black bg-white focus:outline-none focus:ring-2 focus:ring-black font-bold text-sm md:text-base placeholder:text-slate-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                    placeholder="https://drive.google.com/file/d/..."
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (tempVideoLink.trim()) {
-                          setVideoLink(tempVideoLink.trim());
-                          setIsLinkSaved(true);
-                      } else {
-                          alert('Please enter a valid link');
-                      }
-                    }}
-                    className={`px-6 md:px-10 p-3 md:p-4 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[3px] active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center min-w-[120px] ${isLinkSaved ? 'bg-green-500 text-white' : 'bg-[#FFB800] text-black hover:bg-[#E6A600]'}`}
-                  >
-                    {isLinkSaved ? 'Linked' : 'Upload'}
-                  </button>
-                </div>
-                {isLinkSaved && (
-                  <div className="flex items-center gap-2 mt-3 animate-fade-in-down">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <p className="text-[10px] font-black uppercase text-green-600 tracking-wider">Video link confirmed and saved</p>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-500 mb-2">Raw Footage Link <span className="text-red-500">*</span></label>
+                  <div className="flex gap-3">
+                    <input
+                      type="url"
+                      value={tempVideoLink}
+                      onChange={(e) => {
+                          setTempVideoLink(e.target.value);
+                          setIsLinkSaved(false);
+                      }}
+                      className="flex-1 p-3 md:p-4 border-2 border-black bg-white focus:outline-none focus:ring-2 focus:ring-black font-bold text-sm md:text-base placeholder:text-slate-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                      placeholder="https://drive.google.com/..."
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (tempVideoLink.trim()) {
+                            setVideoLink(tempVideoLink.trim());
+                            setIsLinkSaved(true);
+                        } else {
+                            alert('Please enter a valid link');
+                        }
+                      }}
+                      className={`px-6 md:px-10 p-3 md:p-4 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[3px] active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center min-w-[120px] ${isLinkSaved ? 'bg-green-500 text-white' : 'bg-[#FFB800] text-black hover:bg-[#E6A600]'}`}
+                    >
+                      {isLinkSaved ? 'Linked' : 'Upload'}
+                    </button>
                   </div>
-                )}
-              </div>
-
-
+                  {isLinkSaved && (
+                    <div className="flex items-center gap-2 mt-3 animate-fade-in-down">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <p className="text-[10px] font-black uppercase text-green-600 tracking-wider">Footage link confirmed and saved</p>
+                    </div>
+                  )}
+                </div>
 
               <div>
-                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Channel *</label>
+                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Channel <span className="text-red-500">*</span></label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {[Channel.LINKEDIN, Channel.INSTAGRAM, Channel.YOUTUBE].map(c => (
                     <button
@@ -179,17 +182,17 @@ const UploadVideoModal: React.FC<Props> = ({ onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Brand *</label>
+                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Brand <span className="text-red-500">*</span></label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {BRANDS.map(b => (
                     <button
                       key={b.value}
                       onClick={() => {
-                        setBrand(b.value);
-                        if (b.value !== 'APPLYWIZZ') {
-                            setNiche('');
-                            setNicheOther('');
-                        }
+                          setBrand(b.value);
+                          if (b.value !== 'APPLYWIZZ') {
+                              setNiche('');
+                              setNicheOther('');
+                          }
                       }}
                       className={`p-4 text-center text-[10px] md:text-xs font-black uppercase border-2 border-black transition-all flex flex-col items-center justify-center gap-2 ${brand === b.value 
                         ? `${b.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]` 
@@ -255,4 +258,4 @@ const UploadVideoModal: React.FC<Props> = ({ onClose, onSuccess }) => {
   );
 };
 
-export default UploadVideoModal;
+export default CineUploadModal;

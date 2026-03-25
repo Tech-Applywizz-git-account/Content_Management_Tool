@@ -631,6 +631,11 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   <h3 className="text-2xl font-black text-slate-900 mb-2 leading-tight uppercase truncate">
                     {project.title}
                   </h3>
+                  {project.brand && (
+                    <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
+                      Brand: {project.brand.replace(/_/g, ' ')}
+                    </div>
+                  )}
                   <div className="space-y-2 mt-8 border-t-2 border-slate-100 pt-4">
                     {activeTab === 'HISTORY' ? (
                       <>

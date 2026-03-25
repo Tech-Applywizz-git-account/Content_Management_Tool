@@ -141,22 +141,33 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         switch (activeFilter) {
             case 'NEEDS_DELIVERY':
                 // Exclude direct upload projects - they already have a video link and don't need a delivery date set
-                return (historyProjects || []).filter(p =>
-                    !p.delivery_date &&
-                    p.status !== TaskStatus.DONE &&
-                    p.data?.source !== 'EDITOR_DIRECT_UPLOAD'
-                );
+                return (historyProjects || []).filter(p => {
+                    const workflowState = getWorkflowStateForRole(p, user.role);
+                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
+                    return !p.delivery_date &&
+                        p.status !== TaskStatus.DONE &&
+                        p.data?.source !== 'EDITOR_DIRECT_UPLOAD' &&
+                        !isRework;
+                });
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
                     const workflowState = getWorkflowStateForRole(p, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
+                    return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE && !isRework);
+                });
+            case 'REWORK':
+                return (historyProjects || []).filter(p => {
+                    const workflowState = getWorkflowStateForRole(p, user.role);
+                    return (workflowState.isTargetedRework || workflowState.isRework) && p.status !== TaskStatus.DONE;
                 });
             case 'COMPLETED':
                 // Completed projects = have an edited_video_link (includes direct uploads)
-                let completedProjects = (historyProjects || []).filter(p =>
-                    !!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD'
-                );
+                // BUT exclude projects currently in rework
+                let completedProjects = (historyProjects || []).filter(p => {
+                    const workflowState = getWorkflowStateForRole(p, user.role);
+                    const isRework = workflowState.isTargetedRework || workflowState.isRework;
+                    return (!!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD') && !isRework && p.status !== TaskStatus.DONE;
+                });
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
@@ -181,29 +192,39 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
     const [inProgressCount, setInProgressCount] = useState(0);
     const [completedEditsCount, setCompletedEditsCount] = useState(0);
+    const [reworkCount, setReworkCount] = useState(0);
     const [scriptsCount, setScriptsCount] = useState(0);
     const [cineProjectsCount, setCineProjectsCount] = useState(0);
 
     // Calculate counts when historyProjects, scriptProjects or user.role change
     useEffect(() => {
-        // Calculate counts based on EXACT SAME logic as filteredProjects memo
-        // Exclude direct upload projects from Needs Delivery
-        setNeedsDeliveryCount((historyProjects || []).filter(p =>
-            !p.delivery_date &&
-            p.status !== TaskStatus.DONE &&
-            p.data?.source !== 'EDITOR_DIRECT_UPLOAD'
-        ).length);
+        // Calculate other counts based on EXACT SAME logic as filteredProjects memo
+        setNeedsDeliveryCount((historyProjects || []).filter(p => {
+            const workflowState = getWorkflowStateForRole(p, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return !p.delivery_date &&
+                p.status !== TaskStatus.DONE &&
+                p.data?.source !== 'EDITOR_DIRECT_UPLOAD' &&
+                !isRework;
+        }).length);
 
         setInProgressCount((historyProjects || []).filter(p => {
             const workflowState = getWorkflowStateForRole(p, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
+            return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE && !isRework);
         }).length);
 
-        // Include direct upload projects in Completed Edits
-        setCompletedEditsCount((historyProjects || []).filter(p =>
-            !!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD'
-        ).length);
+        setReworkCount((historyProjects || []).filter(p => {
+            const workflowState = getWorkflowStateForRole(p, user.role);
+            return (workflowState.isTargetedRework || workflowState.isRework) && p.status !== TaskStatus.DONE;
+        }).length);
+
+        // Include direct upload projects in Completed Edits, but EXCLUDE if currently in rework
+        setCompletedEditsCount((historyProjects || []).filter(p => {
+            const workflowState = getWorkflowStateForRole(p, user.role);
+            const isRework = workflowState.isTargetedRework || workflowState.isRework;
+            return (!!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD') && !isRework;
+        }).length);
 
         // Count script projects from props
         setScriptsCount((scriptProjects || []).length);
@@ -268,7 +289,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
                         {/* NEEDS DELIVERY DATE */}
                         <div
                             onClick={() => {
@@ -293,6 +314,19 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 {inProgressCount}
                             </div>
                             <div className="text-sm font-bold uppercase text-white/80">In Progress</div>
+                        </div>
+
+                        {/* REWORK */}
+                        <div
+                            onClick={() => {
+                                handleViewChange('mywork', true, 'REWORK');
+                            }}
+                            className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                            <div className="text-4xl font-black text-white mb-1">
+                                {reworkCount}
+                            </div>
+                            <div className="text-sm font-bold uppercase text-white/80">Rework</div>
                         </div>
 
                         {/* COMPLETED EDITS */}
@@ -326,7 +360,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                             onClick={() => {
                                 handleViewChange('mywork', true, 'CINE');
                             }}
-                            className="bg-[#EF4444] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+                            className="bg-[#475569] border-2 border-black p-6 cursor-pointer shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
                         >
                             <div className="text-4xl font-black text-white mb-1">
                                 {cineProjectsCount}

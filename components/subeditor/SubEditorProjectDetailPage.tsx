@@ -7,7 +7,7 @@ import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film } from 'lucid
 import { db } from '../../services/supabaseDb';
 import Popup from '../Popup';
 import Layout from '../Layout';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 
 const SubEditorProjectDetailPage: React.FC<{
     user: User;
@@ -445,11 +445,11 @@ const SubEditorProjectDetailPage: React.FC<{
                         <div className="flex items-center gap-2 mb-4">
                             <Video className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase">
-                                {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}
+                                {isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video'}
                             </h2>
                         </div>
                         <div className="bg-blue-50 border-2 border-blue-400 p-4">
-                            {!['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) && (
+                            {!isInfluencerVideo(project) && (
                                 <p className="text-sm font-bold text-blue-800 mb-2">
                                     📹 Shoot Date: {project.shoot_date || 'Not specified'}
                                 </p>

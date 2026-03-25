@@ -123,7 +123,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     channel: project?.channel || '', // No default selection
     contentType: project?.content_type || '', // No default selection
     dueDate: project?.due_date || new Date().toISOString().split('T')[0],
-    priority: project?.priority || 'NORMAL'
+    priority: project?.priority || 'NORMAL',
+    brand: project?.brand || ''
   });
 
   // Update newProjectDetails when project changes to handle reloads
@@ -133,7 +134,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       channel: project?.channel || '',
       contentType: project?.content_type || '',
       dueDate: project?.due_date || new Date().toISOString().split('T')[0],
-      priority: project?.priority || 'NORMAL'
+      priority: project?.priority || 'NORMAL',
+      brand: project?.brand || ''
     });
   }, [project]);
 
@@ -1227,6 +1229,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       try {
         await db.updateProjectData(project.id, {
           ...formData,
+          brand: formData.brand,
           writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
@@ -1274,7 +1277,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           newProjectDetails.channel,
           newProjectDetails.dueDate,
           newProjectDetails.contentType,
-          newProjectDetails.priority
+          newProjectDetails.priority,
+          formData.brand
         );
         console.log('Created project with ID:', createdProject.id);
         await db.updateProjectData(createdProject.id, {
@@ -1336,6 +1340,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             created_by_name: currentUser.full_name,
             writer_id: publicUser.id,
             writer_name: currentUser.full_name,
+            brand: formData.brand,
             data: {
               source: 'SCRIPT_FROM_IDEA',
               parent_idea_id: project.id,
@@ -1382,7 +1387,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.channel,
             newProjectDetails.dueDate,
             newProjectDetails.contentType,
-            newProjectDetails.priority
+            newProjectDetails.priority,
+            formData.brand
           );
           await (db.projects.update as any)(createdProject.id, {
             created_by_user_id: publicUser.id,
@@ -1448,7 +1454,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           }
 
           // Validate thumbnail requirement for video-based content
-          const isVideoBased = ['VIDEO', 'JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(newProjectDetails.contentType);
+          const isVideoBased = ['VIDEO', 'APPLYWIZZ_USA_JOBS'].includes(newProjectDetails.contentType) || 
+                               ['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW'].includes(formData.brand);
           if (isVideoBased && formData.thumbnail_required === undefined) {
             throw new Error('Thumbnail requirement must be specified for this content type. Please select Yes or No.');
           }
@@ -1799,6 +1806,37 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
 
 
+  // ── Validation helpers (computed before JSX) ──────────────────────────────
+  const _isInstagramVideo = newProjectDetails.channel === Channel.INSTAGRAM && newProjectDetails.contentType === 'VIDEO';
+  const _nicheRequired = (_isInstagramVideo && formData.brand === 'APPLYWIZZ') || newProjectDetails.channel !== Channel.INSTAGRAM;
+  const _nicheInvalid = _nicheRequired && (!formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())));
+  const _draftDisabled = (
+    !canEdit ||
+    !newProjectDetails.title.trim() ||
+    !newProjectDetails.channel ||
+    !newProjectDetails.contentType ||
+    (_isInstagramVideo && !formData.brand) ||
+    _nicheInvalid ||
+    (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) ||
+    (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW'].includes(formData.brand) && formData.thumbnail_required === undefined)
+  );
+  const _submitDisabled = (
+    !canEdit ||
+    isSubmitting ||
+    !!validationError ||
+    !newProjectDetails.title.trim() ||
+    (!isRework && (
+      !newProjectDetails.channel ||
+      !newProjectDetails.contentType ||
+      (_isInstagramVideo && !formData.brand) ||
+      _nicheInvalid ||
+      (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined) ||
+      (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW'].includes(formData.brand) && formData.thumbnail_required === undefined)
+    )) ||
+    (!!project && getWorkflowState(project).isRejected && returnType !== 'reject')
+  );
+  // ──────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans">
       {/* Header */}
@@ -1834,16 +1872,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         <div className="flex items-center space-x-2 md:space-x-4 flex-shrink-0">
           <button
             onClick={handleSaveDraft}
-            disabled={!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)}
-            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black text-black font-black uppercase text-xs md:text-sm hover:bg-slate-100 transition-colors flex items-center shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[1px] active:shadow-none ${(!canEdit || !newProjectDetails.title.trim() || !newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={_draftDisabled}
+            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black text-black font-black uppercase text-xs md:text-sm hover:bg-slate-100 transition-colors flex items-center shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] active:translate-y-[1px] active:shadow-none ${_draftDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <Save className="w-4 h-4 md:mr-2" />
             <span className="hidden sm:inline">Draft</span>
           </button>
           <button
             onClick={() => setShowConfirmation(true)}
-            disabled={!canEdit || isSubmitting || !!validationError || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined))) || (project && getWorkflowState(project).isRejected && returnType !== 'reject')}
-            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(!canEdit || isSubmitting || (!isRework && !!validationError) || !newProjectDetails.title.trim() || (!isRework && (!newProjectDetails.channel || !newProjectDetails.contentType || !formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())) || (newProjectDetails.contentType === 'VIDEO' && formData.thumbnail_required === undefined)))) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
+            disabled={_submitDisabled}
+            className={`px-3 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${_submitDisabled ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#0085FF] text-white'}`}
           >
             <span className="inline">
               {isSubmitting ? '...' : (
@@ -1893,39 +1931,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   />
                 </div>
 
-                {/* Influencer Name */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                    Influencer Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.influencer_name || ''}
-                    onChange={e =>
-                      canEdit ? setFormData({ ...formData, influencer_name: e.target.value }) : null
-                    }
-                    readOnly={!canEdit}
-                    className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                    placeholder="Enter influencer name"
-                  />
-                </div>
 
-                {/* Referral Link */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                    Referral Link
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.referral_link || ''}
-                    onChange={e =>
-                      canEdit ? setFormData({ ...formData, referral_link: e.target.value }) : null
-                    }
-                    readOnly={!canEdit}
-                    className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                    placeholder="Enter referral link"
-                  />
-                </div>
 
                 {/* Channel */}
                 <div>
@@ -1944,9 +1950,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         return (
                           <button
                             key={c}
-                            onClick={() =>
-                              canEdit ? setNewProjectDetails({ ...newProjectDetails, channel: c }) : null
-                            }
+                            onClick={() => {
+                              if (!canEdit) return;
+                              // Reset content type, brand, niche when channel changes
+                              setNewProjectDetails({ ...newProjectDetails, channel: c, contentType: '' });
+                              setFormData(prev => ({ ...prev, brand: undefined, niche: undefined, niche_other: undefined }));
+                            }}
                             disabled={!canEdit}
                             className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${newProjectDetails.channel === c
                               ? `${colors[c] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
@@ -1960,16 +1969,20 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                   </div>
                 </div>
 
-                {/* Content Type */}
+
+                {/* Content Type Selection */}
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                     Content Type *
                   </label>
                   <div className="grid grid-cols-2 gap-2">
+                    {/* Video - always shown */}
                     <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' }) : null
-                      }
+                      onClick={() => {
+                        if (!canEdit) return;
+                        setNewProjectDetails({ ...newProjectDetails, contentType: 'VIDEO' });
+                        // Don't reset brand/niche if already on video
+                      }}
                       disabled={!canEdit}
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'VIDEO'
                         ? 'bg-[#0085FF] text-white'
@@ -1978,74 +1991,159 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     >
                       📹 Video
                     </button>
+                    {/* Creative - always shown */}
                     <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({
-                          ...newProjectDetails,
-                          contentType: 'CREATIVE_ONLY',
-                        }) : null
-                      }
+                      onClick={() => {
+                        if (!canEdit) return;
+                        setNewProjectDetails({ ...newProjectDetails, contentType: 'CREATIVE_ONLY' });
+                        // Reset brand and niche when switching away from Video
+                        setFormData(prev => ({ ...prev, brand: undefined, niche: undefined, niche_other: undefined }));
+                      }}
                       disabled={!canEdit}
                       className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'CREATIVE_ONLY'
                         ? 'bg-[#D946EF] text-white'
                         : 'bg-white hover:bg-slate-50'
                         } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      🎨 Creative Only
-                    </button>
-                    <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'JOBBOARD' }) : null
-                      }
-                      disabled={!canEdit}
-                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'JOBBOARD'
-                        ? 'bg-[#00A36C] text-white'
-                        : 'bg-white hover:bg-slate-50'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      💼 Job Board
-                    </button>
-                    <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'LEAD_MAGNET' }) : null
-                      }
-                      disabled={!canEdit}
-                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'LEAD_MAGNET'
-                        ? 'bg-[#6366F1] text-white'
-                        : 'bg-white hover:bg-slate-50'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      🧲 Lead Magnet
-                    </button>
-                    <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'CAPTION_BASED' }) : null
-                      }
-                      disabled={!canEdit}
-                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'CAPTION_BASED'
-                        ? 'bg-[#F97316] text-white'
-                        : 'bg-white hover:bg-slate-50'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      📝 Caption Based
-                    </button>
-                    <button
-                      onClick={() =>
-                        canEdit ? setNewProjectDetails({ ...newProjectDetails, contentType: 'APPLYWIZZ_USA_JOBS' }) : null
-                      }
-                      disabled={!canEdit}
-                      className={`p-3 text-xs font-black uppercase border-2 border-black ${newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS'
-                        ? 'bg-[#8B5CF6] text-white'
-                        : 'bg-white hover:bg-slate-50'
-                        } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      🇺🇸 Applywizz USA Jobs
+                      🎨 Creative
                     </button>
                   </div>
                 </div>
 
+                {/* Brand Selection - shown whenever Video is selected */}
+                {newProjectDetails.contentType === 'VIDEO' && (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                        Brands *
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { value: 'APPLYWIZZ', label: '🚀 ApplyWizz', color: 'bg-[#0085FF]' },
+                          { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
+                          { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
+                          { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
+                          { value: 'SHYAMS_PERSONAL_BRANDING', label: '✨ Shyam\'s Personal Branding', color: 'bg-[#F97316]' },
+                        ] as const).map(brand => (
+                          <button
+                            key={brand.value}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              setFormData(prev => ({ ...prev, brand: brand.value, niche: undefined, niche_other: undefined }));
+                            }}
+                            disabled={!canEdit}
+                            className={`px-4 py-3 text-xs font-black uppercase border-2 border-black transition-all ${
+                              formData.brand === brand.value
+                                ? `${brand.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`
+                                : 'bg-white hover:bg-slate-50'
+                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {brand.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+
+
+                    {/* Influencer and Referral fields - only for Job Board or Lead Magnet */}
+                    {(formData.brand === 'APPLYWIZZ_JOB_BOARD' || formData.brand === 'LEAD_MAGNET_RTW') && (
+                      <div className="space-y-4 pt-4 border-t-2 border-dashed border-slate-200">
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                            Influencer Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.influencer_name || ''}
+                            onChange={e =>
+                              canEdit ? setFormData({ ...formData, influencer_name: e.target.value }) : null
+                            }
+                            readOnly={!canEdit}
+                            className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                            placeholder="Enter influencer name"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                            Referral Link
+                          </label>
+                          <input
+                            type="url"
+                            value={formData.referral_link || ''}
+                            onChange={e =>
+                              canEdit ? setFormData({ ...formData, referral_link: e.target.value }) : null
+                            }
+                            readOnly={!canEdit}
+                            className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                            placeholder="Enter referral link"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Niche Selection - Only for ApplyWizz corporate content */}
+                {formData.brand === 'APPLYWIZZ' && (
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                    Niche *
+                  </label>
+                  <select
+                    value={formData.niche || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value) {
+                        setFormData({
+                          ...formData,
+                          niche: value as any,
+                          niche_other: value === 'OTHER' ? (formData.niche_other || '') : undefined
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          niche: undefined,
+                          niche_other: undefined
+                        });
+                      }
+                    }}
+                    className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                    disabled={!canEdit}
+                  >
+                    <option value="">Select a niche...</option>
+                    <option value="PROBLEM_SOLVING">Problem Solving</option>
+                    <option value="SOCIAL_PROOF">Social Proof</option>
+                    <option value="LEAD_MAGNET">Lead Magnet</option>
+                    <option value="CAPTION_BASED">Caption-Based</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+
+                  {/* Show input field when 'Other' is selected */}
+                  {formData.niche === 'OTHER' && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                        Specify Other Niche
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.niche_other || ''}
+                        onChange={e =>
+                          canEdit ? setFormData({ ...formData, niche_other: e.target.value }) : null
+                        }
+                        readOnly={!canEdit}
+                        className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
+                        placeholder="Enter the niche..."
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+                )}
+
                 {/* Thumbnail Required - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && (
+                {newProjectDetails.contentType === 'VIDEO' && (
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
                       Thumbnail Required *
@@ -2112,60 +2210,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     )}
                   </div>
                 )}
-
-                {/* Niche Selection */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                    Niche *
-                  </label>
-                  <select
-                    value={formData.niche || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value) {
-                        setFormData({
-                          ...formData,
-                          niche: value,
-                          niche_other: value === 'OTHER' ? (formData.niche_other || '') : undefined
-                        });
-                      } else {
-                        setFormData({
-                          ...formData,
-                          niche: undefined,
-                          niche_other: undefined
-                        });
-                      }
-                    }}
-                    className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                    disabled={!canEdit}
-                  >
-                    <option value="">Select a niche...</option>
-                    <option value="PROBLEM_SOLVING">Problem Solving</option>
-                    <option value="SOCIAL_PROOF">Social Proof</option>
-                    <option value="LEAD_MAGNET">Lead Magnet</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-
-                  {/* Show input field when 'Other' is selected */}
-                  {formData.niche === 'OTHER' && (
-                    <div className="mt-3">
-                      <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                        Specify Other Niche
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.niche_other || ''}
-                        onChange={e =>
-                          canEdit ? setFormData({ ...formData, niche_other: e.target.value }) : null
-                        }
-                        readOnly={!canEdit}
-                        className="w-full p-3 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                        placeholder="Enter the niche..."
-                        required
-                      />
-                    </div>
-                  )}
-                </div>
 
                 {/* Script Reference Link */}
                 <div>

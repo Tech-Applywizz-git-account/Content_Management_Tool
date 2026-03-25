@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
-import { Plus, Lightbulb, Clock, PlayCircle } from 'lucide-react';
+import { Plus, Lightbulb, Clock, PlayCircle, CloudUpload } from 'lucide-react';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import WriterProjectDetail from './WriterProjectDetail';
@@ -14,6 +14,7 @@ import Layout from '../Layout';
 import Popup from '../Popup';
 import { supabase } from '../../src/integrations/supabase/client';
 import FestivalNotifications from './FestivalNotifications';
+import { isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
     user: { full_name: string; role: Role };
@@ -41,6 +42,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         if (path.endsWith('/mywork')) return 'mywork';
         if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
         if (path.endsWith('/approved-videos')) return 'approved-videos';
+        if (path.endsWith('/video-uploads')) return 'video-uploads';
         return 'dashboard';
     };
 
@@ -58,6 +60,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     const handleViewChange = (view: string) => {
         setReworkProject(null);
         setVideoApprovalView(false);
+        setVideoUploadsView(false);
         setScriptFromIdea(null);
 
         const rolePath = user.role.toLowerCase();
@@ -66,10 +69,18 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         } else {
             navigate(`/${rolePath}/${view}`);
         }
+
+        if (view === 'approved-videos') {
+            const now = new Date().toISOString();
+            localStorage.setItem('lastViewedApprovedVideosAt', now);
+            setLastViewedAt(now);
+        }
     };
 
     const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
     const [videoApprovalView, setVideoApprovalView] = useState(false); // New state for video approval view
+    const [videoUploadsView, setVideoUploadsView] = useState(false); // New state for video uploads view
+    const [lastViewedAt, setLastViewedAt] = useState<string | null>(() => localStorage.getItem('lastViewedApprovedVideosAt'));
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
     useEffect(() => {
@@ -85,6 +96,15 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         if (path.endsWith('/video-approval')) setVideoApprovalView(true);
         else setVideoApprovalView(false);
+
+        if (path.endsWith('/video-uploads')) setVideoUploadsView(true);
+        else setVideoUploadsView(false);
+
+        if (path.endsWith('/approved-videos')) {
+            const now = new Date().toISOString();
+            localStorage.setItem('lastViewedApprovedVideosAt', now);
+            setLastViewedAt(now);
+        }
 
         // Pattern: /writer/edit/:id
         const editIdx = subPaths.findIndex(p => p === 'edit');
@@ -208,8 +228,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         ].includes(p.current_stage)
     );
 
-    // Projects that need video approval by the writer - visible only to the specific assigned writer for single-approval stage
-    // Always use allWriterProjects to ensure they are visible even if the user is in 'mywork' view
     const videoApprovalProjects = allWriterProjects.filter(p => {
         const isWriterRole = p.assigned_to_role === Role.WRITER;
 
@@ -234,6 +252,32 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
         return false;
     });
+
+    // Approval needed projects (Review & Approve)
+    const approvalNeededProjects = videoApprovalProjects.filter(p => 
+        p.current_stage === WorkflowStage.WRITER_VIDEO_APPROVAL || 
+        p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL
+    );
+
+    // Video upload projects (processed videos for JobBoard/LeadMagnet)
+    const videoUploadProjects = videoApprovalProjects.filter(p => 
+        p.current_stage === WorkflowStage.WRITER_REVISION
+    );
+
+    // Count for sidebar badge (Awaiting Approval influencer videos)
+    // We use localStorage to track when the writer last "cleared" this notification by opening the page
+    // (using the lastViewedAt state defined above)
+
+
+    const approvedVideosBadgeCount = activeView === 'approved-videos' ? 0 : allWriterProjects.filter(p => {
+        if (!isInfluencerVideo(p)) return false;
+        if (![WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.MULTI_WRITER_APPROVAL].includes(p.current_stage)) return false;
+        
+        // Only count if uploaded after last view
+        if (!lastViewedAt) return true;
+        const uploadTime = p.editor_uploaded_at || p.created_at;
+        return uploadTime > lastViewedAt;
+    }).length;
     const convertedIdeaIds = new Set(
         dashboardProjects
             .filter(p => p.data?.parent_idea_id)
@@ -387,10 +431,24 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     // Video Approval View
     if (videoApprovalView) {
-        return <WriterVideoApproval projects={videoApprovalProjects} onBack={() => {
+        return <WriterVideoApproval projects={approvalNeededProjects} onBack={() => {
             setVideoApprovalView(false);
             navigate('/writer');  // Navigate back to main dashboard
         }} refreshProjects={handleInternalRefresh} />;
+    }
+
+    // Video Uploads View (Full Page - No Sidebar)
+    if (videoUploadsView) {
+        return <WriterVideoApproval 
+            projects={videoUploadProjects} 
+            onBack={() => {
+                setVideoUploadsView(false);
+                navigate('/writer'); 
+            }}
+            refreshProjects={handleInternalRefresh} 
+            title="Video Uploads"
+            isUploadView={true}
+        />;
     }
 
     return (
@@ -400,6 +458,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             onOpenCreate={() => setIsCreating(true)}
             activeView={activeView}
             onChangeView={handleViewChange}
+            approvedVideosCount={approvedVideosBadgeCount}
         >
             {activeView === 'mywork' && (
                 <WriterMyWork user={user} projects={allWriterProjects} />
@@ -447,9 +506,21 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                         >
                             <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>Video Approval</span>
-                            {videoApprovalProjects.length > 0 && (
+                            {approvalNeededProjects.length > 0 && (
                                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
-                                    {videoApprovalProjects.length}
+                                    {approvalNeededProjects.length}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => navigate('/writer/video-uploads')}
+                            className="w-full sm:w-auto bg-[#0085FF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
+                        >
+                            <CloudUpload className="w-6 h-6 border-2 border-white rounded-full p-1" />
+                            <span>Video Uploads</span>
+                            {videoUploadProjects.length > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
+                                    {videoUploadProjects.length}
                                 </span>
                             )}
                         </button>
@@ -479,16 +550,17 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                            {isInfluencerVideo(p) && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    USA JOBS
+                                                    INFLUENCER / USA JOBS
                                                 </span>
                                             )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                    p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
-                                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
-                                                            'bg-[#D946EF] text-white'
+                                                    p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                        p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                            p.brand === 'SHYAMS_PERSONAL_BRANDING' ? 'bg-[#F97316] text-white' :
+                                                                'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
                                             </span>
@@ -576,9 +648,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             CREATIVE
                                                         </span>
                                                     )}
-                                                    {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                                    {isInfluencerVideo(p) && (
                                                         <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                            USA JOBS
+                                                            INFLUENCER / USA JOBS
                                                         </span>
                                                     )}
                                                     <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
@@ -642,15 +714,15 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                            {isInfluencerVideo(p) && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    USA JOBS
+                                                    INFLUENCER / USA JOBS
                                                 </span>
                                             )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                    p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
-                                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                    p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                        p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
                                                             'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
@@ -735,9 +807,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {p.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                                            {isInfluencerVideo(p) && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    USA JOBS
+                                                    INFLUENCER / USA JOBS
                                                 </span>
                                             )}
                                             <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">

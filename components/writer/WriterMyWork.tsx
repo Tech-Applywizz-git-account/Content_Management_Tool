@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import { db } from '../../services/supabaseDb';
-import { getWorkflowStateForRole } from '../../services/workflowUtils';
+import { getWorkflowStateForRole, isInfluencerVideo } from '../../services/workflowUtils';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import ScriptDisplay from '../ScriptDisplay';
 
@@ -426,7 +426,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
             {(selectedProject?.shoot_date || selectedProject?.delivery_date || selectedProject?.post_scheduled_date) && (
               <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(selectedProject.content_type) && selectedProject?.shoot_date && (
+                  {!isInfluencerVideo(selectedProject) && selectedProject?.shoot_date && (
                     <div className="flex items-center">
                       <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                       <span className="font-bold text-green-600">{format(new Date(selectedProject.shoot_date), 'dd-MM-yyyy')}</span>
@@ -491,7 +491,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                       break;
                     case 'CINEMATOGRAPHY':
                       if (comment.action === 'SUBMITTED') {
-                        description = ['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(selectedProject.content_type) ? 'Influencer video uploaded by writer' : 'Shoot video uploaded by cinematographer';
+                        description = isInfluencerVideo(selectedProject) ? 'Influencer video uploaded by writer' : 'Shoot video uploaded by cinematographer';
                       }
                       break;
                     case 'VIDEO_EDITING':
@@ -639,7 +639,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
           ))}
         </div>
       )}
-
       <div className="grid gap-4">
         {displayProjects.length === 0 ? (
           <div className="bg-slate-50 border-2 border-dashed border-slate-300 p-12 text-center">
@@ -732,11 +731,13 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                       ? 'bg-[#0085FF] text-white'
                       : task.channel === 'INSTAGRAM'
                         ? 'bg-[#D946EF] text-white'
-                        : task.channel === 'JOBBOARD'
+                        : task.brand === 'APPLYWIZZ_JOB_BOARD' || task.channel === 'JOBBOARD'
                           ? 'bg-[#00A36C] text-white'
-                          : task.channel === 'LEAD_MAGNET'
+                          : task.brand === 'LEAD_MAGNET_RTW' || task.channel === 'LEAD_MAGNET'
                             ? 'bg-[#6366F1] text-white'
-                            : 'bg-black text-white'
+                            : task.brand === 'SHYAMS_PERSONAL_BRANDING'
+                              ? 'bg-[#F97316] text-white'
+                              : 'bg-black text-white'
                     }`}
                 >
                   {task.channel}
@@ -748,9 +749,9 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   </span>
                 )}
 
-                {task.content_type === 'APPLYWIZZ_USA_JOBS' && (
+                {isInfluencerVideo(task) && (
                   <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-orange-400 text-white">
-                    USA JOBS
+                    INFLUENCER / USA JOBS
                   </span>
                 )}
 

@@ -101,6 +101,22 @@ const OpsProjectDetailDetailed: React.FC<Props> = ({ project, onBack, onUpdate, 
                                 </span>
                             </div>
                             <div className="flex justify-between pt-2 border-t border-slate-200">
+                                <span className="font-bold text-slate-500">Brand:</span>
+                                <span className="font-black text-[#0085FF] uppercase">{project.brand?.replace(/_/g, ' ') || 'N/A'}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-bold text-slate-500">Niche:</span>
+                                <span className="font-bold text-slate-900 uppercase">
+                                    {project.data?.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                        : project.data?.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                            : project.data?.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                : project.data?.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                    : project.data?.niche === 'OTHER' && project.data?.niche_other
+                                                        ? project.data?.niche_other
+                                                        : project.data?.niche || 'N/A'}
+                                </span>
+                            </div>
+                            <div className="flex justify-between pt-2 border-t border-slate-200">
                                 <span className="font-bold text-slate-500">Writer:</span>
                                 <span className="font-bold text-slate-900">{project.writer_name || 'N/A'}</span>
                             </div>

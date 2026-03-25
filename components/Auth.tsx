@@ -43,7 +43,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, isRestoringSession }) => {
 
             // Create a timeout promise that rejects after 12 seconds
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Login process timed out")), 12000)
+                setTimeout(() => reject(new Error("Login process timed out")), 30000)
             );
 
             // Wrap the entire login sequence in a race against the timeout

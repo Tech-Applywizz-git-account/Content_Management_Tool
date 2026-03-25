@@ -4,7 +4,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film } from 'lucide-react';
-import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
 import Popup from '../Popup';
 
@@ -35,12 +35,12 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
 
   // Use canonical rework condition
-  const isRework = isActiveRework(localProject, userRole);
+  const isRework = getWorkflowStateForRole(localProject, userRole).isRework;
   // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
   const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
 
   // Determine if current user can edit based on role and workflow state
-  const canEdit = canUserEdit(userRole, { isRework, isRejected, isTargetedRework: isRework, isInReview: false, isApproved: false, latestAction: null }, localProject.assigned_to_role, localProject.current_stage) || isRework;
+  const canEdit = canUserEdit(userRole, getWorkflowStateForRole(localProject, userRole), localProject.assigned_to_role, localProject.current_stage) || isRework;
 
   // Reset form fields when project changes
   useEffect(() => {
@@ -455,11 +455,11 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 <div className="flex items-center gap-2 mb-4">
                   <Video className="w-5 h-5" />
                   <h2 className="text-xl font-black uppercase">
-                    {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Shoot Video' : 'Shoot Video'}
+                    {isInfluencerVideo(localProject) ? 'Influencer Video' : 'Shoot Video'}
                   </h2>
                 </div>
                 <div className="bg-blue-50 border-2 border-blue-400 p-4">
-                  {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && (
+                  {!isInfluencerVideo(localProject) && (
                     <p className="text-sm font-bold text-blue-800 mb-2">
                       📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                     </p>
@@ -583,7 +583,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                         className="px-8 py-4 bg-[#FF4F4F] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Calendar className="w-5 h-5 inline mr-2" />
-                        Set Delivery Date
+                        {isInfluencerVideo(localProject) ? 'Influencer Video' : 'Shoot Video'} Ready
                       </button>
                     </div>
                     <p className="text-sm text-slate-500">
@@ -726,21 +726,30 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                     <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
                     <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
                   </div>
+                  {localProject.brand && (
+                    <div className="col-span-2 border-t border-slate-100 pt-3">
+                      <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
+                      <p className="font-black text-[#0085FF] mt-1 uppercase">
+                        {localProject.brand.replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  )}
                   {localProject.data?.niche && (
-                    <div className="col-span-2">
+                    <div className="col-span-2 border-t border-slate-100 pt-3">
                       <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                       <p className="font-bold text-slate-900 mt-1 uppercase">
                         {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                           : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                             : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                              : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                                ? localProject.data.niche_other
-                                : localProject.data.niche}
+                              : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                  ? localProject.data.niche_other
+                                  : localProject.data.niche}
                       </p>
                     </div>
                   )}
                   {localProject.data?.influencer_name && (
-                    <div className="col-span-1">
+                    <div className="col-span-1 border-t border-slate-100 pt-3">
                       <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
                       <p className="font-bold text-slate-900 mt-1 uppercase">
                         {localProject.data.influencer_name}
@@ -748,7 +757,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                     </div>
                   )}
                   {localProject.data?.referral_link && (
-                    <div className="col-span-1">
+                    <div className="col-span-1 border-t border-slate-100 pt-3">
                       <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
                       <p className="font-bold text-slate-900 mt-1">
                         <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">

@@ -8,7 +8,7 @@ import ScriptComparison from '../ScriptComparison';
 import ScriptDisplay from '../ScriptDisplay';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
 import { decodeHtmlEntities, stripHtmlTags } from '../../utils/htmlDecoder';
 
 interface Props {
@@ -49,11 +49,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [isDeleting, setIsDeleting] = useState(false);
 
     const isFinalReview = project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW;
-    const isVideo = project.channel === Channel.YOUTUBE || 
-        project.channel === Channel.INSTAGRAM || 
-        project.channel === Channel.JOBBOARD || 
-        project.channel === Channel.LEAD_MAGNET ||
-        project.content_type === 'APPLYWIZZ_USA_JOBS';
+    const isVideo = isInfluencerVideo(project) || 
+        project.channel === Channel.YOUTUBE || 
+        project.channel === Channel.INSTAGRAM ||
+        project.brand === 'APPLYWIZZ_JOB_BOARD' ||
+        project.brand === 'LEAD_MAGNET_RTW';
+     const isInfluencer = isInfluencerVideo(project);
 
     const scriptContentRef = useRef<HTMLDivElement>(null);
 
@@ -718,6 +719,14 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.data?.thumbnail_required === undefined ? '—' : project.data.thumbnail_required ? 'Yes' : 'No'}
                             </div>
                         </div>
+                        {project.brand && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                                <div className="font-black text-[#0085FF] uppercase">
+                                    {project.brand.replace(/_/g, ' ')}
+                                </div>
+                            </div>
+                        )}
                         {project.data?.thumbnail_notes && (
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>
@@ -950,7 +959,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             {/* Raw Video Assets */}
                                             {isVideo && (currVideo || prevVideo) && (
                                                 <div className="space-y-2">
-                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</h4>}
+                                                    {(showRaw || currVideo) && <h4 className="text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{isInfluencerVideo(project) ? 'Shoot Video' : 'Shoot Video'}</h4>}
                                                     <div className="grid grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showRaw && (
@@ -1106,8 +1115,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
-                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">{isInfluencerVideo(project) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
+                                                    <p className="text-xs text-slate-500 font-bold">{isInfluencerVideo(project) ? 'Shoot Video' : 'Shoot Video'}</p>
                                                 </div>
                                                 <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>
@@ -1183,7 +1192,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
                                         {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' :
-                                            ((project.content_type === 'JOBBOARD' || project.content_type === 'LEAD_MAGNET' || project.content_type === 'APPLYWIZZ_USA_JOBS') && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
+                                            (isInfluencerVideo(project) && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
                                                 'Ready for Publishing'}
                                     </span>
                                 </div>

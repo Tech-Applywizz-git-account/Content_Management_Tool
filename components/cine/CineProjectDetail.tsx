@@ -7,7 +7,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import Popup from '../Popup';
 import RichTextEditor from '../RichTextEditor';
-import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment } from '../../services/workflowUtils';
+import { getWorkflowState, getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 import ScriptDisplay from '../ScriptDisplay';
 
 interface Props {
@@ -534,7 +534,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                 <div className="bg-white border-2 border-gray-300 p-4">
                                     <h4 className="font-bold text-gray-800 mb-3">Existing Project Data</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && localProject.shoot_date && (
+                                        {!isInfluencerVideo(localProject) && localProject.shoot_date && (
                                             <div>
                                                 <span className="text-sm font-bold text-gray-600 block mb-1">Current Shoot Date</span>
                                                 <p className="font-medium">{localProject.shoot_date}</p>
@@ -618,6 +618,14 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <span className="font-bold text-slate-400 uppercase text-[10px]">Content Type</span>
                             <p className="font-bold text-slate-900 mt-0.5">{localProject.content_type}</p>
                         </div>
+                        {localProject.brand && (
+                            <div className="col-span-full border-t border-slate-100 pt-3">
+                                <span className="font-bold text-slate-400 uppercase text-[10px]">Brand</span>
+                                <p className="font-black text-[#0085FF] mt-0.5 uppercase">
+                                    {localProject.brand.replace(/_/g, ' ')}
+                                </p>
+                            </div>
+                        )}
                         {localProject.data?.niche && (
                             <div className="col-span-full border-t pt-4 mt-2">
                                 <span className="font-bold text-slate-400 uppercase text-[10px]">Niche</span>
@@ -625,9 +633,10 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                     {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                                                    ? localProject.data.niche_other
-                                                    : localProject.data.niche}
+                                                : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                    : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                                                        ? localProject.data.niche_other
+                                                        : localProject.data.niche}
                                 </p>
                             </div>
                         )}

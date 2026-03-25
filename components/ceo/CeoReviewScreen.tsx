@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, X, RotateCcw, Download, Video, Image as ImageIcon } from 'lucide-react';
 import Popup from '../Popup';
@@ -499,10 +499,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         return [{ value: WorkflowStage.SCRIPT, label: 'Writer' }];
     };
 
-    const isVideo = project.channel === Channel.YOUTUBE || 
+    const isVideo = isInfluencerVideo(project) || 
+        project.channel === Channel.YOUTUBE || 
         project.channel === Channel.INSTAGRAM || 
-        project.channel === Channel.JOBBOARD || 
-        project.channel === Channel.LEAD_MAGNET ||
         project.content_type === 'APPLYWIZZ_USA_JOBS';
 
     return (
@@ -608,6 +607,14 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.data?.thumbnail_required === undefined ? '—' : project.data.thumbnail_required ? 'Yes' : 'No'}
                             </div>
                         </div>
+                        {project.brand && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                                <div className="font-black text-[#0085FF] uppercase">
+                                    {project.brand.replace(/_/g, ' ')}
+                                </div>
+                            </div>
+                        )}
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
                             <div className="font-bold text-slate-900 uppercase">
@@ -615,9 +622,10 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : project.data.niche === 'OTHER' && project.data.niche_other
-                                                    ? project.data.niche_other
-                                                    : project.data.niche
+                                                : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                    : project.data.niche === 'OTHER' && project.data.niche_other
+                                                        ? project.data.niche_other
+                                                        : project.data.niche
                                     : '—'}
                             </div>
                         </div>

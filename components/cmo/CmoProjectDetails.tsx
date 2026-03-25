@@ -7,6 +7,7 @@ import Timeline from '../../components/Timeline';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import ScriptComparison from '../ScriptComparison';
+import { isInfluencerVideo } from '../../services/workflowUtils';
 
 // Helper function to format date to DD-MM-YYYY
 const formatDateDDMMYYYY = (dateString: string | undefined): string => {
@@ -296,9 +297,9 @@ action,
     }, [fullProject.id]);
     const isVideo = fullProject.channel === Channel.YOUTUBE ||
         fullProject.channel === Channel.INSTAGRAM ||
-        fullProject.channel === Channel.JOBBOARD ||
-        fullProject.channel === Channel.LEAD_MAGNET ||
-        fullProject.content_type === 'APPLYWIZZ_USA_JOBS';
+        fullProject.brand === 'APPLYWIZZ_JOB_BOARD' ||
+        fullProject.brand === 'LEAD_MAGNET_RTW' ||
+        isInfluencerVideo(fullProject);
 
     const getRoleForStage = (stage: WorkflowStage): string => {
         const stageToRoleMap: Record<WorkflowStage, Role> = {
@@ -519,6 +520,14 @@ action,
                                 </div>
                             </div>
                         )}
+                        {fullProject.brand && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                                <div className="font-black text-[#0085FF] uppercase">
+                                    {fullProject.brand.replace(/_/g, ' ')}
+                                </div>
+                            </div>
+                        )}
                         {fullProject.data?.niche && (
                             <div>
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
@@ -526,9 +535,10 @@ action,
                                     {fullProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : fullProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : fullProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : fullProject.data.niche === 'OTHER' && fullProject.data.niche_other
-                                                    ? fullProject.data.niche_other
-                                                    : fullProject.data.niche}
+                                                : fullProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                    : fullProject.data.niche === 'OTHER' && fullProject.data.niche_other
+                                                        ? fullProject.data.niche_other
+                                                        : fullProject.data.niche}
                                 </div>
                             </div>
                         )}
@@ -633,7 +643,7 @@ action,
                             {(fullProject?.shoot_date || fullProject?.delivery_date || fullProject?.post_scheduled_date) && (
                                 <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) && fullProject?.shoot_date && (
+                                        {!isInfluencerVideo(fullProject) && fullProject?.shoot_date && (
                                             <div className="flex items-center">
                                                 <span className="mr-2 font-bold text-slate-700">📅 Shoot Date:</span>
                                                 <span className="font-bold text-green-600">{formatDateDDMMYYYY(fullProject.shoot_date)}</span>
@@ -729,7 +739,7 @@ action,
                                                 break;
                                             case 'CINEMATOGRAPHY':
                                                 if (comment.action === 'SUBMITTED') {
-                                                    const videoLabel = ['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot video' : 'Raw video';
+                                                    const videoLabel = isInfluencerVideo(fullProject) ? 'Shoot video' : 'Raw video';
                                                     description = `${videoLabel} uploaded by cinematographer`;
                                                 }
                                                 break;
@@ -816,8 +826,8 @@ action,
                                             </div>
                                             <div className="p-4 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-sm uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
-                                                    <p className="text-xs text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(fullProject.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
+                                                    <p className="font-black text-slate-900 text-sm uppercase">{isInfluencerVideo(fullProject) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
+                                                    <p className="text-xs text-slate-500 font-bold">{isInfluencerVideo(fullProject) ? 'Shoot Video' : 'Shoot Video'}</p>
                                                 </div>
                                                 <a href={fullProject.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm font-black uppercase">View File</a>
                                             </div>

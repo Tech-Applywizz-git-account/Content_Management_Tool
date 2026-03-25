@@ -532,7 +532,10 @@ function App() {
       console.log('Login successful for:', user.full_name);
       setUser(user);
       db.setCurrentUser(user); // Set the current user in the database service
-      await refreshData(user);
+      
+      // We don't await refreshData here because the useEffect on [user] 
+      // will trigger it automatically upon state update. This avoids blocking 
+      // the UI transition and prevents login timeouts.
 
       // Redirect to role-based dashboard
       const rolePath = user.role === Role.SUB_EDITOR ? 'sub_editor' : user.role.toLowerCase();

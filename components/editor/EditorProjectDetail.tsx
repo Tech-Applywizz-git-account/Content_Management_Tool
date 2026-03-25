@@ -6,7 +6,7 @@ import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { stripHtmlTags, decodeHtmlEntities } from '../../utils/htmlDecoder';
 import Popup from '../Popup';
-import { isActiveRework, getCanonicalReworkComment, canUserEdit } from '../../services/workflowUtils';
+import { isActiveRework, getCanonicalReworkComment, canUserEdit, isInfluencerVideo } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
 import ScriptDisplay from '../ScriptDisplay';
 
@@ -333,27 +333,27 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {/* Raw Video from Cinematographer */}
-        {localProject.video_link && (fromView !== 'SCRIPTS') && (
+        {(localProject.video_link || localProject.data?.raw_footage_link) && (fromView !== 'SCRIPTS' || localProject.data?.source === 'CINE_DIRECT_UPLOAD') && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
               <h2 className="text-xl font-black uppercase">
-                {['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) ? 'Influencer Video' : 'Shoot Video'}
+                {localProject.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Cine Direct Upload' : (isInfluencerVideo(localProject) ? 'Influencer Video' : 'Shoot Video')}
               </h2>
             </div>
             <div className="bg-blue-50 border-2 border-blue-400 p-4">
-              {!['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(localProject.content_type) && (
+              {!isInfluencerVideo(localProject) && (
                 <p className="text-sm font-bold text-blue-800 mb-2">
                   📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                 </p>
               )}
               <a
-                href={localProject.video_link}
+                href={localProject.video_link || localProject.data?.raw_footage_link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block p-3 bg-white border-2 border-blue-400 text-blue-600 font-medium hover:bg-blue-50 transition-colors break-all"
               >
-                {localProject.video_link}
+                {localProject.video_link || localProject.data?.raw_footage_link}
               </a>
             </div>
           </div>
@@ -739,21 +739,30 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
               <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
             </div>
+            {localProject.brand && (
+              <div className="col-span-2 border-t border-slate-100 pt-3">
+                <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
+                <p className="font-black text-[#0085FF] mt-1 uppercase">
+                  {localProject.brand.replace(/_/g, ' ')}
+                </p>
+              </div>
+            )}
             {localProject.data?.niche && (
-              <div className="col-span-2">
+              <div className="col-span-2 border-t border-slate-100 pt-3">
                 <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
                 <p className="font-bold text-slate-900 mt-1 uppercase">
                   {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                     : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                       : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                        : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                          ? localProject.data.niche_other
-                          : localProject.data.niche}
+                        : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                            ? localProject.data.niche_other
+                            : localProject.data.niche}
                 </p>
               </div>
             )}
             {localProject.data?.influencer_name && (
-              <div className="col-span-1">
+              <div className="col-span-1 border-t border-slate-100 pt-3">
                 <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
                 <p className="font-bold text-slate-900 mt-1 uppercase">
                   {localProject.data.influencer_name}
@@ -761,7 +770,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
               </div>
             )}
             {localProject.data?.referral_link && (
-              <div className="col-span-1">
+              <div className="col-span-1 border-t border-slate-100 pt-3">
                 <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
                 <p className="font-bold text-slate-900 mt-1">
                   <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">

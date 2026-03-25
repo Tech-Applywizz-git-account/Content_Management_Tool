@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Project, WorkflowStage, STAGE_LABELS, Role, User as PublicUser } from '../../types';
-import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare, Video } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
-import { getWorkflowState } from '../../services/workflowUtils';
+import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { db } from '../../services/supabaseDb';
 import { UserStatus } from '../../types';
@@ -14,25 +14,14 @@ interface Props {
     projects: Project[];
     onBack: () => void;
     refreshProjects: () => void;
+    title?: string;
+    isUploadView?: boolean;
 }
 
-const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProjects }) => {
+const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProjects, title = "Video Approval", isUploadView = false }) => {
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
     if (selectedProject) {
-        if (selectedProject.current_stage === WorkflowStage.WRITER_REVISION) {
-            return (
-                <div className="animate-fade-in">
-                    <WriterProjectDetail
-                        project={selectedProject}
-                        onBack={() => {
-                            setSelectedProject(null);
-                            refreshProjects();
-                        }}
-                    />
-                </div>
-            );
-        }
         return (
             <VideoApprovalDetail
                 project={selectedProject}
@@ -55,22 +44,30 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h1 className="text-xl font-black uppercase text-slate-900">Video Approval</h1>
+                    <h1 className="text-xl font-black uppercase text-slate-900">{title}</h1>
                 </div>
             </header>
 
             <div className="flex-1 overflow-y-auto">
                 <div className="max-w-5xl mx-auto p-8 space-y-8">
-                    <div className="bg-gradient-to-br from-orange-50 to-white p-8 border-2 border-orange-400 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                        <h2 className="text-2xl font-black uppercase text-orange-900 mb-4">Videos Needing Approval</h2>
-                        <p className="text-sm font-bold text-orange-700 mb-6">
-                            Select a project to review and approve the completed video content
+                    <div className={`bg-gradient-to-br p-8 border-2 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${isUploadView ? 'from-blue-50 to-white border-blue-400' : 'from-orange-50 to-white border-orange-400'}`}>
+                        <h2 className={`text-2xl font-black uppercase mb-4 ${isUploadView ? 'text-blue-900' : 'text-orange-900'}`}>
+                            {isUploadView ? 'Videos Needing Upload' : 'Videos Needing Approval'}
+                        </h2>
+                        <p className={`text-sm font-bold mb-6 ${isUploadView ? 'text-blue-700' : 'text-orange-700'}`}>
+                            {isUploadView 
+                                ? 'Select a project to upload the final video link for distribution' 
+                                : 'Select a project to review and approve the completed video content'}
                         </p>
 
                         {projects.length === 0 ? (
-                            <div className="bg-orange-100 p-8 border-2 border-orange-300 rounded-lg text-center">
-                                <p className="text-lg font-bold text-orange-800">No videos require approval</p>
-                                <p className="text-orange-600 mt-2">All completed videos have been approved</p>
+                            <div className={`p-8 border-2 border-dashed rounded-lg text-center ${isUploadView ? 'bg-blue-50 border-blue-300' : 'bg-orange-50 border-orange-300'}`}>
+                                <p className={`text-lg font-bold ${isUploadView ? 'text-blue-800' : 'text-orange-800'}`}>
+                                    {isUploadView ? 'No videos to upload' : 'No videos require approval'}
+                                </p>
+                                <p className={`${isUploadView ? 'text-blue-600' : 'text-orange-600'} mt-2`}>
+                                    {isUploadView ? 'All distribution videos have been processed' : 'All completed videos have been approved'}
+                                </p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -78,7 +75,7 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                     <div
                                         key={project.id}
                                         onClick={() => setSelectedProject(project)}
-                                        className="bg-white p-6 border-2 border-orange-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer"
+                                        className={`bg-white p-6 border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer ${isUploadView ? 'border-blue-400' : 'border-orange-400'}`}
                                     >
                                         <div className="flex justify-between items-start mb-4">
                                             <span
@@ -92,7 +89,9 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                                 {project.channel}
                                             </span>
                                             <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'bg-blue-600 text-white' : 'bg-orange-100 text-orange-800 border-orange-300'}`}>
-                                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Upload Video' : 'Needs Approval'}
+                                                {project.current_stage === WorkflowStage.WRITER_REVISION 
+                                                  ? (project.brand || project.brandSelected || project.data?.brand || 'Brand').replace(/_/g, ' ') 
+                                                  : 'Needs Approval'}
                                             </span>
                                         </div>
 
@@ -114,7 +113,7 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
 
                                         <div className="mt-4 pt-4 border-t-2 border-slate-100">
                                             <button className={`w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'bg-blue-600' : 'bg-orange-500'}`}>
-                                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Open Project Detail' : 'Review & Approve'}
+                                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'VIDEO UPLOAD' : 'Review & Approve'}
                                             </button>
                                         </div>
                                     </div>
@@ -146,6 +145,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
     const [publicUser, setPublicUser] = useState<PublicUser | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [videoLink, setVideoLink] = useState('');
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -316,6 +316,37 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
         }
     };
 
+    const handleUploadAndAdvance = async () => {
+        if (!videoLink.trim()) {
+            alert('Please provide a video link');
+            return;
+        }
+        try {
+            setLoading(true);
+            setIsSubmitting(true);
+            // Update project with video link and then advance
+            await db.projects.update(project.id, { video_link: videoLink });
+            await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
+
+            setPopupMessage(`${isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
+            setStageName('Final Review (CMO)');
+            setPopupDuration(5000);
+            setShowPopup(true);
+            
+            setTimeout(() => {
+                onApprove(); // Navigate back to project list
+            }, 5500);
+        } catch (error) {
+            console.error('Failed to upload video and advance:', error);
+            setPopupMessage('Failed to upload video. Please try again.');
+            setStageName('Error');
+            setShowPopup(true);
+        } finally {
+            setLoading(false);
+            setIsSubmitting(false);
+        }
+    };
+
     const handleReject = async (reworkComment: string, roleForRework?: string) => {
         if (!publicUser?.id) {
             alert('User profile not loaded. Please refresh and try again.');
@@ -395,21 +426,27 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                 <div className="max-w-5xl mx-auto p-8 space-y-8">
 
                     {/* Current Status Card */}
-                    <div className="bg-gradient-to-br from-orange-50 to-white p-8 border-2 border-orange-400 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                    <div className={`bg-gradient-to-br p-8 border-2 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'from-blue-50 to-white border-blue-400' : 'from-orange-50 to-white border-orange-400'}`}>
                         <div className="flex items-start justify-between mb-6">
                             <div>
-                                <h2 className="text-2xl font-black uppercase text-orange-900 mb-2">Video Approval</h2>
-                                <p className="text-sm font-bold text-orange-700 uppercase">Project submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
+                                <h2 className={`text-2xl font-black uppercase mb-2 ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'text-blue-900' : 'text-orange-900'}`}>
+                                    {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Video Upload' : 'Video Approval'}
+                                </h2>
+                                <p className={`text-sm font-bold uppercase ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'text-blue-700' : 'text-orange-700'}`}>
+                                    {project.current_stage === WorkflowStage.WRITER_REVISION 
+                                        ? `Project awaiting processed video upload (${format(new Date(project.created_at), 'MMM dd, yyyy')})`
+                                        : `Project submitted ${format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}`}
+                                </p>
                             </div>
-                            <div className={`bg-orange-600 text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                                Needs Approval
+                            <div className={`${project.current_stage === WorkflowStage.WRITER_REVISION ? 'bg-blue-600' : 'bg-orange-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                                {project.current_stage === WorkflowStage.WRITER_REVISION ? 'Ready for Upload' : 'Needs Approval'}
                             </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white p-6 border-2 border-black">
                                 <div className="flex items-center space-x-2 mb-2">
-                                    <UserIcon className="w-5 h-5 text-orange-600" />
+                                    <UserIcon className={`w-5 h-5 ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'text-blue-600' : 'text-orange-600'}`} />
                                     <span className="text-xs font-bold uppercase text-slate-500">Current Stage</span>
                                 </div>
                                 <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
@@ -417,19 +454,63 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
 
                             <div className="bg-white p-6 border-2 border-black">
                                 <div className="flex items-center space-x-2 mb-2">
-                                    <Clock className="w-5 h-5 text-orange-600" />
+                                    <Clock className={`w-5 h-5 ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'text-blue-600' : 'text-orange-600'}`} />
                                     <span className="text-xs font-bold uppercase text-slate-500">Assigned To</span>
                                 </div>
-                                <p className="font-black text-lg uppercase">Writer (You)</p>
+                                <p className="font-black text-lg uppercase">{project.assigned_to_role} (You)</p>
                             </div>
 
                             <div className="bg-white p-6 border-2 border-black">
                                 <div className="flex items-center space-x-2 mb-2">
-                                    <FileText className="w-5 h-5 text-orange-600" />
+                                    <FileText className={`w-5 h-5 ${project.current_stage === WorkflowStage.WRITER_REVISION ? 'text-blue-600' : 'text-orange-600'}`} />
                                     <span className="text-xs font-bold uppercase text-slate-500">Status</span>
                                 </div>
-                                <p className="font-black text-lg uppercase">AWAITING APPROVAL</p>
+                                <p className="font-black text-lg uppercase">{project.status.replace(/_/g, ' ')}</p>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Project Details Section */}
+                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900 flex items-center gap-2">
+                            <FileText className="w-6 h-6" />
+                            Project Details
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {project.brand && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brand</span>
+                                    <p className="font-black text-[#0085FF] uppercase">
+                                        {project.brand.replace(/_/g, ' ')}
+                                    </p>
+                                </div>
+                            )}
+                            {project.data?.niche && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
+                                    <p className="text-slate-900 font-bold uppercase">
+                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                    : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                        : project.data.niche === 'OTHER' && project.data.niche_other
+                                                            ? project.data.niche_other
+                                                            : project.data.niche}
+                                    </p>
+                                </div>
+                            )}
+                            {project.content_type && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Content Type</span>
+                                    <p className="text-slate-900 font-bold uppercase">{project.content_type.replace(/_/g, ' ')}</p>
+                                </div>
+                            )}
+                            {project.status && (
+                                <div>
+                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Status</span>
+                                    <p className="text-slate-900 font-bold uppercase">{project.status}</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -447,85 +528,110 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             )}
                         </div>
                     </div>
+                    {/* Video Content - Hidden during Upload stage */}
+                    {project.current_stage !== WorkflowStage.WRITER_REVISION && (
+                        <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Video Content</h3>
 
-                    {/* Video Content */}
-                    <div className="bg-slate-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Video Content</h3>
-
-                        <div className="space-y-6">
-                            {project.video_link && (
-                                <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Shoot Video'}</h4>
-                                    <a
-                                        href={project.video_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline break-all"
-                                    >
-                                        {project.video_link}
-                                    </a>
-                                </div>
-                            )}
-
-                            {project.edited_video_link && (
-                                <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">
-                                        Edited Video
-                                    </h4>
-                                    <a
-                                        href={project.edited_video_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline break-all"
-                                    >
-                                        {project.edited_video_link}
-                                    </a>
-                                </div>
-                            )}
-
-                            {/* Fallback: show data.video_link if edited_video_link column is empty (older direct-upload projects) */}
-                            {!project.edited_video_link && project.data?.video_link && (
-                                <div className="bg-white p-6 border-2 border-blue-400">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white border border-blue-800">Direct Upload</span>
-                                        <h4 className="font-black text-lg text-slate-900">Edited Video</h4>
+                            <div className="space-y-6">
+                                {(project.video_link || project.data?.raw_footage_link) && (
+                                    <div className="bg-white p-6 border-2 border-slate-300">
+                                        <h4 className="font-black text-lg text-slate-900 mb-4">
+                                            {project.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Raw Footage (Cine Direct)' : (isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video')}
+                                        </h4>
+                                        <a
+                                            href={project.video_link || project.data?.raw_footage_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all"
+                                        >
+                                            {project.video_link || project.data?.raw_footage_link}
+                                        </a>
                                     </div>
-                                    <a
-                                        href={project.data.video_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline break-all font-medium"
-                                    >
-                                        {project.data.video_link}
-                                    </a>
-                                </div>
-                            )}
+                                )}
 
-                            {project.thumbnail_link && (
-                                <div className="bg-white p-6 border-2 border-slate-300">
-                                    <h4 className="font-black text-lg text-slate-900 mb-4">Thumbnail (from Designer)</h4>
-                                    <a
-                                        href={project.thumbnail_link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline break-all"
-                                    >
-                                        {project.thumbnail_link}
-                                    </a>
-                                </div>
-                            )}
+                                {project.edited_video_link && (
+                                    <div className="bg-white p-6 border-2 border-slate-300">
+                                        <h4 className="font-black text-lg text-slate-900 mb-4">
+                                            Edited Video
+                                        </h4>
+                                        <a
+                                            href={project.edited_video_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all"
+                                        >
+                                            {project.edited_video_link}
+                                        </a>
+                                    </div>
+                                )}
 
-                            {(!project.video_link && !project.edited_video_link && !project.data?.video_link && !project.thumbnail_link) && (
-                                <div className="bg-yellow-50 p-6 border-2 border-yellow-400 text-center">
-                                    <p className="font-bold text-yellow-800">No assets have been uploaded yet</p>
-                                </div>
-                            )}
+                                {/* Fallback: show data.video_link if edited_video_link column is empty (older direct-upload projects) */}
+                                {!project.edited_video_link && project.data?.video_link && (
+                                    <div className="bg-white p-6 border-2 border-blue-400">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white border border-blue-800">Direct Upload</span>
+                                            <h4 className="font-black text-lg text-slate-900">Edited Video</h4>
+                                        </div>
+                                        <a
+                                            href={project.data.video_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all font-medium"
+                                        >
+                                            {project.data.video_link}
+                                        </a>
+                                    </div>
+                                )}
+
+                                {project.thumbnail_link && (
+                                    <div className="bg-white p-6 border-2 border-slate-300">
+                                        <h4 className="font-black text-lg text-slate-900 mb-4">Thumbnail (from Designer)</h4>
+                                        <a
+                                            href={project.thumbnail_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all"
+                                        >
+                                            {project.thumbnail_link}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Action Buttons */}
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        {hasBeenRejected ? (
+                        {project.current_stage === WorkflowStage.WRITER_REVISION ? (
+                            <div className="space-y-6">
+                                <div className="space-y-4">
+                                    <label className="text-lg font-black text-slate-900 uppercase mb-2 flex items-center gap-2">
+                                        <Video className="w-6 h-6 text-slate-900" />
+                                        INFLUENCER VIDEO
+                                    </label>
+                                    <div className="flex flex-col sm:flex-row gap-4">
+                                        <input
+                                            type="url"
+                                            value={videoLink}
+                                            onChange={(e) => setVideoLink(e.target.value)}
+                                            placeholder={`Enter the ${isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link here`}
+                                            className="flex-1 p-4 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-lg bg-orange-50/30"
+                                        />
+                                        <button
+                                            onClick={handleUploadAndAdvance}
+                                            disabled={loading || !videoLink.trim()}
+                                            className="px-8 py-4 bg-blue-600 text-white font-black uppercase text-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px]"
+                                        >
+                                            {loading ? '...' : 'Upload'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="text-xs font-bold text-slate-500 italic">
+                                    📋 This will update the project and move it to the final review stage with the CMO.
+                                </p>
+                            </div>
+                        ) : hasBeenRejected ? (
                             <div className="bg-red-100 p-6 border-2 border-red-400 mb-4">
                                 <h3 className="font-black text-red-800 mb-2">Project Already Rejected</h3>
                                 <p className="text-red-700">

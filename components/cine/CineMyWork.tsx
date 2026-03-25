@@ -2,7 +2,7 @@ import React from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../types';
 import { format } from 'date-fns';
 import { CalendarIcon, Video } from 'lucide-react';
-import { isActiveRework } from '../../services/workflowUtils';
+import { isInfluencerVideo, isActiveRework } from '../../services/workflowUtils';
 import CineScripts from './CineScripts';
 
 interface Props {
@@ -250,7 +250,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
                                             <span className="font-bold text-slate-900">
-                                                {STAGE_LABELS[project.current_stage] || project.current_stage.replace(/_/g, ' ')}
+                                                {isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video'} Ready
                                             </span>
                                         </div>
                                     )}
