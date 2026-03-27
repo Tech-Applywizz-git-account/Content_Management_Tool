@@ -1069,7 +1069,16 @@ export const projects = {
         const project = await this.getById(id);
         const newData = { ...project.data, ...dataUpdates };
 
-        const result = await this.update(id, { data: newData });
+        // Prepare top-level updates to keep them in sync with data blob
+        // This ensures the top-level columns used for filtering/dashboards are accurate
+        const topLevelUpdates: any = { data: newData };
+        
+        // Sync brand
+        if (dataUpdates.brand) {
+            topLevelUpdates.brand = dataUpdates.brand === 'OTHER' ? dataUpdates.brand_other : dataUpdates.brand;
+        }
+
+        const result = await this.update(id, topLevelUpdates);
         console.log('Project data updated successfully:', result);
         return result;
     },

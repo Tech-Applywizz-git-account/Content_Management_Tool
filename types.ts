@@ -9,6 +9,7 @@ export enum Role {
   CEO = 'CEO',
   OPS = 'OPS',
   OBSERVER = 'OBSERVER',
+  PARTNERSHIP_ASSOCIATE = 'PARTNERSHIP_ASSOCIATE',
 }
 
 export enum Channel {
@@ -146,8 +147,9 @@ export interface ProjectData {
   lighting?: string;
   angles?: string;
   niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'CAPTION_BASED' | 'OTHER';
-  brand?: 'APPLYWIZZ' | 'APPLYWIZZ_JOB_BOARD' | 'LEAD_MAGNET_RTW' | 'SHYAMS_PERSONAL_BRANDING' | 'APPLYWIZZ_USA_JOBS';
+  brand?: 'APPLYWIZZ' | 'APPLYWIZZ_JOB_BOARD' | 'LEAD_MAGNET_RTW' | 'SHYAMS_PERSONAL_BRANDING' | 'APPLYWIZZ_USA_JOBS' | 'OTHER';
   niche_other?: string;
+  brand_other?: string;
   cine_thumbnail_link?: string;
   cine_thumbnail_photos?: string[];
   cine_to_writer_feedback?: string;
@@ -194,6 +196,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   [Role.CEO]: 'CEO (Approver)',
   [Role.OPS]: 'Operations',
   [Role.OBSERVER]: 'Observer (View-Only)',
+  [Role.PARTNERSHIP_ASSOCIATE]: 'Partnership Associate',
 };
 
 export const OBSERVER_TITLES: Record<string, string> = {

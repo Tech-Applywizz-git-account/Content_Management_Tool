@@ -1,10 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { Project, Role, TaskStatus, WorkflowStage, User } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Project, Role, WorkflowStage, User, STAGE_LABELS, TaskStatus, ROLE_LABELS } from '../../types';
 import { format } from 'date-fns';
-import { Trash2 } from 'lucide-react';
+import { 
+  BarChart2, 
+  Clock, 
+  CheckCircle, 
+  CheckCircle2,
+  AlertTriangle, 
+  RefreshCw, 
+  Layout, 
+  Upload,
+  Briefcase, 
+  Tag,
+  ArrowLeft,
+  Calendar,
+  User as UserIcon,
+  ExternalLink,
+  ChevronRight,
+  Filter,
+  Shield,
+  PlayCircle
+} from 'lucide-react';
 import { supabase } from '../../src/integrations/supabase/client';
 import { db } from '../../services/supabaseDb';
-import CmoTimelineView from './CmoTimelineView';
+import { useSearchParams } from 'react-router-dom';
 
 // Helper function to format date to DD-MM-YYYY
 const formatDateDDMMYYYY = (dateString: string | undefined): string => {
@@ -21,35 +40,196 @@ const formatDateDDMMYYYY = (dateString: string | undefined): string => {
   }
 };
 
-interface Props {
-  user: any; // Pass user object if needed
-}
+const WORKFLOW_ORDER = [
+  WorkflowStage.SCRIPT,
+  WorkflowStage.SCRIPT_REVIEW_L1,
+  WorkflowStage.SCRIPT_REVIEW_L2,
+  WorkflowStage.CINEMATOGRAPHY,
+  WorkflowStage.WRITER_VIDEO_APPROVAL,
+  WorkflowStage.VIDEO_EDITING,
+  WorkflowStage.MULTI_WRITER_APPROVAL,
+  WorkflowStage.SUB_EDITOR_ASSIGNMENT,
+  WorkflowStage.SUB_EDITOR_PROCESSING,
+  WorkflowStage.THUMBNAIL_DESIGN,
+  WorkflowStage.CREATIVE_DESIGN,
+  WorkflowStage.FINAL_REVIEW_CMO,
+  WorkflowStage.FINAL_REVIEW_CEO,
+  WorkflowStage.POST_WRITER_REVIEW,
+  WorkflowStage.OPS_SCHEDULING,
+  WorkflowStage.POSTED,
+  WorkflowStage.REWORK,
+  WorkflowStage.WRITER_REVISION
+];
 
-import { useSearchParams } from 'react-router-dom';
+const getMilestones = (p: Project): { label: string; time: string | undefined; color?: string }[] => {
+  const milestones: { label: string; time: string | undefined; color?: string }[] = [];
+  
+  if (p.writer_submitted_at) {
+    milestones.push({ label: 'Submitted', time: p.writer_submitted_at });
+  } else if (p.created_at) {
+    milestones.push({ label: 'Created', time: p.created_at });
+  }
+
+  switch (p.current_stage) {
+    case WorkflowStage.SCRIPT_REVIEW_L2:
+      milestones.push({ label: 'CMO Approved', time: p.cmo_approved_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.CINEMATOGRAPHY:
+      milestones.push({ label: 'CEO Approved', time: p.ceo_approved_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.VIDEO_EDITING:
+      milestones.push({ label: 'Cine Uploaded', time: p.cine_uploaded_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.FINAL_REVIEW_CMO:
+    case WorkflowStage.FINAL_REVIEW_CEO:
+      if (p.cine_uploaded_at) milestones.push({ label: 'Cine Uploaded', time: p.cine_uploaded_at });
+      milestones.push({ label: 'Editor Uploaded', time: p.editor_uploaded_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.OPS_SCHEDULING:
+      milestones.push({ label: 'Approved', time: p.ceo_approved_at || p.cmo_approved_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.POSTED:
+      if (p.post_scheduled_date) milestones.push({ label: 'Scheduled', time: p.post_scheduled_date });
+      milestones.push({ label: 'Approved', time: p.ceo_approved_at || p.cmo_approved_at, color: 'text-blue-600' });
+      break;
+    case WorkflowStage.REWORK:
+      milestones.push({ label: 'Rework Req', time: p.ceo_rework_at || p.cmo_rework_at, color: 'text-red-600' });
+      break;
+  }
+
+  return milestones.filter(m => m.time).slice(0, 3);
+};
+
+const formatDateWithTime = (dateString: string | undefined): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+  } catch {
+    return dateString;
+  }
+};
+
+const getBrand = (p: Project): string => {
+  const raw = p.brand || p.data?.brand_other || p.data?.brand || '';
+  return raw.trim();
+};
+
+const getStageApprovalInfo = (p: Project, stage: string): { label: string; time: string | undefined; color?: string } => {
+  switch (stage) {
+    case WorkflowStage.SCRIPT:
+      return { label: 'Submitted', time: p.writer_submitted_at, color: 'text-gray-600' };
+    case WorkflowStage.SCRIPT_REVIEW_L1:
+      return { label: 'Submitted', time: p.writer_submitted_at, color: 'text-gray-600' };
+    case WorkflowStage.SCRIPT_REVIEW_L2:
+      return { label: 'CMO Appr', time: p.cmo_approved_at, color: 'text-blue-600' };
+    case WorkflowStage.CINEMATOGRAPHY:
+      return { label: 'CEO Appr', time: p.ceo_approved_at || p.cmo_approved_at, color: 'text-blue-600' };
+    case WorkflowStage.WRITER_VIDEO_APPROVAL:
+      return { label: 'Cine Uploaded', time: p.cine_uploaded_at, color: 'text-blue-600' };
+    case WorkflowStage.VIDEO_EDITING:
+      return { label: 'Cine Uploaded', time: p.cine_uploaded_at, color: 'text-blue-600' }; 
+    case WorkflowStage.MULTI_WRITER_APPROVAL:
+    case WorkflowStage.SUB_EDITOR_ASSIGNMENT:
+    case WorkflowStage.SUB_EDITOR_PROCESSING:
+    case WorkflowStage.THUMBNAIL_DESIGN:
+    case WorkflowStage.CREATIVE_DESIGN:
+      return { label: 'Editor Ready', time: p.editor_uploaded_at || p.sub_editor_uploaded_at, color: 'text-blue-600' };
+    case WorkflowStage.FINAL_REVIEW_CEO:
+      return { label: 'CMO Appr', time: p.cmo_approved_at, color: 'text-blue-600' };
+    case WorkflowStage.OPS_SCHEDULING:
+      return p.ceo_approved_at 
+        ? { label: 'CEO Appr', time: p.ceo_approved_at, color: 'text-blue-600' }
+        : { label: 'CMO Appr', time: p.cmo_approved_at, color: 'text-blue-600' };
+    case WorkflowStage.POSTED:
+      return { label: 'Scheduled', time: p.post_scheduled_date, color: 'text-blue-600' };
+    case 'REWORK':
+      return { label: 'Rework Req', time: p.ceo_rework_at || p.cmo_rework_at, color: 'text-red-600' };
+    default:
+      return { label: '', time: undefined };
+  }
+};
+
+const findPreviousApproval = (p: Project, currentStageIdx: number): { label: string; time: string | undefined; color?: string } | null => {
+  if (currentStageIdx < 0) return null;
+  
+  // Try previous stages one by one until we find a timestamp
+  for (let i = currentStageIdx; i >= 0; i--) {
+    const stage = WORKFLOW_ORDER[i];
+    const info = getStageApprovalInfo(p, stage as string);
+    if (info.time) return info;
+  }
+  
+  return { label: 'Submitted', time: p.writer_submitted_at, color: 'text-gray-600' };
+};
+
+interface Props {
+  user: any;
+}
 
 const CmoOverview: React.FC<Props> = ({ user }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const topRef = React.useRef<HTMLDivElement>(null);
 
-  const activeTab = (searchParams.get('type') as 'IDEA' | 'SCRIPT') || 'IDEA';
-  const setActiveTab = (tab: 'IDEA' | 'SCRIPT') => {
-    setSearchParams(prev => {
-      prev.set('type', tab);
-      return prev;
-    }, { replace: true });
-  };
+  const brandFilter = searchParams.get('brand') || 'ALL';
+  const setBrandFilter = (b: string) =>
+    setSearchParams(p => { p.set('brand', b); p.delete('overview_filter'); return p; }, { replace: true });
 
-  const scriptFilter = (searchParams.get('overview_filter') as any) || 'ALL';
-  const setScriptFilter = (filter: string) => {
-    setSearchParams(prev => {
-      prev.set('overview_filter', filter);
-      return prev;
-    }, { replace: true });
-  };
+  const overviewFilter = searchParams.get('overview_filter') || '';
+  const setOverviewFilter = (f: string) =>
+    setSearchParams(p => { if (f) p.set('overview_filter', f); else p.delete('overview_filter'); return p; }, { replace: true });
+
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILS'>('OVERVIEW');
-  const [userDetails, setUserDetails] = useState<Record<string, User>>({});
+
+  useEffect(() => {
+    const fetchAllProjects = async () => {
+      try {
+        const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        setAllProjects(data || []);
+      } catch (err) {
+        console.error('Error fetching projects:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAllProjects();
+  }, []);
+
+  // Scroll restoration logic
+  useEffect(() => {
+    if (viewMode === 'OVERVIEW' && !loading) {
+      const savedScrollPos = sessionStorage.getItem('cmo_overview_scroll_pos');
+      if (savedScrollPos) {
+        // Small delay to ensure content is rendered
+        const timeoutId = setTimeout(() => {
+          window.scrollTo({
+            top: parseInt(savedScrollPos, 10),
+            behavior: 'auto'
+          });
+        }, 100);
+        return () => clearTimeout(timeoutId);
+      }
+    } else if (viewMode === 'DETAILS') {
+      if (topRef.current) topRef.current.scrollIntoView({ behavior: 'instant', block: 'start' });
+      const timeoutId = setTimeout(() => {
+        if (topRef.current) topRef.current.scrollIntoView({ behavior: 'instant', block: 'start' });
+      }, 50);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [viewMode, loading]);
+
   interface WorkflowHistoryEntry {
     action: string;
     comment: string;
@@ -64,138 +244,6 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
   const [comments, setComments] = useState<WorkflowHistoryEntry[]>([]);
   const [userMap, setUserMap] = useState<Record<string, any>>({});
 
-  // Scroll restoration logic
-  useEffect(() => {
-    if (viewMode === 'OVERVIEW' && !loading) {
-      const savedScrollPos = sessionStorage.getItem('cmo_overview_scroll_pos');
-      if (savedScrollPos) {
-        // Small delay to ensure content is rendered
-        const timeoutId = setTimeout(() => {
-          window.scrollTo({
-            top: parseInt(savedScrollPos, 10),
-            behavior: 'instant'
-          });
-        }, 50);
-        return () => clearTimeout(timeoutId);
-      }
-    }
-  }, [viewMode, loading]);
-
-  const handleViewDetails = (project: Project) => {
-    sessionStorage.setItem('cmo_overview_scroll_pos', window.scrollY.toString());
-    setSelectedProject(project);
-    setViewMode('DETAILS');
-    window.scrollTo(0, 0);
-  };
-
-  const handleBackToOverview = () => {
-    setViewMode('OVERVIEW');
-  };
-
-  useEffect(() => {
-    const fetchAllProjects = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('projects')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        setAllProjects(data || []);
-
-        // Fetch user details for assigned editors, sub-editors, and designers
-        const assignedProjects = data?.filter(p => p.assigned_to_user_id &&
-          (p.assigned_to_role === Role.EDITOR || p.assigned_to_role === Role.SUB_EDITOR || p.assigned_to_role === Role.DESIGNER)
-        ) || [];
-        const userIds: string[] = [...new Set(assignedProjects.map(p => p.assigned_to_user_id).filter(Boolean))] as string[];
-
-        const userDetailsMap: Record<string, User> = {};
-        for (const userId of userIds) {
-          if (userId) {
-            try {
-              const user = await db.users.getById(userId) as User;
-              userDetailsMap[userId as string] = user;
-            } catch (err) {
-              console.error(`Error fetching user ${userId}:`, err);
-            }
-          }
-        }
-
-        setUserDetails(userDetailsMap);
-      } catch (error) {
-        console.error('Error fetching projects:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAllProjects();
-  }, []);
-
-  // Filter projects by type
-  const ideaProjects = allProjects.filter(p => p.data?.source === 'IDEA_PROJECT');
-
-  // Filter script projects with role-based filtering
-  const allScriptProjects = allProjects.filter(p => p.data?.source !== 'IDEA_PROJECT' || p.data?.script_content);
-
-  const scriptProjects = scriptFilter === 'ALL'
-    ? allScriptProjects
-    : allScriptProjects.filter(p => {
-      switch (scriptFilter) {
-        case 'WRITER':
-          return p.assigned_to_role === Role.WRITER ||
-            p.current_stage === WorkflowStage.SCRIPT ||
-            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
-            p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL;
-        case 'CMO':
-          return p.assigned_to_role === Role.CMO ||
-            p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1;
-        case 'CEO':
-          return p.assigned_to_role === Role.CEO ||
-            p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-            p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2;
-        case 'CINE':
-          return p.assigned_to_role === Role.CINE ||
-            p.current_stage === WorkflowStage.CINEMATOGRAPHY;
-        case 'EDITOR':
-          return p.assigned_to_role === Role.EDITOR ||
-            p.current_stage === WorkflowStage.VIDEO_EDITING ||
-            p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT ||
-            p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING;
-        case 'DESIGNER':
-          return p.assigned_to_role === Role.DESIGNER ||
-            p.current_stage === WorkflowStage.THUMBNAIL_DESIGN ||
-            p.current_stage === WorkflowStage.CREATIVE_DESIGN;
-        case 'OPS':
-          return p.assigned_to_role === Role.OPS ||
-            p.current_stage === WorkflowStage.OPS_SCHEDULING;
-        case 'POSTED':
-          return p.current_stage === WorkflowStage.POSTED ||
-            (p.status === 'DONE' && p.data?.live_url && p.data.live_url.trim() !== '');
-        default:
-          return true;
-      }
-    });
-
-
-
-  // Count approved by current user
-  const approvedByYou = allProjects.filter(p =>
-    p.history?.some(h =>
-      h.actor_id === user?.id &&
-      h.action === 'APPROVED'
-    )
-  ).length;
-
-  // Get projects based on active tab
-  const projectsToShow = activeTab === 'IDEA'
-    ? ideaProjects
-    : scriptProjects;
-
-  // Effect to fetch comments when selectedProject changes
   useEffect(() => {
     const fetchComments = async () => {
       if (!selectedProject?.id) return;
@@ -221,149 +269,55 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
 
       // Filter to include all relevant workflow stages for comprehensive history
       const commentsData = allHistoryData.filter(item => {
-        // Always include APPROVED, REWORK, and REJECTED actions
-        if (['APPROVED', 'REWORK', 'REJECTED'].includes(item.action)) {
-          return true;
-        }
-
-        // Include SUBMITTED actions for SCRIPT stage (writer submissions)
-        if (item.stage === 'SCRIPT' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for SCRIPT_REVIEW_L1 stage (writer submissions for CMO review)
-        if (item.stage === 'SCRIPT_REVIEW_L1' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for REWORK stage (writer rework submissions)
-        if (item.stage === 'REWORK' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for other stages where writers might submit content
-        if (['WRITER_VIDEO_APPROVAL', 'POST_WRITER_REVIEW'].includes(item.stage) && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include APPROVED and SUBMITTED actions for MULTI_WRITER_APPROVAL stage (writer approvals)
-        if (item.stage === 'MULTI_WRITER_APPROVAL' && ['APPROVED', 'SUBMITTED'].includes(item.action)) {
-          return true;
-        }
-
-        // Include SET_SHOOT_DATE and SET_DELIVERY_DATE actions
-        if (item.action === 'SET_SHOOT_DATE' || item.action === 'SET_DELIVERY_DATE') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for CINEMATOGRAPHY, VIDEO_EDITING, SUB_EDITOR_PROCESSING, THUMBNAIL_DESIGN
-        // This ensures we see when content was uploaded in these stages
-        if (['CINEMATOGRAPHY', 'VIDEO_EDITING', 'SUB_EDITOR_PROCESSING', 'THUMBNAIL_DESIGN'].includes(item.stage) && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include APPROVED actions for CINEMATOGRAPHY, VIDEO_EDITING, SUB_EDITOR_PROCESSING, THUMBNAIL_DESIGN, and SUB_EDITOR_ASSIGNMENT stages
-        if (['CINEMATOGRAPHY', 'VIDEO_EDITING', 'SUB_EDITOR_PROCESSING', 'THUMBNAIL_DESIGN', 'SUB_EDITOR_ASSIGNMENT'].includes(item.stage) && item.action === 'APPROVED') {
-          return true;
-        }
-
-        // Include all actions for FINAL_REVIEW_CMO and FINAL_REVIEW_CEO stages
-        if (['FINAL_REVIEW_CMO', 'FINAL_REVIEW_CEO'].includes(item.stage)) {
-          return true;
-        }
-
-        // Include SUB_EDITOR_ASSIGNED actions
-        if (item.action === 'SUB_EDITOR_ASSIGNED') {
-          return true;
-        }
-
-        // Include REWORK_VIDEO_SUBMITTED actions
-        if (item.action === 'REWORK_VIDEO_SUBMITTED') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for SCRIPT stage (writer submissions)
-        if (item.stage === 'SCRIPT' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include all OPS_SCHEDULING actions
-        if (item.stage === 'OPS_SCHEDULING') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for SCRIPT_REVIEW_L1 stage (writer submissions for CMO review)
-        if (item.stage === 'SCRIPT_REVIEW_L1' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include SUBMITTED actions for SCRIPT_REVIEW_L2 stage (writer submissions for CEO review)
-        if (item.stage === 'SCRIPT_REVIEW_L2' && item.action === 'SUBMITTED') {
-          return true;
-        }
-
-        // Include all actions for other CEO-related stages
-        if (['POST_WRITER_REVIEW'].includes(item.stage)) {
-          return true;
-        }
-
-        // For other stages, only include specific approved-type actions
+        if (['APPROVED', 'REWORK', 'REJECTED'].includes(item.action)) return true;
+        if (item.stage === 'SCRIPT' && item.action === 'SUBMITTED') return true;
+        if (item.stage === 'SCRIPT_REVIEW_L1' && item.action === 'SUBMITTED') return true;
+        if (item.stage === 'REWORK' && item.action === 'SUBMITTED') return true;
+        if (['WRITER_VIDEO_APPROVAL', 'POST_WRITER_REVIEW'].includes(item.stage) && item.action === 'SUBMITTED') return true;
+        if (item.stage === 'MULTI_WRITER_APPROVAL' && ['APPROVED', 'SUBMITTED'].includes(item.action)) return true;
+        if (item.action === 'SET_SHOOT_DATE' || item.action === 'SET_DELIVERY_DATE') return true;
+        if (['CINEMATOGRAPHY', 'VIDEO_EDITING', 'SUB_EDITOR_PROCESSING', 'THUMBNAIL_DESIGN'].includes(item.stage) && item.action === 'SUBMITTED') return true;
+        if (['CINEMATOGRAPHY', 'VIDEO_EDITING', 'SUB_EDITOR_PROCESSING', 'THUMBNAIL_DESIGN', 'SUB_EDITOR_ASSIGNMENT'].includes(item.stage) && item.action === 'APPROVED') return true;
+        if (['FINAL_REVIEW_CMO', 'FINAL_REVIEW_CEO'].includes(item.stage)) return true;
+        if (item.action === 'SUB_EDITOR_ASSIGNED') return true;
+        if (item.action === 'REWORK_VIDEO_SUBMITTED') return true;
+        if (item.stage === 'SCRIPT' && item.action === 'SUBMITTED') return true;
+        if (item.stage === 'OPS_SCHEDULING') return true;
+        if (item.stage === 'SCRIPT_REVIEW_L1' && item.action === 'SUBMITTED') return true;
+        if (item.stage === 'SCRIPT_REVIEW_L2' && item.action === 'SUBMITTED') return true;
+        if (['POST_WRITER_REVIEW'].includes(item.stage)) return true;
         return false;
       });
 
-      // Filter out 'CREATED' actions and remove duplicates
       const filteredComments = commentsData?.filter(comment => comment.action !== 'CREATED') || [];
-
-      // Deduplicate events based on a unique combination of action, actor, comment, and timestamp
       const uniqueEventsMap = new Map();
 
       filteredComments.forEach(comment => {
-        // Create a unique key for each event based on action, actor, comment and timestamp
         const uniqueKey = `${comment.action}-${comment.actor_id || comment.actor_name}-${comment.comment || ''}-${comment.timestamp}`;
-
-        // Only add the first occurrence of each unique event
         if (!uniqueEventsMap.has(uniqueKey)) {
           uniqueEventsMap.set(uniqueKey, comment);
         }
       });
 
-      // Convert map values back to array
-      // Sort by timestamp (most recent first)
       let uniqueComments = (Array.from(uniqueEventsMap.values()) as WorkflowHistoryEntry[])
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-      // Fetch user details to get proper names instead of emails
       if (uniqueComments.length > 0) {
-        const userIds = uniqueComments
-          .map(comment => comment.actor_id)
-          .filter(id => id) as string[];
-
+        const userIds = uniqueComments.map(comment => comment.actor_id).filter(id => id) as string[];
         if (userIds.length > 0) {
           const uniqueUserIds = [...new Set(userIds)];
-
-          // Fetch user details for all unique user IDs
           const userPromises = uniqueUserIds.map(async (userId) => {
             try {
-              const user = await db.users.getById(userId);
+              const user = await db.users.getById(userId as string);
               return { id: userId, ...user };
             } catch (error) {
-              console.error(`Error fetching user ${userId}:`, error);
               return null;
             }
           });
-
           const userData = await Promise.all(userPromises);
           const userMapTemp: Record<string, any> = {};
-
-          userData.forEach(user => {
-            if (user) {
-              userMapTemp[user.id] = user;
-            }
-          });
-
+          userData.forEach(user => { if (user) userMapTemp[user.id] = user; });
           setUserMap(userMapTemp);
-
-          // Update the comments with proper names
           uniqueComments = uniqueComments.map(comment => {
             if (comment.actor_id && userMapTemp[comment.actor_id]) {
               return {
@@ -375,12 +329,327 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
           });
         }
       }
-
       setComments(uniqueComments);
     };
-
     fetchComments();
   }, [selectedProject?.id]);
+
+  const brandStats = useMemo(() => {
+    const map: Record<string, number> = {};
+    allProjects.forEach(p => { 
+      const b = getBrand(p); 
+      if (b) map[b] = (map[b] || 0) + 1;
+    });
+    return { counts: map, list: Object.keys(map).sort() };
+  }, [allProjects]);
+
+  useEffect(() => {
+    if (!searchParams.get('brand') && brandStats.list.length > 0) {
+      setBrandFilter(brandStats.list[0]);
+    }
+  }, [brandStats.list, searchParams]);
+
+  const brandFilteredProjects = useMemo(() => {
+    if (!brandFilter || brandFilter === 'ALL') {
+      // If no valid filter yet, just return empty or fallback to the first brand if available
+      return brandStats.list.length > 0 ? allProjects.filter(p => getBrand(p) === brandStats.list[0]) : [];
+    }
+    return allProjects.filter(p => getBrand(p) === brandFilter);
+  }, [allProjects, brandFilter, brandStats.list]);
+
+  const kpiData = useMemo(() => {
+    const base = brandFilteredProjects;
+    
+    // CMO Review Stats
+    const cmoScript = base.filter(p => p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 && p.status !== TaskStatus.DONE).length;
+    const cmoFinal = base.filter(p => [WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.POST_WRITER_REVIEW].includes(p.current_stage) && p.status !== TaskStatus.DONE).length;
+    
+    // CEO Review Stats
+    const ceoScript = base.filter(p => p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 && p.status !== TaskStatus.DONE).length;
+    const ceoFinal = base.filter(p => p.current_stage === WorkflowStage.FINAL_REVIEW_CEO && p.status !== TaskStatus.DONE).length;
+
+    // Production Stats (Exclude Rework)
+    const cine = base.filter(p => [WorkflowStage.CINEMATOGRAPHY, WorkflowStage.WRITER_VIDEO_APPROVAL].includes(p.current_stage) && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK).length;
+    const editor = base.filter(p => [WorkflowStage.VIDEO_EDITING, WorkflowStage.SUB_EDITOR_ASSIGNMENT, WorkflowStage.SUB_EDITOR_PROCESSING].includes(p.current_stage) && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK).length;
+    const designer = base.filter(p => [WorkflowStage.THUMBNAIL_DESIGN, WorkflowStage.CREATIVE_DESIGN].includes(p.current_stage) && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK).length;
+
+    // Approved counts (moved beyond these categories)
+    const cmoApproved = base.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1', 'FINAL_REVIEW_CMO', 'POST_WRITER_REVIEW'].includes(p.current_stage) && p.status !== TaskStatus.DONE).length;
+    const ceoApproved = base.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1', 'SCRIPT_REVIEW_L2', 'FINAL_REVIEW_CMO', 'FINAL_REVIEW_CEO', 'POST_WRITER_REVIEW'].includes(p.current_stage) && p.status !== TaskStatus.DONE).length;
+    const prodApproved = base.filter(p => [WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED].includes(p.current_stage) || p.status === TaskStatus.DONE).length;
+
+    return {
+      total: base.length,
+      completed: base.filter(p => p.status === TaskStatus.DONE).length,
+      rework: base.filter(p => p.status === TaskStatus.REWORK).length,
+      cmoTotal: cmoScript + cmoFinal,
+      cmoApproved,
+      cmoScript,
+      cmoFinal,
+      ceoTotal: ceoScript + ceoFinal,
+      ceoApproved,
+      ceoScript,
+      ceoFinal,
+      prodTotal: cine + editor + designer,
+      prodApproved,
+      cine,
+      editor,
+      designer
+    };
+  }, [brandFilteredProjects]);
+
+  const stageCounts = useMemo(() => {
+    const map: Record<string, { pending: number; approved: number }> = {};
+    const persistentStages = [
+      WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2, 
+      WorkflowStage.CINEMATOGRAPHY, WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.VIDEO_EDITING, 
+      WorkflowStage.MULTI_WRITER_APPROVAL, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO, 
+      WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED
+    ];
+    persistentStages.forEach(s => map[s] = { pending: 0, approved: 0 });
+
+    brandFilteredProjects.forEach(p => {
+      let currentStage: string = p.current_stage;
+      if (p.status === TaskStatus.DONE) currentStage = WorkflowStage.POSTED;
+      if (currentStage === WorkflowStage.POST_WRITER_REVIEW) currentStage = WorkflowStage.FINAL_REVIEW_CMO;
+
+      const isReworkStatus = p.status === TaskStatus.REWORK;
+      const currentIdx = WORKFLOW_ORDER.indexOf(currentStage as WorkflowStage);
+
+      WORKFLOW_ORDER.forEach((s) => {
+        const stageIdx = WORKFLOW_ORDER.indexOf(s);
+        if (!map[s]) map[s] = { pending: 0, approved: 0 };
+        
+        // Items in REWORK status only count towards the REWORK stage button
+        if (isReworkStatus) {
+           if (s === WorkflowStage.REWORK) map[s].pending++;
+           return;
+        }
+
+        if (currentStage === s) {
+          map[s].pending++;
+        } else {
+          const postedIdx = WORKFLOW_ORDER.indexOf(WorkflowStage.POSTED);
+          const isDone = p.status === TaskStatus.DONE;
+          
+          if (isDone) {
+            // Done projects only count as approved for stages BEFORE Posted
+            if (stageIdx < postedIdx) map[s].approved++;
+          } else if (currentIdx > stageIdx) {
+            // Active projects count as approved for stages they have passed
+            map[s].approved++;
+          }
+        }
+      });
+    });
+    return map;
+  }, [brandFilteredProjects]);
+
+  const orderedStageEntries = useMemo(() => {
+    const persistentStages = [
+      WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2, 
+      WorkflowStage.CINEMATOGRAPHY, WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.VIDEO_EDITING, 
+      WorkflowStage.MULTI_WRITER_APPROVAL, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO, 
+      WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED
+    ];
+    const allRelevantStages = new Set([...Object.keys(stageCounts), ...persistentStages]);
+    return Array.from(allRelevantStages)
+      .filter(s => s !== WorkflowStage.POST_WRITER_REVIEW)
+      .map(s => [s, stageCounts[s] || { pending: 0, approved: 0 }] as [string, { pending: number; approved: number }])
+      .sort((a, b) => {
+        const idxA = WORKFLOW_ORDER.indexOf(a[0] as WorkflowStage);
+        const idxB = WORKFLOW_ORDER.indexOf(b[0] as WorkflowStage);
+        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+      });
+  }, [stageCounts]);
+
+  const overviewFilteredProjects = useMemo(() => {
+    const base = brandFilteredProjects;
+    if (!overviewFilter) return base;
+    
+    const kpiIds = ['COMPLETED', 'REWORK', 'CMO_REVIEW', 'CEO_REVIEW', 'IN_PRODUCTION'];
+    if (kpiIds.includes(overviewFilter)) {
+      switch (overviewFilter) {
+        case 'COMPLETED': return base.filter(p => p.status === TaskStatus.DONE);
+        case 'REWORK': return base.filter(p => p.status === TaskStatus.REWORK);
+        case 'CMO_REVIEW': 
+          return base.filter(p => p.current_stage !== 'SCRIPT' && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK);
+        case 'CEO_REVIEW':
+          return base.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1'].includes(p.current_stage) && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK);
+        case 'IN_PRODUCTION':
+          return base.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1', 'SCRIPT_REVIEW_L2', 'FINAL_REVIEW_CMO', 'FINAL_REVIEW_CEO', 'POST_WRITER_REVIEW'].includes(p.current_stage) && p.status !== TaskStatus.REWORK);
+        default: return base;
+      }
+    }
+
+    const actualFilter = (overviewFilter === WorkflowStage.POST_WRITER_REVIEW || overviewFilter === WorkflowStage.FINAL_REVIEW_CMO) ? WorkflowStage.FINAL_REVIEW_CMO : overviewFilter;
+    const filterIdx = WORKFLOW_ORDER.indexOf(actualFilter as WorkflowStage);
+    if (filterIdx === -1) return base.filter(p => p.current_stage === overviewFilter);
+
+    return base.filter(p => {
+      let currentStage: string = p.current_stage;
+      if (p.status === TaskStatus.DONE) currentStage = WorkflowStage.POSTED;
+      if (currentStage === WorkflowStage.POST_WRITER_REVIEW) currentStage = WorkflowStage.FINAL_REVIEW_CMO;
+      const currentIdx = WORKFLOW_ORDER.indexOf(currentStage as WorkflowStage);
+      if (p.status === TaskStatus.DONE) return WORKFLOW_ORDER.indexOf(WorkflowStage.POSTED) >= filterIdx;
+      if (p.status === TaskStatus.REWORK) return filterIdx === WORKFLOW_ORDER.indexOf(WorkflowStage.REWORK);
+      return currentIdx >= filterIdx;
+    });
+  }, [brandFilteredProjects, overviewFilter]);
+
+  const projectsToShow = useMemo(() => {
+    const list = [...overviewFilteredProjects];
+    const filterIdx = WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage);
+    const isStageFilter = filterIdx !== -1 && !['POSTED', 'REWORK'].includes(overviewFilter);
+
+    if (isStageFilter) {
+      const actualFilter = (overviewFilter === WorkflowStage.POST_WRITER_REVIEW || overviewFilter === WorkflowStage.FINAL_REVIEW_CMO) ? WorkflowStage.FINAL_REVIEW_CMO : overviewFilter;
+      list.sort((a, b) => {
+        const getEffectiveStage = (p: Project) => {
+          if (p.status === TaskStatus.DONE) return WorkflowStage.POSTED;
+          if (p.current_stage === WorkflowStage.POST_WRITER_REVIEW) return WorkflowStage.FINAL_REVIEW_CMO;
+          return p.current_stage;
+        };
+        const isAPending = getEffectiveStage(a) === actualFilter;
+        const isBPending = getEffectiveStage(b) === actualFilter;
+        if (isAPending && !isBPending) return -1;
+        if (!isAPending && isBPending) return 1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    } else {
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    return list;
+  }, [overviewFilteredProjects, overviewFilter]);
+
+  const handleViewDetails = (project: Project) => {
+    sessionStorage.setItem('cmo_overview_scroll_pos', window.scrollY.toString());
+    setSelectedProject(project);
+    setViewMode('DETAILS');
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }, 10);
+  };
+
+  const handleBackToOverview = () => {
+    setViewMode('OVERVIEW');
+  };
+
+  const { pendingList, approvedList } = useMemo(() => {
+    if (overviewFilter === 'CMO_REVIEW') {
+      const pending = projectsToShow.filter(p => [WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.POST_WRITER_REVIEW].includes(p.current_stage as WorkflowStage) && p.status !== TaskStatus.DONE);
+      const approved = projectsToShow.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1', 'FINAL_REVIEW_CMO', 'POST_WRITER_REVIEW'].includes(p.current_stage) && p.status !== TaskStatus.DONE);
+      return { pendingList: pending, approvedList: approved };
+    }
+    if (overviewFilter === 'CEO_REVIEW') {
+      const pending = projectsToShow.filter(p => [WorkflowStage.SCRIPT_REVIEW_L2, WorkflowStage.FINAL_REVIEW_CEO].includes(p.current_stage as WorkflowStage) && p.status !== TaskStatus.DONE);
+      const approved = projectsToShow.filter(p => !['SCRIPT', 'SCRIPT_REVIEW_L1', 'SCRIPT_REVIEW_L2', 'FINAL_REVIEW_CMO', 'FINAL_REVIEW_CEO', 'POST_WRITER_REVIEW'].includes(p.current_stage) && p.status !== TaskStatus.DONE);
+      return { pendingList: pending, approvedList: approved };
+    }
+    if (overviewFilter === 'IN_PRODUCTION') {
+      const pending = projectsToShow.filter(p => [WorkflowStage.CINEMATOGRAPHY, WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.VIDEO_EDITING, WorkflowStage.SUB_EDITOR_ASSIGNMENT, WorkflowStage.SUB_EDITOR_PROCESSING, WorkflowStage.THUMBNAIL_DESIGN, WorkflowStage.CREATIVE_DESIGN].includes(p.current_stage as WorkflowStage) && p.status !== TaskStatus.DONE && p.status !== TaskStatus.REWORK);
+      const approved = projectsToShow.filter(p => [WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED].includes(p.current_stage as WorkflowStage) || p.status === TaskStatus.DONE);
+      return { pendingList: pending, approvedList: approved };
+    }
+
+    const filterIdx = WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage);
+    const isStageFilter = filterIdx !== -1 && !['POSTED', 'REWORK'].includes(overviewFilter);
+    if (!isStageFilter) return { pendingList: projectsToShow, approvedList: [] };
+    
+    const actualFilter = (overviewFilter === WorkflowStage.POST_WRITER_REVIEW || overviewFilter === WorkflowStage.FINAL_REVIEW_CMO) ? WorkflowStage.FINAL_REVIEW_CMO : overviewFilter;
+    const pending = projectsToShow.filter(p => {
+      const s = p.status === TaskStatus.DONE ? WorkflowStage.POSTED : (p.current_stage === WorkflowStage.POST_WRITER_REVIEW ? WorkflowStage.FINAL_REVIEW_CMO : p.current_stage);
+      return s === actualFilter;
+    });
+    const approved = projectsToShow.filter(p => {
+      const s = p.status === TaskStatus.DONE ? WorkflowStage.POSTED : (p.current_stage === WorkflowStage.POST_WRITER_REVIEW ? WorkflowStage.FINAL_REVIEW_CMO : p.current_stage);
+      return s !== actualFilter;
+    });
+    return { pendingList: pending, approvedList: approved };
+  }, [projectsToShow, overviewFilter]);
+
+  const isSplitViewActive = ['CMO_REVIEW', 'CEO_REVIEW', 'IN_PRODUCTION'].includes(overviewFilter) || (WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage) !== -1 && !['POSTED', 'REWORK'].includes(overviewFilter));
+
+  const renderProjectCard = (project: Project, primaryMilestone?: { label: string; time: string | undefined; color?: string }) => {
+    const rawMilestones = getMilestones(project);
+    const finalMilestones: { label: string; time: string | undefined; color?: string }[] = [];
+    if (primaryMilestone && primaryMilestone.time) {
+      finalMilestones.push(primaryMilestone);
+    }
+    rawMilestones.forEach(rm => {
+      if (finalMilestones.length < 3 && !finalMilestones.some(fm => fm.label === rm.label)) {
+        finalMilestones.push(rm);
+      }
+    });
+
+    const brand = getBrand(project);
+
+    return (
+      <div 
+        key={project.id} 
+        onClick={() => handleViewDetails(project)} 
+        className={`group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col h-full overflow-hidden`}
+      >
+        <div className="p-6 flex-grow relative">
+          <div className="flex items-center justify-between mb-4">
+            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${project.channel === 'YOUTUBE' ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'}`}>{project.channel}</span>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full border border-white shadow-sm ${project.priority === 'HIGH' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+            </div>
+          </div>
+          
+          <h4 className="font-black text-lg text-slate-900 leading-tight mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[3rem] uppercase tracking-tighter">{project.title}</h4>
+          
+          {brand && (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4 opacity-80">
+              <Tag size={12} className="text-indigo-300" />
+              {brand}
+            </div>
+          )}
+          
+          <div className={`grid gap-x-6 gap-y-4 mt-6 py-4 border-t border-slate-50 ${finalMilestones.length > 2 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {finalMilestones.map((m, idx) => {
+              const formatted = formatDateWithTime(m.time);
+              const [date, ...timeArr] = formatted.split(' ');
+              const time = timeArr.join(' ');
+              
+              return (
+                <div key={idx} className="flex flex-col">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{m.label}</span>
+                  <div className="flex flex-col leading-tight">
+                    <span className={`text-[11px] font-black tracking-tight ${m.color || 'text-slate-800'}`}>{date}</span>
+                    <span className="text-[10px] font-bold text-slate-400">{time}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        <div className="mt-auto px-6 py-4 bg-slate-50/40 border-t border-slate-100 flex flex-col gap-3 group-hover:bg-indigo-50/30 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Current Stage</span>
+            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border uppercase tracking-tighter shadow-sm ${
+              [WorkflowStage.POSTED, WorkflowStage.OPS_SCHEDULING].includes(project.current_stage as WorkflowStage) ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+              [WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO].includes(project.current_stage as WorkflowStage) ? 'bg-amber-50 text-amber-600 border-amber-200' :
+              'bg-indigo-50 text-indigo-600 border-indigo-200'
+            }`}>{STAGE_LABELS[project.current_stage as WorkflowStage] || project.current_stage}</span>
+          </div>
+          
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[10px] font-black text-indigo-400 shadow-sm border-indigo-100">{(project.writer_name || '?')[0]}</div>
+              <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">{project.writer_name || '—'}</span>
+            </div>
+            <div className="w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 group-hover:border-indigo-200">
+              <ChevronRight size={14} className="text-indigo-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+;
+  };
 
   const renderProjectDetails = (project: Project) => (
     <div className="space-y-6">
@@ -507,10 +776,17 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
               </span>
             </div>
             <div>
-              <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Rework Indicator</h4>
-              <p className="font-medium bg-slate-50 p-2">
-                {project.history?.some(h => h.action === 'REJECTED' || h.action.startsWith('REWORK')) ? 'Yes' : 'No'}
-              </p>
+              <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Rework Summary</h4>
+              <div className="bg-slate-50 p-3 flex flex-col gap-1">
+                <span className="font-black text-slate-900">
+                  Count: {comments.filter(c => c.action === 'REWORK' || c.action === 'REJECTED').length}
+                </span>
+                {comments.some(c => c.action === 'REWORK' || c.action === 'REJECTED') && (
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                    Initiated by: {[...new Set(comments.filter(c => c.action === 'REWORK' || c.action === 'REJECTED').map(r => r.actor_name))].join(', ')}
+                  </span>
+                )}
+              </div>
             </div>
             <div>
               <h4 className="text-sm font-bold text-slate-500 uppercase mb-1">Project Type</h4>
@@ -563,7 +839,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
 
           {/* Fetch and display comments similar to CMO Project Details */}
           {comments.length > 0 ? (
-            <div className="space-y-6 bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <div className="space-y-6">
               {comments.map((comment, index) => {
                 // Determine the description based on stage and action
                 let description = `${comment.action} in ${comment.stage}`;
@@ -683,255 +959,187 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
   );
 
   if (viewMode === 'DETAILS' && selectedProject) {
-    return renderProjectDetails(selectedProject);
+    return (
+      <div ref={topRef}>
+        {renderProjectDetails(selectedProject)}
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-4xl font-black uppercase">Overview</h1>
-
-      {/* Main Tabs */}
-      <div className="flex space-x-4 border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('IDEA')}
-          className={`px-4 py-2 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'IDEA'
-            ? 'bg-purple-600 text-white'
-            : 'bg-white text-slate-900 hover:bg-slate-100'
-            }`}
-        >
-          Idea ({ideaProjects.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('SCRIPT')}
-          className={`px-4 py-2 font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'SCRIPT'
-            ? 'bg-blue-600 text-white'
-            : 'bg-white text-slate-900 hover:bg-slate-100'
-            }`}
-        >
-          Script ({allScriptProjects.length})
-        </button>
+    <div ref={topRef} className="space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto py-8 px-4">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div><h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">Overview</h1><p className="text-gray-500 font-medium mt-1">Manage and track your content pipeline in real-time.</p></div>
+        {brandStats.list.length > 0 && (
+          <div className="bg-white p-1.5 border border-slate-200 rounded-2xl shadow-sm flex flex-wrap gap-1">
+            {brandStats.list.map(b => (
+              <button 
+                key={b} 
+                onClick={() => setBrandFilter(b)} 
+                className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${
+                  (brandFilter === b || (!brandFilter && brandStats.list[0] === b)) 
+                    ? 'bg-indigo-600 text-white shadow-md' 
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-indigo-600'
+                }`}
+              >
+                {b}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Role-based filter for Script tab */}
-      {activeTab === 'SCRIPT' && (
-        <div className="flex flex-wrap gap-2 py-4 border-b border-gray-200">
-          <span className="text-sm font-bold text-slate-700 uppercase mr-2 pt-2">Filter by role:</span>
-          {[
-            { key: 'ALL', label: 'All', color: 'bg-gray-500' },
-            { key: 'WRITER', label: 'Writer', color: 'bg-blue-500' },
-            { key: 'CMO', label: 'CMO', color: 'bg-orange-500' },
-            { key: 'CEO', label: 'CEO', color: 'bg-red-600' },
-            { key: 'CINE', label: 'Cine', color: 'bg-yellow-500' },
-            { key: 'EDITOR', label: 'Editor', color: 'bg-purple-500' },
-            { key: 'DESIGNER', label: 'Designer', color: 'bg-pink-500' },
-            { key: 'OPS', label: 'Ops', color: 'bg-green-600' },
-            { key: 'POSTED', label: 'Posted', color: 'bg-emerald-500' }
-          ].map(filter => (
-            <button
-              key={filter.key}
-              onClick={() => setScriptFilter(filter.key as any)}
-              className={`px-3 py-1 text-xs font-black uppercase border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] ${scriptFilter === filter.key
-                ? `${filter.color} text-white`
-                : 'bg-white text-slate-900 hover:bg-slate-100'
-                }`}
-            >
-              {filter.label} ({
-                filter.key === 'ALL' ? allScriptProjects.length :
-                  allScriptProjects.filter(p => {
-                    switch (filter.key) {
-                      case 'WRITER':
-                        return p.assigned_to_role === Role.WRITER ||
-                          p.current_stage === WorkflowStage.SCRIPT ||
-                          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ||
-                          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
-                          p.current_stage === WorkflowStage.MULTI_WRITER_APPROVAL;
-                      case 'CMO':
-                        return p.assigned_to_role === Role.CMO ||
-                          p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ||
-                          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1;
-                      case 'CEO':
-                        return p.assigned_to_role === Role.CEO ||
-                          p.current_stage === WorkflowStage.FINAL_REVIEW_CEO ||
-                          p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2;
-                      case 'CINE':
-                        return p.assigned_to_role === Role.CINE ||
-                          p.current_stage === WorkflowStage.CINEMATOGRAPHY;
-                      case 'EDITOR':
-                        return p.assigned_to_role === Role.EDITOR ||
-                          p.current_stage === WorkflowStage.VIDEO_EDITING ||
-                          p.current_stage === WorkflowStage.SUB_EDITOR_ASSIGNMENT ||
-                          p.current_stage === WorkflowStage.SUB_EDITOR_PROCESSING;
-                      case 'DESIGNER':
-                        return p.assigned_to_role === Role.DESIGNER ||
-                          p.current_stage === WorkflowStage.THUMBNAIL_DESIGN ||
-                          p.current_stage === WorkflowStage.CREATIVE_DESIGN;
-                      case 'OPS':
-                        return p.assigned_to_role === Role.OPS ||
-                          p.current_stage === WorkflowStage.OPS_SCHEDULING;
-                      case 'POSTED':
-                        return p.current_stage === WorkflowStage.POSTED ||
-                          (p.status === 'DONE' && p.data?.live_url && p.data.live_url.trim() !== '');
-                      default:
-                        return true;
-                    }
-                  }).length
-              })
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Projects list */}
-      <div className="space-y-6">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading projects...</div>
-        ) : projectsToShow.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            No {activeTab.toLowerCase()} projects found
-            {activeTab === 'SCRIPT' && scriptFilter !== 'ALL' && ` for ${scriptFilter.toLowerCase()} role`}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 bg-orange-500 rounded-full anim-pulse"></span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Pending Review</span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projectsToShow.map((project) => (
-              <div
-                key={project.id}
-                onClick={() => handleViewDetails(project)}
-                className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] h-full flex flex-col cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-              >
-                <div className="p-6 flex-grow">
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {project.data?.source === 'IDEA_PROJECT' && (
-                      <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
-                        {project.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
-                      </span>
-                    )}
-                    <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                      project.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                        project.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                          project.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                            project.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                              'bg-black text-white'
-                      }`}>
-                      {project.channel} | {project.content_type ? project.content_type.replace(/_/g, ' ') : (project.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${project.priority === 'HIGH'
-                        ? 'bg-red-500 text-white'
-                        : project.priority === 'NORMAL'
-                          ? 'bg-yellow-500 text-black'
-                          : 'bg-green-500 text-white'
-                        }`}>
-                      {project.priority}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${project.current_stage ? 'bg-slate-100 text-slate-800' : 'bg-gray-100 text-gray-800'}`}
-                    >
-                      {project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'No Stage'}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${project.assigned_to_role ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}
-                    >
-                      {project.assigned_to_role || 'Unassigned'}
-                    </span>
-                    {/* Show POSTED status only for script projects */}
-                    {activeTab !== 'IDEA' && project.status === 'DONE' && (
-                      <span
-                        className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-green-500 text-white"
-                      >
-                        POSTED
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight">{project.title}</h4>
-                  <div className="flex flex-col border-t-2 border-slate-100 pt-3">
-                    <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                      By: {project.data?.writer_name || project.created_by_name || 'Unknown Writer'}
+          <div className="flex items-center gap-2 border-l border-gray-200 pl-6">
+            <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Passed / Approved</span>
+          </div>
+        </div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Click any card to filter projects</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { 
+            id: '', 
+            label: 'Total Scripts', 
+            value: kpiData.total, 
+            icon: BarChart2, 
+            color: 'text-indigo-600', 
+            bg: 'bg-indigo-50', 
+            subtitle: 'Overview across all brands' 
+          },
+          { 
+            id: 'CMO_REVIEW', 
+            label: 'CMO Review', 
+            pending: kpiData.cmoTotal,
+            approved: kpiData.cmoApproved,
+            icon: AlertTriangle, 
+            color: 'text-amber-600', 
+            bg: 'bg-amber-50', 
+            subtitle: `${kpiData.cmoScript} Script | ${kpiData.cmoFinal} Final` 
+          },
+          { 
+            id: 'CEO_REVIEW', 
+            label: 'CEO Review', 
+            pending: kpiData.ceoTotal,
+            approved: kpiData.ceoApproved,
+            icon: Shield, 
+            color: 'text-rose-600', 
+            bg: 'bg-rose-50', 
+            subtitle: `${kpiData.ceoScript} Script | ${kpiData.ceoFinal} Final` 
+          },
+          { 
+            id: 'IN_PRODUCTION', 
+            label: 'In Production', 
+            pending: kpiData.prodTotal,
+            approved: kpiData.prodApproved,
+            icon: PlayCircle, 
+            color: 'text-teal-600', 
+            bg: 'bg-teal-50', 
+            subtitle: `Cine: ${kpiData.cine} | Edit: ${kpiData.editor} | Design: ${kpiData.designer}` 
+          },
+          { 
+            id: 'REWORK', 
+            label: 'Reworks', 
+            value: kpiData.rework, 
+            icon: RefreshCw, 
+            color: 'text-red-600', 
+            bg: 'bg-red-50', 
+            subtitle: 'Action required' 
+          },
+          { 
+            id: 'COMPLETED', 
+            label: 'Posted', 
+            value: kpiData.completed, 
+            icon: CheckCircle2, 
+            color: 'text-emerald-600', 
+            bg: 'bg-emerald-50', 
+            subtitle: 'Published' 
+          }
+        ].map(card => {
+          const Icon = card.icon;
+          const active = overviewFilter === card.id;
+          return (
+            <button key={card.id} onClick={() => setOverviewFilter(active ? '' : card.id)} className={`text-left p-6 rounded-2xl border transition-all relative overflow-hidden group ${active ? 'bg-white border-blue-500 shadow-lg' : 'bg-white border-gray-200 hover:shadow-md'}`}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className={`inline-flex p-2.5 rounded-xl ${card.bg} ${card.color}`}><Icon size={20} /></div>
+                <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{card.label}</span>
+              </div>
+              <div className="flex flex-col">
+                {card.pending !== undefined ? (
+                  <div className="flex flex-col">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-black text-slate-900 leading-tight">{card.pending}</span>
+                      <span className="text-xs font-black text-orange-600 uppercase tracking-tighter">Pending Action</span>
                     </div>
-                    <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                      Created: {new Date(project.created_at).toLocaleDateString()}
+                    <div className="flex items-baseline gap-2 -mt-1">
+                      <span className="text-2xl font-bold text-slate-400">{card.approved}</span>
+                      <span className="text-[10px] font-black text-green-600 uppercase tracking-tighter">Approved</span>
                     </div>
-
-                    {/* Show live URL for completed projects */}
-                    {project.status === 'DONE' && project.data?.live_url && (
-                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-green-800 uppercase">Live URL</span>
-                          <a
-                            href={project.data.live_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-bold text-blue-600 hover:underline truncate max-w-[100px]"
-                            title={project.data.live_url}
-                          >
-                            View Live
-                          </a>
-                        </div>
-                        <div className="text-xs text-slate-600 truncate" title={project.data.live_url}>
-                          {project.data.live_url}
-                        </div>
-                      </div>
-                    )}
-                    {/* Show actual editor who uploaded content first, then fall back to assigned user */}
-                    {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && (project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
-                      <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                        Editor: {project.editor_name || project.sub_editor_name || project.data.editor_name || project.data.sub_editor_name}
-                      </div>
-                    )}
-                    {/* Show only if there is an actual editor name, don't fall back to assigned user */}
-                    {(project.assigned_to_role === Role.EDITOR || project.assigned_to_role === Role.SUB_EDITOR) && !(project.editor_name || project.sub_editor_name || project.data?.editor_name || project.data?.sub_editor_name) && (
-                      <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                        Editor: —
-                      </div>
-                    )}
                   </div>
-                </div>
+                ) : (
+                  <span className="text-3xl font-bold text-gray-900">{card.value}</span>
+                )}
+                {card.subtitle && <span className="text-[10px] font-extrabold text-slate-400 uppercase mt-2 tracking-tighter">{card.subtitle}</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
 
-                {/* Enhanced action buttons */}
-                <div className="px-6 pb-6 flex space-x-3">
-                  {project.data?.idea_description && (
-                    <button
-                      className="flex-1 bg-purple-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-purple-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewDetails({
-                          ...project,
-                          data: {
-                            ...project.data,
-                            script_content: undefined // Force idea view
-                          }
-                        });
-                      }}
-                    >
-                      View Idea
-                    </button>
-                  )}
 
-                  {project.data?.script_content && (
-                    <button
-                      className="flex-1 bg-blue-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewDetails(project);
-                      }}
-                    >
-                      View Script
-                    </button>
-                  )}
-
-                  {!project.data?.idea_description && !project.data?.script_content && (
-                    <button
-                      className="flex-1 bg-gray-600 text-white py-2 px-4 font-black uppercase text-xs border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-gray-700 hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
-                      onClick={() => {
-                        handleViewDetails(project);
-                      }}
-                    >
-                      View Details
-                    </button>
-                  )}
-
+      <div className="space-y-6 pt-8 border-t">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4"><h3 className="text-xl font-bold text-gray-900">Scripts</h3>{overviewFilter && (<div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-100">{STAGE_LABELS[overviewFilter as WorkflowStage] || overviewFilter}<button onClick={() => setOverviewFilter('')} className="hover:text-blue-900">✕</button></div>)}</div>
+          <div className="text-right flex flex-col items-end gap-1">
+            <p className="text-xs text-gray-400 font-black uppercase tracking-widest">{projectsToShow.length} items found</p>
+            {isSplitViewActive && (
+              <div className="flex items-center gap-4 text-xs font-black uppercase tracking-wider">
+                <span className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">{pendingList.length} Pending</span>
+                <span className="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg border border-green-100 shadow-sm">{approvedList.length} Approved</span>
+              </div>
+            )}
+          </div>
+        </div>
+        {loading ? (<div className="py-24 text-center text-gray-400">Loading...</div>) : projectsToShow.length === 0 ? (<div className="py-24 text-center bg-gray-50 rounded-3xl border border-dashed text-gray-400">No scripts found</div>) : (
+          <div className="space-y-12">
+            {pendingList.length > 0 && (
+              <div className="space-y-6">
+                {isSplitViewActive && <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Pending at Stage</h4>}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {pendingList.map(project => {
+                    const filterIdx = WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage);
+                    
+                    // If filter is active, look for approval of previous stage
+                    // If NO filter active, look for approval of project's previous stage
+                    const targetIdx = filterIdx !== -1 
+                      ? filterIdx - 1 
+                      : WORKFLOW_ORDER.indexOf(project.current_stage) - 1;
+                    
+                    const info = findPreviousApproval(project, targetIdx);
+                    return renderProjectCard(project, info || undefined);
+                  })}
                 </div>
               </div>
-            ))}
+            )}
+            {approvedList.length > 0 && (
+              <div className="space-y-6">
+                {isSplitViewActive && <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Approved</h4>}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {approvedList.map(project => {
+                    // For approved items, we explicitly want the approval for the stage they just passed (overviewFilter)
+                    const info = getStageApprovalInfo(project, overviewFilter);
+                    return renderProjectCard(project, info.time ? info : undefined);
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

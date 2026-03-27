@@ -124,7 +124,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     contentType: project?.content_type || '', // No default selection
     dueDate: project?.due_date || new Date().toISOString().split('T')[0],
     priority: project?.priority || 'NORMAL',
-    brand: project?.brand || ''
+    brand: project?.brand || '',
+    brand_other: project?.data?.brand_other || ''
   });
 
   // Update newProjectDetails when project changes to handle reloads
@@ -135,7 +136,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       contentType: project?.content_type || '',
       dueDate: project?.due_date || new Date().toISOString().split('T')[0],
       priority: project?.priority || 'NORMAL',
-      brand: project?.brand || ''
+      brand: project?.brand || '',
+      brand_other: project?.data?.brand_other || ''
     });
   }, [project]);
 
@@ -773,19 +775,32 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
+    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS'].includes(b);
+    
     // Always update formData when project changes to ensure content is preserved
-    setFormData(prev => ({
-      ...prev,
-      ...parsed,
-      script_content: parsed?.script_content || prev?.script_content || ''
-    }));
+    setFormData(prev => {
+      const brandValue = parsed?.brand || project.brand || '';
+      return {
+        ...prev,
+        ...parsed,
+        brand: isPredefinedBrand(brandValue) ? brandValue : (brandValue ? 'OTHER' : prev.brand),
+        brand_other: isPredefinedBrand(brandValue) ? '' : brandValue || parsed?.brand_other || prev.brand_other || '',
+        script_content: parsed?.script_content || prev?.script_content || ''
+      };
+    });
 
-    setNewProjectDetails({
-      title: project.title || '',
-      channel: project.channel || '',
-      contentType: project.content_type || '',
-      dueDate: project.due_date || new Date().toISOString().split('T')[0],
-      priority: project.priority || 'NORMAL'
+    setNewProjectDetails(prev => {
+      const brandValue = project.brand || '';
+      return {
+        ...prev,
+        title: project.title || '',
+        channel: project.channel || '',
+        contentType: project.content_type || '',
+        dueDate: project.due_date || new Date().toISOString().split('T')[0],
+        priority: project.priority || 'NORMAL',
+        brand: isPredefinedBrand(brandValue) ? brandValue : (brandValue ? 'OTHER' : prev.brand),
+        brand_other: isPredefinedBrand(brandValue) ? '' : brandValue || parsed?.brand_other || prev.brand_other || ''
+      };
     });
   }, [project]); // Run when project changes
 
@@ -881,10 +896,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       setValidationError(`${channelLabel} does not support video content. Please select a different channel or change content type to Creative Only.`);
     } else if ((newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && formData.thumbnail_required === undefined) {
       setValidationError('Thumbnail requirement must be specified for video content.');
+    } else if (newProjectDetails.contentType === 'VIDEO' && formData.brand === 'OTHER' && (!formData.brand_other || !formData.brand_other.trim())) {
+      setValidationError('Please specify the brand name when "Other" is selected.');
     } else {
       setValidationError(null);
     }
-  }, [newProjectDetails.channel, newProjectDetails.contentType, formData.thumbnail_required]);
+  }, [newProjectDetails.channel, newProjectDetails.contentType, formData.thumbnail_required, formData.brand, formData.brand_other]);
 
   // Listen for beforeLogout event to save changes automatically
   useEffect(() => {
@@ -1223,13 +1240,15 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       alert('User profile not loaded. Please refresh and try again.');
       return;
     }
+    const actualBrand = formData.brand === 'OTHER' ? formData.brand_other : formData.brand;
     console.log('🚀 Starting save draft process');
     if (project) {
       console.log('Updating existing project data...');
       try {
         await db.updateProjectData(project.id, {
           ...formData,
-          brand: formData.brand,
+          brand: formData.brand, // UI state
+          brand_other: formData.brand_other,
           writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
@@ -1278,11 +1297,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           newProjectDetails.dueDate,
           newProjectDetails.contentType,
           newProjectDetails.priority,
-          formData.brand
+          actualBrand
         );
         console.log('Created project with ID:', createdProject.id);
         await db.updateProjectData(createdProject.id, {
           ...formData,
+          brand: formData.brand, // UI state
+          brand_other: formData.brand_other,
           writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
@@ -1308,6 +1329,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       return;
     }
     setIsSubmitting(true);
+    const actualBrand = formData.brand === 'OTHER' ? formData.brand_other : formData.brand;
     console.log('🚀 Starting submit process');
 
     // Check if project is in rejected state and not in the resubmit flow
@@ -1340,11 +1362,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             created_by_name: currentUser.full_name,
             writer_id: publicUser.id,
             writer_name: currentUser.full_name,
-            brand: formData.brand,
+            brand: formData.brand === 'OTHER' ? formData.brand_other : formData.brand,
             data: {
               source: 'SCRIPT_FROM_IDEA',
               parent_idea_id: project.id,
               script_content: formData.script_content,
+              brand: formData.brand, // Preserve UI selection
+              brand_other: formData.brand_other,
               // Copy form data but exclude fields that belong to the original idea project
               ...Object.fromEntries(
                 Object.entries(formData).filter(([key]) =>
@@ -1388,7 +1412,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.dueDate,
             newProjectDetails.contentType,
             newProjectDetails.priority,
-            formData.brand
+            actualBrand
           );
           await (db.projects.update as any)(createdProject.id, {
             created_by_user_id: publicUser.id,
@@ -1396,9 +1420,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             assigned_to_user_id: publicUser.id
           });
 
-          // Update project data with writer information
+          // Update project data with writer information and brand details
           await db.updateProjectData(createdProject.id, {
             ...formData,
+            brand: formData.brand, // Store 'OTHER' in data.brand for UI
+            brand_other: formData.brand_other,
             writer_id: publicUser.id,
             writer_name: currentUser.full_name
           });
@@ -1425,7 +1451,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             updateData.writer_name = currentUser?.full_name;
           }
 
-          await db.updateProjectData(realProjectId, updateData);
+          await db.updateProjectData(realProjectId, {
+            ...updateData,
+            brand: formData.brand, // Store 'OTHER' in data.brand to preserve UI state
+            brand_other: formData.brand_other,
+            actual_brand: actualBrand // Helper for debugging if needed
+          });
           console.log('✅ Existing project data updated');
         }
 
@@ -2023,7 +2054,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
                           { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
                           { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
-                          { value: 'SHYAMS_PERSONAL_BRANDING', label: '✨ Shyam\'s Personal Branding', color: 'bg-[#F97316]' },
+                          { value: 'OTHER', label: '➕ Other Brand', color: 'bg-slate-600' },
                         ] as const).map(brand => (
                           <button
                             key={brand.value}
@@ -2042,6 +2073,26 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           </button>
                         ))}
                       </div>
+
+                      {/* Other Brand Input */}
+                      {formData.brand === 'OTHER' && (
+                        <div className="mt-4">
+                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                            Enter Brand Name *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.brand_other || ''}
+                            onChange={e =>
+                              canEdit ? setFormData({ ...formData, brand_other: e.target.value }) : null
+                            }
+                            readOnly={!canEdit}
+                            className="w-full p-4 border-2 border-black font-bold focus:bg-yellow-50 focus:outline-none"
+                            placeholder="Type new brand name..."
+                            required
+                          />
+                        </div>
+                      )}
                     </div>
 
 
