@@ -143,6 +143,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const [dynamicBrands, setDynamicBrands] = useState<any[]>([]);
+
+  // Fetch dynamic brands 
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const brandsData = await db.brands.getAll();
+        setDynamicBrands(brandsData);
+      } catch (err) {
+        console.error('Failed to load dynamic brands:', err);
+      }
+    };
+    fetchBrands();
+  }, []);
+
   // Track editor initialization to prevent cursor jumping
   const isEditorInitialized = useRef(false);
 
@@ -775,7 +790,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
-    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS'].includes(b);
+    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS'].includes(b) || dynamicBrands.some(db => db.brand_name === b);
     
     // Always update formData when project changes to ensure content is preserved
     setFormData(prev => {
@@ -802,8 +817,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         brand_other: isPredefinedBrand(brandValue) ? '' : brandValue || parsed?.brand_other || prev.brand_other || ''
       };
     });
-  }, [project]); // Run when project changes
-
+  }, [project, dynamicBrands]); // Run when project or dynamicBrands changes
 
   // Check edit permissions after user is loaded
   useEffect(() => {
@@ -2050,12 +2064,13 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {([
+                          { value: 'SHYAMS_PERSONAL_BRANDING', label: '🤵 Shyam Personal Brand', color: 'bg-[#F97316]' },
                           { value: 'APPLYWIZZ', label: '🚀 ApplyWizz', color: 'bg-[#0085FF]' },
                           { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
                           { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
                           { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
-                          { value: 'OTHER', label: '➕ Other Brand', color: 'bg-slate-600' },
-                        ] as const).map(brand => (
+                          ...dynamicBrands.map(b => ({ value: b.brand_name, label: `✨ ${b.brand_name}`, color: 'bg-slate-800' })),
+                        ]).map(brand => (
                           <button
                             key={brand.value}
                             onClick={() => {
@@ -2074,25 +2089,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         ))}
                       </div>
 
-                      {/* Other Brand Input */}
-                      {formData.brand === 'OTHER' && (
-                        <div className="mt-4">
-                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                            Enter Brand Name *
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.brand_other || ''}
-                            onChange={e =>
-                              canEdit ? setFormData({ ...formData, brand_other: e.target.value }) : null
-                            }
-                            readOnly={!canEdit}
-                            className="w-full p-4 border-2 border-black font-bold focus:bg-yellow-50 focus:outline-none"
-                            placeholder="Type new brand name..."
-                            required
-                          />
-                        </div>
-                      )}
+
                     </div>
 
 
