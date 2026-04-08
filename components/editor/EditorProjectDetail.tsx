@@ -226,6 +226,10 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       // Get updated project to determine who to notify and update local state
       const updatedProject = await db.getProjectById(project.id);
 
+      if (!updatedProject) {
+        throw new Error('Updated project not found after save.');
+      }
+
       // Update local state with fresh data
       setLocalProject(updatedProject);
 

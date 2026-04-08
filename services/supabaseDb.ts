@@ -1,10 +1,4 @@
 import { supabase, supabaseAdmin } from '../src/integrations/supabase/client';
-
-// Use admin client for INSERT/UPDATE operations to bypass RLS policies
-const dbClient = supabaseAdmin || supabase;
-console.log('🔧 Database clients initialized:');
-console.log('   - supabaseAdmin available:', !!supabaseAdmin);
-console.log('   - Using client:', supabaseAdmin ? 'ADMIN (service role key - RLS bypass)' : 'ANON (anon key - RLS enabled)');
 import {
     User,
     Project,
@@ -16,9 +10,14 @@ import {
     Priority,
     UserStatus
 } from '../types';
-
 import { Notification } from '../types';
 import { getTimestampUpdate, isReworkProject, isInfluencerVideo } from './workflowUtils';
+
+// Use admin client for INSERT/UPDATE operations to bypass RLS policies
+const dbClient = supabaseAdmin || supabase;
+console.log('🔧 Database clients initialized:');
+console.log('   - supabaseAdmin available:', !!supabaseAdmin);
+console.log('   - Using client:', supabaseAdmin ? 'ADMIN (service role key - RLS bypass)' : 'ANON (anon key - RLS enabled)');
 
 console.log('🔍 Initializing supabaseDb service');
 
@@ -499,7 +498,7 @@ export const users = {
         console.log('🔍 getByEmail: Fetching user for:', email);
 
         const { data, error } = await supabase
-            .from('users')
+            .from<User>('users')
             .select(`
                 id,
                 email,
@@ -948,15 +947,15 @@ export const projects = {
             const projectIds = result.map(p => p.id);
             if (projectIds.length > 0) {
                 const { data: historyData, error: historyError } = await supabase
-                    .from('workflow_history')
+                    .from<{ project_id: string }>('workflow_history')
                     .select('*')
                     .in('project_id', projectIds)
                     .order('timestamp', { ascending: false });
 
                 if (!historyError && historyData) {
                     // Group history by project_id
-                    const historyMap = new Map<string, any[]>();
-                    historyData.forEach(entry => {
+                    const historyMap = new Map<string, { project_id: string }[]>();
+                    historyData.forEach((entry) => {
                         if (!historyMap.has(entry.project_id)) {
                             historyMap.set(entry.project_id, []);
                         }
@@ -1048,7 +1047,7 @@ export const projects = {
         writer_id: string;
         writer_name?: string | null;
 
-        // Direct Video Upload properties
+        // Direct Video/Designer properties
         edited_video_link?: string;
         edited_at?: string;
         editor_uploaded_at?: string;
@@ -1056,6 +1055,10 @@ export const projects = {
         edited_by_name?: string;
         video_link?: string;
         cine_uploaded_at?: string;
+        creative_link?: string;
+        thumbnail_link?: string;
+        designer_uploaded_at?: string;
+        designer_name?: string;
         visible_to_roles?: Role[] | null;
     }) {
         console.log('Creating project with data:', projectData);
@@ -1552,7 +1555,7 @@ export const workflow = {
     async getApprovedWritersCount(projectId: string): Promise<number> {
         // Get all approvals for this project in MULTI_WRITER_APPROVAL stage
         const { data: approvals, error: approvalsError } = await supabase
-            .from('workflow_history')
+            .from<{ actor_id: string }>('workflow_history')
             .select('actor_id')
             .eq('project_id', projectId)
             .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
@@ -1569,7 +1572,7 @@ export const workflow = {
 
         // Get all active writers to filter the approvals
         const { data: writerUsers, error: writerError } = await supabase
-            .from('users')
+            .from<{ id: string }>('users')
             .select('id')
             .eq('role', Role.WRITER)
             .eq('status', 'ACTIVE');
@@ -1601,7 +1604,7 @@ export const workflow = {
 
         // Get all users with the writer role
         const { data: writerUsers, error: writerError } = await supabase
-            .from('users')
+            .from<{ id: string; full_name?: string }>('users')
             .select('id, full_name')
             .eq('role', Role.WRITER)
             .eq('status', 'ACTIVE');
@@ -1620,7 +1623,7 @@ export const workflow = {
 
         // Get project to check current stage
         const { data: project, error: projectError } = await supabase
-            .from('projects')
+            .from<{ current_stage: WorkflowStage }>('projects')
             .select('current_stage')
             .eq('id', projectId)
             .single();
@@ -1656,11 +1659,11 @@ export const workflow = {
             finalWriterUsers = writerUsers;
         }
 
-        console.log('📋 Required writers:', finalWriterUsers.map(w => (w as any).full_name));
+        console.log('📋 Required writers:', finalWriterUsers.map(w => w.full_name || 'Unknown'));
 
         // Get all approvals for this project in MULTI_WRITER_APPROVAL stage
         const { data: approvals, error: approvalsError } = await supabase
-            .from('workflow_history')
+            .from<{ actor_id: string }>('workflow_history')
             .select('actor_id')
             .eq('project_id', projectId)
             .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
@@ -3632,8 +3635,9 @@ export const db = {
             try {
                 project = await projects.getById(projectId);
                 if (project) break;
-            } catch (error) {
-                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, errorMessage);
             }
 
             attempts++;
@@ -3698,8 +3702,9 @@ export const db = {
             try {
                 project = await projects.getById(projectId);
                 if (project) break;
-            } catch (error) {
-                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, errorMessage);
             }
 
             attempts++;
@@ -3944,8 +3949,9 @@ export const db = {
             try {
                 project = await projects.getById(projectId);
                 if (project) break;
-            } catch (error) {
-                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, error.message);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                console.warn(`Attempt ${attempts + 1} to fetch project failed:`, errorMessage);
             }
 
             attempts++;
@@ -4099,8 +4105,9 @@ export const tokenHealthCheck = (): {
         });
 
         return { healthy: true, status: 'tokens_valid_format', action: 'keep' };
-    } catch (error) {
-        console.error('🔴 Token Health: Corrupted token detected:', error);
+    } catch (err) {
+        const errorValue = err instanceof Error ? err : new Error(String(err));
+        console.error('🔴 Token Health: Corrupted token detected:', errorValue);
         return { healthy: false, status: 'tokens_corrupted', action: 'clear' };
     }
 };

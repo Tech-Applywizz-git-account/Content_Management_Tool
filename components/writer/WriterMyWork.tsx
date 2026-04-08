@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import { db } from '../../services/supabaseDb';
+import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowStateForRole, isInfluencerVideo } from '../../services/workflowUtils';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import ScriptDisplay from '../ScriptDisplay';
@@ -665,59 +666,38 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   // Otherwise, show the details view
                   setSelectedProject(task);
 
-                  const { data, error } = await import('../../src/integrations/supabase/client')
-                    .then(m => m.supabase)
-                    .then(async (supabase) => {
-                      const currentUserId = user.id;
+                  const currentUserId = user.id;
+                  const { data: historyData, error: historyError } = await supabase
+                    .from('workflow_history')
+                    .select('action, comment, actor_name, timestamp, actor_id')
+                    .eq('project_id', task.id)
+                    .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+                    .order('timestamp', { ascending: false });
 
-                      // Fetch all workflow history
-                      const { data: historyData, error: historyError } = await supabase
-                        .from('workflow_history')
-                        .select('action, comment, actor_name, timestamp, actor_id')
-                        .eq('project_id', task.id)
-                        .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-                        .order('timestamp', { ascending: false });
-
-                      if (historyError) {
-                        throw historyError;
-                      }
-
-                      // Filter comments to show only relevant ones for the current user:
-                      const filteredComments = historyData?.filter(comment => {
-                        // For REWORK/REJECTED actions, only show if:
-                        // 1. The comment is assigned to the current user specifically
-                        // 2. OR the project is assigned to the current user's role and user
-                        if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
-                          // Check if this rework was specifically for the current user
-                          const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
-                            task.assigned_to_role === user.role;
-
-                          // Check if the comment mentions the current user
-                          const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
-
-                          // Show if either condition is met
-                          return isForCurrentUser || mentionsCurrentUser;
-                        }
-
-                        // Always show APPROVED comments (informative for everyone)
-                        if (comment.action === 'APPROVED') {
-                          return true;
-                        }
-
-                        // Show comments from the project creator
-                        if (comment.actor_id === task.created_by_user_id) {
-                          return true;
-                        }
-
-                        return false;
-                      }) || [];
-
-                      return { data: filteredComments, error: null };
-                    });
-
-                  if (!error) {
-                    setReviewComments(data || []);
+                  if (historyError) {
+                    throw historyError;
                   }
+
+                  const filteredComments = historyData?.filter(comment => {
+                    if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
+                      const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
+                        task.assigned_to_role === user.role;
+                      const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
+                      return isForCurrentUser || mentionsCurrentUser;
+                    }
+
+                    if (comment.action === 'APPROVED') {
+                      return true;
+                    }
+
+                    if (comment.actor_id === task.created_by_user_id) {
+                      return true;
+                    }
+
+                    return false;
+                  }) || [];
+
+                  setReviewComments(filteredComments);
                 }
               }}
               className={`bg-white p-6 border-2 border-black cursor-pointer shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${task.priority === 'HIGH' ? 'ring-4 ring-red-500 ring-offset-2' : ''}`}
@@ -875,61 +855,40 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
 
                       // Fetch comments for the selected project
                       const fetchComments = async () => {
-                        const { data, error } = await import('../../src/integrations/supabase/client')
-                          .then(m => m.supabase)
-                          .then(async (supabase) => {
-                            // First, get the current user's ID
-                            const { data: { session } } = await supabase.auth.getSession();
-                            const currentUserId = session?.user?.id;
+                        const { data: { session } } = await supabase.auth.getSession();
+                        const currentUserId = session?.user?.id;
 
-                            // Fetch all workflow history
-                            const { data: historyData, error: historyError } = await supabase
-                              .from('workflow_history')
-                              .select('action, comment, actor_name, timestamp, actor_id')
-                              .eq('project_id', task.id)
-                              .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
-                              .order('timestamp', { ascending: false });
+                        const { data: historyData, error: historyError } = await supabase
+                          .from('workflow_history')
+                          .select('action, comment, actor_name, timestamp, actor_id')
+                          .eq('project_id', task.id)
+                          .in('action', ['REJECTED', 'REWORK', 'APPROVED'])
+                          .order('timestamp', { ascending: false });
 
-                            if (historyError) {
-                              throw historyError;
-                            }
-
-                            // Filter comments to show only relevant ones for the current user:
-                            const filteredComments = historyData?.filter(comment => {
-                              // For REWORK/REJECTED actions, only show if:
-                              // 1. The comment is assigned to the current user specifically
-                              // 2. OR the project is assigned to the current user's role and user
-                              if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
-                                // Check if this rework was specifically for the current user
-                                const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
-                                  task.assigned_to_role === user.role;
-
-                                // Check if the comment mentions the current user
-                                const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
-
-                                // Show if either condition is met
-                                return isForCurrentUser || mentionsCurrentUser;
-                              }
-
-                              // Always show APPROVED comments (informative for everyone)
-                              if (comment.action === 'APPROVED') {
-                                return true;
-                              }
-
-                              // Show comments from the project creator
-                              if (comment.actor_id === task.created_by_user_id) {
-                                return true;
-                              }
-
-                              return false;
-                            }) || [];
-
-                            return { data: filteredComments, error: null };
-                          });
-
-                        if (!error) {
-                          setReviewComments(data || []);
+                        if (historyError) {
+                          throw historyError;
                         }
+
+                        const filteredComments = historyData?.filter(comment => {
+                          if (comment.action === 'REWORK' || comment.action === 'REJECTED') {
+                            const isForCurrentUser = task.assigned_to_user_id === currentUserId &&
+                              task.assigned_to_role === user.role;
+                            const mentionsCurrentUser = comment.comment?.includes(`@${currentUserId}`);
+                            return isForCurrentUser || mentionsCurrentUser;
+                          }
+
+                          if (comment.action === 'APPROVED') {
+                            return true;
+                          }
+
+                          if (comment.actor_id === task.created_by_user_id) {
+                            return true;
+                          }
+
+                          return false;
+                        }) || [];
+
+                        setReviewComments(filteredComments);
                       };
 
                       fetchComments();
