@@ -1080,7 +1080,7 @@ export const projects = {
             writer_id: projectData.writer_id,
             writer_name: projectData.writer_name ?? null,
 
-            // Direct Video properties
+            // Direct Video/Designer properties
             edited_video_link: projectData.edited_video_link,
             edited_at: projectData.edited_at,
             editor_uploaded_at: projectData.editor_uploaded_at,
@@ -1088,6 +1088,10 @@ export const projects = {
             edited_by_name: projectData.edited_by_name,
             video_link: projectData.video_link,
             cine_uploaded_at: projectData.cine_uploaded_at,
+            creative_link: projectData.creative_link,
+            thumbnail_link: projectData.thumbnail_link,
+            designer_uploaded_at: projectData.designer_uploaded_at,
+            designer_name: projectData.designer_name,
             visible_to_roles: projectData.visible_to_roles ?? null,
 
             // Use provided values or defaults if not provided

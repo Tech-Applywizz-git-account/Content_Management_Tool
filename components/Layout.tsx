@@ -67,7 +67,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             <p className="text-xs font-bold uppercase tracking-widest mt-2 text-slate-900">Workflow System</p>
           </div>
 
-          <div className="flex-1 px-6 py-8 space-y-6 overflow-y-auto">
+          <div className="flex-1 px-6 py-8 space-y-6 overflow-y-auto scrollbar-hide">
             <div className="space-y-3">
               {/* Dashboard Link */}
               <button
@@ -235,7 +235,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
           </h1>
         </div>
 
-        <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-200px)] scrollbar-hide">
           <button
             onClick={() => { handleNavigate('dashboard'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'dashboard' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}

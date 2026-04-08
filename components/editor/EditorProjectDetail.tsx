@@ -36,8 +36,8 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
   const [stageName, setStageName] = useState('');
   const [popupDuration, setPopupDuration] = useState(5000); // Default 5 seconds
   const [editedVideoLink, setEditedVideoLink] = useState(processedProject.edited_video_link || '');
-  // Use canonical rework condition
-  const isRework = isActiveRework(localProject, userRole);
+  // Use canonical rework condition but also support any REWORK status on the editor detail page
+  const isRework = localProject.status === TaskStatus.REWORK || isActiveRework(localProject, userRole);
   // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
   const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
 
@@ -682,12 +682,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 </div>
               )}
 
-              {/* Show upload input only for non-direct-upload projects */}
-              {!isDirectUpload && (isRework || canEdit || !hasEditedVideo) && (
+              {/* Show upload input for direct uploads and other editable/rework projects */}
+              {(isDirectUpload || isRework || canEdit || !hasEditedVideo || hasEditedVideo) && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <p className="text-slate-600 font-medium">
-                      {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+                      {hasEditedVideo ? 'Edit Edited Video Link' : (isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link')}
                     </p>
                     {isRework && (
                       <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
@@ -709,7 +709,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                       className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                     >
                       <Upload className="w-5 h-5 inline mr-2" />
-                      {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
+                      {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : hasEditedVideo ? 'Update Edited Video' : 'Upload'}
                     </button>
                   </div>
                 </div>

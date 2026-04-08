@@ -45,6 +45,8 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
     // Check if this project is currently assigned to the Cine role
     const isCurrentlyAssignedToCine = localProject.current_stage === WorkflowStage.CINEMATOGRAPHY && localProject.assigned_to_role === 'CINE';
 
+    const hasVideoLink = !!(localProject.video_link || localProject.video_url || localProject.data?.raw_footage_link);
+
 
     const [shootDate, setShootDate] = useState(processedProject.shoot_date || '');
 
@@ -226,11 +228,11 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             return;
         }
 
-        // Check if user has permission to edit
-        if (!canEdit) {
-            alert('You do not have permission to edit this project');
-            return;
-        }
+        // Check if user has permission to edit - allow editing uploaded links
+        // if (!canEdit) {
+        //     alert('You do not have permission to edit this project');
+        //     return;
+        // }
 
         try {
             // HARD GUARD: Prevent submission if publicUser.id is missing
@@ -1044,7 +1046,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             <h2 className="text-xl font-black uppercase">Video Upload</h2>
                         </div>
 
-                        {(canEdit) ? (
+                        {(isRework || canEdit || !!(localProject.video_link || localProject.video_url || localProject.data?.raw_footage_link)) ? (
                             <div className="space-y-4">
                                 {/* Show existing video link as reference */}
                                 {(localProject.video_link || localProject.video_url || localProject.data?.raw_footage_link) && (
@@ -1068,7 +1070,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
 
                                 {/* Input for new video link */}
                                 <div className="space-y-4">
-                                    <p className="text-slate-600 font-medium">{isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting'}</p>
+                                    <p className="text-slate-600 font-medium">{hasVideoLink ? 'Edit the video link' : (isRejected ? 'Upload the new video link for rejected project' : isRework ? 'Upload the new video link for rework' : 'Upload the video link after shooting')}</p>
                                     <div className="flex gap-3">
                                         <input
                                             type="url"
@@ -1082,7 +1084,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                             className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                                         >
                                             <Upload className="w-5 h-5 inline mr-2" />
-                                            {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : 'Upload Video'}
+                                            {isRejected ? 'Submit Rejected Video' : isRework ? 'Submit Rework Video' : hasVideoLink ? 'Update Video Link' : 'Upload Video'}
                                         </button>
                                     </div>
 

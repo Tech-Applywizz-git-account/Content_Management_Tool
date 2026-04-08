@@ -36,8 +36,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
     const [creativeLink, setCreativeLink] = useState(processedProject.creative_link || processedProject.data?.creative_link || '');
 
     const isVideo = project.content_type === 'VIDEO' || isInfluencerVideo(project);
-    // Use canonical rework condition
-    const isRework = isActiveRework(localProject, userRole);
+    // Use canonical rework condition but also support any REWORK status on the designer detail page
+    const isRework = localProject.status === TaskStatus.REWORK || isActiveRework(localProject, userRole);
 
     // Maintain isRejected if needed for specific UI states, but isActiveRework is the primary driver
     const isRejected = localProject.status === TaskStatus.REJECTED && localProject.assigned_to_role === userRole;
@@ -209,6 +209,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             // Update local state with the result from advanceWorkflow
             const updatedProject = updatedProjectResult as Project;
             setLocalProject(updatedProject);
+            onUpdate?.();
 
             // Find users to notify based on the next assigned role
             if (updatedProject?.assigned_to_role) {
@@ -253,6 +254,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
         } catch (error) {
             console.error(`Failed to upload ${isVideo ? 'thumbnail' : 'creative'}:`, error);
             alert(`❌ Failed to upload ${isVideo ? 'thumbnail' : 'creative'}. Please try again.`);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -349,9 +352,12 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
             setStageName(nextStageLabel);
             setPopupDuration(5000);
             setShowPopup(true);
+            onUpdate?.();
         } catch (error) {
             console.error(`Failed to upload ${isVideo ? 'thumbnail' : 'creative'} directly:`, error);
             alert(`❌ Failed to upload ${isVideo ? 'thumbnail' : 'creative'} directly. Please try again.`);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -558,8 +564,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                     )}
                 </div>
 
-                {/* Upload Section - Show if delivery_date exists OR during rework */}
-                {(project.delivery_date || isRework) && (
+                {/* Upload Section - Show if delivery_date exists, during rework, or if an asset already exists */}
+                {(project.delivery_date || isRework || hasAsset) && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             {isVideo ? <FileImage className="w-5 h-5" /> : <Palette className="w-5 h-5" />}
@@ -590,13 +596,11 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         )}
 
                         {/* Show input if user has edit permissions OR is in rework */}
-                        {(isRework || canEdit || !hasAsset) && (
+                        {(isRework || canEdit || !hasAsset || hasAsset) && (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <p className="text-slate-600 font-medium">
-                                        {isRework
-                                            ? `Upload New Version (Rework)`
-                                            : `Upload ${isVideo ? 'Thumbnail' : 'Creative'} Link`}
+                                        {hasAsset ? `Edit ${isVideo ? 'Thumbnail' : 'Creative'} Link` : (isRework ? `Upload New Version (Rework)` : `Upload ${isVideo ? 'Thumbnail' : 'Creative'} Link`)}
                                     </p>
                                     {isRework && (
                                         <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
@@ -622,7 +626,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                                         className="px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-blue-500 to-purple-500 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                     >
                                         <Upload className="w-5 h-5 inline mr-2" />
-                                        {isRejected ? 'Submit Rejected' : isRework ? 'Submit Rework' : 'Upload'}
+                                        {isRejected ? 'Submit Rejected' : isRework ? 'Submit Rework' : hasAsset ? 'Update' : 'Upload'}
                                     </button>
                                 </div>
 
@@ -647,7 +651,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 )}
 
                 {/* New Direct Upload Section - For Designer to upload assets directly */}
-                {(project.delivery_date || isRework) && (isRework || canEdit || !hasAsset) && (
+                {(project.delivery_date || isRework) && (isRework || canEdit || !hasAsset || hasAsset) && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Upload className="w-5 h-5 text-purple-600" />

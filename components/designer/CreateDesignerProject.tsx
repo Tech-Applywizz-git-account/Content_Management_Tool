@@ -78,9 +78,10 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
         onSuccess();
       }, 1500);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Designer submit failed:', err);
-      alert('Failed to submit designer project');
+      const message = err?.message || err?.error?.message || JSON.stringify(err);
+      alert(`Failed to submit designer project: ${message}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -39,6 +39,12 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [rejectedCount, setRejectedCount] = useState(0);
   const [ceoPendingCount, setCeoPendingCount] = useState(0);
   const [filteredHistoryProjects, setFilteredHistoryProjects] = useState<Project[]>([]);
+
+  // Local reactive copy of projects — patched immediately by realtime so the
+  // pending list disappears right after CEO approves (without waiting for parent refresh)
+  const [localProjects, setLocalProjects] = useState<Project[]>(
+    allProjects && allProjects.length > 0 ? allProjects : (inboxProjects || [])
+  );
   const [viewMode, setViewMode] = useState<'REVIEW' | 'HISTORY'>('REVIEW');
   const [selectedHistory, setSelectedHistory] = useState<any>(null);
   // State for project data in history view
@@ -159,14 +165,29 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     }
   };
 
+  // Sync localProjects whenever parent passes fresh data (e.g. after refreshData completes)
+  useEffect(() => {
+    const source = allProjects && allProjects.length > 0 ? allProjects : (inboxProjects || []);
+    setLocalProjects(source);
+  }, [allProjects, inboxProjects]);
+
   useEffect(() => {
     loadCounts();
 
-    // Real-time subscriptions: reload counts when `projects` or `workflow_history` table changes
+    // Real-time subscriptions: reload counts AND patch localProjects when projects change
     const projectsSubscription = supabase
       .channel('public:projects:ceo_counts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, (payload) => {
-        console.debug('CEO Dashboard projects realtime event:', payload);
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, (payload) => {
+        console.debug('CEO Dashboard projects realtime UPDATE:', payload);
+        // Immediately patch the local project so the pending list is reactive
+        const updated = payload.new as Project;
+        setLocalProjects(prev =>
+          prev.map(p => p.id === updated.id ? { ...p, ...updated } : p)
+        );
+        loadCounts();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'projects' }, (payload) => {
+        console.debug('CEO Dashboard projects realtime INSERT:', payload);
         loadCounts();
       })
       .subscribe();
@@ -184,6 +205,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       .channel('public:projects:deletion_ceo_counts')
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'projects' }, (payload) => {
         console.debug('CEO Dashboard project deletion event:', payload);
+        const deletedId = (payload.old as any).id;
+        setLocalProjects(prev => prev.filter(p => p.id !== deletedId));
         loadCounts();
       })
       .subscribe();
@@ -324,14 +347,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // Use filtered historyProjects for History view (approved-by-user filtering)
   const projects = activeTab === 'HISTORY' ? filteredHistoryProjects : (inboxProjects || []);
 
-  // Logic: 
-  // Pending = Projects in CEO review stages with WAITING_APPROVAL status
-  // History = Projects CEO has previously acted on (in history) OR current projects not assigned to them but relevant
-  // We use allProjects here to ensure we catch everything matching the stage/status criteria, 
-  // explicitly bypassing any upstream "assigned_to_role" filtering that might be applied to inboxProjects.
-  const sourceProjects = allProjects && allProjects.length > 0 ? allProjects : (inboxProjects || []);
-
-  const pendingApprovals = sourceProjects.filter(p =>
+  // Logic:
+  // Use localProjects (reactive local copy) so the pending list updates immediately
+  // when a project's status/stage changes via realtime — no page reload needed.
+  const pendingApprovals = localProjects.filter(p =>
     (p.status === TaskStatus.WAITING_APPROVAL || p.status === TaskStatus.REJECTED) &&
     (
       p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ||
