@@ -14,7 +14,11 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
 
     // Base filter: only script projects with a CEO approval timestamp
     const scriptProjects = projects.filter(p =>
-        !!p.ceo_approved_at && p.data?.source !== 'IDEA_PROJECT'
+        !!p.ceo_approved_at && 
+        p.data?.source !== 'IDEA_PROJECT' &&
+        p.current_stage !== WorkflowStage.SCRIPT &&
+        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 &&
+        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2
     );
 
     const projectsToShow = scriptProjects.filter(p => {

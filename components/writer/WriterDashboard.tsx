@@ -173,7 +173,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
     // Categorize Projects - mutually exclusive categorization
     const allInReview = dashboardProjects.filter(p =>
-        (p.created_by === user.id || p.created_by_user_id === user.id) &&
+        p.created_by_user_id === user.id &&
         (
             // Include script projects in review stages
             [
@@ -196,7 +196,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             allInReview;
 
     const inProduction = dashboardProjects.filter(p =>
-        (p.created_by === user.id || p.created_by_user_id === user.id) &&
+        p.created_by_user_id === user.id &&
         [
             WorkflowStage.CINEMATOGRAPHY,
             WorkflowStage.VIDEO_EDITING,
@@ -220,7 +220,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
 
 
     const rejectedProjects = dashboardProjects.filter(p =>
-        (p.created_by === user.id || p.created_by_user_id === user.id) &&
+        p.created_by_user_id === user.id &&
         p.status === TaskStatus.REJECTED &&
         ![
             WorkflowStage.SCRIPT_REVIEW_L1,
@@ -297,7 +297,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         // ✅ IMPORTANT: hide ideas that already became scripts
         !convertedIdeaIds.has(p.id) &&
         // ✅ IMPORTANT: only show ideas created by the current writer
-        (p.created_by === user.id || p.created_by_user_id === user.id)
+        p.created_by_user_id === user.id
     );
     const handleEdit = (project: Project) => {
         const parsedData =

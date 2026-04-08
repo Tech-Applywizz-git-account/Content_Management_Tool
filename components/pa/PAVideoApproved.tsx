@@ -1,0 +1,101 @@
+import React, { useState } from 'react';
+import { Project, WorkflowStage, STAGE_LABELS } from '../../types';
+import { ArrowLeft, Clock, User as UserIcon, FileText, Video } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface Props {
+    projects: Project[];
+    onBack: () => void;
+    onSelectProject: (project: Project) => void;
+}
+
+const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject }) => {
+    return (
+        <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in pb-20">
+            <header className="h-16 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white/95 backdrop-blur z-20 shadow-[0_4px_0px_0px_rgba(0,0,0,0.1)]">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500 border-2 border-transparent hover:border-black"
+                    >
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h1 className="text-xl font-black uppercase text-slate-900">Video Approved</h1>
+                </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto">
+                <div className="max-w-5xl mx-auto p-8 space-y-8">
+                    <div className="bg-gradient-to-br p-8 border-2 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] from-orange-50 to-white border-orange-400">
+                        <h2 className="text-2xl font-black uppercase mb-4 text-orange-900">
+                            Approved Videos
+                        </h2>
+                        <p className="text-sm font-bold mb-6 text-orange-700">
+                            View projects that have received final approval
+                        </p>
+
+                        {projects.length === 0 ? (
+                            <div className="p-8 border-2 border-dashed rounded-lg text-center bg-orange-50 border-orange-300">
+                                <p className="text-lg font-bold text-orange-800">
+                                    No approved videos
+                                </p>
+                                <p className="text-orange-600 mt-2">
+                                    No videos have reached the approved stage yet
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {projects.map(project => (
+                                    <div
+                                        key={project.id}
+                                        onClick={() => onSelectProject(project)}
+                                        className="bg-white p-6 border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all cursor-pointer border-orange-400"
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <span
+                                                className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${project.channel === 'YOUTUBE'
+                                                    ? 'bg-[#FF4F4F] text-white'
+                                                    : project.channel === 'LINKEDIN'
+                                                        ? 'bg-[#0085FF] text-white'
+                                                        : 'bg-[#D946EF] text-white'
+                                                    }`}
+                                            >
+                                                {project.channel}
+                                            </span>
+                                            <span className="px-2 py-1 text-[10px] font-black uppercase border-2 border-black bg-green-100 text-green-800 border-green-300">
+                                                Approved
+                                            </span>
+                                        </div>
+
+                                        <h3 className="font-black text-lg text-slate-900 uppercase mb-2">{project.title}</h3>
+
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
+                                                <span className="font-bold text-slate-900">{STAGE_LABELS[project.current_stage]}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                                                <span className="font-bold text-slate-900">
+                                                    {format(new Date(project.created_at), 'MMM dd, yyyy')}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 pt-4 border-t-2 border-slate-100">
+                                            <button className="w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-green-500 hover:bg-green-600 transition-colors">
+                                                View Project
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default PAVideoApproved;

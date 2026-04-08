@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus, User } from '../../types';
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette } from 'lucide-react';
+import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -647,6 +647,28 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 )}
 
                 {/* New Direct Upload Section - For Designer to upload assets directly */}
+                {(project.delivery_date || isRework) && (isRework || canEdit || !hasAsset) && (
+                    <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Upload className="w-5 h-5 text-purple-600" />
+                            <h2 className="text-xl font-black uppercase">Direct Submit to CMO</h2>
+                        </div>
+                        <div className="space-y-4">
+                            <p className="text-slate-600 font-medium">
+                                Use this to skip the standard workflow and send the {isVideo ? 'thumbnail' : 'creative'} directly to the CMO for final approval.
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <button
+                                    onClick={handleDirectUpload}
+                                    className="px-6 md:px-8 py-3 md:py-4 bg-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] hover:translate-y-[2px] transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Send className="w-4 h-4" />
+                                    Direct Submit to CMO
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
 
 

@@ -1,4 +1,10 @@
 import { supabase, supabaseAdmin } from '../src/integrations/supabase/client';
+
+// Use admin client for INSERT/UPDATE operations to bypass RLS policies
+const dbClient = supabaseAdmin || supabase;
+console.log('🔧 Database clients initialized:');
+console.log('   - supabaseAdmin available:', !!supabaseAdmin);
+console.log('   - Using client:', supabaseAdmin ? 'ADMIN (service role key - RLS bypass)' : 'ANON (anon key - RLS enabled)');
 import {
     User,
     Project,
@@ -128,29 +134,113 @@ export const auth = {
 
             // 2. Get the authenticated user from Supabase Auth
             const { data: { user: authUser } } = await supabase.auth.getUser();
+            console.log('👤 Auth user retrieved:');
+            console.log('   - Auth ID:', authUser?.id);
+            console.log('   - Auth Email:', authUser?.email);
+            console.log('   - User Metadata:', authUser?.user_metadata);
+            
             if (!authUser?.email) {
                 console.warn('getPublicUser: No authenticated user or email found');
                 return null;
             }
 
             // 3. Look up the matching record in the public.users table by email
-            const { data, error } = await supabase
+            console.log('🔍 Searching for user in public.users table WHERE email =', `"${authUser.email}"`);
+            
+            // Try direct query first
+            const { data: allUsers, error: listError } = await supabase
+                .from('users')
+                .select('id, email, full_name, role');
+            
+            console.log('📊 All users in public.users table:', allUsers);
+            if (listError) {
+                console.error('❌ Error listing users:', listError);
+            }
+            
+            const { data: existingUser, error: fetchError } = await supabase
                 .from('users')
                 .select('*')
                 .eq('email', authUser.email)
-                .single();
+                .maybeSingle();
 
-            if (error || !data) {
-                console.error('getPublicUser: Error fetching public user profile:', error);
-                return null;
+            if (fetchError) {
+                console.error('❌ Error fetching user from public table:', fetchError);
             }
 
-            // 4. Cache and return the public user record
-            currentUserCache = data as User;
+            // If user exists in public table, return it
+            if (existingUser) {
+                console.log('✅ FOUND user in public table:', existingUser);
+                console.log('   - ID:', existingUser.id);
+                console.log('   - Email:', existingUser.email);
+                console.log('   - Role:', existingUser.role);
+                currentUserCache = existingUser as User;
+                return currentUserCache;
+            } else {
+                console.error('❌❌❌ USER NOT FOUND in public.users table!');
+                console.error('   Searched email:', authUser.email);
+                console.error('   Auth user ID:', authUser.id);
+                console.error('   Available users:', allUsers);
+                console.log('   Will attempt to create user record...');
+            }
+
+            // 4. User doesn't exist in public table - CREATE IT!
+            console.log('⚠️ User not in public table, creating entry for:', authUser.email);
+            
+            // Extract full name from auth metadata or use email
+            const fullName = authUser.user_metadata?.full_name || 
+                            authUser.user_metadata?.name || 
+                            authUser.email.split('@')[0];
+
+            // Determine role - default to DESIGNER for now (or use metadata if available)
+            let role = authUser.user_metadata?.role || 'DESIGNER';
+            
+            // Ensure role is valid
+            const validRoles = ['ADMIN', 'WRITER', 'CINE', 'EDITOR', 'DESIGNER', 'CMO', 'CEO', 'OPS', 'OBSERVER'];
+            if (!validRoles.includes(role)) {
+                console.warn('Invalid role detected, defaulting to DESIGNER:', role);
+                role = 'DESIGNER';
+            }
+
+            const newUser = {
+                email: authUser.email,
+                full_name: fullName,
+                role: role,
+                status: 'ACTIVE',
+                phone: authUser.phone || null,
+            };
+
+            console.log('📝 Attempting to create new user in public table...');
+            console.log('   Insert data:', JSON.stringify(newUser, null, 2));
+
+            const { data: createdUser, error: createError } = await dbClient
+                .from('users')
+                .insert([newUser])
+                .select()
+                .single();
+
+            console.log('📊 Insert result:');
+            console.log('   - createdUser:', createdUser);
+            console.log('   - createError:', createError);
+
+            if (createError || !createdUser) {
+                console.error('❌ Failed to create user in public table');
+                console.error('   Error details:', createError);
+                console.error('   Error message:', createError?.message);
+                console.error('   Error code:', createError?.code);
+                console.error('   Error details:', createError?.details);
+                throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
+            }
+
+            console.log('✅ Successfully created user in public table:', createdUser);
+            console.log('   - ID:', createdUser.id);
+            console.log('   - Email:', createdUser.email);
+            console.log('   - Role:', createdUser.role);
+            currentUserCache = createdUser as User;
             return currentUserCache;
+
         } catch (err) {
             console.error('getPublicUser: Unexpected error:', err);
-            return null;
+            throw err; // Re-throw so caller knows something went wrong
         }
     },
 
@@ -582,6 +672,36 @@ export const users = {
     }
 };
 
+export const brands = {
+    async getAll() {
+        const { data, error } = await supabase
+            .from('brands')
+            .select('*')
+            .order('brand_name', { ascending: true });
+        
+        if (error) {
+             console.warn('Could not fetch brands', error);
+             return [];
+        }
+        return data || [];
+    },
+    async create(brand: {
+        brand_name: string;
+        campaign_objective: string;
+        target_audience: string;
+        deliverables: string;
+        created_by_user_id?: string;
+    }) {
+        const { data, error } = await supabase
+            .from('brands')
+            .insert([brand])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    }
+};
+
 // ============================================================================
 // PROJECT MANAGEMENT
 // ============================================================================
@@ -663,6 +783,9 @@ export const projects = {
                     WorkflowStage.VIDEO_EDITING,
                     WorkflowStage.FINAL_REVIEW_CMO,
                     WorkflowStage.FINAL_REVIEW_CEO,
+                    WorkflowStage.PARTNER_REVIEW,
+                    WorkflowStage.SENT_TO_INFLUENCER,
+                    WorkflowStage.PA_FINAL_REVIEW,
                     WorkflowStage.POST_WRITER_REVIEW,
                     WorkflowStage.OPS_SCHEDULING,
                     WorkflowStage.POSTED
@@ -672,6 +795,11 @@ export const projects = {
                 const stageCondition = `current_stage.in.(${opsStages.join(',')})`;
                 const roleCondition = `assigned_to_role.eq.${Role.OPS}`;
                 query = query.or(`${stageCondition},${roleCondition}`);
+                break;
+
+            case Role.PARTNER_ASSOCIATE:
+                // Partner Associate inbox: PARTNER_REVIEW, SENT_TO_INFLUENCER, and PA_FINAL_REVIEW stage
+                query = query.or(`current_stage.eq.${WorkflowStage.PARTNER_REVIEW},current_stage.eq.${WorkflowStage.SENT_TO_INFLUENCER},current_stage.eq.${WorkflowStage.PA_FINAL_REVIEW}`);
                 break;
 
             default:
@@ -937,49 +1065,86 @@ export const projects = {
             throw new Error('writer_id is REQUIRED and must be a valid public.users.id');
         }
 
-        const { data, error } = await supabase
-            .from('projects')
-            .insert([{
-                title: projectData.title,
-                channel: projectData.channel,
-                content_type: projectData.content_type,
-                assigned_to_role: projectData.assigned_to_role,
-                assigned_to_user_id: projectData.assigned_to_user_id ?? null,
-                due_date: projectData.due_date,
-                data: projectData.data,
+        // Prepare the insert data object carefully
+        const insertData: any = {
+            title: projectData.title,
+            channel: projectData.channel,
+            content_type: projectData.content_type,
+            assigned_to_role: projectData.assigned_to_role,
+            due_date: projectData.due_date,
+            data: projectData.data,
 
-                // Creator info (display and workflow)
-                created_by_user_id: projectData.created_by_user_id ?? null,
-                created_by_name: projectData.created_by_name ?? null,
-                writer_id: projectData.writer_id,
-                writer_name: projectData.writer_name ?? null,
+            // Creator info (display and workflow)
+            created_by_user_id: projectData.created_by_user_id ?? null,
+            created_by_name: projectData.created_by_name ?? null,
+            writer_id: projectData.writer_id,
+            writer_name: projectData.writer_name ?? null,
 
-                // Direct Video properties
-                edited_video_link: projectData.edited_video_link,
-                edited_at: projectData.edited_at,
-                editor_uploaded_at: projectData.editor_uploaded_at,
-                edited_by_user_id: projectData.edited_by_user_id,
-                edited_by_name: projectData.edited_by_name,
-                video_link: projectData.video_link,
-                cine_uploaded_at: projectData.cine_uploaded_at,
-                visible_to_roles: projectData.visible_to_roles ?? null,
+            // Direct Video properties
+            edited_video_link: projectData.edited_video_link,
+            edited_at: projectData.edited_at,
+            editor_uploaded_at: projectData.editor_uploaded_at,
+            edited_by_user_id: projectData.edited_by_user_id,
+            edited_by_name: projectData.edited_by_name,
+            video_link: projectData.video_link,
+            cine_uploaded_at: projectData.cine_uploaded_at,
+            visible_to_roles: projectData.visible_to_roles ?? null,
 
-                // Use provided values or defaults if not provided
-                brand: projectData.brand,
-                current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
-                status: projectData.status || TaskStatus.TODO,
-                priority: projectData.priority || 'NORMAL'
-            }])
-            .select()
-            .single();
+            // Use provided values or defaults if not provided
+            brand: projectData.brand,
+            current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
+            status: projectData.status || TaskStatus.TODO,
+            priority: projectData.priority || 'NORMAL'
+        };
 
-        if (error) {
-            console.error('Failed to create project:', error);
-            throw error;
+        // Only include assigned_to_user_id if it's explicitly provided (not undefined)
+        // This prevents potential constraint violations from null values
+        if (projectData.assigned_to_user_id !== undefined && projectData.assigned_to_user_id !== null) {
+            insertData.assigned_to_user_id = projectData.assigned_to_user_id;
         }
 
-        console.log('Successfully created project with ID:', data.id);
-        return data as Project;
+        console.log('Prepared insert data:', insertData);
+
+        try {
+            console.log('🔗 Executing INSERT with database client');
+            console.log('   - Client type:', dbClient === supabaseAdmin ? 'ADMIN' : 'ANON');
+            console.log('   - Has service key:', !!supabaseAdmin);
+            
+            // Add timeout protection for the insert operation (15 seconds - increased)
+            const insertPromise = dbClient
+                .from('projects')
+                .insert([insertData])
+                .select()
+                .single();
+            
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error('Database timeout: Project creation took too long (>15s). Please check your connection and try again.'));
+                }, 15000);
+            });
+
+            const result = await Promise.race([insertPromise, timeoutPromise]) as any;
+
+            if (result.error) {
+                console.error('Failed to create project:', result.error);
+                console.error('Error details:', JSON.stringify(result.error, null, 2));
+                console.error('Error hint:', result.error.hint);
+                console.error('Error message:', result.error.message);
+                console.error('Error code:', result.error.code);
+                throw new Error(`Failed to create project: ${result.error.message}`);
+            }
+
+            if (!result.data) {
+                console.error('No data returned from insert');
+                throw new Error('No data returned from project creation');
+            }
+
+            console.log('✅ Successfully created project with ID:', result.data.id);
+            return result.data as Project;
+        } catch (error: any) {
+            console.error('❌ Project creation failed:', error);
+            throw error;
+        }
     },
 
     // Update project
@@ -1566,11 +1731,33 @@ export const workflow = {
             throw error;
         }
 
+        // Check if the brand belongs to a Partner Associate if at CEO final review stage
+        const brandName = rawProject.brand || rawProject.data?.brand;
+        let isPAProject = false;
+        
+        if (rawProject.current_stage === WorkflowStage.FINAL_REVIEW_CEO && brandName) {
+            try {
+                const { data: brandMatch } = await supabase
+                    .from('brands')
+                    .select('id')
+                    .eq('brand_name', brandName)
+                    .maybeSingle();
+                
+                if (brandMatch) {
+                    isPAProject = true;
+                    console.log(`✅ Project ${projectId} identified as Partner Associate brand: ${brandName}`);
+                }
+            } catch (err) {
+                console.warn('Error checking brand PA status:', err);
+            }
+        }
+
         // Create a partial project object with only the properties we need
         const currentProject = {
             id: rawProject.id,
             current_stage: rawProject.current_stage,
             assigned_to_user_id: rawProject.assigned_to_user_id,
+            brand: brandName,
             // Fill in other required fields with defaults to satisfy Project type
             title: rawProject.title,
             channel: rawProject.channel,
@@ -1580,7 +1767,10 @@ export const workflow = {
             priority: rawProject.priority,
             due_date: rawProject.due_date,
             created_at: rawProject.created_at,
-            data: rawProject.data,
+            data: {
+                ...rawProject.data,
+                is_pa_brand: isPAProject
+            },
             history: [], // We don't need history here
             // Optional fields - set to undefined or appropriate defaults
             writer_submitted_at: rawProject.writer_submitted_at,
@@ -1788,45 +1978,96 @@ export const workflow = {
                 return await projects.getById(projectId);
             }
         } else { // Normal approval flow for other stages
+            // Automatically determine next stage if at CEO final review to handle PA brands
+            let finalNextStage = nextStage;
+            let finalNextRole = nextRole;
+            
+            if (rawProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO && isPAProject) {
+                const nextInfo = helpers.getNextStage(
+                    WorkflowStage.FINAL_REVIEW_CEO,
+                    rawProject.content_type,
+                    'APPROVED',
+                    { ...rawProject.data, is_pa_brand: true }
+                );
+                finalNextStage = nextInfo.stage;
+                finalNextRole = nextInfo.role;
+                console.log(`🔀 Overriding next stage to ${finalNextStage} (${finalNextRole}) due to PA brand detection`);
+            }
+
             // Update project
             const projectUpdateData: any = {
-                current_stage: nextStage,
+                current_stage: finalNextStage,
                 // Use targetUserId if provided, otherwise preserve or set to null
                 assigned_to_user_id: targetUserId !== undefined ? targetUserId : (currentProject?.assigned_to_user_id || null),
                 ...extraUpdates
             };
 
             // Special handling for FINAL_REVIEW_CMO stage
-            if (nextStage === WorkflowStage.FINAL_REVIEW_CMO) {
+            if (finalNextStage === WorkflowStage.FINAL_REVIEW_CMO) {
                 projectUpdateData.assigned_to_role = Role.CMO; // Assign to CMO
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
                 projectUpdateData.visible_to_roles = ['CMO', 'OPS']; // Make visible to CMO and OPS
-            } else if (nextStage === WorkflowStage.MULTI_WRITER_APPROVAL) {
+            } else if (finalNextStage === WorkflowStage.MULTI_WRITER_APPROVAL) {
                 // When sending to multi-writer approval, make visible to writer and ops
                 projectUpdateData.assigned_to_role = Role.WRITER; // Assign to writer
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
                 projectUpdateData.visible_to_roles = ['WRITER', 'OPS']; // Make visible to writer and ops
-            } else if (nextStage === WorkflowStage.POST_WRITER_REVIEW) {
+            } else if (finalNextStage === WorkflowStage.POST_WRITER_REVIEW) {
                 // When sending to post-writer review, make visible to CMO and OPS in parallel
                 projectUpdateData.assigned_to_role = Role.CMO; // Primary assignee is CMO
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL; // Set to WAITING_APPROVAL status
                 projectUpdateData.visible_to_roles = ['CMO', 'OPS']; // Make visible to both CMO and OPS
             } else {
-                projectUpdateData.assigned_to_role = nextRole;
+                projectUpdateData.assigned_to_role = finalNextRole;
                 projectUpdateData.status = TaskStatus.WAITING_APPROVAL;
+
+                // When CEO approves, check if the project uses a PA-created (dynamic) brand.
+                // If it does, override the default CINE route to ensure it goes to the PA workflow.
+                if (userRole === Role.CEO) {
+                    const projectBrand = rawProject.brand;
+                    if (projectBrand) {
+                        const { data: paCreatedBrand } = await supabase
+                            .from('brands')
+                            .select('id, created_by_user_id')
+                            .eq('brand_name', projectBrand)
+                            .maybeSingle();
+
+                        if (paCreatedBrand && paCreatedBrand.created_by_user_id) {
+                            // Brand was registered by a PA — FORCE route back to PA workflow instead of default CINE
+                            if (rawProject?.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 || rawProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO) {
+                                finalNextStage = WorkflowStage.PARTNER_REVIEW;
+                                finalNextRole = Role.PARTNER_ASSOCIATE;
+                                projectUpdateData.current_stage = finalNextStage;
+                                projectUpdateData.assigned_to_role = finalNextRole;
+                                console.log("🔀 OVERRIDING default pipeline! Routing CEO approval to PARTNER_ASSOCIATE instead.");
+                            }
+
+                            // Surface project to all PA users
+                            projectUpdateData.visible_to_roles = [finalNextRole, 'PARTNER_ASSOCIATE', 'OPS'];
+                            
+                            // If moving to PARTNER_REVIEW, assign to the specific creator!
+                            if (finalNextStage === WorkflowStage.PARTNER_REVIEW) {
+                                projectUpdateData.assigned_to_user_id = paCreatedBrand.created_by_user_id;
+                                console.log(`🎯 CEO approved script: routed and assigned back to brand creator (PA): ${paCreatedBrand.created_by_user_id}`);
+                            } else {
+                                console.log(`✅ CEO approved project using PA brand "${projectBrand}". Added PARTNER_ASSOCIATE to visible_to_roles.`);
+                            }
+                        }
+                    }
+                }
             }
 
             // 1. Record the approval in workflow history BEFORE update (Mandatory Fix)
             await this.recordAction(
                 projectId,
-                nextRole, // nextRole is the target
+                finalNextStage,
                 finalUserId,
                 finalUserName,
                 actionOverride || 'APPROVED',
                 comment || `Approved by ${userRole}`,
                 undefined,
                 fromRoleOverride ? fromRoleOverride as Role : userRole,
-                nextRole,
+                finalNextRole,
                 finalUserRole,
                 metadata
             );
@@ -1873,7 +2114,7 @@ export const workflow = {
             const { data: nextRoleUsers } = await supabase
                 .from('users')
                 .select('id')
-                .eq('role', nextRole)
+                .eq('role', finalNextRole)
                 .eq('status', 'ACTIVE');
 
             if (nextRoleUsers && nextRoleUsers.length > 0) {
@@ -1891,6 +2132,32 @@ export const workflow = {
                     } catch (notificationError) {
                         console.error('Failed to send notification:', notificationError);
                         // Continue with the process even if notification fails
+                    }
+                }
+            }
+
+            // Explicit notification for CMO if routed to PA_FINAL_REVIEW
+            if (finalNextStage === 'PA_FINAL_REVIEW' as any) {
+                const { data: cmoUsers } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('role', Role.CMO)
+                    .eq('status', 'ACTIVE');
+
+                if (cmoUsers && cmoUsers.length > 0) {
+                    for (const cmoUser of cmoUsers) {
+                        try {
+                            const dbWithNotifications = db as any;
+                            await dbWithNotifications.notifications.create(
+                                cmoUser.id,
+                                projectId,
+                                'REVIEW_READY',
+                                'Video Ready for Review (Notification Only)',
+                                `Editor has uploaded the final video for: ${data.title}. Partner Associate has full control.`
+                            );
+                        } catch (notificationError) {
+                            console.error('Failed to notify CMO:', notificationError);
+                        }
                     }
                 }
             }
@@ -2413,7 +2680,12 @@ export const helpers = {
                 [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.MULTI_WRITER_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }, // If multi-writer approval is rejected, send back to editor
                 [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, // If post-writer review is rejected, send back to multi-writer approval
-                [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+                [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
+                [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.OPS_SCHEDULING]: projectData?.is_pa_brand 
+                    ? { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                    : { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
                 [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO }
@@ -2458,10 +2730,12 @@ export const helpers = {
         const approvalMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-            [WorkflowStage.SCRIPT_REVIEW_L2]: {
-                stage: isCaptionBased ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || isInfluencer) ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
-                role: isCaptionBased ? Role.EDITOR : ((contentType === 'VIDEO' || isInfluencer) ? Role.CINE : Role.DESIGNER)
-            },
+            [WorkflowStage.SCRIPT_REVIEW_L2]: projectData?.is_pa_brand 
+                ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                : {
+                    stage: isCaptionBased ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || isInfluencer) ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
+                    role: isCaptionBased ? Role.EDITOR : ((contentType === 'VIDEO' || isInfluencer) ? Role.CINE : Role.DESIGNER)
+                },
 
             // CINE -> VIDEO_EDITING (Editor)
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
@@ -2472,20 +2746,24 @@ export const helpers = {
 
             // VIDEO_EDITING -> DESIGNER (if thumbnail) OR MULTI_WRITER_APPROVAL
             [WorkflowStage.VIDEO_EDITING]: {
-                stage: projectData?.needs_sub_editor === true
-                    ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
-                    : (projectData?.rework_initiator_stage
-                        ? projectData.rework_initiator_stage as WorkflowStage
-                        : (projectData?.thumbnail_required === true
-                            ? WorkflowStage.THUMBNAIL_DESIGN
-                            : WorkflowStage.MULTI_WRITER_APPROVAL)),
-                role: projectData?.needs_sub_editor === true
-                    ? Role.EDITOR
-                    : (projectData?.rework_initiator_stage
-                        ? projectData.rework_initiator_role as Role
-                        : (projectData?.thumbnail_required === true
-                            ? Role.DESIGNER
-                            : Role.WRITER))
+                stage: projectData?.is_pa_brand
+                    ? WorkflowStage.PA_FINAL_REVIEW
+                    : (projectData?.needs_sub_editor === true
+                        ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
+                        : (projectData?.rework_initiator_stage
+                            ? projectData.rework_initiator_stage as WorkflowStage
+                            : (projectData?.thumbnail_required === true
+                                ? WorkflowStage.THUMBNAIL_DESIGN
+                                : WorkflowStage.MULTI_WRITER_APPROVAL))),
+                role: projectData?.is_pa_brand
+                    ? Role.PARTNER_ASSOCIATE
+                    : (projectData?.needs_sub_editor === true
+                        ? Role.EDITOR
+                        : (projectData?.rework_initiator_stage
+                            ? projectData.rework_initiator_role as Role
+                            : (projectData?.thumbnail_required === true
+                                ? Role.DESIGNER
+                                : Role.WRITER)))
             },
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
@@ -2515,7 +2793,15 @@ export const helpers = {
             [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
 
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
-            [WorkflowStage.FINAL_REVIEW_CEO]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+            [WorkflowStage.FINAL_REVIEW_CEO]: projectData?.is_pa_brand 
+                ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                : { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
+
+            [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.SENT_TO_INFLUENCER, role: Role.PARTNER_ASSOCIATE },
+            
+            [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+
+            [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE },
 
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
             [WorkflowStage.POSTED]: { stage: WorkflowStage.POSTED, role: Role.OPS },
@@ -2737,6 +3023,7 @@ export const db = {
     // Keep namespaced access for advanced usage
     auth,
     users,
+    brands,
     projects,
     workflow,
     workflowHistory,
@@ -3148,53 +3435,48 @@ export const db = {
             throw new Error('User profile not found. Cannot create project without a valid public user ID.');
         }
 
-        // Special workflow for Shyam's Personal Branding Videos:
-        // Designer -> Writers (2) -> CMO -> CEO -> Ops
-        const isShyamVideo = brand === 'SHYAMS_PERSONAL_BRANDING' && contentType === 'VIDEO';
-
-        // Create a project that starts at the appropriate stage based on content and brand
+        // Create a project that starts at FINAL_REVIEW_CMO stage for designer direct uploads
         const projectData = {
             title,
             channel,
             content_type: contentType,
-            current_stage: isShyamVideo ? WorkflowStage.MULTI_WRITER_APPROVAL : WorkflowStage.FINAL_REVIEW_CMO,
-            assigned_to_role: isShyamVideo ? Role.WRITER : Role.CMO,
-            assigned_to_user_id: null,
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO,
+            assigned_to_role: Role.CMO,
             status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,
             brand,
             niche,
             niche_other: nicheOther,
-            creative_link: link, // Store the creative link in the main project record
+            creative_link: link,
             data: {
                 brand,
-                brief: description, // Store description as brief
-                creative_link: link, // Also store the creative link in the data object for consistency
-                source: 'DESIGNER_INITIATED' // Track that this project was initiated by designer
+                brief: description,
+                creative_link: link,
+                source: 'DESIGNER_DIRECT_UPLOAD'
             },
-            // Set display information using the verified public.users.id
+            // Set creator information
             created_by_user_id: publicUser.id,
             created_by_name: publicUser.full_name,
             writer_id: publicUser.id,
             writer_name: publicUser.full_name,
         };
 
-        // Create the project and return the real project with Supabase UUID
+        // Create the project
         const createdProject = await projects.create(projectData);
 
-        // Record the creation in workflow history using the verified public.users.id
+        // Record the action in workflow history
         await workflow.recordAction(
             createdProject.id,
-            isShyamVideo ? Role.WRITER : Role.CMO, // next responsible role
+            Role.CMO, // next responsible role is CMO
             publicUser.id,
             publicUser.full_name,
-            'CREATED',
-            isShyamVideo ? 'Shyam\'s Video project created - Sent for Writer Approval' : 'Designer-initiated creative project created',
+            'SUBMITTED',
+            'Direct Design Upload: Creative assets submitted directly by Designer. Moving to CMO Review.',
             undefined,
-            Role.DESIGNER, // fromRole
+            Role.DESIGNER,   // fromRole
             Role.CMO, // toRole
-            Role.DESIGNER  // actorRole
+            Role.DESIGNER    // actorRole
         );
 
         return createdProject;
@@ -3437,6 +3719,43 @@ export const db = {
         const trackingInitiatorRole = project.rework_initiator_role || project.data?.rework_initiator_role;
         const trackingInitiatorStage = project.rework_initiator_stage || project.data?.rework_initiator_stage;
 
+        // Check if the brand belongs to a Partner Associate
+        const brandName = project.brand || project.data?.brand;
+        let isPAProject = project.data?.is_pa_brand || false; // Use existing flag from project.data
+        
+        // If not already flagged, check the brand registry
+        if (!isPAProject && brandName) {
+            try {
+                const { data: brandMatch } = await supabase
+                    .from('brands')
+                    .select('id, created_by_user_id')
+                    .eq('brand_name', brandName)
+                    .maybeSingle();
+                
+                // If brand exists and was created by a PA, mark as PA project
+                if (brandMatch && brandMatch.created_by_user_id) {
+                    const { data: brandCreator } = await supabase
+                        .from('users')
+                        .select('role')
+                        .eq('id', brandMatch.created_by_user_id)
+                        .maybeSingle();
+                    
+                    if (brandCreator && brandCreator.role === Role.PARTNER_ASSOCIATE) {
+                        isPAProject = true;
+                        console.log(`✅ advanceWorkflow: Identified as PA brand: ${brandName}`);
+                    }
+                }
+            } catch (err) {
+                console.warn('Error checking brand PA status in advanceWorkflow:', err);
+            }
+        }
+        
+        // Prepare project data with PA status for getNextStage
+        const projectDataWithPA = {
+            ...project.data,
+            is_pa_brand: isPAProject
+        };
+
         let nextStageInfo: { stage: WorkflowStage; role: Role };
 
         // 2️⃣ Priority 1: Handle Rework Routing (Submitter returns to Initiator)
@@ -3468,7 +3787,7 @@ export const db = {
                 project.current_stage as WorkflowStage,
                 project.content_type,
                 'APPROVED',
-                project
+                projectDataWithPA
             );
         }
 
@@ -3652,6 +3971,9 @@ export const db = {
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: Role.WRITER,
             [WorkflowStage.MULTI_WRITER_APPROVAL]: Role.WRITER,
             [WorkflowStage.POST_WRITER_REVIEW]: Role.CMO, // Assign to CMO for approval
+            [WorkflowStage.PARTNER_REVIEW]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.SENT_TO_INFLUENCER]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
             [WorkflowStage.REWORK]: Role.WRITER,

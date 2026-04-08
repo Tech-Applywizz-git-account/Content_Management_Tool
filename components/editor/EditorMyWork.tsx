@@ -221,7 +221,7 @@ const EditorMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelec
                                             </p>
                                         </div>
                                     )}
-                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date && !isDirectUpload && (
+                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date && !isDirectUpload && !isDelivered && (
                                         <div className="bg-red-50 border-2 border-red-400 p-2">
                                             <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
                                         </div>

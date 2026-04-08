@@ -131,6 +131,9 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
     const ceoApproved = (inboxProjects || []).filter(p =>
         p.ceo_approved_at &&
         p.data?.source !== 'IDEA_PROJECT' &&
+        p.current_stage !== WorkflowStage.SCRIPT &&
+        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 &&
+        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2 &&
         !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)
     );
 

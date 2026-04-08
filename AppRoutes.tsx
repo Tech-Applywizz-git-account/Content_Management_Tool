@@ -27,6 +27,7 @@ import OpsDashboard from './components/ops/OpsDashboard';
 import OpsProjectDetailPage from './components/ops/OpsProjectDetailPage';
 import OpsCeoApprovedViewWrapper from './components/ops/OpsCeoApprovedViewWrapper';
 import ObserverDashboard from './components/observer/ObserverDashboard';
+import PADashboard from './components/pa/PADashboard';
 import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage';
 import WriterApprovedVideoDetailPage from './components/writer/WriterApprovedVideoDetailPage';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
@@ -34,6 +35,7 @@ import CmoHistoryDetail from './components/cmo/CmoHistoryDetail';
 
 import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
 import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
+import PAProjectDetailPage from './components/pa/PAProjectDetailPage';
 import Auth from './components/Auth';
 import SetPassword from './components/SetPassword';
 
@@ -129,8 +131,8 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
             <Route path="/ceo/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.CEO]}>
                     <Routes>
-                        <Route path="review/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
-                        <Route path="history/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
+                        <Route path="review/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} onRefresh={() => refreshData(user!)} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
+                        <Route path="history/:projectId" element={<CeoProjectDetailPage user={user!} onLogout={onLogout} onRefresh={() => refreshData(user!)} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} />} />
                         <Route path="*" element={<CeoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
                 </ProtectedRoute>
@@ -188,6 +190,16 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
             <Route path="/observer/*" element={
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.OBSERVER]}>
                     <ObserverDashboard user={user!} onLogout={onLogout} />
+                </ProtectedRoute>
+            } />
+
+            <Route path="/partner_associate/*" element={
+                <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.PARTNER_ASSOCIATE]}>
+                    <Routes>
+                        <Route path="project/:projectId" element={<PAProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} refreshData={refreshData} />} />
+                        <Route path="review/:projectId" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
+                        <Route path="*" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
+                    </Routes>
                 </ProtectedRoute>
             } />
 

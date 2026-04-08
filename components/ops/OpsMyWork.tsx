@@ -11,8 +11,11 @@ interface Props {
 }
 
 const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory = 'pending' }) => {
+    // Only show projects currently assigned to OPS role
+    const opsProjects = projects.filter(project => project.assigned_to_role === 'OPS');
+
     // Filter projects to show only pending works by default
-    const filteredProjects = projects.filter(project => {
+    const filteredProjects = opsProjects.filter(project => {
         // Check if project is completed/posted
         const isCompleted = project.status === TaskStatus.DONE ||
             project.data?.live_url ||
@@ -27,8 +30,12 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                 return isCompleted;
             case 'ceoapproved':
                 // CEO approved projects - must be approved by CEO and not completed
-                // STRICT CHECK: Only check the timestamp, do not infer from stage
-                return !!project.ceo_approved_at && !isCompleted;
+                // STRICT CHECK: Only check the timestamp and ensure it is past script phase
+                return !!project.ceo_approved_at && 
+                       project.current_stage !== WorkflowStage.SCRIPT &&
+                       project.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 &&
+                       project.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2 &&
+                       !isCompleted;
             case 'readytoschedule':
                 // Strict filter for ready to schedule projects
                 return (

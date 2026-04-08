@@ -13,7 +13,8 @@ import {
   X,
   Calendar,
   Eye,
-  FileText
+  FileText,
+  CheckCircle2
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -93,8 +94,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   <span>My Work</span>
                 </button>
               )}
-              {/* Overview - Only for CMO */}
-              {user.role === Role.CMO && (
+              {/* Overview - For CMO and Partnership Associate */}
+              {(user.role === Role.CMO || user.role === Role.PARTNER_ASSOCIATE) && (
                 <button
                   onClick={() => handleNavigate('overview')}
                   className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'overview'
@@ -128,8 +129,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 </button>
               )}
 
-              {/* Calendar - Visible for CMO, CEO, and other roles */}
-              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS) && (
+              {/* Calendar - Visible for most roles */}
+              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE) && (
                 <button
                   onClick={() => handleNavigate('calendar')}
                   className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'calendar'
@@ -160,6 +161,20 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                       </span>
                     )}
                   </span>
+                </button>
+              )}
+
+              {/* CEO Approved Scripts - Visible for PARTNER_ASSOCIATE */}
+              {user.role === Role.PARTNER_ASSOCIATE && (
+                <button
+                  onClick={() => handleNavigate('ceo-approved-scripts')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'ceo-approved-scripts'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>CEO Approved Scripts</span>
                 </button>
               )}
 
@@ -239,7 +254,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             </button>
           )}
 
-          {user.role === Role.CMO && (
+          {(user.role === Role.CMO || user.role === Role.PARTNER_ASSOCIATE) && (
             <>
               <button
                 onClick={() => { handleNavigate('overview'); setIsMobileMenuOpen(false); }}
@@ -248,6 +263,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 <BarChart3 className="w-5 h-5" />
                 <span>Overview</span>
               </button>
+            </>
+          )}
+
+          {user.role === Role.CMO && (
+            <>
               <button
                 onClick={() => { handleNavigate('final-review'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'final-review' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
@@ -258,7 +278,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             </>
           )}
 
-          {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS) && (
+          {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE) && (
             <button
               onClick={() => { handleNavigate('calendar'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'calendar' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
@@ -283,6 +303,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   </span>
                 )}
               </span>
+            </button>
+          )}
+
+          {/* Mobile CEO Approved Scripts */}
+          {user.role === Role.PARTNER_ASSOCIATE && (
+            <button
+              onClick={() => { handleNavigate('ceo-approved-scripts'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'ceo-approved-scripts' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              <span>CEO Approved Scripts</span>
             </button>
           )}
 
@@ -313,9 +344,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
       </div>
 
       {/* Main Content */}
-      <main className={`flex-1 overflow-y-auto pt-20 md:pt-0 bg-white ${hideSidebar ? '' : 'p-4 md:p-12'}`}>
-        <div className="w-full">
-          {children}
+      <main className={`flex-1 h-screen overflow-hidden flex flex-col pt-20 md:pt-0 bg-white`}>
+        <div className="flex-1 overflow-y-auto">
+          <div className={`w-full max-w-[1600px] mx-auto ${hideSidebar ? '' : 'p-4 md:p-12'}`}>
+            {children}
+          </div>
         </div>
       </main>
     </div>

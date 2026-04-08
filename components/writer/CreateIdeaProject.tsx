@@ -175,11 +175,7 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
                   publicUser.id,
                   publicUser.full_name,
                   'SUBMITTED',
-                  'Idea resubmitted after rework',
-                  undefined,
-                  Role.WRITER, // fromRole
-                  targetRole as Role, // toRole
-                  publicUser.role as Role // actorRole
+                  'Idea resubmitted after rework'
                 );
 
                 setPopupMessage(`Idea project "${title}" resubmitted successfully. Waiting for ${(targetStage as string).includes('CEO') ? 'CEO' : 'CMO'} review.`);
@@ -354,23 +350,24 @@ const CreateIdeaProject: React.FC<Props> = ({ onClose, onSuccess, project }) => 
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-500 mb-2">Content Type</label>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                  {(['VIDEO', 'CREATIVE_ONLY', 'JOBBOARD', 'LEAD_MAGNET'] as ContentType[]).map(ct => {
+                  {(['VIDEO', 'CREATIVE_ONLY', 'CAPTION_BASED', 'APPLYWIZZ_USA_JOBS'] as ContentType[]).map(ct => {
                     const colors: Record<string, string> = {
                       VIDEO: 'bg-[#0085FF] border-[#0085FF]',
                       CREATIVE_ONLY: 'bg-[#D946EF] border-[#D946EF]',
-                      JOBBOARD: 'bg-[#00A36C] border-[#00A36C]',
-                      LEAD_MAGNET: 'bg-[#6366F1] border-[#6366F1]'
+                      CAPTION_BASED: 'bg-[#00A36C] border-[#00A36C]',
+                      APPLYWIZZ_USA_JOBS: 'bg-[#6366F1] border-[#6366F1]'
                     };
                     return (
                       <button
                         key={ct}
                         onClick={() => setContentType(ct)}
+                        type="button"
                         className={`p-2 text-[10px] font-black uppercase border-2 transition-all ${contentType === ct
                           ? `${colors[ct] || 'bg-black border-black'} text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]`
                           : 'bg-white border-black hover:bg-slate-50'
                           }`}
                       >
-                        {ct === 'CREATIVE_ONLY' ? '🎨 Creative' : ct === 'VIDEO' ? '📹 Video' : ct === 'JOBBOARD' ? '📋 Job Board' : '🧲 Lead Magnet'}
+                        {ct === 'CREATIVE_ONLY' ? '🎨 Creative' : ct === 'VIDEO' ? '📹 Video' : ct === 'CAPTION_BASED' ? '💬 Caption' : '🇺🇸 Applywizz'}
                       </button>
                     );
                   })}

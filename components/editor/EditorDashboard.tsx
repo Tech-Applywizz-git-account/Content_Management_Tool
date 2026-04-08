@@ -140,13 +140,14 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         // Filtered views (from dashboard cards)
         switch (activeFilter) {
             case 'NEEDS_DELIVERY':
-                // Exclude direct upload projects - they already have a video link and don't need a delivery date set
+                // Exclude direct upload projects and delivered projects
                 return (historyProjects || []).filter(p => {
                     const workflowState = getWorkflowStateForRole(p, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
                     return !p.delivery_date &&
                         p.status !== TaskStatus.DONE &&
                         p.data?.source !== 'EDITOR_DIRECT_UPLOAD' &&
+                        !p.edited_video_link &&
                         !isRework;
                 });
             case 'IN_PROGRESS':
@@ -166,7 +167,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                 let completedProjects = (historyProjects || []).filter(p => {
                     const workflowState = getWorkflowStateForRole(p, user.role);
                     const isRework = workflowState.isTargetedRework || workflowState.isRework;
-                    return (!!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD') && !isRework && p.status !== TaskStatus.DONE;
+                    return (!!p.edited_video_link || p.data?.source === 'EDITOR_DIRECT_UPLOAD') && !isRework;
                 });
 
                 // Sub-filter
@@ -205,6 +206,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
             return !p.delivery_date &&
                 p.status !== TaskStatus.DONE &&
                 p.data?.source !== 'EDITOR_DIRECT_UPLOAD' &&
+                !p.edited_video_link &&
                 !isRework;
         }).length);
 

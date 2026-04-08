@@ -42,6 +42,7 @@ const MATRIX: Record<Role, Record<string, boolean>> = {
     [Role.CEO]: { create: false, approve: true, work: false, publish: false, assign: true },
     [Role.OPS]: { create: false, approve: false, work: true, publish: true, assign: false },
     [Role.OBSERVER]: { create: false, approve: false, work: false, publish: false, assign: false }, // View-only role
+    [Role.PARTNER_ASSOCIATE]: { create: false, approve: false, work: false, publish: false, assign: false }, // Brand management role
 };
 
 const RolesMatrix: React.FC = () => {

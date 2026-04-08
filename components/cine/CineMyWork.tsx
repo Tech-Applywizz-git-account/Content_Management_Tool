@@ -10,7 +10,7 @@ interface Props {
     projects: Project[];
     scriptProjects?: Project[];
     onSelectProject: (project: Project) => void;
-    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'SCRIPTS' | 'POSTED' | null;
+    activeFilter?: 'NEEDS_SCHEDULE' | 'SCHEDULED' | 'UPLOADED' | 'REWORK' | 'SCRIPTS' | 'POSTED' | null;
     uploadedSubTab?: 'EDITOR' | 'POST' | 'POSTED' | null;
     onSetUploadedSubTab?: (tab: 'EDITOR' | 'POST' | 'POSTED' | null) => void;
 }
@@ -139,7 +139,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
                     const isScheduled = !!project.shoot_date;
-                    const isUploaded = !!project.video_link;
+                    const isUploaded = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
 
                     // Use the canonical rework condition
                     const isRework = isActiveRework(project, user.role);
@@ -190,7 +190,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                                 <span className="px-2 py-1 bg-red-100 text-red-800 border-2 border-red-600 text-[10px] font-black uppercase">
                                                     Rejected
                                                 </span>
-                                            ) : isRework ? (
+                                            ) : (isRework || activeFilter === 'REWORK') ? (
                                                 <span className="px-2 py-1 bg-orange-100 text-orange-800 border-2 border-orange-600 text-[10px] font-black uppercase">
                                                     Rework
                                                 </span>
@@ -245,13 +245,19 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                             {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}
                                         </span>
                                     </div>
-                                    {/* Show current stage for script preview and footage upload */}
+                                    {/* Show current stage for script preview, footage upload, and rework */}
                                     {(activeFilter === 'SCRIPTS' || activeFilter === 'UPLOADED') && (
                                         <div className="flex justify-between">
                                             <span className="font-bold text-slate-400 uppercase text-xs">Stage</span>
                                             <span className="font-bold text-slate-900">
-                                                {isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video'} Ready
+                                                {project.current_stage ? (STAGE_LABELS[project.current_stage] || project.current_stage.replace(/_/g, ' ')) : 'Unknown'}
                                             </span>
+                                        </div>
+                                    )}
+                                    {activeFilter === 'REWORK' && project.current_stage && (
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
+                                            <span className="font-bold text-slate-900">{project.current_stage.replace(/_/g, ' ')}</span>
                                         </div>
                                     )}
 
@@ -280,7 +286,7 @@ const CineMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSelectP
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#D946EF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !isScheduled ? 'Schedule Shoot' : !isUploaded ? 'Upload Video' : 'View Details'}
+                                        {activeFilter === 'SCRIPTS' ? 'View Script' : activeFilter === 'REWORK' ? 'View Rework' : isUploaded ? 'View Details' : !isScheduled ? 'Schedule Shoot' : 'Upload Video'}
                                     </button>
                                 </div>
                             </div>

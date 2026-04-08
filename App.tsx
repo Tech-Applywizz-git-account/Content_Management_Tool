@@ -97,10 +97,15 @@ interface DashboardData {
 function App() {
   const location = useLocation();
   const initialUser = getUserSync();
-  if (initialUser) {
-    db.setCurrentUser(initialUser);
-  }
   const [user, setUser] = useState<User | null>(initialUser);
+  
+  // Set current user in db service on mount/initialUser change
+  useEffect(() => {
+    if (initialUser) {
+      db.setCurrentUser(initialUser);
+    }
+  }, []); // Only on mount to stabilize
+
   const [loading, setLoading] = useState(true); // Start loading by default
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
@@ -408,12 +413,25 @@ function App() {
     // We don't implicitly clear data on user null here to avoid flash before redirect
   }, [user]);
 
+  // Track the ID of the last user we fetched data for to avoid redundant fetches
+  const lastFetchedUserIdRef = React.useRef<string | null>(null);
+  const isFetchingDataRef = React.useRef<boolean>(false);
+
   const refreshData = async (u: User = user!) => {
-    console.log('🔄 App.tsx: refreshData called for user:', u?.full_name, 'role:', u?.role);
     if (!u) {
       console.log('⚠️ App.tsx: No user provided to refreshData');
       return;
     }
+
+    // Skip if we are already fetching data for this user
+    if (isFetchingDataRef.current && lastFetchedUserIdRef.current === u.id) {
+      console.debug('App.tsx: Skipping refreshData, already in progress for this user');
+      return;
+    }
+
+    console.log('🔄 App.tsx: refreshData called for user:', u?.full_name, 'role:', u?.role);
+    isFetchingDataRef.current = true;
+    lastFetchedUserIdRef.current = u.id;
 
     try {
       if (u.role === Role.ADMIN) {
@@ -438,7 +456,7 @@ function App() {
         console.log('✅ App.tsx: Projects state updated');
 
         // For management roles, also refresh all projects (for calendar)
-        if (u.role === Role.CMO || u.role === Role.CEO || u.role === Role.OPS || u.role === Role.OBSERVER) {
+        if (u.role === Role.CMO || u.role === Role.CEO || u.role === Role.OPS || u.role === Role.OBSERVER || u.role === Role.PARTNER_ASSOCIATE) {
           try {
             console.log('🔄 App.tsx: Refreshing all projects');
             const allProjectsData = await db.projects.getAll();
@@ -491,6 +509,8 @@ function App() {
       console.log('✅ App.tsx: refreshData completed successfully');
     } catch (error) {
       console.error('❌ App.tsx: Error refreshing data:', error);
+    } finally {
+      isFetchingDataRef.current = false;
     }
   };
 
@@ -595,7 +615,7 @@ function App() {
   const handleCreateProject = async (title: string, channel: Channel, dueDate: string, isDirectCreative?: boolean) => {
     if (isDirectCreative) {
       // For direct creative uploads, create a project that starts at the final review stage
-      await db.createDirectCreativeProject(title, channel, dueDate);
+      await (db as any).createDirectCreativeProject(title, channel, dueDate);
     } else {
       await db.createProject(title, channel, dueDate, 'VIDEO', 'NORMAL');
     }

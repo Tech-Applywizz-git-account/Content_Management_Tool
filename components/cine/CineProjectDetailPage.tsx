@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Project, Role } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CineProjectDetail from './CineProjectDetail';
@@ -12,6 +12,9 @@ const CineProjectDetailPage: React.FC<{
 }> = ({ user, onLogout, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const activeFilter = (searchParams.get('filter') as any) || null;
+    const uploadedSubTab = (searchParams.get('subtab') as any) || null;
 
     // Instant UI: Find project in cache first
     const cachedProject = projects.find(p => p.id === projectId);
@@ -100,6 +103,8 @@ const CineProjectDetailPage: React.FC<{
                     // Refresh the current page after update
                     window.location.reload();
                 }}
+                activeFilter={activeFilter}
+                uploadedSubTab={uploadedSubTab}
             />
         </Layout>
     );

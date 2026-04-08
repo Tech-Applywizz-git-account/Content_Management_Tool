@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, User } from '../../types';
 import { isReworkProject, isReworkInitiatedByRole } from '../../services/workflowUtils';
 import { format } from 'date-fns';
-import { Clock, Plus, Trash2 } from 'lucide-react';
+import { Clock, Plus } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
 import CmoProjectDetails from './CmoProjectDetails';
@@ -14,7 +14,6 @@ import CmoOverview from './CmoOverview';
 import CmoFinalReview from './CmoFinalReview';
 import Popup from '../Popup';
 import CreateScript from '../writer/CreateScript';
-import FestivalNotifications from '../writer/FestivalNotifications';
 import LeadMagnetScripts from '../LeadMagnetScripts';
 import { db } from '../../services/supabaseDb';
 import { getWorkflowState } from '../../services/workflowUtils';
@@ -117,24 +116,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
-
-  // Delete confirmation state
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleDeleteConfirmed = async () => {
-    if (!deleteConfirm) return;
-    setIsDeleting(true);
-    try {
-      await db.projects.delete(deleteConfirm.id);
-      setDeleteConfirm(null);
-      onRefresh();
-    } catch (error) {
-      console.error('Error deleting project:', error);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   useEffect(() => {
     const path = location.pathname;
@@ -541,11 +522,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <div className="hidden md:grid grid-cols-12 gap-4 items-center p-6">
                               <div className="col-span-4 font-black uppercase text-lg truncate">
                                 {p.title}
-                                {p.brand && (
-                                  <div className="text-[10px] font-black text-[#0085FF] uppercase">
-                                    {p.brand.replace(/_/g, ' ')}
-                                  </div>
-                                )}
                               </div>
                               <div className="col-span-2">
                                 <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -606,432 +582,367 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </div>
               </div>
             ) : (
-              <>
-                {/* Festival Notifications */}
-                <FestivalNotifications />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-
-                  {/* Column 1: Scripts Pending Approval at CMO */}
+                {/* Column 1: Scripts Pending Approval at CMO */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">Scripts Pending Approval</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingApprovalProjects.length}</span>
+                  </div>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                      <h3 className="font-black uppercase tracking-wide">Scripts Pending Approval</h3>
-                      <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingApprovalProjects.length}</span>
-                    </div>
-                    <div className="space-y-4">
-                      {pendingApprovalProjects.map(p => (
-                        <div key={p.id} className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
-                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
-                            title="Delete Project"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                              p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                                  p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                                    p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                                      'bg-black text-white'
+                    {pendingApprovalProjects.map(p => (
+                      <div key={p.id} className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                            p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
+                            }`}>
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                              ? 'bg-red-500 text-white'
+                              : p.priority === 'NORMAL'
+                                ? 'bg-yellow-500 text-black'
+                                : 'bg-green-500 text-white'
                               }`}>
-                              {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                ? 'bg-red-500 text-white'
-                                : p.priority === 'NORMAL'
-                                  ? 'bg-yellow-500 text-black'
-                                  : 'bg-green-500 text-white'
-                                }`}>
-                              {p.priority}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkInitiatedByCMO(p)
-                                ? 'bg-orange-100 text-orange-800'
-                                : 'bg-slate-100 text-slate-800'
-                                }`}>
-                              {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
-                            </span>
+                            {p.priority}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase ${isReworkInitiatedByCMO(p)
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-slate-100 text-slate-800'
+                              }`}>
+                            {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
+                          </span>
+                        </div>
+                        <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
                           </div>
-                          <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
-                          {p.brand && (
-                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
-                              Brand: {p.brand.replace(/_/g, ' ')}
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
                             </div>
                           )}
-                          <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                              <Clock className="w-3 h-3 mr-1" />
-                              By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                            </div>
-                            {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
-                              </div>
-                            )}
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                            </div>
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
                           </div>
                         </div>
-                      ))}
-                      {pendingApprovalProjects.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending approval</div>}
-                    </div>
+                      </div>
+                    ))}
+                    {pendingApprovalProjects.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending approval</div>}
                   </div>
-
-                  {/* Column 2: Idea Pending Approval */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                      <h3 className="font-black uppercase tracking-wide">Idea Pending Approval</h3>
-                      <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{ideasPendingAtCMO.length}</span>
-                    </div>
-                    <div className="space-y-4">
-                      {ideasPendingAtCMO.map(p => (
-                        <div
-                          key={p.id}
-                          className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                          onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}
-                        >
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
-                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
-                            title="Delete Project"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                              p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                                  p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                                    p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                                      'bg-black text-white'
-                              }`}>
-                              {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                ? 'bg-red-500 text-white'
-                                : p.priority === 'NORMAL'
-                                  ? 'bg-yellow-500 text-black'
-                                  : 'bg-green-500 text-white'
-                                }`}>
-                              {p.priority}
-                            </span>
-                            {isReworkInitiatedByCMO(p) && (
-                              <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
-                                REWORK
-                              </span>
-                            )}
-                            <span className="bg-green-100 text-green-800 px-2 py-0.5 border border-green-200 text-[10px] font-bold uppercase">
-                              PENDING AT CMO
-                            </span>
-                          </div>
-                          <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                          {p.brand && (
-                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
-                              Brand: {p.brand.replace(/_/g, ' ')}
-                            </div>
-                          )}
-                          <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                              <Clock className="w-3 h-3 mr-1" />
-                              By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                            </div>
-                            {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
-                              </div>
-                            )}
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {ideasPendingAtCMO.length === 0 && <div className="p-8 text-center text-gray-500">No idea projects pending approval</div>}
-                    </div>
-                  </div>
-
-                  {/* Column 3: Projects Pending at CEO */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                      <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>
-                      <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingAtCEO.length}</span>
-                    </div>
-                    <div className="space-y-4">
-                      {pendingAtCEO.map(p => (
-                        <div
-                          key={p.id}
-                          className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
-                          onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
-                        >
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
-                            className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
-                            title="Delete Project"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                              p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                                  p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                                    p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                                      'bg-black text-white'
-                              }`}>
-                              {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                ? 'bg-red-500 text-white'
-                                : p.priority === 'NORMAL'
-                                  ? 'bg-yellow-500 text-black'
-                                  : 'bg-green-500 text-white'
-                                }`}>
-                              {p.priority}
-                            </span>
-                            {isReworkInitiatedByCMO(p) && (
-                              <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
-                                REWORK
-                              </span>
-                            )}
-                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
-                              With CEO
-                            </span>
-                          </div>
-                          <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                          {p.brand && (
-                            <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
-                              Brand: {p.brand.replace(/_/g, ' ')}
-                            </div>
-                          )}
-                          <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                              <Clock className="w-3 h-3 mr-1" />
-                              By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                            </div>
-                            {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
-                              </div>
-                            )}
-                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                              {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {pendingAtCEO.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending at CEO</div>}
-                    </div>
-                  </div>
-
-                  {/* Column 4: Shoot and Editor Tabs */}
-                  <div className="space-y-4">
-                    {/* Tabs for Shoot and Editor */}
-                    <div className="flex border-b border-gray-200">
-                      <button
-                        className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'SHOOT' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500'}`}
-                        onClick={() => setActiveTab('SHOOT')}
-                      >
-                        Shoot ({inShoot.length})
-                      </button>
-                      <button
-                        className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'EDITOR' ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-gray-500'}`}
-                        onClick={() => setActiveTab('EDITOR')}
-                      >
-                        Editor ({inEditor.length})
-                      </button>
-                    </div>
-
-                    {/* Content based on active tab */}
-                    {activeTab === 'SHOOT' ? (
-                      <>
-                        <div className="flex items-center justify-between p-4 bg-[#A78BFA] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                          <h3 className="font-black uppercase tracking-wide">Shoot (With Cine)</h3>
-                          <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inShoot.length}</span>
-                        </div>
-                        <div className="space-y-4">
-                          {inShoot.map(p => (
-                            <div
-                              key={p.id}
-                              className="relative bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                              onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
-                            >
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
-                                className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
-                                title="Delete Project"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                              <div className="flex flex-wrap gap-2 mb-4">
-                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                  p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                    p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
-                                      p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
-                                        p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
-                                          'bg-black text-white'
-                                  }`}>
-                                  {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                                </span>
-                                <span
-                                  className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                    ? 'bg-red-500 text-white'
-                                    : p.priority === 'NORMAL'
-                                      ? 'bg-yellow-500 text-black'
-                                      : 'bg-green-500 text-white'
-                                    }`}>
-                                  {p.priority}
-                                </span>
-                                {isReworkInitiatedByCMO(p) && (
-                                  <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
-                                    REWORK
-                                  </span>
-                                )}
-                                {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
-                                {(() => {
-                                  // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
-                                  // This happens when CINE clicks the rework button and sends script back to writer
-                                  const cineInitiatedRework = p.history?.some(h =>
-                                    h.action === 'REWORK' &&
-                                    h.actor_role === 'CINE' &&
-                                    h.from_role === 'CINE' &&
-                                    h.to_role === 'WRITER'
-                                  );
-                                  // Only show badge if CINE initiated the rework
-                                  return cineInitiatedRework ? (
-                                    <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                                      ↻ CINE REWORKED
-                                    </span>
-                                  ) : null;
-                                })()}
-                                <span className="bg-purple-100 text-purple-800 px-2 py-0.5 border border-purple-200 text-[10px] font-bold uppercase">
-                                  WITH CINE
-                                </span>
-                              </div>
-                              <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                              {p.brand && (
-                                <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
-                                  Brand: {p.brand.replace(/_/g, ' ')}
-                                </div>
-                              )}
-                              <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                                </div>
-                                {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                                  <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                    Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
-                                  </div>
-                                )}
-                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                  {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {inShoot.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Cine</div>}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between p-4 bg-[#FBBF24] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                          <h3 className="font-black uppercase tracking-wide">Editor</h3>
-                          <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inEditor.length}</span>
-                        </div>
-                        <div className="space-y-4">
-                          {inEditor.map(p => (
-                            <div
-                              key={p.id}
-                              className="relative bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
-                              onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
-                            >
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ id: p.id, title: p.title }); }}
-                                className="absolute top-2 right-2 p-1.5 bg-red-50 text-red-600 border border-black hover:bg-red-100 transition-colors z-10"
-                                title="Delete Project"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                              <div className="flex flex-wrap gap-2 mb-4">
-                                <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                  p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                    'bg-[#D946EF] text-white'
-                                  }`}>
-                                  {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
-                                </span>
-                                <span
-                                  className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                    ? 'bg-red-500 text-white'
-                                    : p.priority === 'NORMAL'
-                                      ? 'bg-yellow-500 text-black'
-                                      : 'bg-green-500 text-white'
-                                    }`}>
-                                  {p.priority}
-                                </span>
-                                {isReworkInitiatedByCMO(p) && (
-                                  <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
-                                    REWORK
-                                  </span>
-                                )}
-                                {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
-                                {(() => {
-                                  // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
-                                  // This happens when CINE clicks the rework button and sends script back to writer
-                                  const cineInitiatedRework = p.history?.some(h =>
-                                    h.action === 'REWORK' &&
-                                    h.actor_role === 'CINE' &&
-                                    h.from_role === 'CINE' &&
-                                    h.to_role === 'WRITER'
-                                  );
-                                  // Only show badge if CINE initiated the rework
-                                  return cineInitiatedRework ? (
-                                    <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                                      ↻ CINE REWORKED
-                                    </span>
-                                  ) : null;
-                                })()}
-                                <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 border border-yellow-200 text-[10px] font-bold uppercase">
-                                  WITH EDITOR
-                                </span>
-                              </div>
-                              <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
-                              {p.brand && (
-                                <div className="text-[10px] font-black text-[#0085FF] uppercase mb-1">
-                                  Brand: {p.brand.replace(/_/g, ' ')}
-                                </div>
-                              )}
-                              <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
-                                </div>
-                                {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
-                                  <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                    Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
-                                  </div>
-                                )}
-                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
-                                  {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {inEditor.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Editor</div>}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-
-
                 </div>
-              </>
+
+                {/* Column 2: Idea Pending Approval */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-[#4ADE80] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">Idea Pending Approval</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{ideasPendingAtCMO.length}</span>
+                  </div>
+                  <div className="space-y-4">
+                    {ideasPendingAtCMO.map(p => (
+                      <div
+                        key={p.id}
+                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}
+                      >
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                            p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
+                            }`}>
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                              ? 'bg-red-500 text-white'
+                              : p.priority === 'NORMAL'
+                                ? 'bg-yellow-500 text-black'
+                                : 'bg-green-500 text-white'
+                              }`}>
+                            {p.priority}
+                          </span>
+                          {isReworkInitiatedByCMO(p) && (
+                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                              REWORK
+                            </span>
+                          )}
+                          <span className="bg-green-100 text-green-800 px-2 py-0.5 border border-green-200 text-[10px] font-bold uppercase">
+                            PENDING AT CMO
+                          </span>
+                        </div>
+                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                          </div>
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                            </div>
+                          )}
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {ideasPendingAtCMO.length === 0 && <div className="p-8 text-center text-gray-500">No idea projects pending approval</div>}
+                  </div>
+                </div>
+
+                {/* Column 3: Projects Pending at CEO */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{pendingAtCEO.length}</span>
+                  </div>
+                  <div className="space-y-4">
+                    {pendingAtCEO.map(p => (
+                      <div
+                        key={p.id}
+                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
+                      >
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                            p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                    'bg-black text-white'
+                            }`}>
+                            {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                              ? 'bg-red-500 text-white'
+                              : p.priority === 'NORMAL'
+                                ? 'bg-yellow-500 text-black'
+                                : 'bg-green-500 text-white'
+                              }`}>
+                            {p.priority}
+                          </span>
+                          {isReworkInitiatedByCMO(p) && (
+                            <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                              REWORK
+                            </span>
+                          )}
+                          <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
+                            With CEO
+                          </span>
+                        </div>
+                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                          </div>
+                          {p.data?.source !== 'IDEA_PROJECT' && (p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                            <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                              Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                            </div>
+                          )}
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                            {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {pendingAtCEO.length === 0 && <div className="p-8 text-center text-gray-500">No projects pending at CEO</div>}
+                  </div>
+                </div>
+
+                {/* Column 4: Shoot and Editor Tabs */}
+                <div className="space-y-4">
+                  {/* Tabs for Shoot and Editor */}
+                  <div className="flex border-b border-gray-200">
+                    <button
+                      className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'SHOOT' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500'}`}
+                      onClick={() => setActiveTab('SHOOT')}
+                    >
+                      Shoot ({inShoot.length})
+                    </button>
+                    <button
+                      className={`px-4 py-2 font-black text-sm uppercase border-b-2 ${activeTab === 'EDITOR' ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-gray-500'}`}
+                      onClick={() => setActiveTab('EDITOR')}
+                    >
+                      Editor ({inEditor.length})
+                    </button>
+                  </div>
+
+                  {/* Content based on active tab */}
+                  {activeTab === 'SHOOT' ? (
+                    <>
+                      <div className="flex items-center justify-between p-4 bg-[#A78BFA] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="font-black uppercase tracking-wide">Shoot (With Cine)</h3>
+                        <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inShoot.length}</span>
+                      </div>
+                      <div className="space-y-4">
+                        {inShoot.map(p => (
+                          <div
+                            key={p.id}
+                            className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
+                          >
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                  p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                    p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                      p.channel === 'LEAD_MAGNET' ? 'bg-[#6366F1] text-white' :
+                                        'bg-black text-white'
+                                }`}>
+                                {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                  ? 'bg-red-500 text-white'
+                                  : p.priority === 'NORMAL'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                                  }`}>
+                                {p.priority}
+                              </span>
+                              {isReworkInitiatedByCMO(p) && (
+                                <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                                  REWORK
+                                </span>
+                              )}
+                              {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
+                              {(() => {
+                                // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
+                                // This happens when CINE clicks the rework button and sends script back to writer
+                                const cineInitiatedRework = p.history?.some(h => 
+                                  h.action === 'REWORK' && 
+                                  h.actor_role === 'CINE' &&
+                                  h.from_role === 'CINE' &&
+                                  h.to_role === 'WRITER'
+                                );
+                                // Only show badge if CINE initiated the rework
+                                return cineInitiatedRework ? (
+                                  <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    ↻ CINE REWORKED
+                                  </span>
+                                ) : null;
+                              })()}
+                              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 border border-purple-200 text-[10px] font-bold uppercase">
+                                WITH CINE
+                              </span>
+                            </div>
+                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                                <Clock className="w-3 h-3 mr-1" />
+                                By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                              </div>
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                  Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                                </div>
+                              )}
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {inShoot.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Cine</div>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between p-4 bg-[#FBBF24] text-black border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="font-black uppercase tracking-wide">Editor</h3>
+                        <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{inEditor.length}</span>
+                      </div>
+                      <div className="space-y-4">
+                        {inEditor.map(p => (
+                          <div
+                            key={p.id}
+                            className="bg-slate-50 p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                            onClick={() => navigateWithScroll(`/cmo/project/${p.id}`, { initialProject: p })}
+                          >
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                  'bg-[#D946EF] text-white'
+                                }`}>
+                                {p.channel} | {p.content_type ? p.content_type.replace(/_/g, ' ') : (p.data?.source === 'IDEA_PROJECT' ? 'Idea' : 'Script')}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                                  ? 'bg-red-500 text-white'
+                                  : p.priority === 'NORMAL'
+                                    ? 'bg-yellow-500 text-black'
+                                    : 'bg-green-500 text-white'
+                                  }`}>
+                                {p.priority}
+                              </span>
+                              {isReworkInitiatedByCMO(p) && (
+                                <span className="bg-orange-100 text-orange-800 px-2 py-0.5 border border-orange-200 text-[10px] font-bold uppercase">
+                                  REWORK
+                                </span>
+                              )}
+                              {/* Show CINE REWORK badge if cine initiated rework (clicked rework button) */}
+                              {(() => {
+                                // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
+                                // This happens when CINE clicks the rework button and sends script back to writer
+                                const cineInitiatedRework = p.history?.some(h => 
+                                  h.action === 'REWORK' && 
+                                  h.actor_role === 'CINE' &&
+                                  h.from_role === 'CINE' &&
+                                  h.to_role === 'WRITER'
+                                );
+                                // Only show badge if CINE initiated the rework
+                                return cineInitiatedRework ? (
+                                  <span className="bg-red-100 text-red-800 px-2 py-0.5 border-2 border-red-500 text-[10px] font-bold uppercase shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                                    ↻ CINE REWORKED
+                                  </span>
+                                ) : null;
+                              })()}
+                              <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 border border-yellow-200 text-[10px] font-bold uppercase">
+                                WITH EDITOR
+                              </span>
+                            </div>
+                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                                <Clock className="w-3 h-3 mr-1" />
+                                By: {p.data?.writer_name || p.created_by_name || 'Unknown Writer'}
+                              </div>
+                              {(p.current_stage === 'VIDEO_EDITING' || p.current_stage === 'SUB_EDITOR_ASSIGNMENT' || p.current_stage === 'SUB_EDITOR_PROCESSING' || p.current_stage === 'FINAL_REVIEW_CMO' || p.current_stage === 'FINAL_REVIEW_CEO' || p.current_stage === 'WRITER_VIDEO_APPROVAL' || p.current_stage === 'POST_WRITER_REVIEW') && !(p.data?.source === 'DESIGNER_INITIATED' || p.content_type === 'CREATIVE_ONLY') && (
+                                <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                  Editor: {p.editor_name || p.sub_editor_name || p.data?.editor_name || p.data?.sub_editor_name || ''}
+                                </div>
+                              )}
+                              <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-1">
+                                {format(new Date(p.created_at), 'MMM dd, yyyy h:mm a')}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {inEditor.length === 0 && <div className="p-8 text-center text-gray-500">No projects with Editor</div>}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+
+
+              </div>
             )}
           </div>
         )}
@@ -1053,44 +964,6 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             stageName={stageName}
             onClose={() => setShowPopup(false)}
           />
-        )}
-
-        {/* Centered Delete Confirmation Modal */}
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={() => !isDeleting && setDeleteConfirm(null)} />
-            <div className="relative bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 max-w-md w-full mx-4">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 border-2 border-black flex items-center justify-center flex-shrink-0">
-                  <Trash2 className="w-5 h-5 text-red-600" />
-                </div>
-                <h2 className="text-xl font-black uppercase text-slate-900">Delete Project</h2>
-              </div>
-              <p className="text-sm font-bold text-slate-600 mb-2">
-                Are you sure you want to delete:
-              </p>
-              <p className="font-black text-slate-900 uppercase mb-6 bg-red-50 border-2 border-red-200 px-3 py-2">
-                &ldquo;{deleteConfirm.title}&rdquo;
-              </p>
-              <p className="text-xs font-bold text-red-600 uppercase mb-6">⚠ This action cannot be undone.</p>
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleDeleteConfirmed}
-                  disabled={isDeleting}
-                  className="flex-1 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
-                >
-                  {isDeleting ? 'Deleting...' : 'Yes, Delete'}
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  disabled={isDeleting}
-                  className="flex-1 py-3 bg-white text-slate-900 font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </Layout>
     </>

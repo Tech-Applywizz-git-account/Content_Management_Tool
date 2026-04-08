@@ -9,7 +9,7 @@ export enum Role {
   CEO = 'CEO',
   OPS = 'OPS',
   OBSERVER = 'OBSERVER',
-  PARTNERSHIP_ASSOCIATE = 'PARTNERSHIP_ASSOCIATE',
+  PARTNER_ASSOCIATE = 'PARTNER_ASSOCIATE',
 }
 
 export enum Channel {
@@ -39,6 +39,9 @@ export enum WorkflowStage {
   POSTED = 'POSTED', // Content posted/completed
   REWORK = 'REWORK', // Rework stage
   WRITER_REVISION = 'WRITER_REVISION', // Custom revision stage for specific content types
+  PARTNER_REVIEW = 'PARTNER_REVIEW', // Partner Associate review stage
+  SENT_TO_INFLUENCER = 'SENT_TO_INFLUENCER', // Sent to Influencer
+  PA_FINAL_REVIEW = 'PA_FINAL_REVIEW', // Partner Associate final review
 }
 
 export enum TaskStatus {
@@ -155,6 +158,8 @@ export interface ProjectData {
   cine_to_writer_feedback?: string;
   script_reference_link?: string;
   influencer_name?: string;
+  influencer_email?: string;
+  content_description?: string;
   referral_link?: string;
   [key: string]: any;
 }
@@ -196,7 +201,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   [Role.CEO]: 'CEO (Approver)',
   [Role.OPS]: 'Operations',
   [Role.OBSERVER]: 'Observer (View-Only)',
-  [Role.PARTNERSHIP_ASSOCIATE]: 'Partnership Associate',
+  [Role.PARTNER_ASSOCIATE]: 'Partner Associate',
 };
 
 export const OBSERVER_TITLES: Record<string, string> = {
@@ -230,6 +235,9 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',
   [WorkflowStage.WRITER_REVISION]: 'Writer Revision',
+  [WorkflowStage.PARTNER_REVIEW]: 'Partner Review',
+  [WorkflowStage.SENT_TO_INFLUENCER]: 'Sent to Influencer',
+  [WorkflowStage.PA_FINAL_REVIEW]: 'Final Review (PA)',
 };
 
 // Notification types

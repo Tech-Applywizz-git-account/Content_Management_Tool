@@ -9,8 +9,9 @@ import ScriptDisplay from '../ScriptDisplay';
 const CeoProjectDetailPage: React.FC<{
     user: { id: string; full_name: string; role: Role };
     onLogout: () => void;
+    onRefresh?: () => void;
     projects?: Project[];
-}> = ({ user, onLogout, projects = [] }) => {
+}> = ({ user, onLogout, onRefresh, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const navigate = useNavigate();
     const location = useLocation();
@@ -101,7 +102,13 @@ const CeoProjectDetailPage: React.FC<{
             <CeoReviewScreen
                 project={project}
                 onBack={() => navigate(-1)}
-                onComplete={() => navigate(-1)}
+                onComplete={() => {
+                    // Refresh the dashboard data before navigating back
+                    if (onRefresh) {
+                        onRefresh();
+                    }
+                    navigate(-1);
+                }}
                 user={user}
             />
         );

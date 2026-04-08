@@ -11,7 +11,14 @@ const corsHeaders = {
 const TENANT_ID = Deno.env.get("TENANT_ID")!;
 const CLIENT_ID = Deno.env.get("CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("CLIENT_SECRET")!;
-const SENDER_EMAIL = Deno.env.get("SENDER_EMAIL")!;
+
+// Optional: Dedicated PA Credentials (if different from default)
+const PA_TENANT_ID = Deno.env.get("PA_TENANT_ID") || TENANT_ID;
+const PA_CLIENT_ID = Deno.env.get("PA_CLIENT_ID") || CLIENT_ID;
+const PA_CLIENT_SECRET = Deno.env.get("PA_CLIENT_SECRET") || CLIENT_SECRET;
+
+const DEFAULT_SENDER = Deno.env.get("SENDER_EMAIL") || "support@applywizz.com";
+const INFLUENCER_SENDER = Deno.env.get("INFLUENCER_SENDER_EMAIL") || "hello@readytowork.agency";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET")!;
@@ -20,23 +27,23 @@ const BASE_URL = Deno.env.get("BASE_URL") || "https://support.applywizz.com";
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Helper: Get Microsoft Graph OAuth Token
-async function getGraphToken(): Promise<string> {
+async function getGraphToken(tenantId = TENANT_ID, clientId = CLIENT_ID, clientSecret = CLIENT_SECRET): Promise<string> {
     const body = new URLSearchParams({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
         scope: "https://graph.microsoft.com/.default",
         grant_type: "client_credentials",
     });
-    const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, { method: "POST", body });
+    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, { method: "POST", body });
     if (!res.ok) throw new Error(`Token error: ${await res.text()}`);
     const json = await res.json();
     return json.access_token;
 }
 
 // Helper: Send HTML Email via Microsoft Graph
-async function sendEmail(to: string[], subject: string, html: string) {
-    const token = await getGraphToken();
-    const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(SENDER_EMAIL)}/sendMail`;
+async function sendEmail(sender: string, to: string[], subject: string, html: string, creds?: { tenant: string, client: string, secret: string }) {
+    const token = await getGraphToken(creds?.tenant, creds?.client, creds?.secret);
+    const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
 
     const res = await fetch(endpoint, {
         method: "POST",
@@ -47,7 +54,7 @@ async function sendEmail(to: string[], subject: string, html: string) {
                 body: { contentType: "HTML", content: html },
                 toRecipients: to.map((email: string) => ({ emailAddress: { address: email } })),
             },
-            saveToSentItems: "true",
+            saveToSentItems: true,
         }),
     });
     if (!res.ok) throw new Error(`Email failed: ${await res.text()}`);
@@ -74,11 +81,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const isServiceRole = authHeader === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
     const isValidWebhook = webhookSecret === WEBHOOK_SECRET;
 
-    if (!isValidWebhook && !isServiceRole) {
+    // Allow service role, valid webhook secret, OR any authenticated user from our project
+    let isUserAuthenticated = false;
+    if (authHeader && !isServiceRole) {
+        const token = authHeader.replace("Bearer ", "");
+        try {
+            const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+            if (user && !authError) {
+                isUserAuthenticated = true;
+            }
+        } catch (e) {
+            console.error("Auth token verification failed:", e);
+        }
+    }
+
+    if (!isValidWebhook && !isServiceRole && !isUserAuthenticated) {
         console.error("Auth mismatch:", {
             hasWebhookSecret: !!webhookSecret,
             hasAuthHeader: !!authHeader,
-            isServiceRoleMatch: isServiceRole
+            isServiceRoleMatch: isServiceRole,
+            isUserAuthenticated
         });
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
     }
@@ -156,6 +178,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
                 recipientEmails.push(directEmail);
                 console.log(`Using direct recipient email: ${directEmail}`);
             }
+        } else if (body.recipient_email) {
+            recipientEmails.push(body.recipient_email);
+            console.log(`Using raw recipient email: ${body.recipient_email}`);
         }
 
         // 🔹 Recipient Routing Logic (If no direct recipient)
@@ -282,6 +307,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
                                 console.log(`APPROVED: Routing to all writers for stage: ${history_stage}`);
                             }
                         }
+                        // 🔹 Special Case: CEO Approved Script for PA Brand
+                        else if (to_role === "PARTNER_ASSOCIATE" && from_role === "CEO") {
+                            recipientEmails.push(...emails);
+                            console.log(`CEO_PA_APPROVAL: Routing to all Partner Associates: ${emails.length} users`);
+                        }
                         // If CMO is approving and sending to next role, exclude CEO
                         else if (from_role === "CMO") {
                             const ceoEmails = await getRoleEmails("CEO");
@@ -359,6 +389,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
                     }
                     break;
 
+                case "SEND_TO_INFLUENCER":
+                    console.log("SEND_TO_INFLUENCER: Using provided recipient_email");
+                    break;
+
                 default:
                     console.log(`Action ${action} has no routing rule.`);
                     break;
@@ -416,12 +450,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
         else if (action === "REWORK_VIDEO_SUBMITTED") subject = `Rework Resubmitted: ${project.title}`;
         else if (action === "SUB_EDITOR_ASSIGNED") subject = `Project Assigned: ${project.title}`;
         else if (action === "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR") subject = `Rework Required: ${project.title}`;
+        else if (action === "SEND_TO_INFLUENCER") subject = `Script Content: ${project.title}`;
         else subject = `Action Required: ${project.title}`;
 
         const highlightColor = action === "REWORK" || action === "REJECTED" ? "#E53E3E" : (action === "SUB_EDITOR_ASSIGNED" ? "#38A169" : "#3182CE");
         const reworkReason = metadata.rework_reason || comment || "No comments provided.";
 
-        const htmlBody = `
+        const htmlBody = action === "SEND_TO_INFLUENCER" ? `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: white;">
+            <div style="background-color: #3182CE; padding: 24px; text-align: center; color: white;">
+              <h2 style="margin: 0; text-transform: uppercase; letter-spacing: 1px;">Ready To Work - Script Content</h2>
+            </div>
+            <div style="padding: 32px; color: #2d3748; line-height: 1.6;">
+              <p style="font-size: 18px; font-weight: bold; margin-bottom: 24px;">Project: ${project.title}</p>
+              
+              <div style="margin-bottom: 30px;">
+                <h3 style="color: #4a5568; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #edf2f7; padding-bottom: 8px;">Content Description</h3>
+                <p style="white-space: pre-wrap; color: #4a5568;">${metadata.content_description || "No description provided."}</p>
+              </div>
+
+              <div style="margin-bottom: 30px;">
+                <h3 style="color: #4a5568; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #edf2f7; padding-bottom: 8px;">Script Content</h3>
+                <div style="background-color: #f7fafc; padding: 20px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                  <div style="white-space: pre-wrap; font-family: monospace;">${metadata.script_content || "No script content provided."}</div>
+                </div>
+              </div>
+
+              <p style="font-size: 12px; color: #718096; margin-top: 40px; text-align: center;">Sent from Ready To Work Agency</p>
+            </div>
+          </div>
+        ` : `
       <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
         <div style="background-color: ${highlightColor}; padding: 24px; text-align: center; color: white;">
           <h2 style="margin: 0; text-transform: uppercase; letter-spacing: 1px;">Project Notification</h2>
@@ -452,7 +510,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     `;
 
         try {
-            await sendEmail(recipientEmails, subject, htmlBody);
+            const isInfluencer = action === "SEND_TO_INFLUENCER";
+            const sender = isInfluencer ? INFLUENCER_SENDER : DEFAULT_SENDER;
+            const creds = isInfluencer ? { tenant: PA_TENANT_ID, client: PA_CLIENT_ID, secret: PA_CLIENT_SECRET } : undefined;
+            
+            await sendEmail(sender, recipientEmails, subject, htmlBody, creds);
         } catch (emailError: any) {
             console.error("Email sending failed but continuing workflow:", emailError.message);
         }

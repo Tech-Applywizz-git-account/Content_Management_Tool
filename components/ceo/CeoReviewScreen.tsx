@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
+import { getWorkflowState } from '../../services/workflowUtils';
 import { supabase } from '../../src/integrations/supabase/client';
 import { ArrowLeft, Check, X, RotateCcw, Download, Video, Image as ImageIcon } from 'lucide-react';
 import Popup from '../Popup';
@@ -499,10 +499,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         return [{ value: WorkflowStage.SCRIPT, label: 'Writer' }];
     };
 
-    const isVideo = isInfluencerVideo(project) || 
-        project.channel === Channel.YOUTUBE || 
-        project.channel === Channel.INSTAGRAM || 
-        project.content_type === 'APPLYWIZZ_USA_JOBS';
+    const isVideo = project.channel === Channel.YOUTUBE || project.channel === Channel.INSTAGRAM;
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col">
@@ -607,14 +604,6 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {project.data?.thumbnail_required === undefined ? '—' : project.data.thumbnail_required ? 'Yes' : 'No'}
                             </div>
                         </div>
-                        {project.brand && (
-                            <div>
-                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
-                                <div className="font-black text-[#0085FF] uppercase">
-                                    {project.brand.replace(/_/g, ' ')}
-                                </div>
-                            </div>
-                        )}
                         <div>
                             <label className="block text-xs font-black text-slate-400 uppercase mb-1">Niche</label>
                             <div className="font-bold text-slate-900 uppercase">
@@ -622,10 +611,9 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     ? project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
                                         : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
                                             : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
-                                                    : project.data.niche === 'OTHER' && project.data.niche_other
-                                                        ? project.data.niche_other
-                                                        : project.data.niche
+                                                : project.data.niche === 'OTHER' && project.data.niche_other
+                                                    ? project.data.niche_other
+                                                    : project.data.niche
                                     : '—'}
                             </div>
                         </div>
@@ -798,7 +786,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             {/* Raw Video Assets */}
                                             {isVideo && (project.video_link || previousAssets?.video_link) && (
                                                 <div className="space-y-2">
-                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</h4>}
+                                                    {(showPreviousRaw || project.video_link) && <h4 className="text-base md:text-lg font-black text-slate-800 uppercase text-center border-b-2 border-slate-200 pb-1">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Footage'}</h4>}
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                                         {/* Previous Raw Video */}
                                                         {showPreviousRaw && (
@@ -950,7 +938,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     {isVideo && project.video_link && (
                                         <div className="border-2 border-black bg-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                                             <div className="p-2 bg-slate-900 border-b-2 border-black">
-                                                <h4 className="font-black text-white text-xs uppercase text-center">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</h4>
+                                                <h4 className="font-black text-white text-xs uppercase text-center">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Raw Video'}</h4>
                                             </div>
                                             <div className="aspect-video bg-black flex items-center justify-center text-white relative group">
                                                 <Video className="w-10 h-10 opacity-50" />
@@ -960,8 +948,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             </div>
                                             <div className="p-2 flex justify-between items-center bg-white">
                                                 <div>
-                                                    <p className="font-black text-slate-900 text-[10px] uppercase">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot_Video.mp4' : 'Shoot_Video.mp4'}</p>
-                                                    <p className="text-[10px] text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(project.content_type) ? 'Shoot Video' : 'Shoot Video'}</p>
+                                                    <p className="font-black text-slate-900 text-[10px] uppercase">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer_Video.mp4' : 'Raw_Video.mp4'}</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold">{['JOBBOARD', 'LEAD_MAGNET'].includes(project.content_type) ? 'Influencer Video' : 'Original'}</p>
                                                 </div>
                                                 <a href={project.video_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[10px] font-black uppercase">Download</a>
                                             </div>

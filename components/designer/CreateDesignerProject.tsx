@@ -43,43 +43,40 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [stageName, setStageName] = useState('');
 
   const handleSubmit = async () => {
-    if (!title.trim() || !link.trim()) {
-      alert('Title and Link are required');
-      return;
-    }
-
-    if (!brand) {
-      alert('Please select a brand');
+    // Basic validation - match Cine style
+    if (!title.trim() || !link.trim() || !brand) {
+      alert('Title, Brand, and Link are required');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Use the proper db method to create designer project
+      // Default due date to today
+      const defaultDueDate = new Date().toISOString().split('T')[0];
+      
       const createdProject = await db.createDesignerProject(
         title,
         channel,
-        new Date().toISOString().split('T')[0], // due_date
+        defaultDueDate,
         description,
         link,
-        'NORMAL', // priority
+        'NORMAL',
         contentType,
         brand,
         niche,
-        nicheOther
+        niche === 'OTHER' ? nicheOther : undefined
       );
 
-      // Success UI
       setPopupMessage(
-        `Designer project "${title}" submitted successfully. Waiting for CMO review.`
+        `Designer project for "${title}" uploaded successfully. Moving to CMO Review.`
       );
       setStageName('Final Review (CMO)');
       setShowPopup(true);
 
       setTimeout(() => {
         onSuccess();
-      }, 1200);
+      }, 1500);
 
     } catch (err) {
       console.error('Designer submit failed:', err);

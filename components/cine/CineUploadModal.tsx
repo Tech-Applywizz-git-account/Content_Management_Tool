@@ -41,12 +41,11 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
 
   const handleSubmit = async () => {
     // Basic validation
-    if (!title.trim() || !videoLink.trim() || !brand) {
+    const targetLink = videoLink || tempVideoLink;
+    if (!title.trim() || !targetLink.trim() || !brand) {
       alert('Title, Brand, and Video Link are required');
       return;
     }
-
-
 
     setIsSubmitting(true);
 
@@ -58,7 +57,7 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
         title,
         channel,
         defaultDueDate,
-        videoLink,
+        targetLink.trim(),
         'NORMAL',
         brand,
         niche,
@@ -97,8 +96,8 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
         <div className="flex items-center">
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !title.trim() || !videoLink.trim() || !brand}
-            className={`px-4 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !videoLink.trim() || !brand) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
+            disabled={isSubmitting || !title.trim() || !(videoLink || tempVideoLink).trim() || !brand}
+            className={`px-4 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !(videoLink || tempVideoLink).trim() || !brand) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
           >
             {isSubmitting ? 'Submitting...' : 'Submit Footage'}
             <Send className="w-4 h-4 ml-2" />

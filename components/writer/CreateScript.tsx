@@ -145,7 +145,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [dynamicBrands, setDynamicBrands] = useState<any[]>([]);
 
-  // Fetch dynamic brands 
+  // Fetch dynamic brands and subscribe to realtime inserts so newly created
+  // brands (e.g. added by a PA) appear immediately under the Brands heading.
   useEffect(() => {
     const fetchBrands = async () => {
       try {
@@ -155,7 +156,26 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         console.error('Failed to load dynamic brands:', err);
       }
     };
+
+    // Initial fetch
     fetchBrands();
+
+    // Subscribe to INSERT events on the brands table so the list stays live
+    const channel = supabase
+      .channel('create-script-brands-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'brands' },
+        () => {
+          // Re-fetch the full list so the new brand name shows up immediately
+          fetchBrands();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Track editor initialization to prevent cursor jumping
@@ -1255,7 +1275,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       return;
     }
     const actualBrand = formData.brand === 'OTHER' ? formData.brand_other : formData.brand;
-    console.log('🚀 Starting save draft process');
+    const selectedBrandDoc = dynamicBrands.find(b => b.brand_name === actualBrand);
+    const isPaBrand = selectedBrandDoc ? !!selectedBrandDoc.created_by_user_id : false;
+    
+    console.log('🚀 Starting save draft process', { isPaBrand });
     if (project) {
       console.log('Updating existing project data...');
       try {
@@ -1263,6 +1286,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           ...formData,
           brand: formData.brand, // UI state
           brand_other: formData.brand_other,
+          is_pa_brand: isPaBrand,
           writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
@@ -1310,14 +1334,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           newProjectDetails.channel,
           newProjectDetails.dueDate,
           newProjectDetails.contentType,
-          newProjectDetails.priority,
-          actualBrand
+          newProjectDetails.priority
         );
         console.log('Created project with ID:', createdProject.id);
         await db.updateProjectData(createdProject.id, {
           ...formData,
           brand: formData.brand, // UI state
           brand_other: formData.brand_other,
+          is_pa_brand: isPaBrand,
           writer_id: publicUser.id,
           writer_name: currentUser?.full_name
         });
@@ -1344,7 +1368,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     }
     setIsSubmitting(true);
     const actualBrand = formData.brand === 'OTHER' ? formData.brand_other : formData.brand;
-    console.log('🚀 Starting submit process');
+    const selectedBrandDoc = dynamicBrands.find(b => b.brand_name === actualBrand);
+    const isPaBrand = selectedBrandDoc ? !!selectedBrandDoc.created_by_user_id : false;
+
+    console.log('🚀 Starting submit process', { isPaBrand });
 
     // Check if project is in rejected state and not in the resubmit flow
     if (project && getWorkflowState(project).isRejected && returnType !== 'reject') {
@@ -1388,7 +1415,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 Object.entries(formData).filter(([key]) =>
                   !['first_review_opened_by_role', 'first_review_opened_at'].includes(key)
                 )
-              )
+              ),
+              is_pa_brand: isPaBrand
             }
           })
           .select()
@@ -1425,8 +1453,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             newProjectDetails.channel,
             newProjectDetails.dueDate,
             newProjectDetails.contentType,
-            newProjectDetails.priority,
-            actualBrand
+            newProjectDetails.priority
           );
           await (db.projects.update as any)(createdProject.id, {
             created_by_user_id: publicUser.id,
@@ -1439,6 +1466,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             ...formData,
             brand: formData.brand, // Store 'OTHER' in data.brand for UI
             brand_other: formData.brand_other,
+            is_pa_brand: isPaBrand,
             writer_id: publicUser.id,
             writer_name: currentUser.full_name
           });
@@ -1469,6 +1497,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             ...updateData,
             brand: formData.brand, // Store 'OTHER' in data.brand to preserve UI state
             brand_other: formData.brand_other,
+            is_pa_brand: isPaBrand,
             actual_brand: actualBrand // Helper for debugging if needed
           });
           console.log('✅ Existing project data updated');

@@ -256,16 +256,50 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             }
           }
         }
+
+        // For influencer/PA brand projects: also notify CMO that edited video is ready
+        // (CMO is a secondary stakeholder — PA does the final review, not CMO)
+        if (updatedProject.current_stage === WorkflowStage.PA_FINAL_REVIEW && isInfluencerVideo(updatedProject)) {
+          try {
+            const { data: cmoUsers } = await supabase
+              .from('users')
+              .select('id')
+              .eq('role', 'CMO')
+              .eq('status', 'ACTIVE');
+
+            if (cmoUsers && cmoUsers.length > 0) {
+              for (const cmoUser of cmoUsers) {
+                try {
+                  const dbWithNotifications = db as any;
+                  await dbWithNotifications.notifications.create(
+                    cmoUser.id,
+                    project.id,
+                    'ASSET_UPLOADED',
+                    'Influencer Video Editing Complete',
+                    `${publicUser.full_name || 'Editor'} has completed editing the influencer video for: ${project.title}. The Partner Associate is now reviewing the final video.`
+                  );
+                } catch (cmoNotifError) {
+                  console.error('Failed to send CMO notification:', cmoNotifError);
+                }
+              }
+            }
+          } catch (cmoFetchError) {
+            console.error('Failed to fetch CMO users for notification:', cmoFetchError);
+          }
+        }
       }
 
       // Show popup notification using STAGE_LABELS for the actual next stage
       const actualNextStageLabel = STAGE_LABELS[updatedProject?.current_stage || WorkflowStage.THUMBNAIL_DESIGN] || (updatedProject?.current_stage || 'Next Stage').replace(/_/g, ' ');
+      
+      // Build a clear message — for influencer projects going to PA, call it out explicitly
+      const isPaRoute = updatedProject?.current_stage === WorkflowStage.PA_FINAL_REVIEW;
       const popupMessageText = isRework
-        ? `Rework edited video uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`
-        : `Edited video uploaded successfully for ${project.title}. Waiting for ${actualNextStageLabel}.`;
+        ? `Rework edited video uploaded successfully for ${project.title}. Waiting for ${isPaRoute ? 'Partner Associate Final Review' : actualNextStageLabel}.`
+        : `Edited video uploaded successfully for ${project.title}. ${isPaRoute ? 'Sent to Partner Associate for final review. CMO has been notified.' : `Waiting for ${actualNextStageLabel}.`}`;
 
       setPopupMessage(popupMessageText);
-      setStageName(actualNextStageLabel);
+      setStageName(isPaRoute ? 'PA Final Review' : actualNextStageLabel);
       // For rework scenarios, use longer duration to ensure visibility
       setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
       setShowPopup(true);

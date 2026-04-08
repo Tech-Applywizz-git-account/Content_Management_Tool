@@ -106,32 +106,34 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       switch (activeFilter) {
         case 'NEEDS_SCHEDULE':
           {
+            // Projects with empty shoot date (not in rework, not done, and no raw video yet)
             const workflowState = getWorkflowStateForRole(project, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            return !project.shoot_date && !isRework && project.status !== TaskStatus.DONE;
+            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            return !project.shoot_date && !hasRawVideo && !isRework && project.status !== TaskStatus.DONE;
           }
 
         case 'SCHEDULED':
           {
+            // Projects with shoot date but NO raw video link (video_link, video_url, raw_footage_link), not in rework
             const workflowState = getWorkflowStateForRole(project, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            return (project.shoot_date && !project.video_link && !isRework);
+            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            return (!!project.shoot_date && !hasRawVideo && !isRework);
           }
+
         case 'REWORK':
           {
+            // Projects in rework stage assigned to CINE role
             const workflowState = getWorkflowStateForRole(project, user.role);
             return (workflowState.isTargetedRework || workflowState.isRework) && project.status !== TaskStatus.DONE;
           }
 
         case 'UPLOADED':
           {
-            const workflowState = getWorkflowStateForRole(project, user.role);
-            const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            return (
-              (!!project.video_link ||
-                !!project.video_url ||
-                !!project.data?.raw_footage_link) && !isRework && project.status !== TaskStatus.DONE
-            );
+            // Projects with a raw video link
+            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            return hasRawVideo;
           }
 
         case 'POSTED':
@@ -180,34 +182,35 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
   useEffect(() => {
     const list = historyProjects || [];
 
-    // 1. Needs Schedule: !project.shoot_date BUT not in rework
+    // 1. Needs Schedule: !project.shoot_date BUT not in rework AND no raw video
     const needsSchedule = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      return !p.shoot_date && !isRework && p.status !== TaskStatus.DONE;
+      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      return !p.shoot_date && !hasRawVideo && !isRework && p.status !== TaskStatus.DONE;
     });
     setNeedsScheduleCount(needsSchedule.length);
 
-    // 2. Scheduled: (project.shoot_date && !project.video_link) || isRework
+    // 2. Scheduled: shoot_date exists BUT no raw video link (not in rework)
     const scheduled = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      return (p.shoot_date && !p.video_link && !isRework);
+      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      return (!!p.shoot_date && !hasRawVideo && !isRework);
     });
     setScheduledShootsCount(scheduled.length);
 
-    // Rework: isRework
+    // Rework: isRework (assigned to CINE role)
     const rework = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       return (workflowState.isTargetedRework || workflowState.isRework) && p.status !== TaskStatus.DONE;
     });
     setReworkCount(rework.length);
 
-    // 3. Footage Uploaded: has link BUT not in rework
+    // 3. Footage Uploaded: has raw video link (shoot_date doesn't matter once uploaded)
     const uploaded = list.filter(p => {
-      const workflowState = getWorkflowStateForRole(p, user.role);
-      const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      return (!!p.video_link || !!p.video_url || (p.data && p.data.raw_footage_link)) && !isRework;
+      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      return hasRawVideo;
     });
     setFootageUploadedCount(uploaded.length);
 
@@ -243,7 +246,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       {selectedProject ? (
         // Navigate to the route-based project detail page instead of rendering inline
         (() => {
-          navigate(`/cine/project/${selectedProject.id}`);
+          navigate(`/cine/project/${selectedProject.id}${location.search}`);
           return null;
         })()
       ) : activeView === 'upload-footage' ? (
