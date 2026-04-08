@@ -85,19 +85,19 @@ export const auth = {
     // Sign out
     async signOut() {
         try {
-            // Sign out with local scope first
-            console.log('Signing out with local scope...');
-            const { error: localError } = await supabase.auth.signOut({ scope: 'local' });
+// Sign out locally first
+        console.log('Signing out locally...');
+        const { error: localError } = await supabase.auth.signOut();
 
-            if (localError) {
-                console.warn('Local sign out failed:', localError);
-            } else {
-                console.log('Local sign out successful');
-            }
+        if (localError) {
+            console.warn('Local sign out failed:', localError);
+        } else {
+            console.log('Local sign out successful');
+        }
 
-            // Then sign out with global scope
-            console.log('Signing out with global scope...');
-            const { error: globalError } = await supabase.auth.signOut({ scope: 'global' });
+        // Then sign out globally if the method is supported
+        console.log('Signing out globally...');
+        const { error: globalError } = await supabase.auth.signOut({ global: true });
 
             if (globalError) {
                 console.warn('Global sign out failed:', globalError);
@@ -120,8 +120,12 @@ export const auth = {
 
     // Get current session user
     async getCurrentUser() {
-        const { data: { user } } = await supabase.auth.getUser();
-        return user;
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+            console.warn('getCurrentUser: Failed to retrieve auth user', error);
+            return null;
+        }
+        return data?.user || null;
     },
 
     // 🚀 HELPER: Get the full public.users record for the currently logged-in auth user
@@ -264,7 +268,7 @@ export const auth = {
     // Invite user by email (Admin only)
     async inviteUser(email: string, userData: { full_name: string; role: Role; phone?: string }) {
         console.log('inviteUser called with:', email, userData);
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
+        const supabaseUrl = (process as any).env?.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
 
         // --- STRATEGY 1: Local Admin Client (Dev Mode / w Service Key) ---
         if (supabaseAdmin) {
@@ -387,7 +391,7 @@ export const auth = {
     // Delete user (Admin only) - Calls secure Edge Function
     async deleteUser(userId: string) {
         console.log('deleteUser called for:', userId);
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
+        const supabaseUrl = (process as any).env?.VITE_SUPABASE_URL || 'https://zxnevoulicmapqmniaos.supabase.co';
 
         // 1. Attempt to delete from Supabase Auth via Edge Function
         // We do this first because optimal flow is Auth Delete -> Cascade to Public
@@ -498,7 +502,7 @@ export const users = {
         console.log('🔍 getByEmail: Fetching user for:', email);
 
         const { data, error } = await supabase
-            .from<User>('users')
+            .from('users')
             .select(`
                 id,
                 email,
@@ -947,14 +951,14 @@ export const projects = {
             const projectIds = result.map(p => p.id);
             if (projectIds.length > 0) {
                 const { data: historyData, error: historyError } = await supabase
-                    .from<{ project_id: string }>('workflow_history')
+                    .from('workflow_history')
                     .select('*')
                     .in('project_id', projectIds)
                     .order('timestamp', { ascending: false });
 
                 if (!historyError && historyData) {
                     // Group history by project_id
-                    const historyMap = new Map<string, { project_id: string }[]>();
+                    const historyMap = new Map<string, any[]>();
                     historyData.forEach((entry) => {
                         if (!historyMap.has(entry.project_id)) {
                             historyMap.set(entry.project_id, []);
@@ -1555,7 +1559,7 @@ export const workflow = {
     async getApprovedWritersCount(projectId: string): Promise<number> {
         // Get all approvals for this project in MULTI_WRITER_APPROVAL stage
         const { data: approvals, error: approvalsError } = await supabase
-            .from<{ actor_id: string }>('workflow_history')
+            .from('workflow_history')
             .select('actor_id')
             .eq('project_id', projectId)
             .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
@@ -1572,7 +1576,7 @@ export const workflow = {
 
         // Get all active writers to filter the approvals
         const { data: writerUsers, error: writerError } = await supabase
-            .from<{ id: string }>('users')
+            .from('users')
             .select('id')
             .eq('role', Role.WRITER)
             .eq('status', 'ACTIVE');
@@ -1604,7 +1608,7 @@ export const workflow = {
 
         // Get all users with the writer role
         const { data: writerUsers, error: writerError } = await supabase
-            .from<{ id: string; full_name?: string }>('users')
+            .from('users')
             .select('id, full_name')
             .eq('role', Role.WRITER)
             .eq('status', 'ACTIVE');
@@ -1623,7 +1627,7 @@ export const workflow = {
 
         // Get project to check current stage
         const { data: project, error: projectError } = await supabase
-            .from<{ current_stage: WorkflowStage }>('projects')
+            .from('projects')
             .select('current_stage')
             .eq('id', projectId)
             .single();
@@ -1663,7 +1667,7 @@ export const workflow = {
 
         // Get all approvals for this project in MULTI_WRITER_APPROVAL stage
         const { data: approvals, error: approvalsError } = await supabase
-            .from<{ actor_id: string }>('workflow_history')
+            .from('workflow_history')
             .select('actor_id')
             .eq('project_id', projectId)
             .eq('stage', WorkflowStage.MULTI_WRITER_APPROVAL)
@@ -2864,7 +2868,7 @@ export const aiTools = {
             return { issues: [] };
         }
 
-        const supabaseKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || (process as any).env?.VITE_SUPABASE_ANON_KEY;
+        const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
         const FUNCTION_URL = 'https://kifpnlyljlxppuzizmsf.supabase.co/functions/v1/openai-correction';
 
         try {
