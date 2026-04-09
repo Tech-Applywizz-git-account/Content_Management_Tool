@@ -3,7 +3,7 @@ import { User, Project, Role, WorkflowStage, Channel } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle } from 'lucide-react';
 import { format } from 'date-fns';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../Layout';
 import PAMyWork from './PAMyWork';
 import PAOverview from './PAOverview';
@@ -40,11 +40,9 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingScript, setIsCreatingScript] = useState(false);
   const [selectedProject, setSelectedProjectState] = useState<Project | null>(null);
-  const [isFromCeoApproved, setIsFromCeoApproved] = useState(() => {
-    // Initialize from URL on page load
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('source') === 'ceo-approved';
-  });
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isFromCeoApproved = searchParams.get('source') === 'ceo-approved';
 
   // Wrapper for state + navigation
   const setSelectedProject = (p: Project | null, fromCeoApproved = false) => {
@@ -56,7 +54,6 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
       navigate('/partner_associate');
     }
     setSelectedProjectState(p);
-    setIsFromCeoApproved(fromCeoApproved);
   };
 
   useEffect(() => {
@@ -64,12 +61,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
       const p = allProjects.find(item => item.id === routeProjectId);
       if (p && (!selectedProject || selectedProject.id !== p.id)) {
         setSelectedProjectState(p);
-        // Check URL for source parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        const source = urlParams.get('source');
-        const isCeoApproved = source === 'ceo-approved';
-        console.log('Project loaded, source:', source, 'isFromCeoApproved:', isCeoApproved);
-        setIsFromCeoApproved(isCeoApproved);
+        console.log('Project loaded from URL:', p.id, 'isFromCeoApproved:', isFromCeoApproved);
       }
     } else if (!routeProjectId && selectedProject) {
         setSelectedProjectState(null);
@@ -100,7 +92,6 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     deliverables: ''
   });
 
-  const location = useLocation();
 
   const getActiveViewFromPath = () => {
     const path = location.pathname;
@@ -212,19 +203,29 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
           }`}>
             {p.priority}
           </span>
-          <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-yellow-400 text-black">
+          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.ceo_approved_at ? 'bg-[#0085FF] text-white' : 'bg-yellow-400 text-black'}`}>
               {p.current_stage?.replace(/_/g, ' ')}
           </span>
         </div>
 
-        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight group-hover:text-[#0085FF] transition-colors">{p.title}</h4>
+        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
+            {p.data?.influencer_name && p.title.includes(p.data.influencer_name) 
+              ? p.title.replace(p.data.influencer_name, '').replace(/^ - | - $/g, '').trim() || p.title
+              : p.title
+            }
+        </h4>
         
         <div className="flex flex-col gap-1 mb-4">
-            <div className="text-[10px] font-black text-[#0085FF] uppercase">
+            {p.data?.influencer_name && (
+                <div className="text-[10px] font-black text-slate-900 uppercase flex items-center gap-1">
+                    <UserIcon className="w-3 h-3" /> {p.data.influencer_name}
+                </div>
+            )}
+            <div className="text-xs font-black text-[#0085FF] uppercase">
                 {p.brand?.replace(/_/g, ' ') || 'UNBRANDED'}
             </div>
-            <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center">
-                <UserIcon className="w-3 h-3 mr-1" /> {p.writer_name || p.created_by_name || 'System'}
+            <div className="text-[9px] font-bold text-slate-400 uppercase">
+                BY {p.writer_name || p.created_by_name || 'System'}
             </div>
         </div>
 
@@ -232,10 +233,14 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
           <div className="flex flex-col">
             <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase">
               <Clock className="w-3 h-3 mr-1" />
-              {new Date(p.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              {p.ceo_approved_at 
+                ? format(new Date(p.ceo_approved_at), 'MMM dd, yyyy') 
+                : format(new Date(p.created_at), 'MMM dd, yyyy')}
             </div>
             <div className="text-[9px] font-medium text-slate-300 uppercase mt-0.5">
-                Submitted {format(new Date(p.created_at), 'h:mm a')}
+                {p.ceo_approved_at 
+                  ? `Approved ${format(new Date(p.ceo_approved_at), 'h:mm a')}`
+                  : `Submitted ${format(new Date(p.created_at), 'h:mm a')}`}
             </div>
           </div>
           {!readOnly && (
@@ -248,38 +253,121 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     );
   };
 
+  // Special card for the Editor Stage column that shows PA user + influencer context
+  const renderEditorCard = (p: Project) => {
+    const paUploaderName = p.data?.uploaded_by_pa_name || p.created_by_name || user.full_name;
+    const influencerName = p.data?.influencer_name || '—';
+    return (
+      <div
+        key={p.id}
+        className="relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col group cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+        onClick={() => setSelectedProject(p)}
+      >
+        <div className="flex flex-wrap gap-2 mb-3">
+          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${
+            p.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
+            p.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
+            p.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
+            'bg-black text-white'
+          }`}>
+            {p.channel}
+          </span>
+          <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-slate-900 text-white">
+            EDITING
+          </span>
+        </div>
+
+        <h4 className="font-black text-base text-slate-900 mb-3 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
+          {p.title}
+        </h4>
+
+        {/* PA who uploaded + Influencer - satisfies Requirement #7 */}
+        <div className="flex flex-col gap-1.5 mb-3 p-3 bg-slate-50 border border-slate-200">
+          <div className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Editor Stage Context</div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 bg-[#D946EF] rounded-full" />
+            <span className="text-[10px] font-black text-slate-700 uppercase">PA: {paUploaderName}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 bg-[#0085FF] rounded-full" />
+            <span className="text-[10px] font-black text-slate-700 uppercase">Influencer: {influencerName}</span>
+          </div>
+          {p.video_link && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-black text-green-700 uppercase">Raw video uploaded</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-auto pt-3 border-t-2 border-slate-50 flex items-center justify-between">
+          <div className="text-[9px] font-bold text-slate-400 uppercase">
+            {p.brand?.replace(/_/g, ' ') || 'UNBRANDED'}
+          </div>
+          <span className="text-[10px] font-black uppercase text-slate-900 flex items-center">
+            Review <Plus className="w-3 h-3 ml-1" />
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboardContent = () => {
     // Filter projects to only show those belonging to brands created by this PA
     const myBrandsNames = brands
         .filter(b => b.created_by_user_id === user.id)
         .map(b => b.brand_name.toLowerCase());
 
-    const paStages = [WorkflowStage.PARTNER_REVIEW, WorkflowStage.SENT_TO_INFLUENCER, WorkflowStage.PA_FINAL_REVIEW];
-    
-    // Show projects that are either assigned to PA stages OR belong to my brands
-    const myProjects = allProjects.filter(p => 
-        (p.current_stage && paStages.includes(p.current_stage as WorkflowStage)) || 
-        (p.brand && myBrandsNames.includes(p.brand.toLowerCase()))
+    // ─────────────────────────────────────────────────────────────────────────
+    // COLUMN 1: Initial Review — Shared pool visible to ALL PA users.
+    // EXCEPTION: If THIS user already has a child instance for a parent script
+    //   (i.e. they clicked "Send to Influencer" on it), hide that parent from
+    //   their Column 1. It still shows for all other PA users.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Collect all parent IDs this user has already acted on
+    const myClaimedParentIds = new Set(
+        allProjects
+            .filter(p =>
+                p.data?.influencer_instance === true &&
+                p.assigned_to_user_id === user.id &&
+                p.data?.parent_script_id
+            )
+            .map(p => p.data!.parent_script_id as string)
     );
 
-    // Column 1: Initial Review (Partnership Review Stage + Internal Review Stages)
-    const initialReviewProjects = myProjects.filter(p => 
-        [WorkflowStage.PARTNER_REVIEW, WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2].includes(p.current_stage as WorkflowStage)
-    ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const initialReviewProjects = allProjects.filter(p =>
+        p.current_stage === WorkflowStage.PARTNER_REVIEW &&
+        p.ceo_approved_at &&
+        p.data?.is_pa_brand === true &&
+        !p.data?.influencer_instance &&          // Only parent projects
+        !myClaimedParentIds.has(p.id)            // Hide if this user already acted on it
+    ).sort((a, b) => new Date(b.ceo_approved_at!).getTime() - new Date(a.ceo_approved_at!).getTime());
+
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // COLUMNS 2-4: Strictly user-scoped child instances.
+    // Created when a PA clicks "Send to Influencer" on a parent script.
+    // Each instance: influencer_instance=true + assigned_to_user_id = this user.
+    // ─────────────────────────────────────────────────────────────────────────
+    const myInstances = allProjects.filter(p =>
+        p.data?.influencer_instance === true &&
+        p.assigned_to_user_id === user.id
+    );
 
     // Column 2: Sent to Influencer
-    const sentToInfluencerProjects = myProjects.filter(p => 
+    const sentToInfluencerProjects = myInstances.filter(p =>
         p.current_stage === WorkflowStage.SENT_TO_INFLUENCER
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Column 3: Final PA Review
-    const finalReviewProjects = myProjects.filter(p => 
-        p.current_stage === WorkflowStage.PA_FINAL_REVIEW
+    // Column 3: Editor Stage
+    const editorProjects = myInstances.filter(p =>
+        p.current_stage === WorkflowStage.VIDEO_EDITING
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Column 4: Editor (Projects with Editor - VIDEO_EDITING stage)
-    const editorProjects = myProjects.filter(p => 
-        p.current_stage === WorkflowStage.VIDEO_EDITING
+    // Column 4: Final PA Review
+    const finalReviewProjects = myInstances.filter(p =>
+        p.current_stage === WorkflowStage.PA_FINAL_REVIEW
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     return (
@@ -290,7 +378,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-slate-900 mb-2">
               Partner Console
             </h1>
-            <p className="font-bold text-base sm:text-lg text-slate-500">
+            <p className="text-slate-600 font-bold">
               Welcome back, {user.full_name}
             </p>
           </div>
@@ -298,9 +386,9 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => navigate('/partner_associate/create-brand')}
-              className="px-6 py-4 bg-yellow-400 text-black border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2 transition-all"
+              className="px-4 py-2 bg-yellow-400 text-black border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2 transition-all"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" />
               <span>Add Brand</span>
             </button>
             <button
@@ -316,9 +404,9 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
             >
               <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
               <span>Video Approved</span>
-              {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED).length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
-                  {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED).length}
+              {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && p.data?.is_pa_brand === true && p.data?.influencer_instance === true && (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)).length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-sm">
+                  {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && p.data?.is_pa_brand === true && p.data?.influencer_instance === true && (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)).length}
                 </span>
               )}
             </button>
@@ -326,50 +414,54 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         </div>
 
         {/* 4-Column Grid Layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             
-            {/* Column 1: Initial Review */}
+            {/* Column 1: Initial Review — shared pool for ALL PAs */}
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 <h3 className="font-black uppercase tracking-wide text-xs">Initial Review</h3>
                 <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{initialReviewProjects.length}</span>
               </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Shared — visible to all PAs</p>
               <div className="space-y-4">
                 {initialReviewProjects.map(p => renderProjectCard(p))}
                 {initialReviewProjects.length === 0 && <p className="text-center text-slate-400 font-bold uppercase text-xs pt-10">Clear Queue</p>}
               </div>
             </div>
 
-            {/* Column 2: Sent to Influencer */}
+            {/* Column 2: Sent to Influencer — MY instances only */}
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-[#D946EF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 <h3 className="font-black uppercase tracking-wide text-xs">Sent to Influencer</h3>
                 <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{sentToInfluencerProjects.length}</span>
               </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Your pipeline only</p>
               <div className="space-y-4">
                 {sentToInfluencerProjects.map(p => renderProjectCard(p))}
                 {sentToInfluencerProjects.length === 0 && <p className="text-center text-slate-400 font-bold uppercase text-xs pt-10">All Sent</p>}
               </div>
             </div>
 
-            {/* Column 3: Editor */}
+            {/* Column 3: Editor Stage — MY instances only */}
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">Editor</h3>
+                <h3 className="font-black uppercase tracking-wide text-xs">Editor Stage</h3>
                 <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{editorProjects.length}</span>
               </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Your pipeline only</p>
               <div className="space-y-4">
-                {editorProjects.map(p => renderProjectCard(p))}
+                {editorProjects.map(p => renderEditorCard(p))}
                 {editorProjects.length === 0 && <p className="text-center text-slate-400 font-bold uppercase text-xs pt-10">Waiting for Edits</p>}
               </div>
             </div>
 
-            {/* Column 4: Final PA Review */}
+            {/* Column 4: Final PA Review — MY instances only */}
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                 <h3 className="font-black uppercase tracking-wide text-xs">Final Review</h3>
                 <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{finalReviewProjects.length}</span>
               </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase px-1">Your pipeline only</p>
               <div className="space-y-4">
                 {finalReviewProjects.map(p => renderProjectCard(p))}
                 {finalReviewProjects.length === 0 && <p className="text-center text-slate-400 font-bold uppercase text-xs pt-10">No Arrivals</p>}
@@ -381,15 +473,15 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     );
   };
 
+
   const renderCreateBrandContent = () => {
     return (
-      <div className="animate-fade-in w-full pb-12">
-        <div className="max-w-7xl mx-auto px-4">
+      <div className="animate-fade-in w-full">
           <button
             onClick={() => navigate('/partner_associate')}
-            className="flex items-center gap-2 mb-8 text-slate-600 hover:text-black font-black uppercase text-sm group"
+            className="flex items-center gap-2 mb-4 text-slate-600 hover:text-black font-black uppercase text-xs group"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             Back to dashboard
           </button>
           
@@ -521,30 +613,31 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
                 )}
               </div>
             </div>
-          </div>
         </div>
       </div>
     );
   };
 
-  return (
-    <>
-      <Layout
-        user={user as any}
-        onLogout={onLogout}
-        onOpenCreate={() => navigate('/partner_associate/create-script')}
-        activeView={activeView}
-        onChangeView={handleViewChange}
-        hideSidebar={!!selectedProject}
-        finalReviewCount={allProjects.filter(p => [WorkflowStage.PA_FINAL_REVIEW].includes(p.current_stage as WorkflowStage)).length}
-      >
-        {selectedProject && isFromCeoApproved ? (
+  const renderMainContent = () => {
+    // Child instances scoped to this PA user
+    const myInstances = allProjects.filter(p =>
+        p.data?.influencer_instance === true &&
+        p.assigned_to_user_id === user?.id
+    );
+    // All projects assigned to this user
+    const myProjects = allProjects.filter(p => p.assigned_to_user_id === user?.id);
+
+    if (activeView === 'influencer-management' && selectedProject) {
+        return (
           <PAInfluencerManagement
             project={selectedProject}
-            user={user}
-            onBack={() => navigate(-1)}
+            allInfluencerProjects={allProjects.filter(p => {
+                const parentId = selectedProject.data?.parent_script_id || selectedProject.id;
+                return p.data?.parent_script_id === parentId || p.id === parentId;
+            })}
+            user={user as any}
+            onBack={() => navigate('/partner_associate')}
             onComplete={async () => {
-              // Reload project data to show updated history
               await refreshData(user!);
               const updatedProject = allProjects.find(p => p.id === selectedProject.id);
               if (updatedProject) {
@@ -552,42 +645,93 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
               }
             }}
           />
-        ) : selectedProject ? (
+        );
+    }
+
+    if (selectedProject) {
+        return (
           <PAReviewScreen
             project={selectedProject}
             user={user}
-            onBack={() => navigate(-1)}
-            onComplete={() => {
-              navigate(-1);
-              // Force a full refresh of the application data to update the review queue
-              window.location.reload(); 
+            onBack={() => navigate('/partner_associate')}
+            onComplete={async () => {
+              // Refresh data then navigate back — no full page reload needed
+              await refreshData(user!);
+              navigate('/partner_associate');
             }}
           />
-        ) : activeView === 'mywork' ? (
-          <PAMyWork user={user} projects={allProjects} onReview={setSelectedProject} />
-        ) : activeView === 'overview' ? (
-          <PAOverview user={user} allProjects={allProjects} onSelectProject={setSelectedProject} />
-        ) : activeView === 'calendar' ? (
-          <PACalendar projects={allProjects || []} />
-        ) : activeView === 'video-approval' ? (
-          <PAVideoApproved 
-            projects={allProjects.filter(p => [WorkflowStage.POSTED].includes(p.current_stage as WorkflowStage))} 
-            onBack={() => handleViewChange('dashboard')} 
-            onSelectProject={setSelectedProject} 
+        );
+    }
+
+    if (activeView === 'mywork') {
+        // My Work shows all user instances for influencer tracking
+        return <PAMyWork user={user} projects={myInstances} onReview={setSelectedProject} />;
+    }
+
+    if (activeView === 'overview') {
+        return <PAOverview user={user} allProjects={myProjects} onSelectProject={setSelectedProject} />;
+    }
+
+    if (activeView === 'calendar') {
+        return <PACalendar projects={myProjects} />;
+    }
+
+    if (activeView === 'video-approval') {
+        // Show only this PA's approved child instances
+        const approvedInstances = allProjects.filter(p =>
+            p.current_stage === WorkflowStage.POSTED &&
+            p.data?.influencer_instance === true &&
+            (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)
+        );
+        return (
+          <PAVideoApproved
+            projects={approvedInstances}
+            onBack={() => handleViewChange('dashboard')}
+            onSelectProject={setSelectedProject}
           />
-        ) : activeView === 'ceo-approved-scripts' ? (
+        );
+    }
+
+    if (activeView === 'ceo-approved-scripts') {
+        return (
           <PACeoApprovedScripts 
             projects={allProjects} 
             onBack={() => handleViewChange('dashboard')} 
             onSelectProject={setSelectedProject} 
           />
-        ) : activeView === 'create-brand' ? (
-          renderCreateBrandContent()
-        ) : (
-          <div className="space-y-8 animate-fade-in">
-             {renderDashboardContent()}
-          </div>
-        )}
+        );
+    }
+
+    if (activeView === 'create-brand') {
+        return renderCreateBrandContent();
+    }
+
+    return (
+      <div className="space-y-8 animate-fade-in">
+         {renderDashboardContent()}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <Layout 
+        user={user} 
+        onLogout={onLogout}
+        onOpenCreate={() => navigate('/partner_associate/create-script')}
+        activeView={activeView === 'dashboard' || activeView === 'influencer-management' ? 'dashboard' : activeView}
+        onChangeView={(view) => {
+            if (view === 'dashboard') {
+                navigate('/partner_associate');
+            } else {
+                handleViewChange(view as any);
+            }
+        }}
+        hideSidebar={!!selectedProject}
+      >
+      <div className="w-full p-0 mt-2">
+        {renderMainContent()}
+      </div>
       </Layout>
     </>
   );

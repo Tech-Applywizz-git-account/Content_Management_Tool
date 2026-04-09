@@ -3030,7 +3030,62 @@ export const notifications = {
     },
 };
 
+const influencers = {
+    /**
+     * Log a new influencer outreach to the dedicated influencers table
+     */
+    async log(data: {
+        parent_project_id: string;
+        instance_project_id: string;
+        influencer_name: string;
+        influencer_email: string;
+        script_content?: string;
+        content_description?: string;
+        sent_by: string;
+        sent_by_id?: string;
+        status?: string;
+    }) {
+        console.log('📝 Logging influencer to dedicated table:', data.influencer_name);
+        try {
+            const { error } = await dbClient
+                .from('influencers')
+                .insert([{
+                    ...data,
+                    sent_at: new Date().toISOString()
+                }]);
+            
+            if (error) {
+                // If table doesn't exist yet, we log a warning but don't crash
+                console.warn('⚠️ Could not log to influencers table (Table might not exist):', error.message);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.warn('⚠️ Influencer logging failed:', e);
+            return false;
+        }
+    },
+
+    /**
+     * Get all influencers for a specific parent script
+     */
+    async getByParent(parentId: string) {
+        const { data, error } = await supabase
+            .from('influencers')
+            .select('*')
+            .eq('parent_project_id', parentId)
+            .order('sent_at', { ascending: false });
+        
+        if (error) {
+            console.warn('Error fetching from influencers table:', error);
+            return [];
+        }
+        return data;
+    }
+};
+
 export const db = {
+
     // Keep namespaced access for advanced usage
     auth,
     users,
@@ -3043,6 +3098,8 @@ export const db = {
     helpers,
     notifications,
     aiTools,
+    influencers,
+
 
     // ========================================================================
     // FLAT COMPATIBILITY METHODS (matches mockDb.ts interface)

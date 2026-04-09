@@ -346,7 +346,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
       {/* Main Content */}
       <main className={`flex-1 h-screen overflow-hidden flex flex-col pt-20 md:pt-0 bg-white`}>
         <div className="flex-1 overflow-y-auto">
-          <div className={`w-full max-w-[1600px] mx-auto ${hideSidebar ? '' : 'p-4 md:p-12'}`}>
+          <div className={`w-full ${hideSidebar ? '' : 'px-6 py-4'}`}>
             {children}
           </div>
         </div>
