@@ -97,7 +97,18 @@ interface DashboardData {
 function App() {
   const location = useLocation();
   const initialUser = getUserSync();
-  const [user, setUser] = useState<User | null>(initialUser);
+  const [user, setUser] = useState<User | null>(initialUser ? applyRoleOverrides(initialUser) : null);
+
+  // Helper function to handle special user roles like Ajay (CINE + SUB_EDITOR)
+  function applyRoleOverrides(u: User): User {
+    if (u.email === 'ajaypapagari@applywizz.com') {
+      return {
+        ...u,
+        secondary_roles: [Role.SUB_EDITOR]
+      };
+    }
+    return u;
+  }
   
   // Set current user in db service on mount/initialUser change
   useEffect(() => {
@@ -238,9 +249,10 @@ function App() {
 
       if (profile) {
         console.log('✅ Session Restore: Profile loaded for:', profile.full_name, 'ID:', profile.id);
-        setUser(profile);
-        db.setCurrentUser(profile);
-        await refreshData(profile);
+        const enrichedUser = applyRoleOverrides(profile);
+        setUser(enrichedUser);
+        db.setCurrentUser(enrichedUser);
+        await refreshData(enrichedUser);
       } else {
         console.warn('⚠️ Session Restore: Supabase user exists but no database profile found for email:', supabaseUser.email);
         // If we have a user but no profile, they might be partially registered
@@ -293,8 +305,9 @@ function App() {
             // Just fetch profile, don't do full restoreSession loop which might be strict
             const profile = await db.users.getById(data.user.id);
             if (profile && mounted) {
-              setUser(profile);
-              db.setCurrentUser(profile);
+              const enrichedUser = applyRoleOverrides(profile);
+              setUser(enrichedUser);
+              db.setCurrentUser(enrichedUser);
             }
           }
         } catch (recoverErr) {
@@ -495,7 +508,7 @@ function App() {
           } catch (error) {
             console.error('❌ App.tsx: Failed to refresh script projects for Designer:', error);
           }
-        } else if (u.role === Role.SUB_EDITOR || u.role === Role.WRITER) {
+        } else if (u.role === Role.SUB_EDITOR || u.role === Role.WRITER || u.secondary_roles?.includes(Role.SUB_EDITOR)) {
           try {
             console.log('🔄 App.tsx: Refreshing script projects for role');
             const scriptProjects = await db.projects.getScriptProjects();
@@ -550,8 +563,9 @@ function App() {
   const handleLogin = async (user: User) => {
     try {
       console.log('Login successful for:', user.full_name);
-      setUser(user);
-      db.setCurrentUser(user); // Set the current user in the database service
+      const enrichedUser = applyRoleOverrides(user);
+      setUser(enrichedUser);
+      db.setCurrentUser(enrichedUser); // Set the current user in the database service
       
       // We don't await refreshData here because the useEffect on [user] 
       // will trigger it automatically upon state update. This avoids blocking 

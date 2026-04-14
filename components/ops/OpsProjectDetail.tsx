@@ -388,11 +388,11 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 <FileText size={24} className="text-slate-700" />
                                 <h2 className="text-xl font-black uppercase text-slate-900">Script / Caption</h2>
                             </div>
-                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg max-h-60 overflow-y-auto overflow-x-auto">
-                                {project.data.script_content ? (
-                                    <div dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(project.data.script_content) }} className="prose max-w-none" />
-                                ) : <p className="text-slate-700 whitespace-pre-wrap">No content available</p>}
-                            </div>
+                            <ScriptDisplay 
+                                content={project.data.script_content} 
+                                caption={project.data?.captions}
+                                showBox={false} 
+                            />
                         </div>
                     )}
                 </div>

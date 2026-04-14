@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Role, TaskStatus, WorkflowStage } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Upload, Video, Film, FileText, Clock } from 'lucide-react';
+import { ArrowLeft, Calendar, Upload, Video, Film, FileText, Clock, LayoutDashboard } from 'lucide-react';
 import { getWorkflowStateForRole } from '../../services/workflowUtils';
 import SubEditorProjectDetail from './SubEditorProjectDetail';
 import SubEditorMyWork from './SubEditorMyWork';
@@ -36,6 +36,15 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   };
 
   const activeView = getActiveViewFromPath();
+  // Filter projects to only show sub-editor specific tasks for this user
+  const subEditorInbox = useMemo(() => (inboxProjects || []).filter(p => 
+    p.assigned_to_role === Role.SUB_EDITOR && p.assigned_to_user_id === user.id
+  ), [inboxProjects, user.id]);
+
+  const subEditorHistory = useMemo(() => (historyProjects || []).filter(p => 
+    p.assigned_to_role === Role.SUB_EDITOR || p.edited_by_user_id === user.id
+  ), [historyProjects, user.id]);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -69,18 +78,18 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
     const projectIdx = subPaths.findIndex(p => p === 'project');
     if (projectIdx !== -1 && subPaths[projectIdx + 1]) {
       const id = subPaths[projectIdx + 1];
-      const p = [...inboxProjects, ...historyProjects].find(item => item.id === id);
+      const p = [...subEditorInbox, ...subEditorHistory].find(item => item.id === id);
       if (p) setSelectedProject(p);
-    } else if (inboxProjects.length > 0 || historyProjects.length > 0) {
+    } else if (subEditorInbox.length > 0 || subEditorHistory.length > 0) {
       setSelectedProject(null);
     }
-  }, [location.pathname, inboxProjects, historyProjects]);
+  }, [location.pathname, subEditorInbox, subEditorHistory]);
 
 
 
   const handleViewChange = (view: string, preserveFilter = false, newFilter: string | null = null) => {
     setSelectedProject(null);
-    const rolePath = user.role.toLowerCase();
+    const rolePath = 'sub_editor';
 
     let searchStr = '';
     if (newFilter) {
@@ -105,17 +114,13 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
 
   // Update projects state with inboxProjects that are assigned to this specific sub-editor
   useEffect(() => {
-    const subEditorProjects = (inboxProjects || []).filter(p =>
-      p.assigned_to_role === Role.SUB_EDITOR &&
-      p.assigned_to_user_id === user.id
-    );
-    setProjects(subEditorProjects);
-  }, [inboxProjects, user]);
+    setProjects(subEditorInbox);
+  }, [subEditorInbox]);
 
   /**
  * Projects shown in MyWork:
  * - If user came from dashboard cards → filtered inbox projects
- * - If user clicked My Work manually → ALL projects the user has worked on (historyProjects)
+ * - If user clicked My Work manually → ALL projects the user has worked on (subEditorHistory)
  */
   const filteredProjects = useMemo(() => {
     // SCRIPTS filter shows ALL script projects (Supabase-wide)
@@ -129,22 +134,22 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
 
     // No filter → show ALL sub-editor projects the user has worked on (history)
     if (!activeFilter) {
-      return historyProjects || [];
+      return subEditorHistory || [];
     }
 
     // Filtered views (from dashboard cards)
     switch (activeFilter) {
       case 'NEEDS_DELIVERY':
-        return (historyProjects || []).filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
+        return subEditorHistory.filter(p => !p.delivery_date && p.status !== TaskStatus.DONE);
       case 'IN_PROGRESS':
-        return (historyProjects || []).filter(p => {
-          const workflowState = getWorkflowStateForRole(p, user.role);
+        return subEditorHistory.filter(p => {
+          const workflowState = getWorkflowStateForRole(p, Role.SUB_EDITOR);
           const isRework = workflowState.isTargetedRework || workflowState.isRework;
           return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
         });
       case 'COMPLETED':
         // Base completed projects (have processed video)
-        let completedProjects = (historyProjects || []).filter(p => !!p.edited_video_link);
+        let completedProjects = subEditorHistory.filter(p => !!p.edited_video_link);
 
         // Sub-filter
         if (completedSubTab === 'POST') {
@@ -156,10 +161,10 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
         }
         return completedProjects;
       default:
-        return historyProjects || [];
+        return subEditorHistory || [];
     }
 
-  }, [activeFilter, historyProjects, scriptProjects, completedSubTab, user.role]);
+  }, [activeFilter, subEditorHistory, scriptProjects, completedSubTab]);
 
   // Add state for counts
   const [needsDeliveryCount, setNeedsDeliveryCount] = useState(0);
@@ -168,27 +173,27 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
   const [scriptsCount, setScriptsCount] = useState(0);
   const [cineProjectsCount, setCineProjectsCount] = useState(0);
 
-  // Calculate counts when historyProjects, scriptProjects or user.role change
+  // Calculate counts when subEditorHistory, scriptProjects or user.role change
   useEffect(() => {
     // Calculate counts based on EXACT SAME logic as filteredProjects memo
-    setNeedsDeliveryCount((historyProjects || []).filter(p =>
+    setNeedsDeliveryCount(subEditorHistory.filter(p =>
       !p.delivery_date && p.status !== TaskStatus.DONE
     ).length);
 
-    setInProgressCount((historyProjects || []).filter(p => {
-      const workflowState = getWorkflowStateForRole(p, user.role);
+    setInProgressCount(subEditorHistory.filter(p => {
+      const workflowState = getWorkflowStateForRole(p, Role.SUB_EDITOR);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
       return (p.delivery_date && !p.edited_video_link && p.status !== TaskStatus.DONE) || (isRework && p.status !== TaskStatus.DONE);
     }).length);
 
-    setCompletedEditsCount((historyProjects || []).filter(p => !!p.edited_video_link).length);
+    setCompletedEditsCount(subEditorHistory.filter(p => !!p.edited_video_link).length);
 
     // Count script projects from props
     setScriptsCount((scriptProjects || []).length);
 
     // Count CINE projects from props
     setCineProjectsCount((scriptProjects || []).filter(p => p.current_stage === WorkflowStage.CINEMATOGRAPHY).length);
-  }, [historyProjects, scriptProjects, user.role]);
+  }, [subEditorHistory, scriptProjects]);
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
@@ -263,6 +268,16 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               </h1>
               <p className="font-bold text-lg text-slate-500">Welcome back, {user.full_name}</p>
             </div>
+            {/* GO TO CINE DASHBOARD button for multi-role users */}
+            {user.role === Role.CINE && (
+              <button
+                onClick={() => navigate('/cine')}
+                className="px-6 py-3 bg-white border-2 border-black text-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+              >
+                <LayoutDashboard className="w-5 h-5" />
+                Go to Cine Dashboard
+              </button>
+            )}
           </div>
 
           {/* Stats */}
@@ -339,7 +354,7 @@ const SubEditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProje
               Quick Overview
             </h2>
             <p className="text-slate-600">
-              You have {(historyProjects || []).length} {(historyProjects || []).length === 1 ? 'project' : 'projects'} in sub-editing.
+              You have {subEditorHistory.length} {subEditorHistory.length === 1 ? 'project' : 'projects'} in sub-editing.
               Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage them.
             </p>
           </div>

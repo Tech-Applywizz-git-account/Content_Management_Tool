@@ -26,7 +26,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [stageName, setStageName] = useState('');
     const [popupType, setPopupType] = useState<'success' | 'error'>('success');
     const [externalHistory, setExternalHistory] = useState<any[]>([]);
-    
+
     const isInstance = project.data?.influencer_instance === true;
     const currentStage = project.current_stage;
     const isApproved = currentStage === WorkflowStage.POSTED;
@@ -59,7 +59,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setPopupType('success');
             const { data: latestProject } = await supabase.from('projects').select('*').eq('id', project.id).single();
             const scriptContent = latestProject?.data?.script_content || project.data?.script_content || project.data?.idea_description || 'No script content available';
-            
+
             const newProjectData = {
                 title: project.title,
                 channel: project.channel,
@@ -142,7 +142,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setPopupMessage('The script is send to the influencer');
             setStageName('SENT TO INFLUENCER');
             setShowPopup(true);
-            
+
             setInfluencerName('');
             setInfluencerEmail('');
             setContentDescription('');
@@ -151,7 +151,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             const pId = project.data?.parent_script_id || project.id;
             const freshHistory = await db.influencers.getByParent(pId);
             setExternalHistory(freshHistory || []);
-            
+
         } catch (error: any) {
             toast.error(error.message || 'Error launching campaign.');
         } finally {
@@ -200,7 +200,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             const pId = project.data?.parent_script_id || project.id;
             const freshHistory = await db.influencers.getByParent(pId);
             setExternalHistory(freshHistory || []);
-            
+
         } catch (error) {
             toast.error('Failed to update workflow');
         } finally {
@@ -221,17 +221,15 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-3 py-1 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                                 {STAGE_LABELS[project.current_stage]}
                             </span>
-                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                                project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
-                                project.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
-                                project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
-                                'bg-black text-white'
-                            }`}>
+                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
+                                    project.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
+                                        project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
+                                            'bg-black text-white'
+                                }`}>
                                 {project.channel}
                             </span>
-                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                                isInstance ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white'
-                            }`}>
+                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${isInstance ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white'
+                                }`}>
                                 {isInstance ? 'INSTANCE' : 'PARENT'}
                             </span>
                         </div>
@@ -295,15 +293,15 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 {(() => {
                                     const parentId = project.data?.parent_script_id || project.id;
                                     const parentProject = allInfluencerProjects.find(p => p.id === parentId);
-                                    
+
                                     const internalHistory = (parentProject?.data?.influencer_history || [])
                                         .filter((h: any) => h.sent_by_id === user.id) // Filter by current PA
                                         .map((h: any) => ({ ...h, source: 'Internal' }));
-                                        
+
                                     const externalLog = externalHistory
                                         .filter(h => h.sent_by_id === user.id) // Filter by current PA
                                         .map(h => ({ ...h, source: 'Registry', action: h.action || 'CAMPAIGN_OUTREACH' }));
-                                    
+
                                     const combined = [...internalHistory, ...externalLog]
                                         .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
 
@@ -338,7 +336,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                         <div className="text-sm font-black text-slate-900 uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="flex items-center justify-between bg-slate-50 p-4 border-2 border-black">
                                                         <span className="text-[10px] font-black text-slate-900 uppercase flex items-center gap-3">
@@ -371,7 +369,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
 
                     {/* Sidebar: Persistent Actions */}
                     <aside className="w-full md:w-[400px] bg-white border-l-2 border-black p-8 sticky top-0 h-fit">
-                        
+
                         {/* Dynamic Sidebar Content */}
                         {isInstance ? (
                             <div className="space-y-8 animate-fade-in pt-8">
@@ -395,8 +393,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                     </div>
 
                                     <div className="space-y-4 pt-4 pb-12">
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             placeholder="PASTE RAW VIDEO LINK HERE"
                                             className="w-full bg-white border-2 border-slate-900 p-5 font-black text-xs uppercase focus:outline-none focus:border-black placeholder:text-slate-300"
                                             value={project.video_link || ''}
@@ -405,7 +403,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                             }}
                                         />
 
-                                        <button 
+                                        <button
                                             onClick={() => handleUpdateInstance(WorkflowStage.VIDEO_EDITING)}
                                             className="w-full py-6 bg-black text-white font-black uppercase text-xl tracking-tighter hover:bg-[#D946EF] transition-all border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none"
                                         >
@@ -423,51 +421,51 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                     </h2>
                                 </div>
                                 <div className="h-1.5 w-full bg-[#D946EF] mb-8" />
-                                
+
                                 <div className="space-y-8">
                                     <div className="space-y-2">
                                         <label className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-1">
                                             INFLUENCER NAME <span className="text-red-500">*</span>
                                         </label>
-                                        <input 
-                                            type="text" 
-                                            value={influencerName} 
-                                            onChange={(e) => setInfluencerName(e.target.value)} 
-                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all" 
-                                            placeholder="Enter influencer name" 
+                                        <input
+                                            type="text"
+                                            value={influencerName}
+                                            onChange={(e) => setInfluencerName(e.target.value)}
+                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all"
+                                            placeholder="Enter influencer name"
                                         />
                                     </div>
-                                    
+
                                     <div className="space-y-2">
                                         <label className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-1">
                                             INFLUENCER EMAIL <span className="text-red-500">*</span>
                                         </label>
-                                        <input 
-                                            type="email" 
-                                            value={influencerEmail} 
-                                            onChange={(e) => setInfluencerEmail(e.target.value)} 
-                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all" 
-                                            placeholder="Enter influencer email" 
+                                        <input
+                                            type="email"
+                                            value={influencerEmail}
+                                            onChange={(e) => setInfluencerEmail(e.target.value)}
+                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all"
+                                            placeholder="Enter influencer email"
                                         />
                                     </div>
-                                    
+
                                     <div className="space-y-2">
                                         <label className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-1">
                                             COMMENT (OPTIONAL)
                                         </label>
-                                        <textarea 
-                                            rows={4} 
-                                            value={contentDescription} 
-                                            onChange={(e) => setContentDescription(e.target.value)} 
-                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all resize-none" 
-                                            placeholder="Add any notes" 
+                                        <textarea
+                                            rows={4}
+                                            value={contentDescription}
+                                            onChange={(e) => setContentDescription(e.target.value)}
+                                            className="w-full bg-white border-2 border-slate-900 p-4 font-bold text-slate-500 focus:outline-none focus:border-black transition-all resize-none"
+                                            placeholder="Add any notes"
                                         />
                                     </div>
 
                                     <div className="pt-4 pb-12">
-                                        <button 
-                                            onClick={() => setShowConfirmModal(true)} 
-                                            disabled={isSending} 
+                                        <button
+                                            onClick={() => setShowConfirmModal(true)}
+                                            disabled={isSending}
                                             className="w-full relative group"
                                         >
                                             <div className="absolute inset-0 bg-black translate-x-1.5 translate-y-1.5 transition-transform group-hover:translate-x-2.5 group-hover:translate-y-2.5" />
@@ -496,28 +494,28 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             {showConfirmModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in">
                     <div className="bg-white border-[3px] border-black p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative animate-scale-in">
-                        <button 
+                        <button
                             onClick={() => setShowConfirmModal(false)}
                             className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
                         >
                             <X className="w-6 h-6 text-slate-400" />
                         </button>
-                        
+
                         <h3 className="text-2xl font-black uppercase mb-6 tracking-tight text-slate-900 pr-8">CONFIRM ACTION</h3>
-                        
+
                         <p className="text-slate-600 font-medium mb-8 text-lg leading-relaxed">
                             Are you sure you want to send this script to <span className="font-black text-black">{influencerName || 'this influencer'}</span>?
                         </p>
-                        
+
                         <div className="grid grid-cols-2 gap-4 mt-8">
-                            <button 
-                                onClick={() => setShowConfirmModal(false)} 
+                            <button
+                                onClick={() => setShowConfirmModal(false)}
                                 className="py-4 border-2 border-black bg-white text-black font-black uppercase text-sm tracking-widest hover:bg-slate-50 transition-all active:translate-y-[2px]"
                             >
                                 NO
                             </button>
-                            <button 
-                                onClick={handleLaunchOutreach} 
+                            <button
+                                onClick={handleLaunchOutreach}
                                 className="py-4 border-2 border-black bg-[#0085FF] text-white font-black uppercase text-sm tracking-widest hover:bg-blue-600 transition-all shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px]"
                             >
                                 YES
@@ -528,13 +526,13 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             )}
 
             {showPopup && (
-                <Popup 
-                    message={popupMessage} 
-                    stageName={stageName} 
+                <Popup
+                    message={popupMessage}
+                    stageName={stageName}
                     onClose={async () => {
                         setShowPopup(false);
                         if (onComplete) await onComplete();
-                    }} 
+                    }}
                 />
             )}
         </div>

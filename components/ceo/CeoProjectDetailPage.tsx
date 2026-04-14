@@ -152,7 +152,11 @@ const CeoProjectDetailPage: React.FC<{
                 {/* SCRIPT CONTENT */}
                 <div className="border-2 border-black p-4 bg-slate-100">
                     <h3 className="font-black uppercase mb-2">Script Content</h3>
-                    <ScriptDisplay content={project.data?.script_content || ''} showBox={false} />
+                    <ScriptDisplay 
+                        content={project.data?.script_content || ''} 
+                        caption={project.data?.captions}
+                        showBox={false} 
+                    />
                 </div>
 
                 {/* CEO COMMENT */}

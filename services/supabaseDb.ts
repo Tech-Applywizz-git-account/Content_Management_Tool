@@ -8,16 +8,17 @@ import {
     Channel,
     ContentType,
     Priority,
-    UserStatus
+    UserStatus,
+    HistoryEvent
 } from '../types';
 import { Notification } from '../types';
 import { getTimestampUpdate, isReworkProject, isInfluencerVideo } from './workflowUtils';
 
-// Use admin client for INSERT/UPDATE operations to bypass RLS policies
-const dbClient = supabaseAdmin || supabase;
-console.log('🔧 Database clients initialized:');
-console.log('   - supabaseAdmin available:', !!supabaseAdmin);
-console.log('   - Using client:', supabaseAdmin ? 'ADMIN (service role key - RLS bypass)' : 'ANON (anon key - RLS enabled)');
+// 🚀 DATABASE CLIENT CONFIGURATION
+// Use standard client for all operations to ensure session consistency and bypass project mismatches.
+// This is critical for internal tools where RLS is disabled and consistent identity is required.
+const dbClient = supabase;
+console.log('🔧 Database client initialized: Using Standard Authenticated Client');
 
 console.log('🔍 Initializing supabaseDb service');
 
@@ -85,19 +86,19 @@ export const auth = {
     // Sign out
     async signOut() {
         try {
-// Sign out locally first
-        console.log('Signing out locally...');
-        const { error: localError } = await supabase.auth.signOut();
+            // Sign out locally first
+            console.log('Signing out locally...');
+            const { error: localError } = await supabase.auth.signOut();
 
-        if (localError) {
-            console.warn('Local sign out failed:', localError);
-        } else {
-            console.log('Local sign out successful');
-        }
+            if (localError) {
+                console.warn('Local sign out failed:', localError);
+            } else {
+                console.log('Local sign out successful');
+            }
 
-        // Then sign out globally if the method is supported
-        console.log('Signing out globally...');
-        const { error: globalError } = await supabase.auth.signOut({ global: true });
+            // Then sign out globally if the method is supported
+            console.log('Signing out globally...');
+            const { error: globalError } = await supabase.auth.signOut({ global: true });
 
             if (globalError) {
                 console.warn('Global sign out failed:', globalError);
@@ -128,122 +129,78 @@ export const auth = {
         return data?.user || null;
     },
 
-    // 🚀 HELPER: Get the full public.users record for the currently logged-in auth user
-    // This resolves FK violations by ensuring we use the public.users.id, NOT auth.users.id
+    /**
+     * getPublicUser: The ultimate source of truth for the current user's database identity.
+     * 1. Fetches the Auth User directly from Supabase.
+     * 2. Resolves and Synchronizes the record in the public.users table.
+     * 3. Prevents "not present in table users" errors by ensuring ID parity.
+     */
     async getPublicUser(): Promise<User | null> {
         try {
-            // 1. Check cache first for performance
             if (currentUserCache) return currentUserCache;
 
-            // 2. Get the authenticated user from Supabase Auth
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            console.log('👤 Auth user retrieved:');
-            console.log('   - Auth ID:', authUser?.id);
-            console.log('   - Auth Email:', authUser?.email);
-            console.log('   - User Metadata:', authUser?.user_metadata);
-            
-            if (!authUser?.email) {
-                console.warn('getPublicUser: No authenticated user or email found');
+            const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+            if (authError || !authUser?.email) {
+                console.warn('❌ getPublicUser: No authenticated session found');
                 return null;
             }
 
-            // 3. Look up the matching record in the public.users table by email
-            console.log('🔍 Searching for user in public.users table WHERE email =', `"${authUser.email}"`);
-            
-            // Try direct query first
-            const { data: allUsers, error: listError } = await supabase
-                .from('users')
-                .select('id, email, full_name, role');
-            
-            console.log('📊 All users in public.users table:', allUsers);
-            if (listError) {
-                console.error('❌ Error listing users:', listError);
-            }
-            
-            const { data: existingUser, error: fetchError } = await supabase
+            // 1. Primary Lookup: By Auth ID
+            let { data: userRecord, error: fetchError } = await supabase
                 .from('users')
                 .select('*')
-                .eq('email', authUser.email)
+                .eq('id', authUser.id)
                 .maybeSingle();
 
-            if (fetchError) {
-                console.error('❌ Error fetching user from public table:', fetchError);
+            // 2. Secondary Lookup: By Email (Handle Desynchronized Profiles)
+            if (!userRecord) {
+                const { data: emailMatch } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('email', authUser.email)
+                    .maybeSingle();
+
+                if (emailMatch) {
+                    console.warn(`🔄 Syncing User ID for ${authUser.email}: Changing ${emailMatch.id} -> ${authUser.id}`);
+                    const { data: syncedUser } = await dbClient
+                        .from('users')
+                        .update({ id: authUser.id })
+                        .eq('email', authUser.email)
+                        .select()
+                        .single();
+                    userRecord = syncedUser;
+                }
             }
 
-            // If user exists in public table, return it
-            if (existingUser) {
-                console.log('✅ FOUND user in public table:', existingUser);
-                console.log('   - ID:', existingUser.id);
-                console.log('   - Email:', existingUser.email);
-                console.log('   - Role:', existingUser.role);
-                currentUserCache = existingUser as User;
-                return currentUserCache;
-            } else {
-                console.error('❌❌❌ USER NOT FOUND in public.users table!');
-                console.error('   Searched email:', authUser.email);
-                console.error('   Auth user ID:', authUser.id);
-                console.error('   Available users:', allUsers);
-                console.log('   Will attempt to create user record...');
+            // 3. Last Resort: Auto-Create missing profile
+            if (!userRecord) {
+                console.log('📝 Creating missing public profile for:', authUser.email);
+                const fullName = authUser.user_metadata?.full_name ||
+                    authUser.user_metadata?.name ||
+                    authUser.email.split('@')[0];
+
+                const { data: newUser, error: createError } = await dbClient
+                    .from('users')
+                    .insert([{
+                        id: authUser.id,
+                        email: authUser.email,
+                        full_name: fullName,
+                        role: authUser.user_metadata?.role || 'DESIGNER',
+                        status: 'ACTIVE'
+                    }])
+                    .select()
+                    .single();
+
+                if (createError) throw createError;
+                userRecord = newUser;
             }
 
-            // 4. User doesn't exist in public table - CREATE IT!
-            console.log('⚠️ User not in public table, creating entry for:', authUser.email);
-            
-            // Extract full name from auth metadata or use email
-            const fullName = authUser.user_metadata?.full_name || 
-                            authUser.user_metadata?.name || 
-                            authUser.email.split('@')[0];
-
-            // Determine role - default to DESIGNER for now (or use metadata if available)
-            let role = authUser.user_metadata?.role || 'DESIGNER';
-            
-            // Ensure role is valid
-            const validRoles = ['ADMIN', 'WRITER', 'CINE', 'EDITOR', 'DESIGNER', 'CMO', 'CEO', 'OPS', 'OBSERVER'];
-            if (!validRoles.includes(role)) {
-                console.warn('Invalid role detected, defaulting to DESIGNER:', role);
-                role = 'DESIGNER';
-            }
-
-            const newUser = {
-                email: authUser.email,
-                full_name: fullName,
-                role: role,
-                status: 'ACTIVE',
-                phone: authUser.phone || null,
-            };
-
-            console.log('📝 Attempting to create new user in public table...');
-            console.log('   Insert data:', JSON.stringify(newUser, null, 2));
-
-            const { data: createdUser, error: createError } = await dbClient
-                .from('users')
-                .insert([newUser])
-                .select()
-                .single();
-
-            console.log('📊 Insert result:');
-            console.log('   - createdUser:', createdUser);
-            console.log('   - createError:', createError);
-
-            if (createError || !createdUser) {
-                console.error('❌ Failed to create user in public table');
-                console.error('   Error details:', createError);
-                console.error('   Error message:', createError?.message);
-                console.error('   Error code:', createError?.code);
-                console.error('   Error details:', createError?.details);
-                throw new Error(`Failed to create user: ${createError?.message || 'Unknown error'}`);
-            }
-
-            console.log('✅ Successfully created user in public table:', createdUser);
-            console.log('   - ID:', createdUser.id);
-            console.log('   - Email:', createdUser.email);
-            console.log('   - Role:', createdUser.role);
-            currentUserCache = createdUser as User;
+            currentUserCache = userRecord as User;
             return currentUserCache;
 
         } catch (err) {
-            console.error('getPublicUser: Unexpected error:', err);
-            throw err; // Re-throw so caller knows something went wrong
+            console.error('❌ getPublicUser failed:', err);
+            return null;
         }
     },
 
@@ -617,7 +574,9 @@ export const users = {
 
     // Get all sub-editors
     async getSubEditors() {
-        const { data, error } = await supabase
+        console.log('🔍 Fetching sub-editors list...');
+        // Fetch users with SUB_EDITOR role
+        const { data: subEditors, error } = await supabase
             .from('users')
             .select('*')
             .eq('role', 'SUB_EDITOR')
@@ -628,7 +587,28 @@ export const users = {
             throw error;
         }
 
-        return data as User[];
+        // Also fetch Ajay specifically if he's not already in the list
+        // Ajay's email: ajaypapagari@applywizz.com
+        const { data: ajayUser, error: ajayError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', 'ajaypapagari@applywizz.com')
+            .single();
+
+        let results = [...(subEditors || [])];
+
+        // Add Ajay if found and not already in the list
+        if (!ajayError && ajayUser) {
+            if (!results.find(u => u.id === ajayUser.id)) {
+                results.push(ajayUser);
+            }
+        }
+
+        // Filter out Harshitha as requested
+        results = results.filter(u => !u.full_name?.toLowerCase().includes('harshitha'));
+
+        console.log(`✅ Fetched ${results.length} sub-editors (after filtering Harshitha and adding Ajay if needed)`);
+        return results as User[];
     },
 
     // Delete user (from both Auth and Database)
@@ -681,10 +661,10 @@ export const brands = {
             .from('brands')
             .select('*')
             .order('brand_name', { ascending: true });
-        
+
         if (error) {
-             console.warn('Could not fetch brands', error);
-             return [];
+            console.warn('Could not fetch brands', error);
+            return [];
         }
         return data || [];
     },
@@ -721,7 +701,7 @@ export const projects = {
     },
 
     // 🔴 DASHBOARD PROJECTS (role-based inbox)
-    async getForRole(role: Role) {
+    async getForRole(role: Role, userId?: string) {
         console.log(`📥 Fetching projects for role: ${role}`);
 
         let query = supabase.from('projects').select(`
@@ -775,6 +755,10 @@ export const projects = {
                 query = query.or(
                     `current_stage.eq.${WorkflowStage.SUB_EDITOR_ASSIGNMENT},current_stage.eq.${WorkflowStage.SUB_EDITOR_PROCESSING}`
                 );
+                // Filter by assigned user if ID is provided
+                if (userId) {
+                    query = query.eq('assigned_to_user_id', userId);
+                }
                 break;
 
             case Role.OPS:
@@ -782,10 +766,6 @@ export const projects = {
                 // These projects should be visible to Ops even if assigned to other roles
                 // Also include projects explicitly assigned to OPS role
                 const opsStages = [
-                    WorkflowStage.CINEMATOGRAPHY,
-                    WorkflowStage.VIDEO_EDITING,
-                    WorkflowStage.FINAL_REVIEW_CMO,
-                    WorkflowStage.FINAL_REVIEW_CEO,
                     WorkflowStage.PARTNER_REVIEW,
                     WorkflowStage.SENT_TO_INFLUENCER,
                     WorkflowStage.PA_FINAL_REVIEW,
@@ -838,8 +818,8 @@ export const projects = {
             ] = await Promise.all([
                 supabase.from('workflow_history').select('project_id, timestamp, projects (*)').eq('actor_id', user.id),
                 supabase.from('projects').select('*').eq('assigned_to_user_id', user.id),
-                supabase.from('projects').select('*').eq('assigned_to_role', user.role),
-                supabase.from('projects').select('*').overlaps('visible_to_roles', [user.role])
+                supabase.from('projects').select('*').in('assigned_to_role', [user.role, ...(user.secondary_roles || [])]),
+                supabase.from('projects').select('*').overlaps('visible_to_roles', [user.role, ...(user.secondary_roles || [])])
             ]);
 
             if (historyError) throw historyError;
@@ -1115,26 +1095,22 @@ export const projects = {
         }
 
         console.log('Prepared insert data:', insertData);
+        console.log('   - created_by_user_id:', insertData.created_by_user_id);
+        console.log('   - writer_id:', insertData.writer_id);
 
         try {
             console.log('🔗 Executing INSERT with database client');
             console.log('   - Client type:', dbClient === supabaseAdmin ? 'ADMIN' : 'ANON');
-            console.log('   - Has service key:', !!supabaseAdmin);
-            
-            // Add timeout protection for the insert operation (15 seconds - increased)
-            const insertPromise = dbClient
+            console.log('   - Has service role:', !!supabaseAdmin);
+
+            console.log('🔗 Executing INSERT with database client... (Wait started)');
+            const result = await dbClient
                 .from('projects')
                 .insert([insertData])
                 .select()
                 .single();
-            
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => {
-                    reject(new Error('Database timeout: Project creation took too long (>15s). Please check your connection and try again.'));
-                }, 15000);
-            });
 
-            const result = await Promise.race([insertPromise, timeoutPromise]) as any;
+            console.log('📊 INSERT result received:', result);
 
             if (result.error) {
                 console.error('Failed to create project:', result.error);
@@ -1248,7 +1224,7 @@ export const projects = {
         // Prepare top-level updates to keep them in sync with data blob
         // This ensures the top-level columns used for filtering/dashboards are accurate
         const topLevelUpdates: any = { data: newData };
-        
+
         // Sync brand
         if (dataUpdates.brand) {
             topLevelUpdates.brand = dataUpdates.brand === 'OTHER' ? dataUpdates.brand_other : dataUpdates.brand;
@@ -1346,6 +1322,17 @@ export const projects = {
 
     // Delete project
     async delete(id: string) {
+        // First delete workflow history to avoid FK constraint violations
+        const { error: historyError } = await supabase
+            .from('workflow_history')
+            .delete()
+            .eq('project_id', id);
+
+        if (historyError) {
+            console.error('Failed to delete workflow history during project deletion:', historyError);
+            // We continue anyway as the project deletion might still work if cascade is enabled
+        }
+
         const { error } = await supabase
             .from('projects')
             .delete()
@@ -1374,11 +1361,13 @@ export const workflow = {
         actorRole?: string,
         metadata: any = {}
     ) {
+        console.log('📝 [recordAction] START for project:', projectId);
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
         const finalUserId = publicUser?.id || userId;
         const finalUserName = publicUser?.full_name || userName;
 
+        console.log('📝 [recordAction] Finding stage for project:', projectId);
         // 1. Fetch current stage from projects table BEFORE insertion (Mandatory Fix)
         // This ensures from_stage correctly captures the stage before the transition
         const { data: project, error: fetchError } = await supabase
@@ -1388,9 +1377,10 @@ export const workflow = {
             .single();
 
         if (fetchError || !project) {
-            console.error('Failed to fetch current project for workflow history:', fetchError);
+            console.error('❌ [recordAction] Failed to fetch project:', fetchError);
             throw fetchError || new Error('Project not found');
         }
+        console.log('📝 [recordAction] Current project stage found:', project.current_stage);
 
         const fromStage = actorRole || project.assigned_to_role;
         const toStage = nextRole;
@@ -1745,7 +1735,7 @@ export const workflow = {
         // Check if the brand belongs to a Partner Associate if at CEO final review stage
         const brandName = rawProject.brand || rawProject.data?.brand;
         let isPAProject = false;
-        
+
         if (rawProject.current_stage === WorkflowStage.FINAL_REVIEW_CEO && brandName) {
             try {
                 const { data: brandMatch } = await supabase
@@ -1753,7 +1743,7 @@ export const workflow = {
                     .select('id')
                     .eq('brand_name', brandName)
                     .maybeSingle();
-                
+
                 if (brandMatch) {
                     isPAProject = true;
                     console.log(`✅ Project ${projectId} identified as Partner Associate brand: ${brandName}`);
@@ -1992,7 +1982,7 @@ export const workflow = {
             // Automatically determine next stage if at CEO final review to handle PA brands
             let finalNextStage = nextStage;
             let finalNextRole = nextRole;
-            
+
             if (rawProject?.current_stage === WorkflowStage.FINAL_REVIEW_CEO && isPAProject) {
                 const nextInfo = helpers.getNextStage(
                     WorkflowStage.FINAL_REVIEW_CEO,
@@ -2055,7 +2045,7 @@ export const workflow = {
 
                             // Surface project to all PA users
                             projectUpdateData.visible_to_roles = [finalNextRole, 'PARTNER_ASSOCIATE', 'OPS'];
-                            
+
                             // If moving to PARTNER_REVIEW, assign to the specific creator!
                             if (finalNextStage === WorkflowStage.PARTNER_REVIEW) {
                                 projectUpdateData.assigned_to_user_id = paCreatedBrand.created_by_user_id;
@@ -2293,6 +2283,7 @@ export const workflow = {
                 assigned_to_role: actualReturnToRole,
                 status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED,
                 data: updatedData,
+                visible_to_roles: null, // Clear parallel visibility so it leaves the initiator's board
                 // Preserve creator information
                 // Preserve assigned user ID if it exists
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
@@ -2694,7 +2685,7 @@ export const helpers = {
                 [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE },
                 [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-                [WorkflowStage.OPS_SCHEDULING]: projectData?.is_pa_brand 
+                [WorkflowStage.OPS_SCHEDULING]: projectData?.is_pa_brand
                     ? { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE }
                     : { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
@@ -2723,7 +2714,7 @@ export const helpers = {
             const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-                [WorkflowStage.SCRIPT_REVIEW_L2]: isCaptionBased 
+                [WorkflowStage.SCRIPT_REVIEW_L2]: isCaptionBased
                     ? { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }
                     : { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
@@ -2741,7 +2732,7 @@ export const helpers = {
         const approvalMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-            [WorkflowStage.SCRIPT_REVIEW_L2]: projectData?.is_pa_brand 
+            [WorkflowStage.SCRIPT_REVIEW_L2]: projectData?.is_pa_brand
                 ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
                 : {
                     stage: isCaptionBased ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || isInfluencer) ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
@@ -2750,7 +2741,7 @@ export const helpers = {
 
             // CINE -> VIDEO_EDITING (Editor)
             [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-            
+
             // Note: WRITER_VIDEO_APPROVAL now primarily used for direct video uploads / caption based flows if needed,
             // but the main approval flow is updated to move Cine -> Editor.
             [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
@@ -2804,12 +2795,12 @@ export const helpers = {
             [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
 
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
-            [WorkflowStage.FINAL_REVIEW_CEO]: projectData?.is_pa_brand 
+            [WorkflowStage.FINAL_REVIEW_CEO]: projectData?.is_pa_brand
                 ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
                 : { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
 
             [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.SENT_TO_INFLUENCER, role: Role.PARTNER_ASSOCIATE },
-            
+
             [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
             [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE },
@@ -3053,7 +3044,7 @@ const influencers = {
                     ...data,
                     sent_at: new Date().toISOString()
                 }]);
-            
+
             if (error) {
                 // If table doesn't exist yet, we log a warning but don't crash
                 console.warn('⚠️ Could not log to influencers table (Table might not exist):', error.message);
@@ -3075,7 +3066,7 @@ const influencers = {
             .select('*')
             .eq('parent_project_id', parentId)
             .order('sent_at', { ascending: false });
-        
+
         if (error) {
             console.warn('Error fetching from influencers table:', error);
             return [];
@@ -3266,13 +3257,28 @@ export const db = {
     },
 
     // --- Project Management ---
+    async deleteProject(id: string) {
+        return await projects.delete(id);
+    },
+
     async getProjects(user: User): Promise<Project[]> {
         // For Admin and Observer roles, show all projects
         if ([Role.ADMIN, Role.OBSERVER].includes(user.role)) {
             return await projects.getAll();
         }
-        // For all other roles, show projects assigned to their role with appropriate stage filtering
-        return await projects.getForRole(user.role);
+
+        // Parallel fetch for primary and secondary roles
+        const roles = [user.role, ...(user.secondary_roles || [])];
+        const projectsForRoles = await Promise.all(roles.map(role => projects.getForRole(role, user.id)));
+
+        // Flatten and remove duplicates by ID
+        const allProjects = projectsForRoles.flat();
+        const seenIds = new Set();
+        return allProjects.filter(p => {
+            if (seenIds.has(p.id)) return false;
+            seenIds.add(p.id);
+            return true;
+        });
     },
     async getMyWork(user: User): Promise<Project[]> {
         return await projects.getMyWork(user);
@@ -3391,8 +3397,8 @@ export const db = {
             title,
             channel,
             content_type: 'VIDEO' as ContentType,
-            current_stage: WorkflowStage.MULTI_WRITER_APPROVAL, 
-            assigned_to_role: Role.WRITER, 
+            current_stage: WorkflowStage.MULTI_WRITER_APPROVAL,
+            assigned_to_role: Role.WRITER,
             status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,
@@ -3450,8 +3456,8 @@ export const db = {
             title,
             channel,
             content_type: 'VIDEO' as ContentType,
-            current_stage: WorkflowStage.VIDEO_EDITING, 
-            assigned_to_role: Role.EDITOR, 
+            current_stage: WorkflowStage.VIDEO_EDITING,
+            assigned_to_role: Role.EDITOR,
             status: TaskStatus.IN_PROGRESS,
             due_date: dueDate,
             priority,
@@ -3495,15 +3501,35 @@ export const db = {
         return createdProject;
     },
 
-    async createDesignerProject(title: string, channel: Channel, dueDate: string, description: string, link: string, priority: Priority = 'NORMAL', contentType: ContentType = 'CREATIVE_ONLY', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
-        // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
+    /**
+     * createDesignerProject: Secure, production-ready project creation for the Designer role.
+     * Manages ID verification, workflow routing, and visibility metadata.
+     */
+    async createDesignerProject(
+        title: string,
+        channel: Channel,
+        dueDate: string,
+        description: string,
+        link: string,
+        priority: Priority = 'NORMAL',
+        contentType: ContentType = 'CREATIVE_ONLY',
+        brand?: string,
+        niche?: string,
+        nicheOther?: string
+    ): Promise<Project> {
+        // 1. Mandatory User Verification
         const publicUser = await auth.getPublicUser();
-
         if (!publicUser) {
-            throw new Error('User profile not found. Cannot create project without a valid public user ID.');
+            throw new Error('Project creation failed: No valid user profile found. Please re-login.');
         }
 
-        // Create a project that starts at FINAL_REVIEW_CMO stage for designer direct uploads
+        // 2. Final Guard: Explicitly verify the ID exists in the DB before proceeding
+        const { data: userCheck } = await dbClient.from('users').select('id').eq('id', publicUser.id).maybeSingle();
+        if (!userCheck) {
+            throw new Error(`Profile sync error: User ID ${publicUser.id} is not present in the database 'users' table.`);
+        }
+
+        // 3. Prepare Project Structure
         const projectData = {
             title,
             channel,
@@ -3514,40 +3540,48 @@ export const db = {
             due_date: dueDate,
             priority,
             brand,
-            niche,
-            niche_other: nicheOther,
-            creative_link: link,
             data: {
                 brand,
                 brief: description,
                 creative_link: link,
                 source: 'DESIGNER_DIRECT_UPLOAD'
             },
-            // Set creator information
+            // Creator Tracking (Resolves FK Constraints)
             created_by_user_id: publicUser.id,
             created_by_name: publicUser.full_name,
             writer_id: publicUser.id,
             writer_name: publicUser.full_name,
+            designer_name: publicUser.full_name,
+            designer_uploaded_at: new Date().toISOString(),
+            // Ensure visibility for CMO and Subsequent Roles
+            visible_to_roles: [Role.CMO, Role.CEO, Role.OPS] as any
         };
 
-        // Create the project
-        const createdProject = await projects.create(projectData);
+        console.log('🚀 Attempting project creation for:', title, 'by', publicUser.email);
 
-        // Record the action in workflow history
-        await workflow.recordAction(
-            createdProject.id,
-            Role.CMO, // next responsible role is CMO
-            publicUser.id,
-            publicUser.full_name,
-            'SUBMITTED',
-            'Direct Design Upload: Creative assets submitted directly by Designer. Moving to CMO Review.',
-            undefined,
-            Role.DESIGNER,   // fromRole
-            Role.CMO, // toRole
-            Role.DESIGNER    // actorRole
-        );
+        try {
+            // 4. Create Project
+            const createdProject = await projects.create(projectData);
 
-        return createdProject;
+            // 5. Record Workflow History
+            await workflow.recordAction(
+                createdProject.id,
+                Role.CMO,
+                publicUser.id,
+                publicUser.full_name,
+                'SUBMITTED',
+                'Asset directly submitted by Designer. Routing to CMO for Final Review.',
+                undefined,
+                Role.DESIGNER,
+                Role.CMO,
+                Role.DESIGNER
+            );
+
+            return createdProject;
+        } catch (error: any) {
+            console.error('❌ createDesignerProject FAILED:', error);
+            throw error;
+        }
     },
 
     async createIdeaProject(title: string, channel: Channel, contentType: ContentType, description: string, priority: Priority = 'NORMAL'): Promise<Project> {
@@ -3792,7 +3826,7 @@ export const db = {
         // Check if the brand belongs to a Partner Associate
         const brandName = project.brand || project.data?.brand;
         let isPAProject = project.data?.is_pa_brand || false; // Use existing flag from project.data
-        
+
         // If not already flagged, check the brand registry
         if (!isPAProject && brandName) {
             try {
@@ -3801,7 +3835,7 @@ export const db = {
                     .select('id, created_by_user_id')
                     .eq('brand_name', brandName)
                     .maybeSingle();
-                
+
                 // If brand exists and was created by a PA, mark as PA project
                 if (brandMatch && brandMatch.created_by_user_id) {
                     const { data: brandCreator } = await supabase
@@ -3809,7 +3843,7 @@ export const db = {
                         .select('role')
                         .eq('id', brandMatch.created_by_user_id)
                         .maybeSingle();
-                    
+
                     if (brandCreator && brandCreator.role === Role.PARTNER_ASSOCIATE) {
                         isPAProject = true;
                         console.log(`✅ advanceWorkflow: Identified as PA brand: ${brandName}`);
@@ -3819,7 +3853,7 @@ export const db = {
                 console.warn('Error checking brand PA status in advanceWorkflow:', err);
             }
         }
-        
+
         // Prepare project data with PA status for getNextStage
         const projectDataWithPA = {
             ...project.data,

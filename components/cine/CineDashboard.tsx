@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Project, Role, WorkflowStage, TaskStatus } from '../../types';
+import { Project, Role, WorkflowStage, TaskStatus, User } from '../../types';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Upload, Video } from 'lucide-react';
+import { Calendar as CalendarIcon, Upload, Video, LayoutDashboard } from 'lucide-react';
 import { getWorkflowStateForRole } from '../../services/workflowUtils';
 import CineMyWork from './CineMyWork';
 import CineCalendar from './CineCalendar';
@@ -12,7 +12,7 @@ import CineUploadModal from './CineUploadModal';
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
-  user: { full_name: string; role: Role };
+  user: User;
   inboxProjects: Project[];
   historyProjects: Project[];
   scriptProjects?: Project[];
@@ -67,7 +67,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
   // Handle top-level view changes (Dashboard / My Work / Calendar)
   const handleViewChange = (view: string, preserveFilter = false, newFilter: string | null = null) => {
     setSelectedProject(null);
-    const rolePath = user.role.toLowerCase();
+    const rolePath = 'cine';
 
     let searchStr = '';
     if (newFilter) {
@@ -109,16 +109,16 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
             // Projects with empty shoot date (not in rework, not done, and no raw video yet)
             const workflowState = getWorkflowStateForRole(project, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            const hasRawVideo = !!project.video_link || !!project.data?.raw_footage_link;
             return !project.shoot_date && !hasRawVideo && !isRework && project.status !== TaskStatus.DONE;
           }
 
         case 'SCHEDULED':
           {
-            // Projects with shoot date but NO raw video link (video_link, video_url, raw_footage_link), not in rework
+            // Projects with shoot date but NO raw video link (video_link, raw_footage_link), not in rework
             const workflowState = getWorkflowStateForRole(project, user.role);
             const isRework = workflowState.isTargetedRework || workflowState.isRework;
-            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            const hasRawVideo = !!project.video_link || !!project.data?.raw_footage_link;
             return (!!project.shoot_date && !hasRawVideo && !isRework);
           }
 
@@ -132,7 +132,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
         case 'UPLOADED':
           {
             // Projects with a raw video link
-            const hasRawVideo = !!project.video_link || !!project.video_url || !!project.data?.raw_footage_link;
+            const hasRawVideo = !!project.video_link || !!project.data?.raw_footage_link;
             return hasRawVideo;
           }
 
@@ -186,7 +186,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const needsSchedule = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      const hasRawVideo = !!p.video_link || !!(p.data && p.data.raw_footage_link);
       return !p.shoot_date && !hasRawVideo && !isRework && p.status !== TaskStatus.DONE;
     });
     setNeedsScheduleCount(needsSchedule.length);
@@ -195,7 +195,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
     const scheduled = list.filter(p => {
       const workflowState = getWorkflowStateForRole(p, user.role);
       const isRework = workflowState.isTargetedRework || workflowState.isRework;
-      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      const hasRawVideo = !!p.video_link || !!(p.data && p.data.raw_footage_link);
       return (!!p.shoot_date && !hasRawVideo && !isRework);
     });
     setScheduledShootsCount(scheduled.length);
@@ -209,7 +209,7 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
 
     // 3. Footage Uploaded: has raw video link (shoot_date doesn't matter once uploaded)
     const uploaded = list.filter(p => {
-      const hasRawVideo = !!p.video_link || !!p.video_url || !!(p.data && p.data.raw_footage_link);
+      const hasRawVideo = !!p.video_link || !!(p.data && p.data.raw_footage_link);
       return hasRawVideo;
     });
     setFootageUploadedCount(uploaded.length);
@@ -230,9 +230,18 @@ const CineDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, 
       activeView={activeView}
       onChangeView={handleViewChange}
     >
-      {/* Upload Button */}
+      {/* Action Buttons Row */}
       {activeView === 'dashboard' && (
-        <div className="mb-6 flex justify-end">
+        <div className="mb-6 flex justify-end gap-3">
+          {user.secondary_roles?.includes(Role.SUB_EDITOR) && (
+            <button
+              onClick={() => navigate('/sub_editor')}
+              className="px-6 py-3 bg-white border-2 border-black text-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              Go to Sub-Editor
+            </button>
+          )}
           <button
             onClick={() => handleViewChange('upload-footage')}
             className="px-6 py-3 bg-[#D946EF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"

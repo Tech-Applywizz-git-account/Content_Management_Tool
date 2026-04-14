@@ -453,7 +453,10 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             {isVideo ? 'Script Reference' : 'Content Brief'}
                         </h2>
                     </div>
-                    <ScriptDisplay content={localProject.data.script_content || ''} />
+                    <ScriptDisplay 
+                        content={localProject.data.script_content || ''} 
+                        caption={localProject.data.captions}
+                    />
                 </div>
 
                 {/* Thumbnail Requirements - Show if video and thumbnail required */}

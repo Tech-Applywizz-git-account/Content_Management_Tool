@@ -66,6 +66,7 @@ export interface User {
   email: string;
   full_name: string;
   role: Role;
+  secondary_roles?: Role[]; // Support for multiple roles
   job_title?: string;  // For OBSERVER role: COO, CRO, CTO, CFO, etc.
   avatar_url?: string;
   status: UserStatus;
@@ -150,7 +151,7 @@ export interface ProjectData {
   lighting?: string;
   angles?: string;
   niche?: 'PROBLEM_SOLVING' | 'SOCIAL_PROOF' | 'LEAD_MAGNET' | 'CAPTION_BASED' | 'OTHER';
-  brand?: 'APPLYWIZZ' | 'APPLYWIZZ_JOB_BOARD' | 'LEAD_MAGNET_RTW' | 'SHYAMS_PERSONAL_BRANDING' | 'APPLYWIZZ_USA_JOBS' | 'OTHER';
+  brand?: 'APPLYWIZZ' | 'APPLYWIZZ_JOB_BOARD' | 'LEAD_MAGNET_RTW' | 'SHYAMS_PERSONAL_BRANDING' | 'APPLYWIZZ_USA_JOBS' | 'CAREER_IDENTIFIER' | 'OTHER';
   niche_other?: string;
   brand_other?: string;
   cine_thumbnail_link?: string;
@@ -178,6 +179,7 @@ export interface HistoryEvent {
   from_role?: string;
   to_role?: string;
   metadata?: any;
+  project_id: string;
 }
 
 export interface SystemLog {

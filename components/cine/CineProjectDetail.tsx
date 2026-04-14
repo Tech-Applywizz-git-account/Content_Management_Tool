@@ -373,7 +373,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             // Record the rework request in workflow history
             await db.workflow.recordAction(
                 localProject.id,
-                WorkflowStage.SCRIPT_REVIEW_L1, // Send back to script review stage
+                WorkflowStage.SCRIPT, // Send back to script stage directly
                 publicUser.id,
                 publicUser.full_name || publicUser.email || publicUser.id,
                 'REWORK',
@@ -395,7 +395,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 .from('projects')
                 .update({
                     status: TaskStatus.REWORK,
-                    current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+                    current_stage: WorkflowStage.SCRIPT,
                     assigned_to_role: Role.WRITER,
                     assigned_to_user_id: writerUserId,
                     rework_target_role: Role.WRITER,
@@ -722,7 +722,11 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                             />
                         ) : (
                             <>
-                                <ScriptDisplay content={localProject.data.script_content || ''} showBox={false} />
+                                <ScriptDisplay 
+                                    content={localProject.data.script_content || ''} 
+                                    caption={localProject.data.captions}
+                                    showBox={false} 
+                                />
 
                                 {canEdit && !isRejected && (
                                     <div className="mt-4 flex justify-end gap-3">

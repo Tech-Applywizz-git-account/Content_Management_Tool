@@ -418,7 +418,11 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                         <section className="space-y-4 pt-4">
                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Script Content</h3>
                             <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                <ScriptDisplay content={project.data?.script_content || project.data?.idea_description || 'Content empty.'} showBox={false} />
+                                <ScriptDisplay 
+                                    content={project.data?.script_content || project.data?.idea_description || 'Content empty.'} 
+                                    caption={project.data?.captions}
+                                    showBox={false} 
+                                />
                             </div>
                         </section>
                         

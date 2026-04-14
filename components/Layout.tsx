@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Role, User } from '../types';
+import { Role, User, ROLE_LABELS } from '../types';
 import {
   LayoutDashboard,
   PenTool,
@@ -14,7 +14,8 @@ import {
   Calendar,
   Eye,
   FileText,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquare
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -35,7 +36,18 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   const handleNavigate = (view: string) => {
-    const rolePath = user.role === Role.SUB_EDITOR ? 'sub_editor' : user.role.toLowerCase();
+    const path = window.location.pathname;
+    let rolePath = user.role === Role.SUB_EDITOR ? 'sub_editor' : user.role.toLowerCase();
+    
+    // For multi-role users, keep them in the current role's path if they are already there
+    const allRoles = [user.role, ...(user.secondary_roles || [])];
+    const rolePaths = allRoles.map(r => r === Role.SUB_EDITOR ? 'sub_editor' : r.toLowerCase());
+    
+    const currentPathRole = rolePaths.find(rp => path.startsWith(`/${rp}`));
+    if (currentPathRole) {
+      rolePath = currentPathRole;
+    }
+
     if (view === 'dashboard') {
       navigate(`/${rolePath}`);
     } else {
@@ -78,8 +90,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   }`}
               >
                 <LayoutDashboard className="w-5 h-5" />
-                <span>Dashboard</span>
+                <span>{user.role === Role.CINE ? 'Cine Dashboard' : 'Dashboard'}</span>
               </button>
+
 
               {/* My Work - For CMO and Production Roles (not CEO/ADMIN) */}
               {user.role !== Role.CEO && user.role !== Role.ADMIN && (
@@ -130,7 +143,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               )}
 
               {/* Calendar - Visible for most roles */}
-              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE) && (
+              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.SUB_EDITOR)) && (
                 <button
                   onClick={() => handleNavigate('calendar')}
                   className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'calendar'
@@ -161,6 +174,20 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                       </span>
                     )}
                   </span>
+                </button>
+              )}
+              
+              {/* Write Captions - Visible for WRITER */}
+              {user.role === Role.WRITER && (
+                <button
+                  onClick={() => handleNavigate('writer-captions')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'writer-captions'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <MessageSquare className="w-5 h-5" />
+                  <span>Write Captions</span>
                 </button>
               )}
 
@@ -241,8 +268,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'dashboard' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
           >
             <LayoutDashboard className="w-5 h-5" />
-            <span>Dashboard</span>
+            <span>{user.role === Role.CINE ? 'Cine Dashboard' : 'Dashboard'}</span>
           </button>
+
 
           {user.role !== Role.CEO && user.role !== Role.ADMIN && (
             <button

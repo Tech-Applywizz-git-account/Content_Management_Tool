@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, User } from '../../types';
 import { isReworkProject, isReworkInitiatedByRole } from '../../services/workflowUtils';
 import { format } from 'date-fns';
-import { Clock, Plus } from 'lucide-react';
+import { Clock, Plus, Trash2 } from 'lucide-react';
 import CmoReviewScreen from './CmoReviewScreen';
 import CmoMyWork from './CmoMyWork';
 import CmoProjectDetails from './CmoProjectDetails';
@@ -342,8 +342,21 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
     onRefresh();
   };
 
-  // Dashboard components no longer handle project detail rendering directly
-  // AppRoutes handles this via /cmo/project/:id, etc.
+  const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this script? This action cannot be undone and will remove all associated data including history and assets.')) {
+      try {
+        await db.deleteProject(projectId);
+        setPopupMessage('Script deleted successfully.');
+        setStageName('Deleted');
+        setShowPopup(true);
+        handleInternalRefresh();
+      } catch (error) {
+        console.error('Failed to delete script:', error);
+        alert('Failed to delete script. Please try again.');
+      }
+    }
+  };
 
 
   return (
@@ -520,8 +533,15 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           >
                             {/* Desktop View Row */}
                             <div className="hidden md:grid grid-cols-12 gap-4 items-center p-6">
-                              <div className="col-span-4 font-black uppercase text-lg truncate">
-                                {p.title}
+                              <div className="col-span-4 font-black uppercase text-lg truncate flex items-center justify-between">
+                                <span className="truncate">{p.title}</span>
+                                <button
+                                  onClick={(e) => handleDeleteProject(e, p.id)}
+                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
+                                  title="Delete Script"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                               <div className="col-span-2">
                                 <span className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
@@ -552,6 +572,13 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             <div className="md:hidden p-4 space-y-4">
                               <div className="flex justify-between items-start">
                                 <h4 className="font-black text-base uppercase text-slate-900 leading-tight flex-1 mr-2">{p.title}</h4>
+                                <button
+                                  onClick={(e) => handleDeleteProject(e, p.id)}
+                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors mr-2"
+                                  title="Delete Script"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                                 <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                   p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                     p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
@@ -620,7 +647,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
                         </div>
-                        <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-black text-xl text-slate-900 uppercase leading-tight">{p.title}</h4>
+                          <button
+                            onClick={(e) => handleDeleteProject(e, p.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="Delete Script"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                             <Clock className="w-3 h-3 mr-1" />
@@ -682,7 +718,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             PENDING AT CMO
                           </span>
                         </div>
-                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                          <button
+                            onClick={(e) => handleDeleteProject(e, p.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="Delete Script"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                             <Clock className="w-3 h-3 mr-1" />
@@ -744,7 +789,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             With CEO
                           </span>
                         </div>
-                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                          <button
+                            onClick={(e) => handleDeleteProject(e, p.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="Delete Script"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                             <Clock className="w-3 h-3 mr-1" />
@@ -842,7 +896,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 WITH CINE
                               </span>
                             </div>
-                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                              <button
+                                onClick={(e) => handleDeleteProject(e, p.id)}
+                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Delete Script"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                             <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                                 <Clock className="w-3 h-3 mr-1" />
@@ -917,7 +980,16 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                                 WITH EDITOR
                               </span>
                             </div>
-                            <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                              <button
+                                onClick={(e) => handleDeleteProject(e, p.id)}
+                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="Delete Script"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                             <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
                               <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                                 <Clock className="w-3 h-3 mr-1" />

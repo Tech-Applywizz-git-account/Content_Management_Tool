@@ -744,6 +744,8 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <ScriptComparison
                                     previousScript={previousScript}
                                     currentScript={project.data?.script_content || '<p>No new script content submitted</p>'}
+                                    previousCaption={previousAssets?.data?.captions || previousAssets?.captions}
+                                    currentCaption={project.data?.captions}
                                     previousAuthor="Previous Version"
                                     currentAuthor="Writer Rework Submission"
                                     previousTimestamp=""
@@ -756,6 +758,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content
                                             ? project.data.idea_description
                                             : project.data?.script_content) || ''}
+                                    caption={project.data?.captions}
                                 />
                             )}
                         </div>
