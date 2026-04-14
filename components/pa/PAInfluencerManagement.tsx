@@ -16,9 +16,9 @@ interface Props {
 }
 
 const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete }) => {
-    const [influencerName, setInfluencerName] = useState('');
-    const [influencerEmail, setInfluencerEmail] = useState('');
-    const [contentDescription, setContentDescription] = useState('');
+    const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || '');
+    const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || '');
+    const [contentDescription, setContentDescription] = useState(project.data?.content_description || '');
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
