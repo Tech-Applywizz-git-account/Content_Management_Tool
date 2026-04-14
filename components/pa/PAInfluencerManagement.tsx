@@ -298,13 +298,21 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                     influencerHistory.map((entry: any, hIdx: number) => (
                                                         <div key={hIdx} className="p-6 bg-indigo-50/30 rounded-3xl border-2 border-indigo-50">
                                                             <div className="text-sm font-medium text-slate-700 italic">
-                                                                <ScriptDisplay content={entry.script_content || 'Content synchronized'} showBox={false} />
+                                                                <ScriptDisplay 
+                                                                    content={entry.script_content || 'Content synchronized'} 
+                                                                    caption={proj.data?.captions}
+                                                                    showBox={false} 
+                                                                />
                                                             </div>
                                                         </div>
                                                     )).reverse()
                                                 ) : (
                                                     <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                                        <ScriptDisplay content={proj.data?.script_content || proj.data?.idea_description || 'No content found'} showBox={false} />
+                                                        <ScriptDisplay 
+                                                            content={proj.data?.script_content || proj.data?.idea_description || 'No content found'} 
+                                                            caption={proj.data?.captions}
+                                                            showBox={false} 
+                                                        />
                                                     </div>
                                                 )}
                                             </div>

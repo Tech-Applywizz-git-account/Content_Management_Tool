@@ -17,13 +17,13 @@ export function isInfluencerVideo(project: Project | any): boolean {
   
   // Check brand (new)
   const brandSelection = project.brand || project.data?.brand || project.brandSelected; // Handle different object shapes
-  if (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'APPLYWIZZ_USA_JOBS', 'SHYAMS_PERSONAL_BRANDING'].includes(brandSelection)) {
+  if (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING'].includes(brandSelection)) {
     return true;
   }
   
   // Backward compatibility with legacy content_type
   const contentType = project.content_type || project.contentType;
-  if (['JOBBOARD', 'LEAD_MAGNET', 'APPLYWIZZ_USA_JOBS'].includes(contentType)) {
+  if (['JOBBOARD', 'LEAD_MAGNET'].includes(contentType)) {
     return true;
   }
   
@@ -138,7 +138,7 @@ export function getWorkflowState(project: Project | undefined): WorkflowState {
     if (reworkAction) {
       const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
       const hasLaterSubmission = sortedHistory.some(h => {
-        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'DIRECT_UPLOAD'].includes(h.action);
         const actionTimestamp = new Date(h.timestamp).getTime();
         return isSubmissionAction && actionTimestamp > reworkTimestamp;
       });
@@ -152,13 +152,14 @@ export function getWorkflowState(project: Project | undefined): WorkflowState {
 
   const isInReview =
     latestAction === "SUBMITTED" ||
-    latestAction?.includes("REWORK_");
-  const isApproved = latestAction === "APPROVED";
+    latestAction?.includes("REWORK_") ||
+    project?.status === 'WAITING_APPROVAL';
+  const isApproved = latestAction === "APPROVED" || project?.status === 'DONE';
 
   return {
     isRejected,
-    isRework,
-    isTargetedRework: false, // Default value, will be calculated separately based on user context
+    isRework: isRework && project?.status !== 'WAITING_APPROVAL' && project?.status !== 'DONE',
+    isTargetedRework: false,
     isInReview,
     isApproved,
     latestAction
@@ -217,7 +218,7 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
     if (reworkAction) {
       const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
       const hasLaterSubmission = sortedHistory.some(h => {
-        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'DIRECT_UPLOAD'].includes(h.action);
         const actionTimestamp = new Date(h.timestamp).getTime();
         return isSubmissionAction && actionTimestamp > reworkTimestamp;
       });
@@ -245,7 +246,7 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
     if (rejectedAction) {
       const rejectedTimestamp = new Date(rejectedAction.timestamp).getTime();
       const hasLaterSubmission = sortedHistory.some(h => {
-        const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+        const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'DIRECT_UPLOAD'].includes(h.action);
         const actionTimestamp = new Date(h.timestamp).getTime();
         return isSubmissionAction && actionTimestamp > rejectedTimestamp;
       });
@@ -274,13 +275,19 @@ export function getWorkflowStateForRole(project: Project | undefined, userRole: 
 
   const isInReview =
     latestAction === "SUBMITTED" ||
-    latestAction?.includes("REWORK_");
-  const isApproved = latestAction === "APPROVED";
+    latestAction?.includes("REWORK_") ||
+    project?.status === 'WAITING_APPROVAL';
+    
+  const isApproved = latestAction === "APPROVED" || project?.status === 'DONE';
+
+  // Final guards: Rework/TargetedRework should only be true if status corresponds
+  const finalIsRework = isRework && project?.status !== 'WAITING_APPROVAL' && project?.status !== 'DONE';
+  const finalIsTargetedRework = isTargetedRework && project?.status !== 'WAITING_APPROVAL' && project?.status !== 'DONE';
 
   return {
     isRejected,
-    isRework,
-    isTargetedRework,
+    isRework: finalIsRework,
+    isTargetedRework: finalIsTargetedRework,
     isInReview,
     isApproved,
     latestAction
@@ -583,7 +590,7 @@ export function isReworkProject(project: Project): boolean {
   if (reworkAction) {
     const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
     const hasLaterSubmission = sortedHistory.some(h => {
-      const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED'].includes(h.action);
+      const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'DIRECT_UPLOAD'].includes(h.action);
       const actionTimestamp = new Date(h.timestamp).getTime();
       return isSubmissionAction && actionTimestamp > reworkTimestamp;
     });
@@ -624,7 +631,7 @@ export function isReworkInitiatedByRole(project: Project, role: Role): boolean {
   if (reworkAction) {
     const reworkTimestamp = new Date(reworkAction.timestamp).getTime();
     const hasLaterSubmission = sortedHistory.some(h => {
-      const isSubmissionAction = ['SUBMITTED', 'APPROVED'].includes(h.action);
+      const isSubmissionAction = ['SUBMITTED', 'APPROVED', 'REWORK_SUBMITTED', 'REWORK_VIDEO_SUBMITTED', 'REWORK_EDIT_SUBMITTED', 'REWORK_DESIGN_SUBMITTED', 'DIRECT_UPLOAD'].includes(h.action);
       const actionTimestamp = new Date(h.timestamp).getTime();
       return isSubmissionAction && actionTimestamp > reworkTimestamp;
     });

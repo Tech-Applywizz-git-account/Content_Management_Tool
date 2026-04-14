@@ -810,7 +810,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
-    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS'].includes(b) || dynamicBrands.some(db => db.brand_name === b);
+    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS', 'CAREER_IDENTIFIER'].includes(b) || dynamicBrands.some(db => db.brand_name === b);
     
     // Always update formData when project changes to ensure content is preserved
     setFormData(prev => {
@@ -2098,6 +2098,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
                           { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
                           { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
+                          { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#0EA5E9]' },
                           ...dynamicBrands.map(b => ({ value: b.brand_name, label: `✨ ${b.brand_name}`, color: 'bg-slate-800' })),
                         ]).map(brand => (
                           <button

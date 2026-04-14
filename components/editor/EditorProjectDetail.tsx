@@ -404,7 +404,11 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <FileText className="w-5 h-5" />
             <h2 className="text-xl font-black uppercase">Script Reference</h2>
           </div>
-          <ScriptDisplay content={localProject.data?.script_content || ''} />
+              <ScriptDisplay 
+                content={localProject.data?.script_content || localProject.data?.idea_description || ''} 
+                caption={localProject.data?.captions}
+                showBox={false} 
+              />
         </div>
 
         {/* Cinematographer Instructions - Show when project has cinematographer data */}

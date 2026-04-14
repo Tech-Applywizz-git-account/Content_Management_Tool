@@ -77,7 +77,7 @@ const EditorDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
     // Handle top-level view changes (Dashboard / My Work / Calendar)
     const handleViewChange = (view: string, preserveFilter = false, newFilter: string | null = null) => {
         setSelectedProject(null);
-        const rolePath = user.role.toLowerCase();
+        const rolePath = 'editor';
 
         let searchStr = '';
         if (newFilter) {

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus, Channel, User } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download } from 'lucide-react';
+import { ArrowLeft, Check, RotateCcw, X, Video, Image as ImageIcon, Download, Trash2 } from 'lucide-react';
 import Popup from '../Popup';
 import ScriptComparison from '../ScriptComparison';
 import ScriptDisplay from '../ScriptDisplay';
@@ -26,6 +26,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
     const [reworkStage, setReworkStage] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [previousScript, setPreviousScript] = useState<string | null>(null);
+    const [previousCaption, setPreviousCaption] = useState<string | null>(null);
     const [previousAssets, setPreviousAssets] = useState<{
         video_link: string | null;
         edited_video_link: string | null;
@@ -541,6 +542,25 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         }
     };
 
+    const handleDeleteProject = async () => {
+        if (window.confirm('Are you sure you want to delete this script? This action cannot be undone and will remove all associated data including history and assets.')) {
+            setIsSubmitting(true);
+            try {
+                await db.deleteProject(project.id);
+                setPopupMessage('Script deleted successfully.');
+                setStageName('Deleted');
+                setPopupDuration(5000);
+                setShowPopup(true);
+                // onComplete is called by Popup onClose
+            } catch (error) {
+                console.error('Failed to delete script:', error);
+                alert('Failed to delete script. Please try again.');
+            } finally {
+                setIsSubmitting(false);
+            }
+        }
+    };
+
     const getReworkOptions = () => {
         // Check if this is a creative project (either designer-initiated or creative-only content type)
         const isCreativeProject = project.data?.source === 'DESIGNER_INITIATED' || project.content_type === 'CREATIVE_ONLY';
@@ -638,6 +658,16 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             )}
                         </div>
                     </div>
+                </div>
+                <div className="ml-auto mr-6">
+                    <button
+                        onClick={handleDeleteProject}
+                        disabled={isSubmitting}
+                        className="flex items-center space-x-2 px-4 py-2 border-2 border-red-500 text-red-500 hover:bg-red-50 font-black uppercase transition-all shadow-[4px_4px_0px_0px_rgba(239,68,68,1)] active:translate-y-1 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Delete Script</span>
+                    </button>
                 </div>
             </header>
 
@@ -852,7 +882,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             ? project.data.idea_description
                                             : project.data?.script_content;
 
-                                    return <ScriptDisplay content={displayContent || ''} />;
+                                    return <ScriptDisplay content={displayContent || ''} caption={project.data?.captions} />;
                                 } else {
                                     // For non-final review stages, show comparison if we have a previous script content
                                     if (previousScript && previousScript.trim() !== '') {
@@ -862,6 +892,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                             <ScriptComparison
                                                 previousScript={stripHtmlTags(previousScript)}
                                                 currentScript={stripHtmlTags(currentScriptContent)}
+                                                previousCaption={previousCaption}
+                                                currentCaption={project.data?.captions}
                                             />
                                         );
                                     } else {
@@ -871,7 +903,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                                 ? project.data.idea_description
                                                 : project.data?.script_content;
 
-                                        return <ScriptDisplay content={displayContent || ''} />;
+                                        return <ScriptDisplay content={displayContent || ''} caption={project.data?.captions} />;
                                     }
                                 }
                             })()}

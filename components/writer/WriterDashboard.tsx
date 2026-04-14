@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
-import { Plus, Lightbulb, Clock, PlayCircle, CloudUpload } from 'lucide-react';
+import { Plus, Lightbulb, Clock, PlayCircle, CloudUpload, MessageSquare } from 'lucide-react';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
 import WriterProjectDetail from './WriterProjectDetail';
 import WriterMyWork from './WriterMyWork';
+import WriterCaptions from './WriterCaptions';
 import WriterCalendar from './WriterCalendar';
 import WriterVideoApproval from './WriterVideoApproval';
 import WriterApprovedVideos from './WriterApprovedVideos';
@@ -43,6 +44,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         if (path.endsWith('/lead-magnet-scripts')) return 'lead-magnet-scripts';
         if (path.endsWith('/approved-videos')) return 'approved-videos';
         if (path.endsWith('/video-uploads')) return 'video-uploads';
+        if (path.endsWith('/writer-captions')) return 'writer-captions';
         return 'dashboard';
     };
 
@@ -299,6 +301,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         // ✅ IMPORTANT: only show ideas created by the current writer
         p.created_by_user_id === user.id
     );
+
+    const captionNeededProjects = allWriterProjects.filter(p => 
+        p.created_by_user_id === user.id &&
+        !!p.cmo_approved_at &&
+        p.status !== TaskStatus.DONE &&
+        (!p.data?.captions || p.data.captions.trim() === '')
+    ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const handleEdit = (project: Project) => {
         const parsedData =
             typeof project.data === 'string'
@@ -478,6 +487,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                     onSelectProject={(p) => navigate(`/writer/approved-video/${p.id}`)}
                 />
             )}
+            {activeView === 'writer-captions' && (
+                <WriterCaptions
+                    user={user}
+                    projects={allWriterProjects}
+                    onRefresh={onRefresh}
+                />
+            )}
             {activeView === 'dashboard' && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -524,6 +540,18 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 </span>
                             )}
                         </button>
+                        <button
+                            onClick={() => navigate('/writer/writer-captions')}
+                            className="w-full sm:w-auto bg-[#22C55E] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
+                        >
+                            <MessageSquare className="w-6 h-6 border-2 border-white rounded-full p-1" />
+                            <span>Write Captions</span>
+                            {captionNeededProjects.length > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center border-2 border-white">
+                                    {captionNeededProjects.length}
+                                </span>
+                            )}
+                        </button>
                     </div>
 
                     {/* Festival Notifications */}
@@ -560,6 +588,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
                                                         p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
                                                             p.brand === 'SHYAMS_PERSONAL_BRANDING' ? 'bg-[#F97316] text-white' :
+                                                            p.brand === 'CAREER_IDENTIFIER' ? 'bg-[#0EA5E9] text-white' :
                                                                 'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}

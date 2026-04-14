@@ -26,9 +26,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ user, isRestoringSessio
     }
 
     if (allowedRoles && !allowedRoles.includes(user.role)) {
-        // Redirect to their own dashboard if role not allowed
-        const rolePath = user.role.toLowerCase();
-        return <Navigate to={`/${rolePath}`} replace />;
+        // Check if any of the secondary roles match
+        const hasSecondaryAccess = user.secondary_roles?.some(r => allowedRoles.includes(r));
+        
+        if (!hasSecondaryAccess) {
+            // Redirect to their own dashboard if role not allowed
+            const rolePath = user.role.toLowerCase();
+            return <Navigate to={`/${rolePath}`} replace />;
+        }
     }
 
     return <>{children}</>;

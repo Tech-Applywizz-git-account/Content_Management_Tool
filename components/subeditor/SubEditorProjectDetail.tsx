@@ -27,6 +27,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
   const [deliveryDate, setDeliveryDate] = useState(initialProject.delivery_date || '');
   const [editedVideoLink, setEditedVideoLink] = useState(initialProject.edited_video_link || '');
   const [loading, setLoading] = useState(false);
+  const [isEditingVideo, setIsEditingVideo] = useState(false);
 
   // Popup state
   const [showPopup, setShowPopup] = useState(false);
@@ -413,34 +414,90 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="flex-1">
-                <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
-                <div className="flex items-center gap-3 mt-1">
-                  <span
-                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
-                      ? 'bg-[#FF4F4F] text-white'
-                      : localProject.channel === 'LINKEDIN'
-                        ? 'bg-[#0085FF] text-white'
-                        : localProject.channel === 'INSTAGRAM'
-                          ? 'bg-[#D946EF] text-white'
-                          : 'bg-black text-white'
-                      }`}
-                  >
-                    {localProject.channel}
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-black uppercase text-slate-900">{localProject.title}</h1>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span
+                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
+                          ? 'bg-[#FF4F4F] text-white'
+                          : localProject.channel === 'LINKEDIN'
+                            ? 'bg-[#0085FF] text-white'
+                            : localProject.channel === 'INSTAGRAM'
+                              ? 'bg-[#D946EF] text-white'
+                              : 'bg-black text-white'
+                          }`}
+                      >
+                        {localProject.channel}
+                      </span>
 
-                  <span
-                    className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
-                      ? 'bg-red-500 text-white'
-                      : localProject.priority === 'NORMAL'
-                        ? 'bg-yellow-500 text-black'
-                        : 'bg-green-500 text-white'
-                      }`}
-                  >
-                    {localProject.priority}
-                  </span>
+                      <span
+                        className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.priority === 'HIGH'
+                          ? 'bg-red-500 text-white'
+                          : localProject.priority === 'NORMAL'
+                            ? 'bg-yellow-500 text-black'
+                            : 'bg-green-500 text-white'
+                          }`}
+                      >
+                        {localProject.priority}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">Current Progress</span>
+                    <div className="flex items-center gap-2">
+                       <span className="px-3 py-1 bg-black text-white text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(217,70,239,1)]">
+                         {localProject.current_stage ? localProject.current_stage.replace(/_/g, ' ') : 'N/A'}
+                       </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* New Project Progress Bar */}
+          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6 mb-8 overflow-hidden">
+             <div className="flex items-center gap-2 mb-6">
+                <Clock className="w-5 h-5" />
+                <h2 className="text-xl font-black uppercase text-slate-900">Workflow Progress</h2>
+             </div>
+             <div className="relative pt-4 pb-8">
+               {/* Progress Line */}
+               <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-200 -translate-y-[1.4rem]"></div>
+               <div className="flex justify-between relative">
+                 {[
+                   { id: 'STRATEGY', label: 'Script', stages: [WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2] },
+                   { id: 'PRODUCTION', label: 'Shoot', stages: [WorkflowStage.CINEMATOGRAPHY] },
+                   { id: 'EDITING', label: 'Sub-Editing', stages: [WorkflowStage.SUB_EDITOR_ASSIGNMENT, WorkflowStage.SUB_EDITOR_PROCESSING] },
+                   { id: 'REVIEW', label: 'Review', stages: [WorkflowStage.MULTI_WRITER_APPROVAL, WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.POST_WRITER_REVIEW, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO] },
+                   { id: 'POSTING', label: 'Posted', stages: [WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED] }
+                 ].map((step, idx) => {
+                   const isActive = step.stages.includes(localProject.current_stage as WorkflowStage);
+                   const isPast = !isActive && idx < [
+                     { id: 'STRATEGY', label: 'Script', stages: [WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2] },
+                     { id: 'PRODUCTION', label: 'Shoot', stages: [WorkflowStage.CINEMATOGRAPHY] },
+                     { id: 'EDITING', label: 'Sub-Editing', stages: [WorkflowStage.SUB_EDITOR_ASSIGNMENT, WorkflowStage.SUB_EDITOR_PROCESSING] },
+                     { id: 'REVIEW', label: 'Review', stages: [WorkflowStage.MULTI_WRITER_APPROVAL, WorkflowStage.WRITER_VIDEO_APPROVAL, WorkflowStage.POST_WRITER_REVIEW, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO] },
+                     { id: 'POSTING', label: 'Posted', stages: [WorkflowStage.OPS_SCHEDULING, WorkflowStage.POSTED] }
+                   ].findIndex(s => s.stages.includes(localProject.current_stage as WorkflowStage));
+
+                   return (
+                     <div key={step.id} className="flex flex-col items-center flex-1">
+                        <div className={`w-8 h-8 flex items-center justify-center border-2 border-black z-10 transition-colors ${
+                          isActive ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 
+                          isPast ? 'bg-black text-white' : 'bg-white'
+                        }`}>
+                          {isPast ? '✓' : idx + 1}
+                        </div>
+                        <span className={`mt-2 text-[10px] font-black uppercase text-center ${isActive ? 'text-[#D946EF]' : 'text-slate-500'}`}>
+                          {step.label}
+                        </span>
+                     </div>
+                   );
+                 })}
+               </div>
+             </div>
           </div>
 
           {/* Rework Information Section */}
@@ -639,17 +696,27 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                   </div>
                 )}
 
-                {/* Show input if user has edit permissions OR is in rework */}
-                {(isRework || canEdit || !localProject.edited_video_link) && (
+                {/* Show input if user has edit permissions OR is in rework OR specifically clicked EDIT */}
+                {(isRework || canEdit || !localProject.edited_video_link || isEditingVideo) && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <p className="text-slate-600 font-medium">
-                        {isRework ? 'Upload New Version (Rework)' : 'Upload Edited Video Link'}
+                        {isRework ? 'Upload New Version (Rework)' : isEditingVideo ? 'Update Video Link' : 'Upload Edited Video Link'}
                       </p>
-                      {isRework && (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
-                          Comparison Mode Active
-                        </span>
+                      {(isRework || isEditingVideo) && (
+                        <div className="flex gap-2">
+                           {isEditingVideo && !isRework && (
+                             <button 
+                               onClick={() => setIsEditingVideo(false)}
+                               className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase border border-slate-300 hover:bg-slate-200"
+                             >
+                               Cancel
+                             </button>
+                           )}
+                           <span className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold uppercase border border-red-200">
+                             Edit Mode Active
+                           </span>
+                        </div>
                       )}
                     </div>
 
@@ -662,31 +729,46 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                         className="flex-1 p-4 border-2 border-black text-lg focus:bg-yellow-50 focus:outline-none"
                       />
                       <button
-                        onClick={handleUploadEditedVideo}
+                        onClick={async () => {
+                           await handleUploadEditedVideo();
+                           setIsEditingVideo(false);
+                        }}
                         className="px-8 py-4 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                       >
                         <Upload className="w-5 h-5 inline mr-2" />
-                        {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : 'Upload'}
+                        {isRejected ? 'Submit Rejected Edit' : isRework ? 'Submit Rework Edit' : isEditingVideo ? 'Update Video' : 'Upload'}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Delivered state ONLY for non-rework */}
-                {localProject.edited_video_link && !isRework && (
+                {/* Delivered state ONLY for non-rework (Show EDIT button if not DONE) */}
+                {localProject.edited_video_link && !isRework && !isEditingVideo && (
                   <div className="bg-green-50 border-2 border-green-600 p-4 mt-4">
-                    <p className="text-sm font-bold uppercase text-green-800">
-                      ✓ Edited Video Delivered
-                    </p>
-                    <p className="text-sm text-green-800 mt-1">
-                      → Project has been moved to {
-                        localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation' :
-                          localProject.assigned_to_role === 'CMO' ? 'CMO for review' :
-                            localProject.assigned_to_role === 'CEO' ? 'CEO for review' :
-                              localProject.assigned_to_role === 'WRITER' ? 'Writer for approval' :
-                                (localProject.assigned_to_role ? localProject.assigned_to_role.replace('_', ' ') : 'the next stage')
-                      }
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-sm font-bold uppercase text-green-800">
+                          ✓ Edited Video Delivered
+                        </p>
+                        <p className="text-sm text-green-800 mt-1">
+                          → Project has been moved to {
+                            localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation' :
+                              localProject.assigned_to_role === 'CMO' ? 'CMO for review' :
+                                localProject.assigned_to_role === 'CEO' ? 'CEO for review' :
+                                  localProject.assigned_to_role === 'WRITER' ? 'Writer for approval' :
+                                    (localProject.assigned_to_role ? localProject.assigned_to_role.replace('_', ' ') : 'the next stage')
+                          }
+                        </p>
+                      </div>
+                      {localProject.status !== TaskStatus.DONE && (
+                        <button 
+                          onClick={() => setIsEditingVideo(true)}
+                          className="px-3 py-1 bg-white border-2 border-black text-black text-[10px] font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        >
+                          Edit Link
+                        </button>
+                      )}
+                    </div>
                     {/* Show upload timestamp */}
                     {localProject.sub_editor_uploaded_at && (
                       <div className="mt-3 pt-3 border-t border-green-300">

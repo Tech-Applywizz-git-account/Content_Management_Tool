@@ -23,19 +23,20 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
 
         switch (filterCategory) {
             case 'pending':
-                // Show only pending/active projects (not completed)
-                return !isCompleted;
+                // Show ALL projects after multi-writer approval (Video review and scheduling)
+                const afterWriterApprovalStages = [
+                    WorkflowStage.POST_WRITER_REVIEW,
+                    WorkflowStage.FINAL_REVIEW_CMO,
+                    WorkflowStage.FINAL_REVIEW_CEO,
+                    WorkflowStage.OPS_SCHEDULING
+                ];
+                return afterWriterApprovalStages.includes(project.current_stage) && !isCompleted;
             case 'completed':
                 // Show only completed/posted projects
                 return isCompleted;
             case 'ceoapproved':
-                // CEO approved projects - must be approved by CEO and not completed
-                // STRICT CHECK: Only check the timestamp and ensure it is past script phase
-                return !!project.ceo_approved_at && 
-                       project.current_stage !== WorkflowStage.SCRIPT &&
-                       project.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 &&
-                       project.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2 &&
-                       !isCompleted;
+                // CEO approved projects - ALL projects after script approval
+                return !!project.ceo_approved_at && !isCompleted;
             case 'readytoschedule':
                 // Strict filter for ready to schedule projects
                 return (

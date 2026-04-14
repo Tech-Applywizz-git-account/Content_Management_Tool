@@ -72,7 +72,7 @@ const WriterApprovedVideoDetail: React.FC<Props> = ({ project, onBack }) => {
                     <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
                         <h2 className="text-2xl font-black uppercase text-slate-900 mb-6">Script Content</h2>
                         {project.data?.script_content ? (
-                            <ScriptDisplay content={project.data.script_content} />
+                            <ScriptDisplay content={project.data.script_content} caption={project.data.captions} />
                         ) : (
                             <div className="p-4 bg-yellow-50 text-yellow-800 border-2 border-yellow-400 font-bold uppercase">
                                 No script content available

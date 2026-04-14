@@ -41,6 +41,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
     const [returnType, setReturnType] = useState<'rework' | 'reject' | null>(null);
     const [writerAlreadyActed, setWriterAlreadyActed] = useState(false);
     const [videoLink, setVideoLink] = useState('');
+    const [caption] = useState(project.data?.captions || '');
 
     // Popup state
     const [showPopup, setShowPopup] = useState(false);
@@ -99,10 +100,13 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
             const workflowState = getWorkflowState(project);
 
             // Determine return type based on the latest action
+            // Determine return type based on the latest action and current status
             if (workflowState.isRejected) {
                 setReturnType('reject');
             } else if (workflowState.isRework) {
                 setReturnType('rework');
+            } else {
+                setReturnType(null); // Reset if it's no longer in a rework/reject state
             }
 
             // Fetch the most recent workflow history entry
@@ -180,6 +184,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
         fetchData();
     }, [project.id, project.status, project.rejected_reason, publicUser?.id]);
 
+    useEffect(() => {
+        // No longer updating local caption state from project prop as input is removed
+    }, [project.id]);
+
+
+
     const isRejected = getWorkflowState(project).isRejected;
 
     return (
@@ -214,7 +224,8 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <p className="text-sm font-bold text-slate-500 uppercase">Submitted {format(new Date(project.created_at), 'MMM dd, yyyy h:mm a')}</p>
                                 </div>
                                 <div className={`${isRejected ? 'bg-red-600' : 'bg-blue-600'} text-white px-4 py-2 border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                                    {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : 'In Review'}
+                                    {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
+                                        (project.status === 'WAITING_APPROVAL' ? 'Waiting Approval' : 'In Review')}
                                 </div>
                             </div>
 
@@ -246,7 +257,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         <FileText className="w-5 h-5 text-blue-600" />
                                         <span className="text-xs font-bold uppercase text-slate-500">Status</span>
                                     </div>
-                                    <p className="font-black text-lg uppercase">{isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') : project.status}</p>
+                                    <p className="font-black text-lg uppercase">
+                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
+                                            (getWorkflowState(project).isRework ? 'Rework' : project.status.replace(/_/g, ' '))}
+                                    </p>
                                 </div>
                             </div>
 
@@ -293,7 +307,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <h4 className="font-black text-slate-900 uppercase mb-4 text-center">
                                         {project.data?.source === 'IDEA_PROJECT' ? 'Previous Idea' : 'Previous Script'}
                                     </h4>
-                                    <ScriptDisplay content={previousScript} showBox={true} />
+                                    <ScriptDisplay content={previousScript} caption={project.data?.captions} showBox={true} />
                                 </div>
 
                                 <div className="flex flex-col">
@@ -304,6 +318,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         content={project.data?.source === 'IDEA_PROJECT'
                                             ? project.data.idea_description || ''
                                             : project.data?.script_content || ''}
+                                        caption={caption}
                                         showBox={true}
                                     />
                                 </div>
@@ -313,9 +328,12 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                 content={project.data?.source === 'IDEA_PROJECT'
                                     ? project.data.idea_description || ''
                                     : project.data?.script_content || ''}
+                                caption={caption}
                             />
                         )}
                     </div>
+
+
 
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Project Details</h3>

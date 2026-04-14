@@ -6,6 +6,8 @@ import { diff_match_patch as DiffMatchPatch } from 'diff-match-patch';
 interface ScriptComparisonProps {
   previousScript: string;
   currentScript: string;
+  previousCaption?: string;
+  currentCaption?: string;
   previousAuthor?: string;
   currentAuthor?: string;
   previousTimestamp?: string;
@@ -58,6 +60,8 @@ const highlightAddedContent = (oldText: string, newText: string) => {
 const ScriptComparison: React.FC<ScriptComparisonProps> = ({
   previousScript,
   currentScript,
+  previousCaption,
+  currentCaption,
 }) => {
   const [highlightedLines, setHighlightedLines] = useState<Array<{ type: string, content: string }>>([]);
 
@@ -101,7 +105,7 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
           </div>
           <div className="font-serif text-xl text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
             <div className="p-4">
-              <ScriptDisplay content={previousScript} showBox={false} />
+              <ScriptDisplay content={previousScript} caption={previousCaption} showBox={false} />
             </div>
           </div>
         </div>
@@ -115,9 +119,17 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
             <div className="p-4 text-xl">
               <div className="space-y-1">
                 {highlightedLines.length > 0 ? (
-                  highlightedLines.map((line, index) => renderHighlightedLine(line, index))
+                  <>
+                    {highlightedLines.map((line, index) => renderHighlightedLine(line, index))}
+                    {currentCaption && (
+                      <div className="mt-8 pt-6 border-t font-sans">
+                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-2 tracking-widest">SUBMITTED CAPTION</span>
+                        <div className="text-slate-900 font-bold whitespace-pre-wrap">{currentCaption}</div>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <ScriptDisplay content={currentScript} showBox={false} />
+                  <ScriptDisplay content={currentScript} caption={currentCaption} showBox={false} />
                 )}
               </div>
             </div>

@@ -368,7 +368,11 @@ const DesignerScripts: React.FC<Props> = ({ project: initialProject, userRole, o
               {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
             </h3>
             <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50 overflow-x-auto">
-              <ScriptDisplay content={localProject.data?.script_content || localProject.data?.idea_description || ''} showBox={false} />
+              <ScriptDisplay 
+                content={localProject.data?.script_content || localProject.data?.idea_description || ''} 
+                caption={localProject.data?.captions}
+                showBox={false} 
+              />
             </div>
           </div>
         )}

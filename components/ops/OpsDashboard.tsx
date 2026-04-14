@@ -126,16 +126,23 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         return postedDate >= weekAgo;
     });
 
-    // CEO-approved projects (projects that have moved forward after CEO approval, but not yet completed)
-    // Updated to strictly use timestamp
-    const ceoApproved = (inboxProjects || []).filter(p =>
+    // CEO-approved projects (ALL projects after script approval) - use allProjects to include production stages
+    const ceoApproved = (allProjects || inboxProjects || []).filter(p =>
         p.ceo_approved_at &&
-        p.data?.source !== 'IDEA_PROJECT' &&
-        p.current_stage !== WorkflowStage.SCRIPT &&
-        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L1 &&
-        p.current_stage !== WorkflowStage.SCRIPT_REVIEW_L2 &&
         !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)
     );
+
+    // My Work (ALL projects after multi-writer approval)
+    const pendingMyWork = (historyProjects || []).filter(p => {
+        const afterWriterApprovalStages = [
+            WorkflowStage.POST_WRITER_REVIEW,
+            WorkflowStage.FINAL_REVIEW_CMO,
+            WorkflowStage.FINAL_REVIEW_CEO,
+            WorkflowStage.OPS_SCHEDULING
+        ];
+        return afterWriterApprovalStages.includes(p.current_stage) &&
+               !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED);
+    });
 
 
     return (
@@ -151,7 +158,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             ) : activeView === 'calendar' ? (
                 <OpsCalendar projects={allProjects || inboxProjects || []} />
             ) : activeView === 'ceoapproved' ? (
-                <OpsCeoApproved projects={inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
+                <OpsCeoApproved projects={allProjects || inboxProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} />
             ) : activeView === 'ready-to-schedule' ? (
                 <OpsFilteredProjects
                     user={user}
@@ -243,9 +250,9 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             }}
                         >
                             <div className="text-4xl font-black text-white mb-1">
-                                {(historyProjects || []).length}
+                                {pendingMyWork.length}
                             </div>
-                            <div className="text-sm font-bold uppercase text-white/80">Total Managed</div>
+                            <div className="text-sm font-bold uppercase text-white/80">Pending My Work</div>
                         </div>
                     </div>
 
@@ -255,7 +262,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             Quick Overview
                         </h2>
                         <p className="text-slate-600">
-                            You have {ceoApproved.length} CEO-approved {ceoApproved.length === 1 ? 'project' : 'projects'}, {readyToSchedule.length} ready to schedule, and {scheduled.length} scheduled for publishing. Total pending: {(historyProjects || []).filter(p => !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)).length}.
+                            You have {ceoApproved.length} production {ceoApproved.length === 1 ? 'project' : 'projects'} (CEO Approved), {pendingMyWork.length} ready for final review (My Work), and {readyToSchedule.length} ready to schedule. 
                             Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage pending tasks.
                         </p>
                     </div>
