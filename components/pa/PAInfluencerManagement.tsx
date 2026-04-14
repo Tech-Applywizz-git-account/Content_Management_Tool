@@ -23,16 +23,16 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const influencerDisplayName = project.data?.influencer_name || project.influencer_name || 'Influencer';
-    
-    const sortedProjects = [...allInfluencerProjects].sort((a, b) => 
+
+    const sortedProjects = [...allInfluencerProjects].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
     const aggregatedStats = sortedProjects.reduce((acc, p) => {
         const isScriptSent = p.current_stage !== WorkflowStage.PARTNER_REVIEW;
         const hasRawVideo = !!p.video_link || [
-            WorkflowStage.VIDEO_EDITING, 
-            WorkflowStage.PA_FINAL_REVIEW, 
+            WorkflowStage.VIDEO_EDITING,
+            WorkflowStage.PA_FINAL_REVIEW,
             WorkflowStage.POSTED
         ].includes(p.current_stage);
         const isEditedSent = p.current_stage === WorkflowStage.POSTED;
@@ -40,7 +40,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
         if (isScriptSent) acc.scriptSent += 1;
         if (hasRawVideo) acc.rawReceived += 1;
         if (isEditedSent) acc.editedSent += 1;
-        
+
         return acc;
     }, { scriptSent: 0, rawReceived: 0, editedSent: 0 });
 
@@ -89,7 +89,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             });
 
             await db.advanceWorkflow(project.id, 'Campaign launched by PA');
-            
+
             setShowSuccessModal(true);
             setTimeout(() => {
                 onComplete();
@@ -104,7 +104,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans flex flex-col animate-fade-in pb-32 relative">
-            
+
             {/* Confirmation Modal */}
             {showConfirmModal && !showSuccessModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -115,13 +115,13 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             Are you sure you want to launch this campaign? This will send the script to {influencerName} and advance the workflow.
                         </p>
                         <div className="flex gap-4">
-                            <button 
+                            <button
                                 onClick={() => setShowConfirmModal(false)}
                                 className="flex-1 py-4 border-2 border-black font-black uppercase text-xs hover:bg-slate-100 transition-all"
                             >
                                 Cancel
                             </button>
-                            <button 
+                            <button
                                 onClick={handleLaunchOutreach}
                                 disabled={isSending}
                                 className="flex-1 py-4 border-2 border-black bg-black text-white font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all flex items-center justify-center gap-2"
@@ -162,7 +162,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1">Partnership Hub</p>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                     <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg shadow-indigo-200">
                         <Layers className="w-4 h-4 text-indigo-300" /> Executive Analytics
@@ -172,14 +172,14 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
 
             <div className="flex-1 overflow-y-auto">
                 <div className="max-w-6xl mx-auto p-8 space-y-10">
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         <div className="p-8 bg-white border-2 border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 flex flex-col items-center text-center justify-center relative overflow-hidden group">
-                           <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-3xl text-white shadow-xl mb-4 relative z-10">
+                            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-3xl text-white shadow-xl mb-4 relative z-10">
                                 {influencerDisplayName.charAt(0)}
-                           </div>
-                           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none relative z-10">{influencerDisplayName}</h2>
-                           <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || 'No email set'}</p>
+                            </div>
+                            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none relative z-10">{influencerDisplayName}</h2>
+                            <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || 'No email set'}</p>
                         </div>
 
                         <div className="p-8 bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-200 text-white flex flex-col justify-center relative overflow-hidden">
@@ -223,8 +223,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Influencer Identity</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={influencerName}
                                         onChange={(e) => setInfluencerName(e.target.value)}
                                         placeholder="Full Name"
@@ -233,8 +233,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Outreach Channel</label>
-                                    <input 
-                                        type="email" 
+                                    <input
+                                        type="email"
                                         value={influencerEmail}
                                         onChange={(e) => setInfluencerEmail(e.target.value)}
                                         placeholder="Valid Email Address"
@@ -243,7 +243,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={() => setShowConfirmModal(true)}
                                 className="w-full py-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xl rounded-2xl shadow-xl shadow-indigo-100 hover:translate-y-[-2px] transition-all flex items-center justify-center gap-3"
                             >
@@ -265,14 +265,12 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             const rawLinksHistory = [...(proj.cine_video_links_history || []), proj.video_link].filter(Boolean);
                             const editedLinksHistory = [...(proj.editor_video_links_history || []), ...(proj.sub_editor_video_links_history || []), proj.edited_video_link].filter(Boolean);
                             const isNew = idx === 0;
-                            
+
                             return (
-                                <div key={proj.id} className={`bg-white border-2 rounded-[2rem] shadow-xl overflow-hidden transition-all duration-300 ${
-                                    isNew ? 'border-indigo-400 ring-4 ring-indigo-50 shadow-indigo-100' : 'border-slate-100 shadow-slate-100'
-                                }`}>
-                                    <div className={`p-5 px-8 flex flex-wrap items-center justify-between gap-4 ${
-                                        isNew ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-900 text-white'
+                                <div key={proj.id} className={`bg-white border-2 rounded-[2rem] shadow-xl overflow-hidden transition-all duration-300 ${isNew ? 'border-indigo-400 ring-4 ring-indigo-50 shadow-indigo-100' : 'border-slate-100 shadow-slate-100'
                                     }`}>
+                                    <div className={`p-5 px-8 flex flex-wrap items-center justify-between gap-4 ${isNew ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-900 text-white'
+                                        }`}>
                                         <div className="flex items-center gap-5">
                                             <div className="w-10 h-10 bg-white/20 backdrop-blur-md text-white rounded-xl flex items-center justify-center font-black text-lg border border-white/30">
                                                 {sortedProjects.length - idx}
@@ -298,20 +296,20 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                     influencerHistory.map((entry: any, hIdx: number) => (
                                                         <div key={hIdx} className="p-6 bg-indigo-50/30 rounded-3xl border-2 border-indigo-50">
                                                             <div className="text-sm font-medium text-slate-700 italic">
-                                                                <ScriptDisplay 
-                                                                    content={entry.script_content || 'Content synchronized'} 
+                                                                <ScriptDisplay
+                                                                    content={entry.script_content || 'Content synchronized'}
                                                                     caption={proj.data?.captions}
-                                                                    showBox={false} 
+                                                                    showBox={false}
                                                                 />
                                                             </div>
                                                         </div>
                                                     )).reverse()
                                                 ) : (
                                                     <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                                        <ScriptDisplay 
-                                                            content={proj.data?.script_content || proj.data?.idea_description || 'No content found'} 
+                                                        <ScriptDisplay
+                                                            content={proj.data?.script_content || proj.data?.idea_description || 'No content found'}
                                                             caption={proj.data?.captions}
-                                                            showBox={false} 
+                                                            showBox={false}
                                                         />
                                                     </div>
                                                 )}
