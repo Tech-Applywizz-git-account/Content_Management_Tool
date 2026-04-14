@@ -16,13 +16,13 @@ interface Props {
 }
 
 const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete }) => {
-    const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || project.influencer_name || '');
-    const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || project.influencer_email || '');
+    const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || '');
+    const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || '');
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-    const influencerDisplayName = project.data?.influencer_name || project.influencer_name || 'Influencer';
+    const influencerDisplayName = project.data?.influencer_name || 'Influencer';
 
     const sortedProjects = [...allInfluencerProjects].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
