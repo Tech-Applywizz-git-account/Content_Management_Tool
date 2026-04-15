@@ -3,7 +3,7 @@ import { Project, Role, TaskStatus, WorkflowStage, STAGE_LABELS, UserStatus, Use
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film } from 'lucide-react';
+import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film, Link } from 'lucide-react';
 import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 import ReworkSection from '../ReworkSection';
 import Popup from '../Popup';
@@ -210,7 +210,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
         : `Edited video uploaded: ${editedVideoLink}`;
 
       // Determine the correct to_role based on thumbnail_required
-      const nextRole = localProject.data?.thumbnail_required === true ? 'DESIGNER' : 'WRITER';
+      const nextRole = localProject.data?.thumbnail_required === true ? Role.DESIGNER : Role.CMO;
 
       await db.workflow.recordAction(
         localProject.id,
@@ -275,9 +275,9 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
       setPopupDuration(isRework ? 10000 : 5000); // 10 seconds for rework, 5 for regular
       setShowPopup(true);
 
-      // The project has already been updated to MULTI_WRITER_APPROVAL stage, 
+      // The project has already been updated to the next stage (Designer or Final Review),
       // so no further workflow advancement is needed here.
-      // The MULTI_WRITER_APPROVAL stage is handled by the writers themselves.
+      // The multi-writer approval stage is now skipped for efficiency.
 
       // Get updated project to update UI
       const postWorkflowProject = await db.getProjectById(localProject.id);
@@ -534,14 +534,23 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             )
           }
 
-          {/* Script Reference */}
+          {/* Script & Reference Section */}
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="w-5 h-5" />
-              <h2 className="text-xl font-black uppercase">Script Reference</h2>
+              <h2 className="text-xl font-black uppercase">
+                {localProject.data?.source === 'IDEA_PROJECT' ? 'Idea & Reference' : 'Script & Reference'}
+              </h2>
             </div>
-            <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-              {localProject.data?.script_content ? (
+            
+            {/* Script/Idea Content */}
+            <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed mb-6">
+              {localProject.data?.source === 'IDEA_PROJECT' ? (
+                <div>
+                  <h3 className="text-xs font-black uppercase text-slate-400 mb-2">Idea Description</h3>
+                  <div className="font-sans font-medium">{localProject.data.idea_description || 'No idea description available'}</div>
+                </div>
+              ) : localProject.data?.script_content ? (
                 <div
                   dangerouslySetInnerHTML={{
                     __html: localProject.data.script_content
@@ -551,6 +560,45 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 'No script content available'
               )}
             </div>
+
+            {/* Reference Links */}
+            {(localProject.data?.script_reference_link || localProject.data?.referral_link) && (
+              <div className="pt-6 border-t-2 border-dashed border-slate-200 space-y-4">
+                {localProject.data?.script_reference_link && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Link className="w-4 h-4 text-slate-400" />
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Script Reference</span>
+                    </div>
+                    <a 
+                      href={localProject.data.script_reference_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline font-medium break-all text-sm"
+                    >
+                      {localProject.data.script_reference_link}
+                    </a>
+                  </div>
+                )}
+                
+                {localProject.data?.referral_link && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Link className="w-4 h-4 text-slate-400" />
+                      <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Referral Link</span>
+                    </div>
+                    <a 
+                      href={localProject.data.referral_link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline font-medium break-all text-sm"
+                    >
+                      {localProject.data.referral_link}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Cinematographer Instructions - Show when project has cinematographer data */}

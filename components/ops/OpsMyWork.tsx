@@ -11,8 +11,18 @@ interface Props {
 }
 
 const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory = 'pending' }) => {
-    // Only show projects currently assigned to OPS role
-    const opsProjects = projects.filter(project => project.assigned_to_role === 'OPS');
+    // Show projects assigned to OPS OR projects in review stages (Parallel Visibility)
+    const opsProjects = projects.filter(project => {
+        const isAssignedToOps = project.assigned_to_role === 'OPS';
+        const isParallelReviewStage = [
+            WorkflowStage.POST_WRITER_REVIEW,
+            WorkflowStage.FINAL_REVIEW_CMO,
+            WorkflowStage.FINAL_REVIEW_CEO,
+            WorkflowStage.OPS_SCHEDULING
+        ].includes(project.current_stage);
+
+        return isAssignedToOps || isParallelReviewStage;
+    });
 
     // Filter projects to show only pending works by default
     const filteredProjects = opsProjects.filter(project => {

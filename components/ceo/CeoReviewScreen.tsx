@@ -570,15 +570,15 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 {(() => {
                                     if (project.data?.source === 'DESIGNER_INITIATED') return 'Creative';
                                     if (project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content) return 'Idea';
-                                    
+
                                     // Check if this is a CINE-initiated rework
-                                    const isCineRework = project.history?.some(h => 
-                                        h.action === 'REWORK' && 
+                                    const isCineRework = project.history?.some(h =>
+                                        h.action === 'REWORK' &&
                                         h.actor_role === 'CINE' &&
                                         h.from_role === 'CINE' &&
                                         h.to_role === 'WRITER'
                                     );
-                                    
+
                                     if (isCineRework) return 'Cine Rework';
                                     if (previousScript || previousAssets) return 'Rework';
                                     return 'New';
@@ -744,7 +744,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 <ScriptComparison
                                     previousScript={previousScript}
                                     currentScript={project.data?.script_content || '<p>No new script content submitted</p>'}
-                                    previousCaption={previousAssets?.data?.captions || previousAssets?.captions}
+                                    previousCaption={undefined}
                                     currentCaption={project.data?.captions}
                                     previousAuthor="Previous Version"
                                     currentAuthor="Writer Rework Submission"
@@ -1028,12 +1028,12 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                 </div>
 
                 {/* RIGHT COLUMN: Approval Panel - Vertical on mobile/tablet, Sidebar on desktop */}
-                <div className="w-full lg:w-[400px] xl:w-[450px] bg-white border-t-2 lg:border-t-0 lg:border-l-2 border-black p-5 md:p-8 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 lg:top-20 lg:h-[calc(100vh-80px)] overflow-y-auto z-30 flex flex-col">
-                    <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase mb-4 md:mb-8 border-b-4 border-black pb-2 inline-block">Final Decision</h2>
+                <div className="w-full lg:w-[400px] xl:w-[450px] bg-white border-t-2 lg:border-t-0 lg:border-l-2 border-black p-4 md:p-6 shadow-[-10px_0px_20px_rgba(0,0,0,0.05)] sticky bottom-0 lg:top-20 lg:h-[calc(100vh-80px)] overflow-y-auto z-30 flex flex-col">
+                    <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase mb-2 md:mb-4 border-b-4 border-black pb-2 inline-block">Final Decision</h2>
 
-                    <div className="space-y-4 flex-1">
+                    <div className="space-y-3">
                         {/* Approve Option */}
-                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'APPROVE' ? 'border-black bg-[#4ADE80]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-3 md:p-4 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'APPROVE' ? 'border-black bg-[#4ADE80]' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
@@ -1053,7 +1053,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </label>
 
                         {/* Rework Option */}
-                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REWORK' ? 'border-black bg-[#FFD952]' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-3 md:p-4 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REWORK' ? 'border-black bg-[#FFD952]' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
@@ -1071,7 +1071,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </label>
 
                         {/* Reject Option */}
-                        <label className={`block p-4 md:p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REJECT' ? 'border-black bg-[#FF4F4F] text-white' : 'border-black bg-white hover:bg-slate-50'}`}>
+                        <label className={`block p-3 md:p-4 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${decision === 'REJECT' ? 'border-black bg-[#FF4F4F] text-white' : 'border-black bg-white hover:bg-slate-50'}`}>
                             <div className="flex items-center">
                                 <input
                                     type="radio"
@@ -1089,10 +1089,10 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         </label>
                     </div>
 
-                    <div className="my-8 border-t-2 border-dashed border-slate-300"></div>
+                    <div className="my-4 border-t-2 border-dashed border-slate-300"></div>
 
                     {/* Conditional Inputs */}
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                         {decision === 'REWORK' && (
                             <div className="animate-fade-in space-y-2">
                                 <label className="block text-xs font-black text-slate-500 uppercase">Send back to</label>
@@ -1189,7 +1189,7 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         )}
                     </div>
 
-                    <div className="mt-8">
+                    <div className="mt-6">
                         <button
                             disabled={!decision || isSubmitting ||
                                 (decision === 'REWORK' && (!reworkStage || reworkStage === '' || !reworkReason || !reworkComment)) ||
@@ -1232,7 +1232,6 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             {
                 showConfirmation && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        {console.log('Rendering confirmation popup', { confirmationAction })}
                         <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-2xl font-black uppercase">Confirm Action</h3>

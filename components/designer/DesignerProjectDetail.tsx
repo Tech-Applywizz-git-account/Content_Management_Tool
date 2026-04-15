@@ -299,7 +299,8 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                 designer_uploaded_at: new Date().toISOString(), // Store timestamp
                 designer_name: publicUser.full_name || publicUser?.email || 'Unknown Designer', // Store designer name in direct column
                 data: {
-                    ...localProject.data
+                    ...localProject.data,
+                    ...(isVideo ? { thumbnail_link: link } : { creative_link: link })
                 }
             });
 
@@ -667,6 +668,7 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             <div className="flex flex-col sm:flex-row gap-3">
                                 <button
                                     onClick={handleDirectUpload}
+                                    disabled={isSubmitting}
                                     className="px-6 md:px-8 py-3 md:py-4 bg-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] hover:translate-y-[2px] transition-all flex items-center justify-center gap-2"
                                 >
                                     <Send className="w-4 h-4" />

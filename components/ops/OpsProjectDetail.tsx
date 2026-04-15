@@ -410,9 +410,22 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                     {/* Scheduling Actions */}
                     <div className="space-y-6">
-                        {/* Schedule Post - Show only after CMO and CEO final review have approved */}
-                        {!isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
-                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                        {/* Schedule Post - Show during final review or scheduling stage */}
+                        {!isPosted && (
+                            [WorkflowStage.POST_WRITER_REVIEW, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO, WorkflowStage.OPS_SCHEDULING].includes(project.current_stage)
+                        ) && (
+                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] relative overflow-hidden">
+                                {/* Visual Lock if not approved yet */}
+                                {!project.ceo_approved_at && (
+                                    <div className="absolute inset-0 bg-slate-50/70 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center p-6 text-center">
+                                        <Clock size={40} className="text-amber-500 mb-2 animate-pulse" />
+                                        <h3 className="text-lg font-black uppercase text-slate-800">Pending Approvals</h3>
+                                        <p className="text-sm font-bold text-slate-600 max-w-[200px]">
+                                            Scheduling will be available after CMO & CEO provided final approval.
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center gap-2 mb-4">
                                     <Calendar size={24} className="text-slate-700" />
                                     <h2 className="text-xl font-black uppercase text-slate-900">
@@ -435,7 +448,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                                     <button
                                         onClick={handleSetPostDate}
-                                        disabled={!postDate}
+                                        disabled={!postDate || !project.ceo_approved_at}
                                         className="w-full bg-blue-500 text-white py-3 font-bold border-2 border-black 
                                                  hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed
                                                  shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded"
@@ -455,8 +468,21 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                         )}
 
                         {/* Add Live URL (after posting) */}
-                        {project.post_scheduled_date && !isPosted && project.current_stage === WorkflowStage.OPS_SCHEDULING && (
-                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                        {project.post_scheduled_date && !isPosted && (
+                             [WorkflowStage.POST_WRITER_REVIEW, WorkflowStage.FINAL_REVIEW_CMO, WorkflowStage.FINAL_REVIEW_CEO, WorkflowStage.OPS_SCHEDULING].includes(project.current_stage)
+                        ) && (
+                            <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] relative overflow-hidden">
+                                {/* Visual Lock if not approved yet */}
+                                {!project.ceo_approved_at && (
+                                    <div className="absolute inset-0 bg-slate-50/70 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center p-6 text-center">
+                                        <Clock size={40} className="text-amber-500 mb-2 animate-pulse" />
+                                        <h3 className="text-lg font-black uppercase text-slate-800">Pending Approvals</h3>
+                                        <p className="text-sm font-bold text-slate-600 max-w-[200px]">
+                                            Posting will be available after CMO & CEO provided final approval.
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center gap-2 mb-4">
                                     <LinkIcon size={24} className="text-slate-700" />
                                     <h2 className="text-xl font-black uppercase text-slate-900">
@@ -491,7 +517,7 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
 
                                     <button
                                         onClick={handleAddLiveUrl}
-                                        disabled={!liveUrl}
+                                        disabled={!liveUrl || !project.ceo_approved_at}
                                         className="w-full bg-green-500 text-white py-3 font-bold border-2 border-black 
                                                  hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed
                                                  shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all

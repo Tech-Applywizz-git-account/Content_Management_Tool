@@ -3,7 +3,7 @@ import { Project, Role, WorkflowStage, TaskStatus, User } from '../../types';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film } from 'lucide-react';
+import { ArrowLeft, Calendar, Upload, Video, FileText, Clock, Film, Link } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
 import Popup from '../Popup';
 import Layout from '../Layout';
@@ -362,19 +362,67 @@ const SubEditorProjectDetailPage: React.FC<{
                     </div>
                 )}
 
-                {/* Script Content */}
+                {/* Script & Reference Section */}
                 <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
                     <div className="flex items-center gap-2 mb-4">
                         <FileText className="w-5 h-5" />
-                        <h2 className="text-xl font-black uppercase">Script Content</h2>
+                        <h2 className="text-xl font-black uppercase">
+                            {project.data?.source === 'IDEA_PROJECT' ? 'Idea & Reference' : 'Script & Reference'}
+                        </h2>
                     </div>
-                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed">
-                        {project.data?.script_content ? (
+
+                    {/* Script/Idea Content */}
+                    <div className="bg-slate-50 border-2 border-slate-200 p-4 font-serif text-slate-900 leading-relaxed mb-6">
+                        {project.data?.source === 'IDEA_PROJECT' ? (
+                            <div>
+                                <h3 className="text-xs font-black uppercase text-slate-400 mb-2">Idea Description</h3>
+                                <div className="font-sans font-medium">{project.data.idea_description || 'No idea description available'}</div>
+                            </div>
+                        ) : project.data?.script_content ? (
                             <div dangerouslySetInnerHTML={{ __html: project.data.script_content }} />
                         ) : (
                             'No script content available'
                         )}
                     </div>
+
+                    {/* Reference Links */}
+                    {(project.data?.script_reference_link || project.data?.referral_link) && (
+                        <div className="pt-6 border-t-2 border-dashed border-slate-200 space-y-4">
+                            {project.data?.script_reference_link && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Link className="w-4 h-4 text-slate-400" />
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Script Reference</span>
+                                    </div>
+                                    <a
+                                        href={project.data.script_reference_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline font-medium break-all text-sm"
+                                    >
+                                        {project.data.script_reference_link}
+                                    </a>
+                                </div>
+                            )}
+
+                            {project.data?.referral_link && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Link className="w-4 h-4 text-slate-400" />
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Referral Link</span>
+                                    </div>
+                                    <a
+                                        href={project.data.referral_link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline font-medium break-all text-sm"
+                                    >
+                                        {project.data.referral_link}
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Cinematographer Instructions */}

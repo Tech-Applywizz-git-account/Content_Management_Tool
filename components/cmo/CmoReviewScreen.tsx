@@ -928,7 +928,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     const prevVideo = useReworkContext ? reworkContext.before.video_link : previousAssets?.video_link;
                                     const prevEdited = useReworkContext ? reworkContext.before.edited_video_link : previousAssets?.edited_video_link;
                                     const prevThumbnail = useReworkContext ? reworkContext.before.thumbnail_link : previousAssets?.thumbnail_link;
-                                    const prevCreative = useReworkContext ? reworkContext.before.creative_link : (previousAssets?.creative_link || previousAssets?.data?.creative_link);
+                                    const prevCreative = useReworkContext ? reworkContext.before.creative_link : previousAssets?.creative_link;
 
                                     // Resolve "Current" (After) Assets
                                     // If rework context has explicit 'after' (submitted by role), use it. Otherwise use current project state.
@@ -1200,7 +1200,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
                                         {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' :
-                                            ((project.content_type === 'JOBBOARD' || project.content_type === 'LEAD_MAGNET') && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
+                                            ((project.channel === Channel.JOBBOARD || project.channel === Channel.LEAD_MAGNET) && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
                                                 'Ready for Publishing'}
                                     </span>
                                 </div>
@@ -1320,7 +1320,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
             {/* Confirmation Popup */}
             {showConfirmation && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    {console.log('Rendering confirmation popup', { confirmationAction })}
                     <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-2xl font-black uppercase">Confirm Action</h3>

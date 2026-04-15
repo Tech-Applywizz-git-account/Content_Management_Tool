@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, User, UserStatus } from '../../types';
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film } from 'lucide-react';
+import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film, Link } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -404,11 +404,24 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <FileText className="w-5 h-5" />
             <h2 className="text-xl font-black uppercase">Script Reference</h2>
           </div>
-              <ScriptDisplay 
-                content={localProject.data?.script_content || localProject.data?.idea_description || ''} 
-                caption={localProject.data?.captions}
-                showBox={false} 
-              />
+          <ScriptDisplay content={localProject.data?.script_content || ''} />
+          
+          {localProject.data?.script_reference_link && (
+            <div className="mt-6 pt-6 border-t-2 border-dashed border-slate-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Link className="w-4 h-4 text-slate-400" />
+                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Reference Link</span>
+              </div>
+              <a 
+                href={localProject.data.script_reference_link} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-medium break-all"
+              >
+                {localProject.data.script_reference_link}
+              </a>
+            </div>
+          )}
         </div>
 
         {/* Cinematographer Instructions - Show when project has cinematographer data */}
@@ -732,7 +745,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                   <p className="text-sm text-green-800 mt-1">
                     → Project has been moved to {
                       isDirectUpload
-                        ? 'CMO for Approval' /* SKIP MULTI_WRITER_APPROVAL: ? 'Writers for Multi-Writer Approval' */
+                        ? 'Writers for Multi-Writer Approval'
                         : localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation'
                           : localProject.assigned_to_role === 'SUB_EDITOR' ? 'Sub-Editor for processing'
                             : localProject.assigned_to_role === 'CMO' ? 'CMO for review'

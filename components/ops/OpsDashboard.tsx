@@ -132,15 +132,15 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED)
     );
 
-    // My Work (ALL projects after multi-writer approval)
-    const pendingMyWork = (historyProjects || []).filter(p => {
-        const afterWriterApprovalStages = [
+    // My Work (Parallel visibility for OPS during final review stages)
+    const pendingMyWork = (allProjects || inboxProjects || []).filter(p => {
+        const parallelVisibilityStages = [
             WorkflowStage.POST_WRITER_REVIEW,
             WorkflowStage.FINAL_REVIEW_CMO,
             WorkflowStage.FINAL_REVIEW_CEO,
             WorkflowStage.OPS_SCHEDULING
         ];
-        return afterWriterApprovalStages.includes(p.current_stage) &&
+        return parallelVisibilityStages.includes(p.current_stage) &&
                !(p.status === TaskStatus.DONE || p.data?.live_url || p.current_stage === WorkflowStage.POSTED);
     });
 
@@ -154,7 +154,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
             onChangeView={handleViewChange}
         >
             {activeView === 'mywork' ? (
-                <OpsMyWork user={user} projects={historyProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} filterCategory={filterCategory} />
+                <OpsMyWork user={user} projects={allProjects || []} onSelectProject={(params) => navigate(`/ops/project/${params.project.id}`)} filterCategory={filterCategory} />
             ) : activeView === 'calendar' ? (
                 <OpsCalendar projects={allProjects || inboxProjects || []} />
             ) : activeView === 'ceoapproved' ? (
@@ -252,7 +252,7 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             <div className="text-4xl font-black text-white mb-1">
                                 {pendingMyWork.length}
                             </div>
-                            <div className="text-sm font-bold uppercase text-white/80">Pending My Work</div>
+                            <div className="text-sm font-bold uppercase text-white/80">Production Queue</div>
                         </div>
                     </div>
 
@@ -262,8 +262,11 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
                             Quick Overview
                         </h2>
                         <p className="text-slate-600">
-                            You have {ceoApproved.length} production {ceoApproved.length === 1 ? 'project' : 'projects'} (CEO Approved), {pendingMyWork.length} ready for final review (My Work), and {readyToSchedule.length} ready to schedule. 
-                            Click <button onClick={() => handleViewChange('mywork')} className="text-blue-600 font-bold underline">My Work</button> to manage pending tasks.
+                            You have {pendingMyWork.length} total projects in your production queue.
+                            <br />
+                            <span className="text-xs font-bold text-slate-400 uppercase mt-2 block">
+                                ({ceoApproved.length} CEO Approved + {pendingMyWork.length - ceoApproved.length} in final review)
+                            </span>
                         </p>
                     </div>
                 </div>

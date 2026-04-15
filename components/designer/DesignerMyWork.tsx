@@ -19,6 +19,13 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
     const [selectedProject, setSelectedProject] = React.useState<Project | null>(null);
     const [activeRoleFilter, setActiveRoleFilter] = React.useState<Role | 'ALL' | 'POSTED'>('ALL');
 
+    const isDirectDesignerUpload = (project: Project) => project.data?.source === 'DESIGNER_DIRECT_UPLOAD';
+    const hasDeliveredAsset = (project: Project) => {
+        const isVideo = project.content_type === 'VIDEO' || isInfluencerVideo(project);
+        return isVideo
+            ? !!project.thumbnail_link
+            : !!project.creative_link || !!project.data?.creative_link;
+    };
 
     // Show all projects the designer has participated in
     // No filtering by assigned_to_role - show all projects from getMyWork
@@ -46,12 +53,10 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
         // 2. Projects with delivery date but no creative assets uploaded
         // 3. Projects with creative assets uploaded (lowest priority)
         const sortedProjects = [...(projects || [])].sort((a, b) => {
-            const aHasDeliveryDate = !!a.delivery_date;
-            const bHasDeliveryDate = !!b.delivery_date;
-            const isVideoA = a.content_type === 'VIDEO' || isInfluencerVideo(a);
-            const isVideoB = b.content_type === 'VIDEO' || isInfluencerVideo(b);
-            const aHasCreative = isVideoA ? !!a.thumbnail_link : !!a.creative_link;
-            const bHasCreative = isVideoB ? !!b.thumbnail_link : !!b.creative_link;
+            const aHasDeliveryDate = !!a.delivery_date || isDirectDesignerUpload(a);
+            const bHasDeliveryDate = !!b.delivery_date || isDirectDesignerUpload(b);
+            const aHasCreative = hasDeliveredAsset(a);
+            const bHasCreative = hasDeliveredAsset(b);
 
             // Projects without delivery date come first
             if (aHasDeliveryDate && !bHasDeliveryDate) return 1;
@@ -144,7 +149,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {myTasks.map(project => {
                     const isVideo = project.content_type === 'VIDEO' || isInfluencerVideo(project);
-                    const isDelivered = isVideo ? !!project.thumbnail_link : !!project.creative_link;
+                    const isDelivered = hasDeliveredAsset(project);
 
                     // Use the canonical rework condition
                     const isRework = isActiveRework(project, user.role);
@@ -214,16 +219,16 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">
 
-                                    {activeFilter !== 'SCRIPTS' && !project.delivery_date ? (
-                                        <div className="bg-red-50 border-2 border-red-400 p-2">
-                                            <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
-                                        </div>
-                                    ) : activeFilter !== 'SCRIPTS' && isDelivered ? (
+                                    {activeFilter !== 'SCRIPTS' && isDelivered ? (
                                         <div className="bg-green-50 border-2 border-green-400 p-2">
                                             <p className="text-[10px] font-bold text-green-800">
                                                 <FileImage className="w-3 h-3 inline mr-1" />
                                                 Delivered
                                             </p>
+                                        </div>
+                                    ) : activeFilter !== 'SCRIPTS' && !project.delivery_date ? (
+                                        <div className="bg-red-50 border-2 border-red-400 p-2">
+                                            <p className="text-[10px] font-bold text-red-800 uppercase">Needs Delivery Date</p>
                                         </div>
                                     ) : activeFilter !== 'SCRIPTS' ? (
                                         <div className="bg-orange-50 border-2 border-orange-400 p-2">
@@ -255,6 +260,12 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                             <span className="font-bold text-slate-900">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
                                         </div>
                                     )}
+                                    {activeFilter !== 'SCRIPTS' && (
+                                        <div className="flex justify-between">
+                                            <span className="font-bold text-slate-400 uppercase text-xs">Current Stage</span>
+                                            <span className="font-bold text-slate-900 text-right">{project.current_stage ? project.current_stage.replace(/_/g, ' ') : 'N/A'}</span>
+                                        </div>
+                                    )}
 
                                     {/* Show live URL for completed projects */}
                                     {project.status === 'DONE' && project.data?.live_url && (
@@ -281,7 +292,7 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                 {/* Action Hint */}
                                 <div className="border-t-2 border-slate-100 pt-3">
                                     <button className="w-full bg-[#D946EF] text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all">
-                                        {activeFilter === 'SCRIPTS' ? 'View Script' : !project.delivery_date ? 'Set Delivery Date' : isDelivered ? 'View Details' : `Upload ${isVideo ? 'Thumbnail' : 'Creative'}`}
+                                        {activeFilter === 'SCRIPTS' ? 'View Script' : isDelivered ? 'View Details' : !project.delivery_date ? 'Set Delivery Date' : `Upload ${isVideo ? 'Thumbnail' : 'Creative'}`}
                                     </button>
                                 </div>
                             </div>
