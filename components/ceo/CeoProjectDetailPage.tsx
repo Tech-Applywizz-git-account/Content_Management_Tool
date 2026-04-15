@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Project, Role, WorkflowStage, STAGE_LABELS } from '../../types';
+import { Project, Role, User, WorkflowStage, STAGE_LABELS } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CeoReviewScreen from './CeoReviewScreen';
 import Layout from '../Layout';
 import ScriptDisplay from '../ScriptDisplay';
 
 const CeoProjectDetailPage: React.FC<{
-    user: { id: string; full_name: string; role: Role };
+    user: User;
     onLogout: () => void;
-    onRefresh?: () => void;
+    onRefresh?: () => Promise<void> | void;
     projects?: Project[];
 }> = ({ user, onLogout, onRefresh, projects = [] }) => {
     const { projectId } = useParams<{ projectId: string }>();
@@ -102,10 +102,10 @@ const CeoProjectDetailPage: React.FC<{
             <CeoReviewScreen
                 project={project}
                 onBack={() => navigate(-1)}
-                onComplete={() => {
+                onComplete={async () => {
                     // Refresh the dashboard data before navigating back
                     if (onRefresh) {
-                        onRefresh();
+                        await onRefresh();
                     }
                     navigate(-1);
                 }}
@@ -118,12 +118,10 @@ const CeoProjectDetailPage: React.FC<{
     const creatorName =
         project.data?.cmo_name ||
         project.data?.writer_name ||
-        project.cmo_name ||
-        project.writer_name ||
         'Unknown Creator';
 
     return (
-        <Layout user={user as any} onLogout={onLogout} onOpenCreate={() => { }}>
+        <Layout user={user} onLogout={onLogout} onOpenCreate={() => { }}>
             <div className="p-4 md:p-8 space-y-4 md:space-y-6">
                 <div className="flex justify-between items-center">
                     <button

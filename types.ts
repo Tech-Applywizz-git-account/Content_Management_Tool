@@ -90,6 +90,8 @@ export interface Project {
   created_by_name?: string; // Name of the creator
   writer_id?: string; // User ID of the writer (optional)
   writer_name?: string; // Name of the writer (optional)
+  cmo_id?: string; // User ID of the CMO (optional)
+  cmo_name?: string; // Name of the CMO (optional)
   editor_name?: string; // Name of the editor (optional)
   designer_name?: string; // Name of the designer (optional)
   sub_editor_name?: string; // Name of the sub-editor (optional)
@@ -111,6 +113,7 @@ export interface Project {
   delivery_date?: string; // Editor/Designer sets
   post_scheduled_date?: string; // Ops sets
   video_link?: string; // Cinematographer uploads raw video
+  video_url?: string; // Legacy support for video link
   edited_video_link?: string; // Editor uploads edited video
   thumbnail_link?: string; // Designer uploads (video path)
   creative_link?: string; // Designer uploads (creative-only path)
@@ -125,12 +128,16 @@ export interface Project {
   rework_initiator_stage?: WorkflowStage;
   visible_to_roles?: string[]; // Roles that can view this project
   forwarded_comments?: Array<{
+    id?: string;
     comment: string;
     actor_name: string;
     action?: string;
     from_role?: string;
     to_role?: string;
+    created_at?: string;
   }>; // Comments forwarded with rework requests
+  rejected_reason?: string; // @deprecated - Use history instead
+  brandSelected?: string; // Legacy support
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
 }
@@ -228,11 +235,11 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.SUB_EDITOR_PROCESSING]: 'Sub-Editor Processing',
   [WorkflowStage.THUMBNAIL_DESIGN]: 'Thumbnail Design',
   [WorkflowStage.CREATIVE_DESIGN]: 'Creative Design',
-  [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review',
+  [WorkflowStage.FINAL_REVIEW_CMO]: 'Final Review (CMO)',
   [WorkflowStage.FINAL_REVIEW_CEO]: 'Final Review (CEO)',
   [WorkflowStage.MULTI_WRITER_APPROVAL]: 'Multi-Writer Approval',
   [WorkflowStage.WRITER_VIDEO_APPROVAL]: 'Writer Video Approval',
-  [WorkflowStage.POST_WRITER_REVIEW]: 'Final Review',
+  [WorkflowStage.POST_WRITER_REVIEW]: 'Final Approval (CMO)',
   [WorkflowStage.OPS_SCHEDULING]: 'Scheduling',
   [WorkflowStage.POSTED]: 'Posted',
   [WorkflowStage.REWORK]: 'Rework',

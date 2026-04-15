@@ -3,7 +3,7 @@ import { Project, Role, WorkflowStage, STAGE_LABELS, TaskStatus } from '../../ty
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { format } from 'date-fns';
-import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Video, FileText, Calendar as CalendarIcon, Upload, Film, MessageSquare, Link } from 'lucide-react';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { getWorkflowStateForRole, canUserEdit, getLatestReworkRejectComment, isInfluencerVideo } from '../../services/workflowUtils';
 
@@ -411,6 +411,22 @@ const EditorScripts: React.FC<Props> = ({ project: initialProject, userRole, onB
                   ? <div className="font-sans text-sm" dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(localProject.data.idea_description) }} />
                   : <div className="text-slate-400 italic">No content available</div>}
             </div>
+            {localProject.data?.script_reference_link && (
+              <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Link className="w-4 h-4 text-slate-400" />
+                  <p className="text-xs font-bold text-slate-500 uppercase">Reference Link</p>
+                </div>
+                <a 
+                  href={localProject.data.script_reference_link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-blue-600 font-bold hover:underline break-all"
+                >
+                  {localProject.data.script_reference_link}
+                </a>
+              </div>
+            )}
           </div>
         )}
 

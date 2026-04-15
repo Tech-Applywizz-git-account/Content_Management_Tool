@@ -160,6 +160,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       setApprovedCount(approvedCountResult || 0);
       setRejectedCount(reworkCountResult || 0); // Set rework count to rejectedCount state for the rework card
       setCeoPendingCount(pendingCountResult || 0); // New state for pending count
+      onRefresh(); // Trigger parent refresh to keep everything in sync
     } catch (err) {
       console.error('Failed to load counts from projects:', err);
     }
@@ -197,6 +198,10 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       .on('postgres_changes', { event: '*', schema: 'public', table: 'workflow_history' }, (payload) => {
         console.debug('CEO Dashboard workflow history realtime event:', payload);
         loadCounts();
+        // If we're on the history tab, reload the data immediately
+        if (activeTab === 'HISTORY') {
+          loadHistory();
+        }
       })
       .subscribe();
 
@@ -227,73 +232,74 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   }, [user.id]);
 
   // Load filtered history projects
+  const loadHistory = async () => {
+    // Only fetch if tab is history OR if we want to pre-cache (for now only if HISTORY is active to save resources)
+    if (activeTab !== 'HISTORY') return;
+
+    const { data, error } = await supabase
+      .from('workflow_history')
+      .select(`
+      id,
+      project_id,
+      action,
+      comment,
+      actor_name,
+      actor_id,
+      timestamp,
+      stage
+    `)
+      .eq('actor_id', user.id)
+      .in('action', ['APPROVED', 'SUBMITTED'])
+      .order('timestamp', { ascending: false });
+
+    if (error || !data) {
+      setFilteredHistoryProjects([]);
+      return;
+    }
+
+    // Get unique project IDs
+    const projectIds = [...new Set(data.map(h => h.project_id))];
+
+    // Fetch project details for all projects
+    const { data: projectsData, error: projectsError } = await supabase
+      .from('projects')
+      .select('*')
+      .in('id', projectIds);
+
+    if (projectsError) {
+      console.error('Failed to fetch projects:', projectsError);
+      setFilteredHistoryProjects([]);
+      return;
+    }
+
+    // Create a map of project ID to project data
+    const projectMap = new Map();
+    projectsData.forEach(project => projectMap.set(project.id, project));
+
+    // Store all history entries with project information
+    const historyEntries = data.map(entry => {
+      const project = projectMap.get(entry.project_id);
+      return {
+        ...entry,
+        // Include project information
+        title: project?.title || `Project ${entry.project_id}`,
+        channel: project?.channel || 'UNKNOWN',
+        priority: project?.priority || 'NORMAL', // Include priority
+        current_stage: entry.stage,
+        created_at: entry.timestamp,
+        status: project?.status || 'UNKNOWN'
+      };
+    });
+
+    // Map history by entry ID for detail view
+    const map = new Map<string, any>();
+    data.forEach(h => map.set(h.id, h));
+    historyMapRef.current = map;
+
+    setFilteredHistoryProjects(historyEntries);
+  };
+
   useEffect(() => {
-    const loadHistory = async () => {
-      if (activeTab !== 'HISTORY') return;
-
-      const { data, error } = await supabase
-        .from('workflow_history')
-        .select(`
-        id,
-        project_id,
-        action,
-        comment,
-        actor_name,
-        actor_id,
-        timestamp,
-        stage
-      `)
-        .eq('actor_id', user.id)
-        .in('action', ['APPROVED', 'SUBMITTED'])
-        .order('timestamp', { ascending: false });
-
-      if (error || !data) {
-        setFilteredHistoryProjects([]);
-        return;
-      }
-
-      // Get unique project IDs
-      const projectIds = [...new Set(data.map(h => h.project_id))];
-
-      // Fetch project details for all projects
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .in('id', projectIds);
-
-      if (projectsError) {
-        console.error('Failed to fetch projects:', projectsError);
-        setFilteredHistoryProjects([]);
-        return;
-      }
-
-      // Create a map of project ID to project data
-      const projectMap = new Map();
-      projectsData.forEach(project => projectMap.set(project.id, project));
-
-      // Store all history entries with project information
-      const historyEntries = data.map(entry => {
-        const project = projectMap.get(entry.project_id);
-        return {
-          ...entry,
-          // Include project information
-          title: project?.title || `Project ${entry.project_id}`,
-          channel: project?.channel || 'UNKNOWN',
-          priority: project?.priority || 'NORMAL', // Include priority
-          current_stage: entry.stage,
-          created_at: entry.timestamp,
-          status: project?.status || 'UNKNOWN'
-        };
-      });
-
-      // Map history by entry ID for detail view
-      const map = new Map<string, any>();
-      data.forEach(h => map.set(h.id, h));
-      historyMapRef.current = map;
-
-      setFilteredHistoryProjects(historyEntries);
-    };
-
     loadHistory();
   }, [activeTab, user.id]);
 
@@ -591,7 +597,8 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                   key={project.id}
                   onClick={async () => {
                     if (activeTab === 'HISTORY') {
-                      navigate(`/ceo/history/${project.id}`);
+                      // project_id is the actual project ID; project.id is the history entry ID
+                      navigate(`/ceo/history/${project.project_id || project.id}`);
                     } else {
                       navigate(`/ceo/review/${project.id}`);
                     }

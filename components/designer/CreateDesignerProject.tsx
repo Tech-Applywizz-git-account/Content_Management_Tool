@@ -27,6 +27,24 @@ const NICHES = [
   { value: 'OTHER', label: 'Other' },
 ] as const;
 
+const withSubmitTimeout = async <T,>(promise: Promise<T>, ms = 20000): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = globalThis.setTimeout(() => {
+          reject(new Error('Submission timed out. Please refresh and try again.'));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+};
+
 const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -44,8 +62,9 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [stageName, setStageName] = useState('');
 
   const handleSubmit = async () => {
+    const submittedLink = (link || tempLink).trim();
     // Basic validation - match Cine style
-    if (!title.trim() || !link.trim() || !brand) {
+    if (!title.trim() || !submittedLink || !brand) {
       alert('Title, Brand, and Link are required');
       return;
     }
@@ -56,17 +75,19 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
       // Default due date to today
       const defaultDueDate = new Date().toISOString().split('T')[0];
       
-      const createdProject = await db.createDesignerProject(
-        title,
-        channel,
-        defaultDueDate,
-        description,
-        link,
-        'NORMAL',
-        contentType,
-        brand,
-        niche,
-        niche === 'OTHER' ? nicheOther : undefined
+      const createdProject = await withSubmitTimeout(
+        db.createDesignerProject(
+          title,
+          channel,
+          defaultDueDate,
+          description,
+          submittedLink,
+          'NORMAL',
+          contentType,
+          brand,
+          niche,
+          niche === 'OTHER' ? nicheOther : undefined
+        )
       );
 
       setPopupMessage(
@@ -104,8 +125,8 @@ const CreateDesignerProject: React.FC<Props> = ({ onClose, onSuccess }) => {
         <div className="flex items-center">
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || !title.trim() || !link.trim() || !brand}
-            className={`px-4 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !link.trim() || !brand) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
+            disabled={isSubmitting || !title.trim() || !(link || tempLink).trim() || !brand}
+            className={`px-4 md:px-6 py-2 md:py-3 border-2 border-black font-black uppercase text-xs md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center ${(isSubmitting || !title.trim() || !(link || tempLink).trim() || !brand) ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-[#D946EF] text-white'}`}
           >
             {isSubmitting ? '...' : 'Submit'}
             <Send className="w-4 h-4 ml-2" />

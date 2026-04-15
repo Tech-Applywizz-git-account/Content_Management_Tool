@@ -54,6 +54,15 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         }, { replace: true });
     };
 
+    const isDirectDesignerUpload = (project: Project) => project.data?.source === 'DESIGNER_DIRECT_UPLOAD';
+    const hasDeliveredAsset = (project: Project) => {
+        const isVideo = project.content_type === 'VIDEO' || project.data?.content_type === 'VIDEO';
+        return isVideo
+            ? !!project.thumbnail_link
+            : !!project.creative_link || !!project.data?.creative_link;
+    };
+    const isPostedProject = (project: Project) => project.status === TaskStatus.DONE || project.current_stage === WorkflowStage.POSTED;
+
 
     // SYNC STATE WITH URL ON REFRESH/NAVIGATE
     useEffect(() => {
@@ -119,11 +128,12 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
             case 'NEEDS_DELIVERY':
                 return (historyProjects || []).filter(p => {
                     const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-                    return !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
+                    return !isDirectDesignerUpload(p) && !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
                 });
             case 'IN_PROGRESS':
                 return (historyProjects || []).filter(p => {
                     const isNotDone = p.status !== TaskStatus.DONE;
+                    if (isDirectDesignerUpload(p)) return false;
                     // Exclude rework projects
                     if (p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER) return false;
                     // Regular in-progress logic
@@ -137,16 +147,16 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
             case 'DELIVERED':
                 let deliveredProjects = (historyProjects || []).filter(p => {
                     const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-                    return (!!p.creative_link || !!p.thumbnail_link) && !isRework && p.status !== TaskStatus.DONE;
+                    return hasDeliveredAsset(p) && !isRework;
                 });
 
                 // Sub-filter
                 if (completedSubTab === 'POST') {
                     // Show projects that are not yet fully posted
-                    return deliveredProjects.filter(p => p.status !== TaskStatus.DONE);
+                    return deliveredProjects.filter(p => !isPostedProject(p));
                 } else if (completedSubTab === 'POSTED') {
                     // Show projects that are fully completed and posted
-                    return deliveredProjects.filter(p => p.status === TaskStatus.DONE);
+                    return deliveredProjects.filter(p => isPostedProject(p));
                 }
                 return deliveredProjects;
             default:
@@ -179,11 +189,12 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
         // Calculate other counts based on EXACT SAME logic as filteredProjects memo
         setNeedsDeliveryCount((historyProjects || []).filter(p => {
             const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-            return !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
+            return !isDirectDesignerUpload(p) && !p.delivery_date && p.status !== TaskStatus.DONE && !isRework;
         }).length);
 
         setInProgressCount((historyProjects || []).filter(p => {
             const isNotDone = p.status !== TaskStatus.DONE;
+            if (isDirectDesignerUpload(p)) return false;
             // Exclude rework projects
             if (p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER) return false;
             // Regular in-progress logic
@@ -197,7 +208,7 @@ const DesignerDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjec
 
         setDeliveredCount((historyProjects || []).filter(p => {
             const isRework = p.status === 'REWORK' && p.assigned_to_role === Role.DESIGNER;
-            return (!!p.creative_link || !!p.thumbnail_link) && !isRework;
+            return hasDeliveredAsset(p) && !isRework;
         }).length);
     }, [inboxProjects, historyProjects, scriptProjects]);
 

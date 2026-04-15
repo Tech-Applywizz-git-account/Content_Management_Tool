@@ -24,6 +24,80 @@ console.log('🔍 Initializing supabaseDb service');
 
 // User cache for session management
 let currentUserCache: User | null = null;
+const supabaseRestUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseRestServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseRestAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+const withTimeout = async <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            Promise.resolve(promise),
+            new Promise<T>((_, reject) => {
+                timeoutId = globalThis.setTimeout(() => reject(new Error(message)), ms);
+            })
+        ]);
+    } finally {
+        if (timeoutId) {
+            globalThis.clearTimeout(timeoutId);
+        }
+    }
+};
+
+const createLocalProjectId = () => {
+    if (globalThis.crypto?.randomUUID) {
+        return globalThis.crypto.randomUUID();
+    }
+
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+        const random = Math.random() * 16 | 0;
+        const value = char === 'x' ? random : (random & 0x3 | 0x8);
+        return value.toString(16);
+    });
+};
+
+const insertProjectViaRest = async (insertData: any): Promise<Project> => {
+    const apiKey = supabaseRestServiceKey || supabaseRestAnonKey;
+    if (!supabaseRestUrl || !apiKey) {
+        throw new Error('Supabase REST config is missing.');
+    }
+
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => controller.abort(), 15000);
+
+    try {
+        const response = await fetch(`${supabaseRestUrl}/rest/v1/projects`, {
+            method: 'POST',
+            headers: {
+                apikey: apiKey,
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                Prefer: 'return=minimal'
+            },
+            body: JSON.stringify(insertData),
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(`Failed to create project: ${response.status} ${response.statusText} ${responseText}`);
+        }
+
+        return {
+            ...insertData,
+            status: insertData.status || insertData.task_status || TaskStatus.TODO,
+            created_at: insertData.created_at || new Date().toISOString(),
+            history: []
+        } as Project;
+    } catch (error: any) {
+        if (error?.name === 'AbortError') {
+            throw new Error('Database timeout: Project creation took too long. Please check your connection and try again.');
+        }
+        throw error;
+    } finally {
+        globalThis.clearTimeout(timeoutId);
+    }
+};
 
 // ============================================================================
 // AUTHENTICATION
@@ -139,35 +213,51 @@ export const auth = {
         try {
             if (currentUserCache) return currentUserCache;
 
-            const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+            const { data: { user: authUser }, error: authError } = await withTimeout(
+                supabase.auth.getUser(),
+                8000,
+                'Authentication timed out. Please refresh and try again.'
+            );
             if (authError || !authUser?.email) {
                 console.warn('❌ getPublicUser: No authenticated session found');
                 return null;
             }
 
             // 1. Primary Lookup: By Auth ID
-            let { data: userRecord, error: fetchError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', authUser.id)
-                .maybeSingle();
+            let { data: userRecord, error: fetchError } = await withTimeout(
+                supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', authUser.id)
+                    .maybeSingle(),
+                8000,
+                'User profile lookup timed out. Please refresh and try again.'
+            );
 
             // 2. Secondary Lookup: By Email (Handle Desynchronized Profiles)
             if (!userRecord) {
-                const { data: emailMatch } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('email', authUser.email)
-                    .maybeSingle();
+                const { data: emailMatch } = await withTimeout(
+                    supabase
+                        .from('users')
+                        .select('*')
+                        .eq('email', authUser.email)
+                        .maybeSingle(),
+                    8000,
+                    'User profile lookup by email timed out. Please refresh and try again.'
+                );
 
                 if (emailMatch) {
                     console.warn(`🔄 Syncing User ID for ${authUser.email}: Changing ${emailMatch.id} -> ${authUser.id}`);
-                    const { data: syncedUser } = await dbClient
-                        .from('users')
-                        .update({ id: authUser.id })
-                        .eq('email', authUser.email)
-                        .select()
-                        .single();
+                    const { data: syncedUser } = await withTimeout(
+                        dbClient
+                            .from('users')
+                            .update({ id: authUser.id })
+                            .eq('email', authUser.email)
+                            .select()
+                            .single(),
+                        8000,
+                        'User profile sync timed out. Please refresh and try again.'
+                    );
                     userRecord = syncedUser;
                 }
             }
@@ -179,17 +269,21 @@ export const auth = {
                     authUser.user_metadata?.name ||
                     authUser.email.split('@')[0];
 
-                const { data: newUser, error: createError } = await dbClient
-                    .from('users')
-                    .insert([{
-                        id: authUser.id,
-                        email: authUser.email,
-                        full_name: fullName,
-                        role: authUser.user_metadata?.role || 'DESIGNER',
-                        status: 'ACTIVE'
-                    }])
-                    .select()
-                    .single();
+                const { data: newUser, error: createError } = await withTimeout(
+                    dbClient
+                        .from('users')
+                        .insert([{
+                            id: authUser.id,
+                            email: authUser.email,
+                            full_name: fullName,
+                            role: authUser.user_metadata?.role || 'DESIGNER',
+                            status: 'ACTIVE'
+                        }])
+                        .select()
+                        .single(),
+                    8000,
+                    'User profile creation timed out. Please refresh and try again.'
+                );
 
                 if (createError) throw createError;
                 userRecord = newUser;
@@ -814,18 +908,23 @@ export const projects = {
                 { data: historyData, error: historyError },
                 { data: assignedByIdData, error: assignedByIdError },
                 { data: assignedByRoleData, error: assignedByRoleError },
-                { data: visibleToRoleData, error: visibleToRoleError }
+                { data: visibleToRoleData, error: visibleToRoleError },
+                { data: directDesignerUploadsData, error: directDesignerUploadsError }
             ] = await Promise.all([
                 supabase.from('workflow_history').select('project_id, timestamp, projects (*)').eq('actor_id', user.id),
                 supabase.from('projects').select('*').eq('assigned_to_user_id', user.id),
                 supabase.from('projects').select('*').in('assigned_to_role', [user.role, ...(user.secondary_roles || [])]),
-                supabase.from('projects').select('*').overlaps('visible_to_roles', [user.role, ...(user.secondary_roles || [])])
+                supabase.from('projects').select('*').overlaps('visible_to_roles', [user.role, ...(user.secondary_roles || [])]),
+                user.role === Role.DESIGNER
+                    ? supabase.from('projects').select('*').eq('created_by_user_id', user.id).eq('data->>source', 'DESIGNER_DIRECT_UPLOAD')
+                    : Promise.resolve({ data: [], error: null })
             ]);
 
             if (historyError) throw historyError;
             if (assignedByIdError) throw assignedByIdError;
             if (assignedByRoleError) throw assignedByRoleError;
             if (visibleToRoleError) throw visibleToRoleError;
+            if (directDesignerUploadsError) throw directDesignerUploadsError;
 
             if (!historyData || !assignedByIdData || !assignedByRoleData || !visibleToRoleData) {
                 console.warn('One or more visibility queries returned null data');
@@ -836,6 +935,14 @@ export const projects = {
 
             // Helper function to check if a project should be visible to the user based on rework rules
             const isProjectVisibleToUser = (project: any) => {
+                // Designer-created direct uploads are handed off to CMO immediately,
+                // but the creating designer should still see them in delivered history.
+                if (project.data?.source === 'DESIGNER_DIRECT_UPLOAD') {
+                    return project.created_by_user_id === user.id ||
+                        project.assigned_to_role === user.role ||
+                        project.visible_to_roles?.includes(user.role);
+                }
+
                 // If project is in REWORK status, strict filtering applies
                 if (project.status === 'REWORK') {
                     // 1. If we have a rework_target_role (new column), use it for strict filtering
@@ -912,6 +1019,19 @@ export const projects = {
                         projectMap.set(project.id, {
                             ...project,
                             latest_activity: new Date(project.updated_at)
+                        });
+                    }
+                }
+            });
+
+            directDesignerUploadsData.forEach((project: any) => {
+                if (isProjectVisibleToUser(project)) {
+                    if (!projectMap.has(project.id) ||
+                        !projectMap.get(project.id)?.latest_activity ||
+                        new Date(project.updated_at || project.created_at) > new Date(projectMap.get(project.id)!.latest_activity!)) {
+                        projectMap.set(project.id, {
+                            ...project,
+                            latest_activity: new Date(project.updated_at || project.created_at)
                         });
                     }
                 }
@@ -1020,6 +1140,7 @@ export const projects = {
         content_type: ContentType;
         current_stage?: WorkflowStage;
         status?: TaskStatus;
+        task_status?: TaskStatus;
         assigned_to_role: Role;
         assigned_to_user_id?: string;
         priority?: Priority;
@@ -1056,6 +1177,7 @@ export const projects = {
 
         // Prepare the insert data object carefully
         const insertData: any = {
+            id: createLocalProjectId(),
             title: projectData.title,
             channel: projectData.channel,
             content_type: projectData.content_type,
@@ -1086,6 +1208,7 @@ export const projects = {
             // Use provided values or defaults if not provided
             brand: projectData.brand,
             current_stage: projectData.current_stage || WorkflowStage.SCRIPT,
+            task_status: projectData.task_status || projectData.status || TaskStatus.TODO,
             status: projectData.status || TaskStatus.TODO,
             priority: projectData.priority || 'NORMAL'
         };
@@ -1100,17 +1223,33 @@ export const projects = {
         console.log('   - created_by_user_id:', insertData.created_by_user_id);
         console.log('   - writer_id:', insertData.writer_id);
 
+        if (supabaseRestServiceKey) {
+            console.log('Executing INSERT via direct REST client');
+            console.log('   - Effective client type: DIRECT_ADMIN_REST');
+            const restCreatedProject = await insertProjectViaRest(insertData);
+            console.log('Successfully created project with ID:', restCreatedProject.id);
+            return restCreatedProject;
+        }
+
         try {
             console.log('🔗 Executing INSERT with database client');
             console.log('   - Client type:', dbClient === supabaseAdmin ? 'ADMIN' : 'ANON');
+            const insertClient = supabaseAdmin || dbClient;
             console.log('   - Has service role:', !!supabaseAdmin);
+            console.log('   - Effective client type:', insertClient === supabaseAdmin ? 'ADMIN' : 'ANON');
 
             console.log('🔗 Executing INSERT with database client... (Wait started)');
-            const result = await dbClient
+            const insertPromise = insertClient
                 .from('projects')
                 .insert([insertData])
                 .select()
                 .single();
+
+            const result = await withTimeout(
+                insertPromise,
+                15000,
+                'Database timeout: Project creation took too long. Please check your connection and try again.'
+            ) as any;
 
             console.log('📊 INSERT result received:', result);
 
@@ -1129,7 +1268,11 @@ export const projects = {
             }
 
             console.log('✅ Successfully created project with ID:', result.data.id);
-            return result.data as Project;
+            const createdProject = result.data as any;
+            if (!createdProject.status && createdProject.task_status) {
+                createdProject.status = createdProject.task_status;
+            }
+            return createdProject as Project;
         } catch (error: any) {
             console.error('❌ Project creation failed:', error);
             throw error;
@@ -1191,9 +1334,14 @@ export const projects = {
         } = updates as any;
 
 
+        const dbUpdates = { ...cleanUpdates };
+        if (dbUpdates.status) {
+            dbUpdates.task_status = dbUpdates.status;
+        }
+
         const { error } = await supabase
             .from('projects')
-            .update(cleanUpdates)
+            .update(dbUpdates)
             .eq('id', id);
 
         if (error) {
@@ -1365,7 +1513,11 @@ export const workflow = {
     ) {
         console.log('📝 [recordAction] START for project:', projectId);
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
-        const publicUser = await auth.getPublicUser();
+        const publicUser = await withTimeout(
+            auth.getPublicUser(),
+            12000,
+            'Designer profile lookup timed out. Please refresh and try again.'
+        );
         const finalUserId = publicUser?.id || userId;
         const finalUserName = publicUser?.full_name || userName;
 
@@ -1461,7 +1613,11 @@ export const workflow = {
         comment?: string
     ) {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
-        const publicUser = await auth.getPublicUser();
+        const publicUser = await withTimeout(
+            auth.getPublicUser(),
+            12000,
+            'Designer profile lookup timed out. Please refresh and try again.'
+        );
         const finalUserId = publicUser?.id || userId;
         const finalUserName = publicUser?.full_name || userName;
 
@@ -3534,18 +3690,17 @@ export const db = {
         nicheOther?: string
     ): Promise<Project> {
         // 1. Mandatory User Verification
-        const publicUser = await auth.getPublicUser();
+        const publicUser = await withTimeout(
+            auth.getPublicUser(),
+            12000,
+            'Designer profile lookup timed out. Please refresh and try again.'
+        );
         if (!publicUser) {
             throw new Error('Project creation failed: No valid user profile found. Please re-login.');
         }
 
-        // 2. Final Guard: Explicitly verify the ID exists in the DB before proceeding
-        const { data: userCheck } = await dbClient.from('users').select('id').eq('id', publicUser.id).maybeSingle();
-        if (!userCheck) {
-            throw new Error(`Profile sync error: User ID ${publicUser.id} is not present in the database 'users' table.`);
-        }
-
-        // 3. Prepare Project Structure
+        // 2. Prepare Project Structure. getPublicUser already resolves the public.users
+        // profile, so avoid a second verification request that can hang on repeat submits.
         const projectData = {
             title,
             channel,
@@ -3553,13 +3708,18 @@ export const db = {
             current_stage: WorkflowStage.FINAL_REVIEW_CMO, 
             assigned_to_role: Role.CMO, 
             status: TaskStatus.WAITING_APPROVAL,
+            task_status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,
             brand,
+            creative_link: link,   // ← top-level column in projects table
             data: {
                 brand,
                 brief: description,
-                creative_link: link,
+                niche,
+                niche_other: nicheOther,
+                requested_content_type: contentType,
+                creative_link: link, // ← kept for backward-compat in JSONB
                 source: 'DESIGNER_DIRECT_UPLOAD'
             },
             // Creator Tracking (Resolves FK Constraints)
@@ -3570,7 +3730,7 @@ export const db = {
             designer_name: publicUser.full_name,
             designer_uploaded_at: new Date().toISOString(),
             // Ensure visibility for CMO and Subsequent Roles
-            visible_to_roles: [Role.CMO, Role.CEO, Role.OPS] as any
+            visible_to_roles: [Role.CMO] as any
         };
 
         console.log('🚀 Attempting project creation for:', title, 'by', publicUser.email);
@@ -3579,19 +3739,28 @@ export const db = {
             // 4. Create Project
             const createdProject = await projects.create(projectData);
 
-            // 5. Record Workflow History
-            await workflow.recordAction(
-                createdProject.id,
-                Role.CMO,
-                publicUser.id,
-                publicUser.full_name,
-                'SUBMITTED',
-                'Asset directly submitted by Designer. Routing to CMO for Final Review.',
-                undefined,
-                Role.DESIGNER,
-                Role.CMO,
-                Role.DESIGNER
-            );
+            // 5. Record Workflow History. The project is already routed to CMO, so
+            // history logging should not make the designer submission fail.
+            try {
+                await withTimeout(
+                    workflow.recordAction(
+                        createdProject.id,
+                        Role.CMO,
+                        publicUser.id,
+                        publicUser.full_name,
+                        'SUBMITTED',
+                        `Designer submitted creative link: ${link}. Routing to CMO for Final Review.`,
+                        undefined,
+                        Role.DESIGNER,
+                        Role.CMO,
+                        Role.DESIGNER
+                    ),
+                    6000,
+                    'Workflow history logging timed out.'
+                );
+            } catch (historyError) {
+                console.warn('Designer project created, but workflow history logging failed:', historyError);
+            }
 
             return createdProject;
         } catch (error: any) {

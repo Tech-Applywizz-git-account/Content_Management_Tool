@@ -9,7 +9,6 @@ import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowStateForRole, isInfluencerVideo } from '../../services/workflowUtils';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import ScriptDisplay from '../ScriptDisplay';
-import Popup from '../Popup';
 
 interface Props {
   user: { id: string; full_name: string; role: Role };
@@ -24,12 +23,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
   const [reviewComments, setReviewComments] = useState<any[]>([]);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [scriptFromIdea, setScriptFromIdea] = useState<Project | null>(null);
-  const [caption, setCaption] = useState('');
-  const [isSavingCaption, setIsSavingCaption] = useState(false);
-  const [showPopup, setShowPopup] = useState(false);
-  const [popupMessage, setPopupMessage] = useState('');
-  const [stageName, setStageName] = useState('');
-  const [popupDuration, setPopupDuration] = useState(5000);
 
   const activeTab = (searchParams.get('type') as 'IDEA' | 'SCRIPT') || 'IDEA';
   const setActiveTab = (tab: 'IDEA' | 'SCRIPT') => {
@@ -296,27 +289,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
     );
   }
 
-  const handleSaveCaption = async (projectId: string) => {
-    if (!caption.trim()) {
-      alert('Please enter a caption');
-      return;
-    }
-
-    try {
-      setIsSavingCaption(true);
-      await db.updateProjectData(projectId, { captions: caption });
-      setPopupMessage('Caption saved successfully! It will now be visible in all review screens.');
-      setStageName('Updated');
-      setPopupDuration(3000);
-      setShowPopup(true);
-    } catch (error) {
-      console.error('Failed to save caption:', error);
-      alert('Failed to save caption. Please try again.');
-    } finally {
-      setIsSavingCaption(false);
-    }
-  };
-
   // If viewing project details
   if (selectedProject) {
     const isReadOnly = isProjectOpenedByReviewers(selectedProject);
@@ -398,11 +370,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                 {selectedProject.data?.source === 'IDEA_PROJECT' ? 'Idea Description' : 'Script Content'}
               </h3>
               <div className="max-h-60 overflow-y-auto border-2 border-gray-200 p-4 bg-gray-50 overflow-x-auto">
-                <ScriptDisplay 
-                  content={selectedProject.data?.script_content || selectedProject.data?.idea_description || ''} 
-                  caption={selectedProject.data?.captions}
-                  showBox={false} 
-                />
+                <ScriptDisplay content={selectedProject.data?.script_content || selectedProject.data?.idea_description || ''} showBox={false} />
 
                 {/* Show cinematographer comments if available */}
                 {selectedProject.data?.cine_comments && (
@@ -411,37 +379,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                     <p className="text-xs text-slate-600 whitespace-pre-wrap">{selectedProject.data.cine_comments}</p>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Caption Input Section */}
-          {!(selectedProject.current_stage === 'SCRIPT' || selectedProject.current_stage === 'SCRIPT_REVIEW_L1') && (
-            <div className="bg-yellow-50 p-8 border-2 border-dashed border-yellow-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-black uppercase text-yellow-900">Add Caption to Script</h3>
-                <span className="bg-yellow-200 text-yellow-800 px-3 py-1 text-[10px] font-black uppercase border-2 border-yellow-400">Writer Action Required</span>
-              </div>
-
-              <div className="space-y-4">
-                <p className="text-sm font-bold text-yellow-800 uppercase italic">
-                  The script has been approved. Please provide a caption for the social media post.
-                </p>
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Write your caption here... (hashtags, mentions, etc.)"
-                  className="w-full p-4 border-2 border-black rounded-none text-base min-h-[150px] focus:bg-white focus:outline-none font-medium resize-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors text-black"
-                />
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => handleSaveCaption(selectedProject.id)}
-                    disabled={isSavingCaption}
-                    className="px-8 py-3 bg-black text-white font-black uppercase text-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(255,217,82,1)] hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50"
-                  >
-                    {isSavingCaption ? 'Saving...' : 'Save Caption'}
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -696,7 +633,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                 : scriptProjects.filter(p => {
                   if (p.status === 'DONE') return false;
                   if (filter.id === 'EDITOR') return p.assigned_to_role === 'EDITOR' || p.assigned_to_role === 'SUB_EDITOR';
-                  if (filter.id === 'CAPTION') return !(p.current_stage === 'SCRIPT' || p.current_stage === 'SCRIPT_REVIEW_L1') && !p.data?.captions && p.status !== 'DONE';
                   return p.assigned_to_role === filter.id;
                 }).length
                 })`}
@@ -729,7 +665,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                 } else {
                   // Otherwise, show the details view
                   setSelectedProject(task);
-                  setCaption(task.data?.captions || '');
 
                   const currentUserId = user.id;
                   const { data: historyData, error: historyError } = await supabase
@@ -782,9 +717,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                             ? 'bg-[#6366F1] text-white'
                             : task.brand === 'SHYAMS_PERSONAL_BRANDING'
                               ? 'bg-[#F97316] text-white'
-                              : task.brand === 'CAREER_IDENTIFIER'
-                                ? 'bg-[#0EA5E9] text-white'
-                                : 'bg-black text-white'
+                              : 'bg-black text-white'
                     }`}
                 >
                   {task.channel}
@@ -848,7 +781,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                       return 'In Progress';
                   })()}
                 </span>
-
               </div>
 
               {/* TITLE */}
@@ -1010,15 +942,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
           ))
         )}
       </div>
-
-      {showPopup && (
-        <Popup
-          message={popupMessage}
-          stageName={stageName}
-          onClose={() => setShowPopup(false)}
-          duration={popupDuration}
-        />
-      )}
     </div>
   );
 }
