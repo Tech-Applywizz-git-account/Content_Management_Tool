@@ -62,9 +62,9 @@ const UploadVideoModal: React.FC<Props> = ({ onClose, onSuccess }) => {
       );
 
       setPopupMessage(
-        `Video project "${title}" submitted successfully. Waiting for Multi-Writer approval.`
+        `Video project "${title}" submitted successfully. Waiting for CMO approval.` // SKIP MULTI_WRITER_APPROVAL: `Video project "${title}" submitted successfully. Waiting for Multi-Writer approval.`
       );
-      setStageName('Multi-Writer Approval');
+      setStageName('CMO Approval'); // SKIP MULTI_WRITER_APPROVAL: setStageName('Multi-Writer Approval');
       setShowPopup(true);
 
       setTimeout(() => {

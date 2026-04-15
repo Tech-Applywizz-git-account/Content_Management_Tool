@@ -2720,7 +2720,7 @@ export const helpers = {
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
                 [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.VIDEO_EDITING]: isCaptionBased
-                    ? { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }
+                    ? { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO } // SKIP MULTI_WRITER_APPROVAL: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }
                     : { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
                 [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POSTED, role: Role.OPS }
             };
@@ -2756,7 +2756,8 @@ export const helpers = {
                             ? projectData.rework_initiator_stage as WorkflowStage
                             : (projectData?.thumbnail_required === true
                                 ? WorkflowStage.THUMBNAIL_DESIGN
-                                : WorkflowStage.MULTI_WRITER_APPROVAL))),
+                                /* SKIP MULTI_WRITER_APPROVAL: : WorkflowStage.MULTI_WRITER_APPROVAL))), */
+                                : WorkflowStage.POST_WRITER_REVIEW))),
                 role: projectData?.is_pa_brand
                     ? Role.PARTNER_ASSOCIATE
                     : (projectData?.needs_sub_editor === true
@@ -2765,13 +2766,19 @@ export const helpers = {
                             ? projectData.rework_initiator_role as Role
                             : (projectData?.thumbnail_required === true
                                 ? Role.DESIGNER
-                                : Role.WRITER)))
+                                /* SKIP MULTI_WRITER_APPROVAL: : Role.WRITER))) */
+                                : Role.CMO)))
             },
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                stage: WorkflowStage.MULTI_WRITER_APPROVAL,
-                role: Role.WRITER
+                /* SKIP MULTI_WRITER_APPROVAL: stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER */
+                stage: projectData?.thumbnail_required === true
+                    ? WorkflowStage.THUMBNAIL_DESIGN
+                    : WorkflowStage.POST_WRITER_REVIEW,
+                role: projectData?.thumbnail_required === true
+                    ? Role.DESIGNER
+                    : Role.CMO
             },
 
             // MULTI_WRITER_APPROVAL -> OPS/CMO (Post Review)
@@ -2787,7 +2794,8 @@ export const helpers = {
             // THUMBNAIL_DESIGN -> MULTI_WRITER_APPROVAL
             [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage
                 ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }
-                : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER },
+                /* SKIP MULTI_WRITER_APPROVAL: : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, */
+                : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },
 
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
 
@@ -3397,8 +3405,10 @@ export const db = {
             title,
             channel,
             content_type: 'VIDEO' as ContentType,
-            current_stage: WorkflowStage.MULTI_WRITER_APPROVAL,
-            assigned_to_role: Role.WRITER,
+            /* SKIP MULTI_WRITER_APPROVAL: current_stage: WorkflowStage.MULTI_WRITER_APPROVAL, 
+            assigned_to_role: Role.WRITER, */
+            current_stage: WorkflowStage.POST_WRITER_REVIEW,
+            assigned_to_role: Role.CMO,
             status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,
@@ -3418,8 +3428,9 @@ export const db = {
             editor_uploaded_at: new Date().toISOString(),
             writer_id: publicUser.id,
             writer_name: publicUser.full_name,
-            // Important for parallel visibility in multi-writer approval
-            visible_to_roles: [Role.WRITER, Role.CMO, Role.CEO, Role.OPS] as any
+            // Important for parallel visibility in post-writer review
+            /* SKIP MULTI_WRITER_APPROVAL: visible_to_roles: [Role.WRITER, Role.CMO, Role.CEO, Role.OPS] as any */
+            visible_to_roles: [Role.CMO, Role.OPS] as any
         };
 
         // Create the project and return the real project with Supabase UUID
@@ -3428,14 +3439,17 @@ export const db = {
         // Record the action in workflow history
         await workflow.recordAction(
             createdProject.id,
-            Role.WRITER, // next responsible role is Writer
+            /* SKIP MULTI_WRITER_APPROVAL: Role.WRITER, // next responsible role is Writer */
+            Role.CMO, // next responsible role is CMO
             publicUser.id,
             publicUser.full_name,
             'SUBMITTED',
-            'Direct Video Upload: Video submitted directly by Editor. Moving to Multi-Writer Approval.',
+            /* SKIP MULTI_WRITER_APPROVAL: 'Direct Video Upload: Video submitted directly by Editor. Moving to Multi-Writer Approval.', */
+            'Direct Video Upload: Video submitted directly by Editor. Moving to CMO Approval.',
             undefined,
             Role.EDITOR, // fromRole
-            Role.WRITER, // toRole
+            /* SKIP MULTI_WRITER_APPROVAL: Role.WRITER, // toRole */
+            Role.CMO, // toRole
             Role.EDITOR  // actorRole
         );
 
