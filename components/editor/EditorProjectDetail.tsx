@@ -732,7 +732,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                   <p className="text-sm text-green-800 mt-1">
                     → Project has been moved to {
                       isDirectUpload
-                        ? 'Writers for Multi-Writer Approval'
+                        ? 'CMO for Approval' /* SKIP MULTI_WRITER_APPROVAL: ? 'Writers for Multi-Writer Approval' */
                         : localProject.assigned_to_role === 'DESIGNER' ? 'Designer for thumbnail creation'
                           : localProject.assigned_to_role === 'SUB_EDITOR' ? 'Sub-Editor for processing'
                             : localProject.assigned_to_role === 'CMO' ? 'CMO for review'

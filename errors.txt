@@ -1,0 +1,102 @@
+AppRoutes.tsx(78,135): error TS2322: Type '(user: User) => void' is not assignable to type '(user: User) => Promise<void>'.
+  Type 'void' is not assignable to type 'Promise<void>'.
+components/admin/AuditLogs.tsx(14,13): error TS2339: Property 'actor_name' does not exist on type 'SystemLog'.
+components/admin/AuditLogs.tsx(61,46): error TS2339: Property 'actor_name' does not exist on type 'SystemLog'.
+components/admin/AuditLogs.tsx(64,46): error TS2339: Property 'actor_role' does not exist on type 'SystemLog'.
+components/admin/AuditLogs.tsx(86,90): error TS2339: Property 'actor_name' does not exist on type 'SystemLog'.
+components/admin/AuditLogs.tsx(87,80): error TS2339: Property 'actor_role' does not exist on type 'SystemLog'.
+components/admin/UserManagement.tsx(278,110): error TS2339: Property 'actor_id' does not exist on type 'SystemLog'.
+components/ceo/CeoDashboard.tsx(321,30): error TS2339: Property 'project_id' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(326,37): error TS2339: Property 'project_id' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(418,51): error TS2367: This comparison appears to be unintentional because the types '"REJECTED" | "CREATED" | "SUBMITTED" | "APPROVED" | "PUBLISHED"' and '"REWORK_VIDEO_SUBMITTED"' have no overlap.
+components/ceo/CeoDashboard.tsx(418,92): error TS2367: This comparison appears to be unintentional because the types '"REJECTED" | "CREATED" | "SUBMITTED" | "APPROVED" | "PUBLISHED"' and '"REWORK_EDIT_SUBMITTED"' have no overlap.
+components/ceo/CeoDashboard.tsx(418,132): error TS2367: This comparison appears to be unintentional because the types '"REJECTED" | "CREATED" | "SUBMITTED" | "APPROVED" | "PUBLISHED"' and '"REWORK_DESIGN_SUBMITTED"' have no overlap.
+components/ceo/CeoDashboard.tsx(667,99): error TS2339: Property 'action' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(667,132): error TS2339: Property 'action' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(668,38): error TS2339: Property 'action' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(668,84): error TS2339: Property 'action' does not exist on type 'Project'.
+components/ceo/CeoDashboard.tsx(679,113): error TS2339: Property 'timestamp' does not exist on type 'Project'.
+components/ceo/CeoProjectDetailPage.tsx(112,17): error TS2739: Type '{ id: string; full_name: string; role: Role; }' is missing the following properties from type 'User': email, status
+components/ceo/CeoProjectDetailPage.tsx(121,17): error TS2339: Property 'cmo_name' does not exist on type 'Project'.
+components/ceo/CeoReviewScreen.tsx(558,120): error TS2339: Property 'cmo_name' does not exist on type 'Project'.
+components/ceo/CeoReviewScreen.tsx(1232,25): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+components/cine/CineDashboard.tsx(112,67): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineDashboard.tsx(121,67): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineDashboard.tsx(135,67): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineDashboard.tsx(189,49): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineDashboard.tsx(198,49): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineDashboard.tsx(212,49): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineMyWork.tsx(142,74): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(48,69): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(247,99): error TS2345: Argument of type '{ video_link: string; }' is not assignable to parameter of type 'string'.
+components/cine/CineProjectDetail.tsx(513,88): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cine/CineProjectDetail.tsx(516,90): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cine/CineProjectDetail.tsx(1042,118): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1049,93): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1052,75): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1060,96): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1065,91): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1096,71): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1127,88): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1132,83): error TS2339: Property 'video_url' does not exist on type 'Project'.
+components/cine/CineProjectDetail.tsx(1180,72): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cine/CineProjectDetail.tsx(1183,80): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cine/CineScripts.tsx(630,56): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cine/CineScripts.tsx(633,54): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cmo/CmoDashboard.tsx(88,28): error TS2339: Property 'updated_at' does not exist on type 'Project'.
+components/cmo/CmoFinalReview.tsx(101,9): error TS2739: Type '{ id: string; full_name: string; role: Role; }' is missing the following properties from type 'User': email, status
+components/cmo/CmoProjectDetailPage.tsx(99,17): error TS2322: Type '{ project: Project; onBack: () => void | Promise<void>; onUpdate: () => void; }' is not assignable to type 'IntrinsicAttributes & Props'.
+  Property 'onUpdate' does not exist on type 'IntrinsicAttributes & Props'.
+components/cmo/CmoProjectDetails.tsx(150,32): error TS2339: Property 'editor_user_id' does not exist on type 'Project'.
+components/cmo/CmoProjectDetails.tsx(152,75): error TS2339: Property 'editor_user_id' does not exist on type 'Project'.
+components/cmo/CmoProjectDetails.tsx(681,84): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cmo/CmoProjectDetails.tsx(684,84): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/cmo/CmoReviewPage.tsx(119,17): error TS2739: Type '{ full_name: string; role: Role; }' is missing the following properties from type 'User': id, email, status
+components/cmo/CmoReviewScreen.tsx(899,164): error TS2339: Property 'data' does not exist on type '{ video_link: string; edited_video_link: string; thumbnail_link: string; creative_link: string; }'.
+components/cmo/CmoReviewScreen.tsx(1171,47): error TS2367: This comparison appears to be unintentional because the types 'ContentType' and '"JOBBOARD"' have no overlap.
+components/cmo/CmoReviewScreen.tsx(1171,86): error TS2367: This comparison appears to be unintentional because the types 'ContentType' and '"LEAD_MAGNET"' have no overlap.
+components/cmo/CmoReviewScreen.tsx(1291,21): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+components/designer/DesignerScripts.tsx(528,56): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/designer/DesignerScripts.tsx(531,54): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/editor/EditorScripts.tsx(552,56): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/editor/EditorScripts.tsx(555,54): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/LeadMagnetScripts.tsx(17,9): error TS2367: This comparison appears to be unintentional because the types 'ContentType' and '"LEAD_MAGNET"' have no overlap.
+components/ops/OpsDashboard.tsx(109,9): error TS2367: This comparison appears to be unintentional because the types 'TaskStatus' and '"COMPLETED"' have no overlap.
+components/ops/OpsDashboard.tsx(124,97): error TS2339: Property 'updated_at' does not exist on type 'Project'.
+components/ops/OpsFilteredProjects.tsx(35,21): error TS2367: This comparison appears to be unintentional because the types 'TaskStatus' and '"COMPLETED"' have no overlap.
+components/ops/OpsFilteredProjects.tsx(51,123): error TS2339: Property 'updated_at' does not exist on type 'Project'.
+components/ops/OpsMyWork.tsx(44,21): error TS2367: This comparison appears to be unintentional because the types 'TaskStatus' and '"COMPLETED"' have no overlap.
+components/ops/OpsMyWork.tsx(58,123): error TS2339: Property 'updated_at' does not exist on type 'Project'.
+components/pa/PAInfluencerManagement.tsx(19,99): error TS2339: Property 'influencer_name' does not exist on type 'Project'.
+components/pa/PAInfluencerManagement.tsx(20,102): error TS2339: Property 'influencer_email' does not exist on type 'Project'.
+components/pa/PAInfluencerManagement.tsx(25,76): error TS2339: Property 'influencer_name' does not exist on type 'Project'.
+components/pa/PAMyWork.tsx(22,65): error TS2339: Property 'metadata' does not exist on type 'Project'.
+components/pa/PAMyWork.tsx(22,96): error TS2339: Property 'influencer_name' does not exist on type 'Project'.
+components/pa/PAMyWork.tsx(62,69): error TS2339: Property 'metadata' does not exist on type 'Project'.
+components/pa/PAMyWork.tsx(62,100): error TS2339: Property 'influencer_name' does not exist on type 'Project'.
+components/pa/PAReviewScreen.tsx(323,144): error TS2339: Property 'influencer_name' does not exist on type 'Project'.
+components/pa/PAReviewScreen.tsx(327,145): error TS2339: Property 'influencer_email' does not exist on type 'Project'.
+components/subeditor/SubEditorScripts.tsx(298,21): error TS2339: Property 'raw_video_link' does not exist on type '{ cinematography_instructions: any; script_content?: string; script_notes?: string; brief?: string; captions?: string; tags?: string; live_url?: string; video_title_final?: string; thumbnail_required?: boolean; ... 17 more ...; referral_link?: string; }'.
+components/subeditor/SubEditorScripts.tsx(598,56): error TS2339: Property 'created_at' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/subeditor/SubEditorScripts.tsx(601,54): error TS2339: Property 'id' does not exist on type '{ comment: string; actor_name: string; action?: string; from_role?: string; to_role?: string; }'.
+components/writer/CreateScript.tsx(1334,11): error TS2345: Argument of type 'string' is not assignable to parameter of type 'Channel'.
+components/writer/CreateScript.tsx(1358,15): error TS2554: Expected 0 arguments, but got 1.
+components/writer/CreateScript.tsx(1453,13): error TS2345: Argument of type 'string' is not assignable to parameter of type 'Channel'.
+components/writer/WriterApprovedVideos.tsx(35,47): error TS2367: This comparison appears to be unintentional because the types 'TaskStatus' and '"COMPLETED"' have no overlap.
+components/writer/WriterDashboard.tsx(131,43): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(176,39): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(199,39): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(211,43): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(212,34): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(223,39): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(238,71): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(240,57): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(300,39): error TS2339: Property 'id' does not exist on type '{ full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(464,31): error TS2741: Property 'id' is missing in type '{ full_name: string; role: Role; }' but required in type '{ id: string; full_name: string; role: Role; }'.
+components/writer/WriterDashboard.tsx(469,21): error TS2741: Property 'id' is missing in type '{ full_name: string; role: Role; }' but required in type '{ id: string; role: Role; }'.
+components/writer/WriterProjectDetail.tsx(151,29): error TS2339: Property 'rejected_reason' does not exist on type 'Project'.
+components/writer/WriterProjectDetail.tsx(152,48): error TS2339: Property 'rejected_reason' does not exist on type 'Project'.
+components/writer/WriterProjectDetail.tsx(181,45): error TS2339: Property 'rejected_reason' does not exist on type 'Project'.
+components/writer/WriterProjectDetail.tsx(373,58): error TS2322: Type 'WorkflowHistoryEntry[]' is not assignable to type 'HistoryEvent[]'.
+  Type 'WorkflowHistoryEntry' is missing the following properties from type 'HistoryEvent': id, stage
+components/writer/WriterVideoApproval.tsx(93,79): error TS2339: Property 'brandSelected' does not exist on type 'Project'.

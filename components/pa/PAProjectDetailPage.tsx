@@ -37,32 +37,19 @@ const PAProjectDetailPage: React.FC<PAProjectDetailPageProps> = ({ user, project
                 if (fetchError) throw fetchError;
                 if (!allPaProjects || allPaProjects.length === 0) throw new Error('No PA projects found');
 
-                // 2. Find the target project to get the influencer name
+                // 2. Find the target project
                 const targetProject = allPaProjects.find(p => p.id === projectId);
                 if (!targetProject) throw new Error('Target project not found');
 
-                const influencerName = (
-                    targetProject.data?.influencer_name || 
-                    targetProject.metadata?.influencer_name || 
-                    targetProject.influencer_name || 
-                    ''
-                ).toLowerCase().trim();
+                // 3. Find related projects using parent_script_id link
+                const parentId = targetProject.data?.parent_script_id || targetProject.id;
+                
+                const matchingProjects = allPaProjects.filter(p => {
+                    const projectParentId = p.data?.parent_script_id || p.id;
+                    return projectParentId === parentId;
+                });
 
-                if (influencerName) {
-                    // 3. Filter projects matching this influencer (case-insensitive, trimmed)
-                    const matchingProjects = allPaProjects.filter(p => {
-                        const projInfluencerName = (
-                            p.data?.influencer_name || 
-                            p.metadata?.influencer_name || 
-                            p.influencer_name || 
-                            ''
-                        ).toLowerCase().trim();
-                        return projInfluencerName === influencerName;
-                    });
-                    setInfluencerProjects(matchingProjects as Project[]);
-                } else {
-                    setInfluencerProjects([targetProject as Project]);
-                }
+                setInfluencerProjects(matchingProjects as Project[]);
             } catch (err) {
                 console.error('Error fetching project data:', err);
                 setError('Failed to load project details.');
@@ -87,8 +74,8 @@ const PAProjectDetailPage: React.FC<PAProjectDetailPageProps> = ({ user, project
         return (
             <div className="min-h-screen flex items-center justify-center bg-white">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-black border-t-[#0085FF] rounded-full animate-spin"></div>
-                    <p className="font-black uppercase text-xs tracking-widest text-slate-400">Loading Influencer Hub...</p>
+                    <div className="w-12 h-12 border-2 border-slate-100 border-t-[#0085FF] rounded-full animate-spin"></div>
+                    <p className="font-black uppercase text-[10px] tracking-widest text-slate-400">Loading Influencer Hub...</p>
                 </div>
             </div>
         );
@@ -96,13 +83,13 @@ const PAProjectDetailPage: React.FC<PAProjectDetailPageProps> = ({ user, project
 
     if (error || influencerProjects.length === 0) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="text-center max-w-md p-8 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <h2 className="text-2xl font-black uppercase text-slate-900 mb-4">Error</h2>
-                    <p className="text-slate-600 mb-6">{error || 'Influencer data not found.'}</p>
+            <div className="min-h-screen flex items-center justify-center bg-[#FDFCF6]">
+                <div className="text-center max-w-md p-10 bg-white border border-slate-200 shadow-md">
+                    <h2 className="text-2xl font-black uppercase text-slate-900 mb-4 tracking-tighter">Error Occurred</h2>
+                    <p className="text-slate-500 font-bold mb-8 text-sm uppercase">{error || 'Influencer data not found.'}</p>
                     <button
                         onClick={handleBack}
-                        className="bg-black border-2 border-black px-6 py-2 text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all"
+                        className="bg-slate-900 px-8 py-3 text-white font-black uppercase text-xs tracking-widest shadow-sm hover:bg-black transition-all"
                     >
                         Go Back
                     </button>

@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { Project, User, STAGE_LABELS, WorkflowStage } from '../../types';
-import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, Loader2, Check } from 'lucide-react';
-import { format } from 'date-fns';
+import { Project, User, STAGE_LABELS, WorkflowStage, Role, TaskStatus, Channel } from '../../types';
+import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, History, Send, Layers, Loader2, Check, ExternalLink, Download, Play, X, Mail, AlertCircle, BarChart3, Target, Sparkles } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
+import Popup from '../Popup';
 import { toast } from 'sonner';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
-    project: Project; // Main selected project
-    allInfluencerProjects?: Project[]; // All projects for this influencer
+    project: Project; // Current selected project
+    allInfluencerProjects?: Project[]; // All related projects (instances + parent)
     user: User;
     onBack: () => void;
     onComplete: () => void;
@@ -18,9 +18,28 @@ interface Props {
 const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete }) => {
     const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || '');
     const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || '');
+    const [contentDescription, setContentDescription] = useState(project.data?.content_description || '');
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [showPopup, setShowPopup] = useState(false);
+    const [popupMessage, setPopupMessage] = useState('');
+    const [stageName, setStageName] = useState('');
+    const [popupType, setPopupType] = useState<'success' | 'error'>('success');
+    const [externalHistory, setExternalHistory] = useState<any[]>([]);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+    const isInstance = project.data?.influencer_instance === true;
+    const currentStage = project.current_stage;
+    const isApproved = currentStage === WorkflowStage.POSTED;
+
+    React.useEffect(() => {
+        const fetchHistory = async () => {
+            const parentId = project.data?.parent_script_id || project.id;
+            const data = await db.influencers.getByParent(parentId);
+            setExternalHistory(data || []);
+        };
+        fetchHistory();
+    }, [project.id, project.data?.parent_script_id]);
 
     const influencerDisplayName = project.data?.influencer_name || 'Influencer';
 
@@ -45,299 +64,547 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     }, { scriptSent: 0, rawReceived: 0, editedSent: 0 });
 
     const handleLaunchOutreach = async () => {
-        if (!influencerName.trim()) { toast.error('Enter influencer name'); return; }
-        if (!influencerEmail.trim() || !influencerEmail.includes('@')) { toast.error('Enter valid email'); return; }
+        if (!influencerName.trim()) {
+            setPopupMessage('Influencer name is required');
+            setPopupType('error');
+            setShowPopup(true);
+            return;
+        }
+        if (!influencerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(influencerEmail)) {
+            setPopupMessage('Enter a valid email address');
+            setPopupType('error');
+            setShowPopup(true);
+            return;
+        }
 
         setIsSending(true);
         try {
+            setPopupType('success');
             const { data: latestProject } = await supabase.from('projects').select('*').eq('id', project.id).single();
-            const scriptContent = project.data?.script_content || project.data?.idea_description || 'No script content available';
+            const scriptContent = latestProject?.data?.script_content || project.data?.script_content || project.data?.idea_description || 'No script content available';
 
-            const newHistoryEntry = {
-                influencer_name: influencerName,
-                influencer_email: influencerEmail,
-                script_content: scriptContent,
-                sent_at: new Date().toISOString(),
-                sent_by: user.full_name || 'PA'
-            };
-
-            const currentHistory = latestProject?.data?.influencer_history || [];
-            const updatedHistory = [...currentHistory, newHistoryEntry];
-
-            await db.projects.update(project.id, {
+            const newProjectData = {
+                title: project.title,
+                channel: project.channel,
+                content_type: project.content_type,
+                current_stage: WorkflowStage.SENT_TO_INFLUENCER,
+                status: TaskStatus.TODO,
+                priority: project.priority,
+                assigned_to_role: Role.PARTNER_ASSOCIATE,
+                assigned_to_user_id: user.id,
+                created_by_user_id: user.id,
+                created_by_name: user.full_name,
+                writer_id: project.writer_id || user.id,
+                writer_name: project.writer_name || user.full_name,
+                due_date: project.due_date,
                 data: {
-                    ...(latestProject?.data || {}),
+                    ...(latestProject?.data || project.data || {}),
                     influencer_name: influencerName,
                     influencer_email: influencerEmail,
-                    influencer_history: updatedHistory
+                    content_description: contentDescription,
+                    parent_script_id: project.data?.parent_script_id || project.id,
+                    influencer_instance: true,
+                    influencer_history: [{
+                        influencer_name: influencerName,
+                        influencer_email: influencerEmail,
+                        sent_at: new Date().toISOString(),
+                        sent_by: user.full_name || 'PA',
+                        sent_by_id: user.id,
+                        action: 'INITIAL_OUTREACH'
+                    }]
                 }
-            });
+            };
+
+            const createdProject = await db.projects.create(newProjectData as any);
+
+            const parentId = project.data?.parent_script_id || project.id;
+            const { data: parentScript } = await supabase.from('projects').select('*').eq('id', parentId).single();
+            const parentHistory = Array.isArray(parentScript?.data?.influencer_history) ? parentScript.data.influencer_history : [];
+            const isFirstInfluencer = parentHistory.length === 0;
+
+            if (isFirstInfluencer) {
+                await db.projects.updateData(parentId, {
+                    influencer_history: [...parentHistory, {
+                        influencer_name: influencerName,
+                        influencer_email: influencerEmail,
+                        instance_id: createdProject.id,
+                        sent_at: new Date().toISOString(),
+                        sent_by: user.full_name || 'PA',
+                        sent_by_id: user.id
+                    }]
+                });
+            } else {
+                await db.influencers.log({
+                    parent_project_id: parentId,
+                    instance_project_id: createdProject.id,
+                    influencer_name: influencerName,
+                    influencer_email: influencerEmail,
+                    script_content: scriptContent,
+                    content_description: contentDescription,
+                    sent_by: user.full_name || 'PA',
+                    sent_by_id: user.id,
+                    status: 'SENT_TO_INFLUENCER'
+                });
+            }
 
             await supabase.functions.invoke('send-workflow-email', {
                 body: {
                     event: 'SEND_TO_INFLUENCER',
                     recipient_email: influencerEmail,
                     data: {
-                        project_id: project.id,
+                        project_id: createdProject.id,
                         actor_name: user.full_name || 'PA',
-                        comment: 'Campaign launched from Partnership Hub',
-                        content_description: project.data?.brief || 'Script content for review',
+                        comment: 'Campaign launched by PA from Partnership Hub',
+                        content_description: contentDescription || project.data?.brief || 'Script content for review',
                         script_content: scriptContent,
                         influencer_name: influencerName
                     }
                 }
             });
 
-            await db.advanceWorkflow(project.id, 'Campaign launched by PA');
-
             setShowSuccessModal(true);
-            setTimeout(() => {
-                onComplete();
-            }, 1500);
+            setPopupMessage('The script has been sent successfully');
+            setStageName('SENT TO INFLUENCER');
+
+            setInfluencerName('');
+            setInfluencerEmail('');
+            setContentDescription('');
+
+            const pId = project.data?.parent_script_id || project.id;
+            const freshHistory = await db.influencers.getByParent(pId);
+            setExternalHistory(freshHistory || []);
         } catch (error: any) {
             toast.error(error.message || 'Error launching campaign.');
+        } finally {
+            setIsSending(false);
             setShowConfirmModal(false);
+        }
+    };
+
+    const handleUpdateInstance = async (stage: WorkflowStage, status: TaskStatus = TaskStatus.TODO) => {
+        setIsSending(true);
+        try {
+            const nextHistoryEntry = {
+                influencer_name: project.data?.influencer_name,
+                sent_at: new Date().toISOString(),
+                sent_by: user.full_name,
+                action: `Updated to ${stage.replace(/_/g, ' ')}`
+            };
+
+            await db.projects.update(project.id, {
+                current_stage: stage,
+                status: status,
+                data: {
+                    ...(project.data || {}),
+                    influencer_history: [...(project.data?.influencer_history || []), nextHistoryEntry]
+                }
+            });
+
+            let msg = '';
+            let sName = '';
+            if (stage === WorkflowStage.VIDEO_EDITING) {
+                msg = 'The influencer video is uplaoded it moves to the editor';
+                sName = 'VIDEO EDITING';
+            } else if (stage === WorkflowStage.PA_FINAL_REVIEW) {
+                msg = 'Editor has uploaded the video. Ready for Final Approval.';
+                sName = 'PA FINAL REVIEW';
+            } else if (stage === WorkflowStage.POSTED) {
+                msg = 'The video is approved now it shows in the video approved page';
+                sName = 'POSTED';
+            }
+
+            setPopupMessage(msg);
+            setStageName(sName);
+            setShowPopup(true);
+
+            const pId = project.data?.parent_script_id || project.id;
+            const freshHistory = await db.influencers.getByParent(pId);
+            setExternalHistory(freshHistory || []);
+
+        } catch (error) {
+            toast.error('Failed to update workflow');
         } finally {
             setIsSending(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 font-sans flex flex-col animate-fade-in pb-32 relative">
-
-            {/* Confirmation Modal */}
-            {showConfirmModal && !showSuccessModal && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] max-w-md w-full p-10 animate-scale-in">
-                        <AlertCircle className="w-16 h-16 text-black mb-6" />
-                        <h3 className="text-3xl font-black text-slate-900 uppercase mb-4">Confirm Launch</h3>
-                        <p className="text-sm font-bold text-slate-500 uppercase mb-8 leading-relaxed">
-                            Are you sure you want to launch this campaign? This will send the script to {influencerName} and advance the workflow.
-                        </p>
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => setShowConfirmModal(false)}
-                                className="flex-1 py-4 border-2 border-black font-black uppercase text-xs hover:bg-slate-100 transition-all"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleLaunchOutreach}
-                                disabled={isSending}
-                                className="flex-1 py-4 border-2 border-black bg-black text-white font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all flex items-center justify-center gap-2"
-                            >
-                                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Success Modal */}
-            {showSuccessModal && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-                    <div className="bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] max-w-sm w-full p-12 text-center animate-bounce-in">
-                        <div className="w-24 h-24 bg-green-500 border-4 border-black rounded-full flex items-center justify-center mx-auto mb-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <Check className="w-12 h-12 text-white stroke-[4px]" />
-                        </div>
-                        <h3 className="text-3xl font-black text-slate-900 uppercase mb-2">Campaign Live!</h3>
-                        <p className="text-xs font-black text-green-600 uppercase tracking-widest mb-6">Outreach Successful</p>
-                        <div className="flex items-center justify-center gap-2 text-slate-400 font-bold uppercase text-[10px]">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Redirecting to Dashboard
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <header className="h-16 bg-white/90 backdrop-blur-md border-b-2 border-indigo-50 flex items-center justify-between px-8 sticky top-0 z-50">
+        <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in relative text-slate-900">
+            <header className="h-20 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white z-20">
                 <div className="flex items-center space-x-6">
-                    <button
-                        onClick={onBack}
-                        className="p-2.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-600 rounded-xl transition-all shadow-sm"
-                    >
-                        <ArrowLeft className="w-5 h-5" />
+                    <button onClick={onBack} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
+                        <ArrowLeft className="w-6 h-6 text-black" />
                     </button>
                     <div>
-                        <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none uppercase">{influencerDisplayName}</h1>
-                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1">Partnership Hub</p>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg shadow-indigo-200">
-                        <Layers className="w-4 h-4 text-indigo-300" /> Executive Analytics
+                        <h1 className="text-2xl font-black uppercase tracking-tight leading-none">{project.title}</h1>
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                            <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-3 py-1 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                {STAGE_LABELS[project.current_stage]}
+                            </span>
+                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${project.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
+                                    project.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
+                                        project.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
+                                            'bg-black text-white'
+                                }`}>
+                                {project.channel}
+                            </span>
+                            <span className={`px-3 py-1 text-[10px] font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${isInstance ? 'bg-blue-600 text-white' : 'bg-slate-900 text-white'
+                                }`}>
+                                {isInstance ? 'INSTANCE' : 'PARENT'}
+                            </span>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto">
-                <div className="max-w-6xl mx-auto p-8 space-y-10">
-
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <div className="p-8 bg-white border-2 border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 flex flex-col items-center text-center justify-center relative overflow-hidden group">
-                            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-3xl text-white shadow-xl mb-4 relative z-10">
-                                {influencerDisplayName.charAt(0)}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar h-[calc(100vh-80px)]">
+                <div className="flex flex-col md:flex-row w-full items-start min-h-full">
+                    <div className="flex-1 px-6 md:px-12 pb-12 bg-slate-50 min-h-full">
+                        <div className="mt-8 bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Creator</label>
+                                <div className="font-bold uppercase text-xs truncate">{project.writer_name || project.created_by_name || 'System'}</div>
                             </div>
-                            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none relative z-10">{influencerDisplayName}</h2>
-                            <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || 'No email set'}</p>
-                        </div>
-
-                        <div className="p-8 bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-100 mb-2 relative z-10">Scripts Sent</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.scriptSent}</p>
-                                <Send className="w-6 h-6 text-indigo-300" />
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Channel</label>
+                                <div className="font-bold uppercase text-xs">{project.channel}</div>
                             </div>
-                        </div>
-
-                        <div className="p-8 bg-blue-500 rounded-3xl shadow-xl shadow-blue-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 mb-2 relative z-10">Raw Footage</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.rawReceived}</p>
-                                <Video className="w-6 h-6 text-blue-200" />
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Type</label>
+                                <div className="font-bold uppercase text-xs">{project.content_type?.replace(/_/g, ' ')}</div>
                             </div>
-                        </div>
-
-                        <div className="p-8 bg-emerald-500 rounded-3xl shadow-xl shadow-emerald-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100 mb-2 relative z-10">Live Outputs</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.editedSent}</p>
-                                <CheckCircle2 className="w-6 h-6 text-emerald-200" />
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Brand</label>
+                                <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || 'UNBRANDED'}</div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
+                                <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_name || '—'}</div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Email</label>
+                                <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_email || '—'}</div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Outreach Action Area for unlaunched projects */}
-                    {project.current_stage === WorkflowStage.PARTNER_REVIEW && (
-                        <div className="bg-white border-4 border-black p-8 rounded-[2rem] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] space-y-8 animate-slide-up">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-black text-white rounded-full flex items-center justify-center font-black">
-                                    <Send className="w-6 h-6" />
+                        {project.data?.brief && (
+                            <section className="space-y-4 pt-8">
+                                <h3 className="text-2xl font-black uppercase">Campaign Brief</h3>
+                                <div className="border-2 border-black bg-white p-8 min-h-[100px] whitespace-pre-wrap shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                    {project.data.brief}
                                 </div>
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-900 uppercase">Ready for Outreach</h3>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Action Required to Proceed</p>
-                                </div>
+                            </section>
+                        )}
+
+                        <section className="space-y-4 pt-8">
+                            <h3 className="text-2xl font-black uppercase tracking-tight">Script Content</h3>
+                            <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <ScriptDisplay content={project.data?.script_content || project.data?.idea_description || 'Content empty.'} showBox={false} />
                             </div>
+                        </section>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Influencer Identity</label>
-                                    <input
-                                        type="text"
-                                        value={influencerName}
-                                        onChange={(e) => setInfluencerName(e.target.value)}
-                                        placeholder="Full Name"
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 focus:outline-none transition-all"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 pl-1">Outreach Channel</label>
-                                    <input
-                                        type="email"
-                                        value={influencerEmail}
-                                        onChange={(e) => setInfluencerEmail(e.target.value)}
-                                        placeholder="Valid Email Address"
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 focus:outline-none transition-all"
-                                    />
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => setShowConfirmModal(true)}
-                                className="w-full py-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-xl rounded-2xl shadow-xl shadow-indigo-100 hover:translate-y-[-2px] transition-all flex items-center justify-center gap-3"
-                            >
-                                <Mail className="w-6 h-6" /> Launch Campaign & Send Script
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="space-y-12">
-                        <div className="flex items-center gap-6">
-                            <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
-                                <History className="w-6 h-6 text-indigo-600" /> Partnership History
+                        <section className="space-y-6 pt-12 pb-12">
+                            <h3 className="text-2xl font-black uppercase tracking-tight flex items-center gap-4">
+                                <History className="w-8 h-8 text-black" /> Influencer History
                             </h3>
-                            <div className="h-1 bg-gradient-to-r from-indigo-100 to-transparent flex-1 rounded-full"></div>
-                        </div>
+                            <div className="space-y-8">
+                                {(() => {
+                                    const parentId = project.data?.parent_script_id || project.id;
+                                    const parentProject = allInfluencerProjects.find(p => p.id === parentId);
 
-                        {sortedProjects.map((proj, idx) => {
-                            const influencerHistory = proj.data?.influencer_history || [];
-                            const rawLinksHistory = [...(proj.cine_video_links_history || []), proj.video_link].filter(Boolean);
-                            const editedLinksHistory = [...(proj.editor_video_links_history || []), ...(proj.sub_editor_video_links_history || []), proj.edited_video_link].filter(Boolean);
-                            const isNew = idx === 0;
+                                    const internalHistory = (parentProject?.data?.influencer_history || [])
+                                        .filter((h: any) => h.sent_by_id === user.id)
+                                        .map((h: any) => ({ ...h, source: 'Internal' }));
 
-                            return (
-                                <div key={proj.id} className={`bg-white border-2 rounded-[2rem] shadow-xl overflow-hidden transition-all duration-300 ${isNew ? 'border-indigo-400 ring-4 ring-indigo-50 shadow-indigo-100' : 'border-slate-100 shadow-slate-100'
-                                    }`}>
-                                    <div className={`p-5 px-8 flex flex-wrap items-center justify-between gap-4 ${isNew ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-900 text-white'
-                                        }`}>
-                                        <div className="flex items-center gap-5">
-                                            <div className="w-10 h-10 bg-white/20 backdrop-blur-md text-white rounded-xl flex items-center justify-center font-black text-lg border border-white/30">
-                                                {sortedProjects.length - idx}
-                                            </div>
-                                            <div>
-                                                <h4 className="text-xl font-black tracking-tight uppercase">{proj.title}</h4>
-                                                <div className="flex items-center gap-3 mt-1">
-                                                    <span className="px-2 py-0.5 bg-white/20 text-[8px] font-black uppercase tracking-widest rounded transition-all">{STAGE_LABELS[proj.current_stage]}</span>
-                                                </div>
-                                            </div>
+                                    const externalLog = externalHistory
+                                        .filter(h => h.sent_by_id === user.id)
+                                        .map(h => ({ ...h, source: 'Registry', action: h.action || 'CAMPAIGN_OUTREACH' }));
+
+                                    const combined = [...internalHistory, ...externalLog]
+                                        .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+
+                                    if (combined.length === 0) return (
+                                        <div className="p-10 border-2 border-dashed border-slate-300 text-center text-slate-400 font-bold uppercase text-sm bg-white">
+                                            No Outreach History Recorded
                                         </div>
-                                    </div>
+                                    );
 
-                                    <div className="grid grid-cols-1 lg:grid-cols-2">
-                                        <div className="p-8 border-b lg:border-b-0 lg:border-r border-slate-100">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                    <FileText className="w-5 h-5" /> Campaign Assets ({influencerHistory.length || 1})
-                                                </span>
-                                            </div>
-                                            <div className="space-y-6 max-h-[450px] overflow-y-auto pr-4 custom-scrollbar">
-                                                {influencerHistory.length > 0 ? (
-                                                    influencerHistory.map((entry: any, hIdx: number) => (
-                                                        <div key={hIdx} className="p-6 bg-indigo-50/30 rounded-3xl border-2 border-indigo-50">
-                                                            <div className="text-sm font-medium text-slate-700 italic">
-                                                                <ScriptDisplay
-                                                                    content={entry.script_content || 'Content synchronized'}
-                                                                    caption={proj.data?.captions}
-                                                                    showBox={false}
-                                                                />
+                                    return (
+                                        <>
+                                            {combined.map((entry: any, idx: number) => {
+                                                const instanceProject = allInfluencerProjects.find(p => p.id === entry.instance_id || p.id === entry.instance_project_id);
+                                                const rawVideo = instanceProject?.video_link || entry.video_link;
+                                                const editedVideo = instanceProject?.edited_video_link || entry.edited_video_link;
+
+                                                return (
+                                                    <div key={idx} className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 flex flex-col gap-6 animate-slide-up">
+                                                        <div className="flex items-center justify-between border-b-2 border-black pb-6">
+                                                            <div className="flex items-center gap-6">
+                                                                <div className={`w-10 h-10 ${entry.source === 'Internal' ? 'bg-black' : 'bg-[#0085FF]'} text-white flex items-center justify-center font-black text-xs border-2 border-black`}>#{combined.length - idx}</div>
+                                                                <div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <h4 className="font-black uppercase text-lg">{entry.influencer_name}</h4>
+                                                                        <span className={`px-2 py-0.5 text-[8px] font-black border-2 border-black uppercase ${entry.source === 'Internal' ? 'bg-black text-white' : 'bg-[#D946EF] text-white'}`}>
+                                                                            {entry.source === 'Internal' ? 'PRIMARY' : 'REGISTRY'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{entry.influencer_email || 'No Email'}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Launch</div>
+                                                                <div className="text-sm font-black uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
                                                             </div>
                                                         </div>
-                                                    )).reverse()
-                                                ) : (
-                                                    <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                                        <ScriptDisplay
-                                                            content={proj.data?.script_content || proj.data?.idea_description || 'No content found'}
-                                                            caption={proj.data?.captions}
-                                                            showBox={false}
-                                                        />
+
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                            <div className="flex items-center justify-between bg-slate-50 p-4 border-2 border-black">
+                                                                <span className="text-[10px] font-black uppercase flex items-center gap-3">
+                                                                    <Video className="w-5 h-5" /> Raw Video
+                                                                </span>
+                                                                {rawVideo ? (
+                                                                    <a href={rawVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-black px-4 py-2 hover:bg-slate-800 transition-colors border-2 border-black">VIEW ASSET</a>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black text-slate-300 uppercase italic">Pending</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center justify-between bg-blue-50 p-4 border-2 border-black">
+                                                                <span className="text-[10px] font-black text-[#0085FF] uppercase flex items-center gap-3">
+                                                                    <CheckCircle2 className="w-5 h-5" /> Final Output
+                                                                </span>
+                                                                {editedVideo ? (
+                                                                    <a href={editedVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-[#0085FF] px-4 py-2 hover:bg-blue-700 transition-colors border-2 border-black">VIEW ASSET</a>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black text-blue-200 uppercase italic">In Edit</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                )}
+                                                );
+                                            })}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </section>
+                    </div>
+
+                    <aside className="w-full md:w-[400px] bg-white border-l-2 border-black p-0 sticky top-0 h-fit min-h-[calc(100vh-80px)] flex flex-col">
+                        {/* Aggregated Stats Header */}
+                        <div className="p-8 bg-slate-900 border-b-2 border-black">
+                            <div className="flex items-center gap-3 mb-6">
+                                <BarChart3 className="w-6 h-6 text-[#D946EF]" />
+                                <h2 className="text-xl font-black uppercase text-white tracking-tight">Campaign Health</h2>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(217,70,239,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Sent</div>
+                                    <div className="text-xl font-black">{aggregatedStats.scriptSent}</div>
+                                </div>
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(0,133,255,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Raw</div>
+                                    <div className="text-xl font-black">{aggregatedStats.rawReceived}</div>
+                                </div>
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Live</div>
+                                    <div className="text-xl font-black">{aggregatedStats.editedSent}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-8 flex-1 overflow-y-auto">
+                            {isInstance ? (
+                                <div className="space-y-8 animate-fade-in">
+                                    <div className="flex flex-col gap-2 mb-8">
+                                        <div className="flex items-center gap-3">
+                                            <Target className="w-6 h-6 text-black" />
+                                            <h2 className="text-2xl font-black uppercase tracking-tighter">SUBMIT ACTION</h2>
+                                        </div>
+                                        <div className="h-1 w-20 bg-black" />
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <div className="bg-[#D946EF] border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4">
+                                            <div className="bg-white/20 p-3 rounded-xl">
+                                                <Video className="w-8 h-8 text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-white font-black uppercase text-lg leading-none">INFLUENCER VIDEO</h4>
+                                                <p className="text-white/70 text-[10px] font-bold uppercase mt-1">PASTE OUTPUT LINK BELOW</p>
                                             </div>
                                         </div>
 
-                                        <div className="p-8 space-y-8 bg-slate-50/30">
-                                            <div className="space-y-4">
-                                                <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                    <Video className="w-5 h-5" /> Footage Logs ({rawLinksHistory.length})
-                                                </span>
-                                                <div className="grid grid-cols-1 gap-3">
-                                                    {rawLinksHistory.map((link, lIdx) => (
-                                                        <a key={lIdx} href={link} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white border-2 border-blue-50 rounded-2xl group">
-                                                            <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">{link}</span>
-                                                            <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
-                                                        </a>
-                                                    )).reverse()}
-                                                </div>
+                                        <div className="space-y-4 pt-4 pb-12">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-slate-400">Submission URL</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="PASTE RAW VIDEO LINK HERE"
+                                                    className="w-full bg-white border-2 border-black p-5 font-black text-xs uppercase focus:outline-none focus:bg-slate-50 placeholder:text-slate-300"
+                                                    defaultValue={project.video_link || ''}
+                                                    id="video_link_input"
+                                                />
                                             </div>
+
+                                            <button
+                                                onClick={() => {
+                                                    const val = (document.getElementById('video_link_input') as HTMLInputElement)?.value;
+                                                    if (val) {
+                                                        handleUpdateInstance(WorkflowStage.VIDEO_EDITING);
+                                                    } else {
+                                                        toast.error('Please provide a video link');
+                                                    }
+                                                }}
+                                                className="w-full py-6 bg-black text-white font-black uppercase text-xl tracking-tighter hover:bg-[#D946EF] transition-all border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none"
+                                            >
+                                                SUBMIT VIDEO LINK
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
-                            );
-                        })}
-                    </div>
+                            ) : (
+                                <div className="bg-white p-0 transition-all">
+                                    <div className="flex items-center gap-4 mb-2">
+                                        <Send className="w-8 h-8 text-[#D946EF] transform -rotate-12" />
+                                        <h2 className="text-3xl font-black uppercase tracking-tighter">NEW OUTREACH</h2>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-[#D946EF] mb-8" />
+
+                                    <div className="space-y-8">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
+                                                INFLUENCER NAME <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={influencerName}
+                                                    onChange={(e) => setInfluencerName(e.target.value)}
+                                                    className={`w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all ${!influencerName && 'border-slate-300'}`}
+                                                    placeholder="Enter influencer name"
+                                                />
+                                                {!influencerName && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
+                                                INFLUENCER EMAIL <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="email"
+                                                    value={influencerEmail}
+                                                    onChange={(e) => setInfluencerEmail(e.target.value)}
+                                                    className={`w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all ${!influencerEmail && 'border-slate-300'}`}
+                                                    placeholder="Enter influencer email"
+                                                />
+                                                {!influencerEmail && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">INTERNAL NOTES</label>
+                                            <textarea
+                                                rows={4}
+                                                value={contentDescription}
+                                                onChange={(e) => setContentDescription(e.target.value)}
+                                                className="w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all resize-none"
+                                                placeholder="Add context for this outreach..."
+                                            />
+                                        </div>
+
+                                        <div className="pt-4 pb-12">
+                                            <button
+                                                onClick={() => setShowConfirmModal(true)}
+                                                disabled={isSending}
+                                                className="w-full relative group"
+                                            >
+                                                <div className="absolute inset-0 bg-black translate-x-1.5 translate-y-1.5 transition-transform group-hover:translate-x-2.5 group-hover:translate-y-2.5" />
+                                                <div className="relative flex items-center justify-center gap-4 py-6 bg-[#F472B6] border-2 border-black text-white font-black uppercase text-lg tracking-tighter group-hover:-translate-x-1 group-hover:-translate-y-1 transition-all active:translate-x-0 active:translate-y-0">
+                                                    {isSending ? (
+                                                        <Loader2 className="w-6 h-6 animate-spin" />
+                                                    ) : (
+                                                        <><Send className="w-6 h-6" />LAUNCH CAMPAIGN</>
+                                                    )}
+                                                </div>
+                                            </button>
+                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight text-center mt-6">
+                                                {isSending ? 'PROCESSING...' : 'SENDS CLIENT SCRIPT AUTOMATICALLY'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </aside>
                 </div>
             </div>
+
+            {showConfirmModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in text-slate-900">
+                    <div className="bg-white border-[3px] border-black p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative animate-scale-in">
+                        <button
+                            onClick={() => setShowConfirmModal(false)}
+                            className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
+                        >
+                            <X className="w-6 h-6 text-slate-400" />
+                        </button>
+                        <h3 className="text-2xl font-black uppercase mb-6 tracking-tight pr-8">CONFIRM ACTION</h3>
+                        <p className="text-slate-600 font-medium mb-8 text-lg leading-relaxed">
+                            Are you sure you want to send this script to <span className="font-black text-black">{influencerName || 'this influencer'}</span>?
+                        </p>
+                        <div className="grid grid-cols-2 gap-4 mt-8">
+                            <button
+                                onClick={() => setShowConfirmModal(false)}
+                                className="py-4 border-2 border-black bg-white text-black font-black uppercase text-sm tracking-widest hover:bg-slate-50 transition-all active:translate-y-[2px]"
+                            >
+                                NO
+                            </button>
+                            <button
+                                onClick={handleLaunchOutreach}
+                                className="py-4 border-2 border-black bg-[#0085FF] text-white font-black uppercase text-sm tracking-widest hover:bg-blue-600 transition-all shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px]"
+                            >
+                                YES
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showPopup && (
+                <Popup
+                    message={popupMessage}
+                    stageName={stageName}
+                    onClose={async () => {
+                        setShowPopup(false);
+                        if (onComplete) await onComplete();
+                    }}
+                />
+            )}
+
+            {showSuccessModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white border-[4px] border-black p-10 max-w-lg w-full shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] relative animate-scale-in flex flex-col items-center text-center">
+                        <div className="w-24 h-24 bg-[#22C55E] border-4 border-black flex items-center justify-center mb-8 rotate-3">
+                            <Sparkles className="w-12 h-12 text-white" />
+                        </div>
+                        <h3 className="text-4xl font-black uppercase mb-4 tracking-tighter italic">CAMPAIGN LAUNCHED</h3>
+                        <p className="text-slate-600 font-bold mb-8 text-lg leading-tight uppercase">
+                            The script has been delivered to <span className="text-[#0085FF]">{influencerName}</span> successfully.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowSuccessModal(false);
+                                onBack();
+                            }}
+                            className="w-full py-5 bg-black text-white font-black uppercase text-xl tracking-widest hover:bg-[#D946EF] transition-all active:translate-y-1 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+                        >
+                            GOT IT!
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

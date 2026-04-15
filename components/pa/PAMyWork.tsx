@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Send, Video, CheckCircle2, ExternalLink, FileText } from 'lucide-react';
@@ -14,36 +15,36 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
 
     const influencerStats = useMemo(() => {
         const stats: Record<string, { name: string; scriptSent: number; rawReceived: number; editedSent: number, totalProjects: number, influencerProjects: Project[] }> = {};
-        
+
         projects.forEach(p => {
             // Only process projects marked as PA brands
             if (!p.data?.is_pa_brand) return;
 
-            const influencerName = p.data?.influencer_name || p.metadata?.influencer_name || p.influencer_name;
-            if (!influencerName) return; 
-            
+            const influencerName = p.data?.influencer_name || (p as any).metadata?.influencer_name || (p as any).influencer_name;
+            if (!influencerName) return;
+
             const nameKey = influencerName.toLowerCase().trim();
-            
+
             if (!stats[nameKey]) {
                 stats[nameKey] = { name: influencerName, scriptSent: 0, rawReceived: 0, editedSent: 0, totalProjects: 0, influencerProjects: [] };
             }
-            
+
             stats[nameKey].totalProjects += 1;
             stats[nameKey].influencerProjects.push(p);
-            
+
             // Script sent: stage is beyond PARTNER_REVIEW
             const isScriptSent = p.current_stage !== WorkflowStage.PARTNER_REVIEW;
-            
+
             // Raw Video Received: past SENT_TO_INFLUENCER and has a link, or stage is explicitly editing/review
             const hasRawVideo = !!p.video_link || [
-                WorkflowStage.VIDEO_EDITING, 
-                WorkflowStage.SUB_EDITOR_ASSIGNMENT, 
-                WorkflowStage.SUB_EDITOR_PROCESSING, 
-                WorkflowStage.PA_FINAL_REVIEW, 
-                WorkflowStage.POSTED, 
+                WorkflowStage.VIDEO_EDITING,
+                WorkflowStage.SUB_EDITOR_ASSIGNMENT,
+                WorkflowStage.SUB_EDITOR_PROCESSING,
+                WorkflowStage.PA_FINAL_REVIEW,
+                WorkflowStage.POSTED,
                 WorkflowStage.OPS_SCHEDULING
             ].includes(p.current_stage);
-            
+
             // Edited Video Sent: POSTED
             const isEditedSent = p.current_stage === WorkflowStage.POSTED;
 
@@ -56,16 +57,16 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
     }, [projects]);
 
     const handleInfluencerClick = (influencerName: string) => {
-        // Navigate to the first project of this influencer
+        // Navigate to the influencer portfolio view
         const influencerProjects = projects.filter(p => {
             if (!p.data?.is_pa_brand) return false;
-            const projInfluencerName = p.data?.influencer_name || p.metadata?.influencer_name || p.influencer_name;
+            const projInfluencerName = p.data?.influencer_name || (p as any).metadata?.influencer_name || (p as any).influencer_name;
             return projInfluencerName && projInfluencerName.toLowerCase().trim() === influencerName.toLowerCase().trim();
         });
-        
+
         if (influencerProjects.length > 0) {
-            // Navigate to the first project's high-fidelity detailed page
-            navigate(`/partner_associate/project/${influencerProjects[0].id}`);
+            // Navigate to the NEW separate portfolio page using the first project as reference
+            navigate(`/partner_associate/influencer/${influencerProjects[0].id}`);
         }
     };
 
@@ -101,19 +102,19 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                                 <tr className="bg-slate-100">
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm">Influencer Name</th>
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-purple-100 text-purple-900">
-                                        <div className="flex items-center gap-2"><Send className="w-4 h-4"/> Scripts Sent</div>
+                                        <div className="flex items-center gap-2"><Send className="w-4 h-4" /> Scripts Sent</div>
                                     </th>
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-blue-100 text-blue-900">
-                                        <div className="flex items-center gap-2"><Video className="w-4 h-4"/> Raw Received</div>
+                                        <div className="flex items-center gap-2"><Video className="w-4 h-4" /> Raw Received</div>
                                     </th>
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-green-100 text-green-900">
-                                        <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4"/> Edited Sent</div>
+                                        <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Edited Sent</div>
                                     </th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {influencerStats.map((stat, idx) => (
-                                    <tr 
+                                    <tr
                                         key={idx}
                                         className="hover:bg-slate-50 transition-colors cursor-pointer"
                                         onClick={() => handleInfluencerClick(stat.name)}

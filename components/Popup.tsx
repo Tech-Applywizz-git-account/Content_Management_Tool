@@ -11,7 +11,7 @@ const Popup: React.FC<PopupProps> = ({ message, stageName, onClose, duration = 5
   useEffect(() => {
     // If duration is 0 or negative, don't auto-close
     if (duration <= 0) return;
-    
+
     const timer = setTimeout(() => {
       onClose();
     }, duration);
@@ -29,7 +29,7 @@ const Popup: React.FC<PopupProps> = ({ message, stageName, onClose, duration = 5
           <p className="font-medium">{message}</p>
           <div className="mt-2 text-sm font-bold">{`Current Stage: ${stageName}`}</div>
         </div>
-        <button 
+        <button
           onClick={onClose}
           className="ml-4 text-white hover:text-gray-200 focus:outline-none"
         >
