@@ -597,6 +597,8 @@ export const users = {
 
         let results = [...(subEditors || [])];
 
+        let results = [...(subEditors || [])];
+
         // Add Ajay if found and not already in the list
         if (!ajayError && ajayUser) {
             if (!results.find(u => u.id === ajayUser.id)) {
@@ -938,8 +940,10 @@ export const projects = {
 
                 if (!historyError && historyData) {
                     // Group history by project_id
-                    const historyMap = new Map<string, any[]>();
-                    historyData.forEach((entry) => {
+                    // Group history by project_id
+                    const typedHistoryData = historyData as unknown as HistoryEvent[];
+                    const historyMap = new Map<string, HistoryEvent[]>();
+                    typedHistoryData.forEach((entry) => {
                         if (!historyMap.has(entry.project_id)) {
                             historyMap.set(entry.project_id, []);
                         }
@@ -3548,8 +3552,8 @@ export const db = {
             title,
             channel,
             content_type: contentType,
-            current_stage: WorkflowStage.FINAL_REVIEW_CMO,
-            assigned_to_role: Role.CMO,
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO, 
+            assigned_to_role: Role.CMO, 
             status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,
             priority,

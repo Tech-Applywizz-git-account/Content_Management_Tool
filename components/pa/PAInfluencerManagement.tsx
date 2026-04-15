@@ -277,7 +277,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || 'UNBRANDED'}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
+                                <label className="block text-[10px) font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
                                 <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_name || '—'}</div>
                             </div>
                             <div>
@@ -328,57 +328,61 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                         </div>
                                     );
 
-                                    return combined.map((entry: any, idx: number) => {
-                                        const instanceProject = allInfluencerProjects.find(p => p.id === entry.instance_id || p.id === entry.instance_project_id);
-                                        const rawVideo = instanceProject?.video_link || entry.video_link;
-                                        const editedVideo = instanceProject?.edited_video_link || entry.edited_video_link;
+                                    return (
+                                        <>
+                                            {combined.map((entry: any, idx: number) => {
+                                                const instanceProject = allInfluencerProjects.find(p => p.id === entry.instance_id || p.id === entry.instance_project_id);
+                                                const rawVideo = instanceProject?.video_link || entry.video_link;
+                                                const editedVideo = instanceProject?.edited_video_link || entry.edited_video_link;
 
-                                        return (
-                                            <div key={idx} className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 flex flex-col gap-6 animate-slide-up">
-                                                <div className="flex items-center justify-between border-b-2 border-black pb-6">
-                                                    <div className="flex items-center gap-6">
-                                                        <div className={`w-10 h-10 ${entry.source === 'Internal' ? 'bg-black' : 'bg-[#0085FF]'} text-white flex items-center justify-center font-black text-xs border-2 border-black`}>#{combined.length - idx}</div>
-                                                        <div>
-                                                            <div className="flex items-center gap-3">
-                                                                <h4 className="font-black uppercase text-lg">{entry.influencer_name}</h4>
-                                                                <span className={`px-2 py-0.5 text-[8px] font-black border-2 border-black uppercase ${entry.source === 'Internal' ? 'bg-slate-900 text-white' : 'bg-[#0085FF] text-white'}`}>
-                                                                    {entry.source === 'Internal' ? 'Primary' : 'Secondary'}
-                                                                </span>
+                                                return (
+                                                    <div key={idx} className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-8 flex flex-col gap-6 animate-slide-up">
+                                                        <div className="flex items-center justify-between border-b-2 border-black pb-6">
+                                                            <div className="flex items-center gap-6">
+                                                                <div className={`w-10 h-10 ${entry.source === 'Internal' ? 'bg-black' : 'bg-[#0085FF]'} text-white flex items-center justify-center font-black text-xs border-2 border-black`}>#{combined.length - idx}</div>
+                                                                <div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <h4 className="font-black uppercase text-lg">{entry.influencer_name}</h4>
+                                                                        <span className={`px-2 py-0.5 text-[8px] font-black border-2 border-black uppercase ${entry.source === 'Internal' ? 'bg-slate-900 text-white' : 'bg-[#0085FF] text-white'}`}>
+                                                                            {entry.source === 'Internal' ? 'Primary' : 'Secondary'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{entry.influencer_email || 'No Email'}</p>
+                                                                </div>
                                                             </div>
-                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{entry.influencer_email || 'No Email'}</p>
+                                                            <div className="text-right">
+                                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Launch</div>
+                                                                <div className="text-sm font-black uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                            <div className="flex items-center justify-between bg-slate-50 p-4 border-2 border-black">
+                                                                <span className="text-[10px] font-black uppercase flex items-center gap-3">
+                                                                    <Video className="w-5 h-5" /> Raw Video
+                                                                </span>
+                                                                {rawVideo ? (
+                                                                    <a href={rawVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-black px-4 py-2 hover:bg-slate-800 transition-colors border-2 border-black">VIEW ASSET</a>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black text-slate-300 uppercase italic">Pending</span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center justify-between bg-blue-50 p-4 border-2 border-black">
+                                                                <span className="text-[10px] font-black text-[#0085FF] uppercase flex items-center gap-3">
+                                                                    <CheckCircle2 className="w-5 h-5" /> Final Output
+                                                                </span>
+                                                                {editedVideo ? (
+                                                                    <a href={editedVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-[#0085FF] px-4 py-2 hover:bg-blue-700 transition-colors border-2 border-black">VIEW ASSET</a>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black text-blue-200 uppercase italic">In Edit</span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Launch</div>
-                                                        <div className="text-sm font-black uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    <div className="flex items-center justify-between bg-slate-50 p-4 border-2 border-black">
-                                                        <span className="text-[10px] font-black uppercase flex items-center gap-3">
-                                                            <Video className="w-5 h-5" /> Raw Video
-                                                        </span>
-                                                        {rawVideo ? (
-                                                            <a href={rawVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-black px-4 py-2 hover:bg-slate-800 transition-colors border-2 border-black">VIEW ASSET</a>
-                                                        ) : (
-                                                            <span className="text-[10px] font-black text-slate-300 uppercase italic">Pending</span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center justify-between bg-blue-50 p-4 border-2 border-black">
-                                                        <span className="text-[10px] font-black text-[#0085FF] uppercase flex items-center gap-3">
-                                                            <CheckCircle2 className="w-5 h-5" /> Final Output
-                                                        </span>
-                                                        {editedVideo ? (
-                                                            <a href={editedVideo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black text-white bg-[#0085FF] px-4 py-2 hover:bg-blue-700 transition-colors border-2 border-black">VIEW ASSET</a>
-                                                        ) : (
-                                                            <span className="text-[10px] font-black text-blue-200 uppercase italic">In Edit</span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    });
+                                                );
+                                            })}
+                                        </>
+                                    );
                                 })()}
                             </div>
                         </section>
