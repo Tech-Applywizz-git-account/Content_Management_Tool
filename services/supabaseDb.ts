@@ -597,8 +597,6 @@ export const users = {
 
         let results = [...(subEditors || [])];
 
-        let results = [...(subEditors || [])];
-
         // Add Ajay if found and not already in the list
         if (!ajayError && ajayUser) {
             if (!results.find(u => u.id === ajayUser.id)) {
