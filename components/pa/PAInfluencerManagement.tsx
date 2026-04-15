@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, User, STAGE_LABELS, WorkflowStage, Role, TaskStatus, Channel } from '../../types';
-import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, History, Send, Layers, Loader2, Check, ExternalLink, Download, Play, X, Mail } from 'lucide-react';
+import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, History, Send, Layers, Loader2, Check, ExternalLink, Download, Play, X, Mail, AlertCircle, BarChart3, Target, Sparkles } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
 import Popup from '../Popup';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [stageName, setStageName] = useState('');
     const [popupType, setPopupType] = useState<'success' | 'error'>('success');
     const [externalHistory, setExternalHistory] = useState<any[]>([]);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const isInstance = project.data?.influencer_instance === true;
     const currentStage = project.current_stage;
@@ -161,9 +162,9 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                 }
             });
 
-            setPopupMessage('The script is send to the influencer');
+            setShowSuccessModal(true);
+            setPopupMessage('The script has been sent successfully');
             setStageName('SENT TO INFLUENCER');
-            setShowPopup(true);
 
             setInfluencerName('');
             setInfluencerEmail('');
@@ -277,7 +278,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || 'UNBRANDED'}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px) font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
                                 <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_name || '—'}</div>
                             </div>
                             <div>
@@ -343,8 +344,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                                 <div>
                                                                     <div className="flex items-center gap-3">
                                                                         <h4 className="font-black uppercase text-lg">{entry.influencer_name}</h4>
-                                                                        <span className={`px-2 py-0.5 text-[8px] font-black border-2 border-black uppercase ${entry.source === 'Internal' ? 'bg-slate-900 text-white' : 'bg-[#0085FF] text-white'}`}>
-                                                                            {entry.source === 'Internal' ? 'Primary' : 'Secondary'}
+                                                                        <span className={`px-2 py-0.5 text-[8px] font-black border-2 border-black uppercase ${entry.source === 'Internal' ? 'bg-black text-white' : 'bg-[#D946EF] text-white'}`}>
+                                                                            {entry.source === 'Internal' ? 'PRIMARY' : 'REGISTRY'}
                                                                         </span>
                                                                     </div>
                                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{entry.influencer_email || 'No Email'}</p>
@@ -388,119 +389,154 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         </section>
                     </div>
 
-                    <aside className="w-full md:w-[400px] bg-white border-l-2 border-black p-8 sticky top-0 h-fit min-h-[calc(100vh-80px)]">
-                        {isInstance ? (
-                            <div className="space-y-8 animate-fade-in pt-8">
-                                <div className="flex flex-col gap-2 mb-8">
-                                    <h2 className="text-2xl font-black uppercase tracking-tighter">SUBMIT ACTION</h2>
-                                    <div className="h-1 w-20 bg-black" />
+                    <aside className="w-full md:w-[400px] bg-white border-l-2 border-black p-0 sticky top-0 h-fit min-h-[calc(100vh-80px)] flex flex-col">
+                        {/* Aggregated Stats Header */}
+                        <div className="p-8 bg-slate-900 border-b-2 border-black">
+                            <div className="flex items-center gap-3 mb-6">
+                                <BarChart3 className="w-6 h-6 text-[#D946EF]" />
+                                <h2 className="text-xl font-black uppercase text-white tracking-tight">Campaign Health</h2>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(217,70,239,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Sent</div>
+                                    <div className="text-xl font-black">{aggregatedStats.scriptSent}</div>
                                 </div>
-
-                                <div className="space-y-6">
-                                    <div className="bg-[#D946EF] border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4">
-                                        <div className="bg-white/20 p-3 rounded-xl">
-                                            <Video className="w-8 h-8 text-white" />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-white font-black uppercase text-lg leading-none">INFLUENCER VIDEO</h4>
-                                            <p className="text-white/70 text-[10px] font-bold uppercase mt-1">PASTE OUTPUT LINK BELOW</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-4 pt-4 pb-12">
-                                        <input
-                                            type="text"
-                                            placeholder="PASTE RAW VIDEO LINK HERE"
-                                            className="w-full bg-white border-2 border-black p-5 font-black text-xs uppercase focus:outline-none focus:ring-0 placeholder:text-slate-300"
-                                            defaultValue={project.video_link || ''}
-                                            id="video_link_input"
-                                        />
-
-                                        <button
-                                            onClick={() => {
-                                                const val = (document.getElementById('video_link_input') as HTMLInputElement)?.value;
-                                                if (val) {
-                                                    // In a real app we'd trigger the update with this value
-                                                    handleUpdateInstance(WorkflowStage.VIDEO_EDITING);
-                                                } else {
-                                                    toast.error('Please provide a video link');
-                                                }
-                                            }}
-                                            className="w-full py-6 bg-black text-white font-black uppercase text-xl tracking-tighter hover:bg-[#D946EF] transition-all border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none"
-                                        >
-                                            SUBMIT VIDEO LINK
-                                        </button>
-                                    </div>
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(0,133,255,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Raw</div>
+                                    <div className="text-xl font-black">{aggregatedStats.rawReceived}</div>
+                                </div>
+                                <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)]">
+                                    <div className="text-[8px] font-black uppercase text-slate-400">Live</div>
+                                    <div className="text-xl font-black">{aggregatedStats.editedSent}</div>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="bg-white p-0 transition-all pt-8">
-                                <div className="flex items-center gap-4 mb-2">
-                                    <Send className="w-8 h-8 text-[#D946EF] transform -rotate-12" />
-                                    <h2 className="text-3xl font-black uppercase tracking-tighter">SEND TO INFLUENCER</h2>
-                                </div>
-                                <div className="h-1.5 w-full bg-[#D946EF] mb-8" />
+                        </div>
 
-                                <div className="space-y-8">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
-                                            INFLUENCER NAME <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={influencerName}
-                                            onChange={(e) => setInfluencerName(e.target.value)}
-                                            className="w-full bg-white border-2 border-black p-4 font-bold text-slate-500 focus:outline-none transition-all"
-                                            placeholder="Enter influencer name"
-                                        />
+                        <div className="p-8 flex-1 overflow-y-auto">
+                            {isInstance ? (
+                                <div className="space-y-8 animate-fade-in">
+                                    <div className="flex flex-col gap-2 mb-8">
+                                        <div className="flex items-center gap-3">
+                                            <Target className="w-6 h-6 text-black" />
+                                            <h2 className="text-2xl font-black uppercase tracking-tighter">SUBMIT ACTION</h2>
+                                        </div>
+                                        <div className="h-1 w-20 bg-black" />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
-                                            INFLUENCER EMAIL <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                            type="email"
-                                            value={influencerEmail}
-                                            onChange={(e) => setInfluencerEmail(e.target.value)}
-                                            className="w-full bg-white border-2 border-black p-4 font-bold text-slate-500 focus:outline-none transition-all"
-                                            placeholder="Enter influencer email"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">COMMENT (OPTIONAL)</label>
-                                        <textarea
-                                            rows={4}
-                                            value={contentDescription}
-                                            onChange={(e) => setContentDescription(e.target.value)}
-                                            className="w-full bg-white border-2 border-black p-4 font-bold text-slate-500 focus:outline-none transition-all resize-none"
-                                            placeholder="Add any notes"
-                                        />
-                                    </div>
-
-                                    <div className="pt-4 pb-12">
-                                        <button
-                                            onClick={() => setShowConfirmModal(true)}
-                                            disabled={isSending}
-                                            className="w-full relative group"
-                                        >
-                                            <div className="absolute inset-0 bg-black translate-x-1.5 translate-y-1.5 transition-transform group-hover:translate-x-2.5 group-hover:translate-y-2.5" />
-                                            <div className="relative flex items-center justify-center gap-4 py-6 bg-[#F472B6] border-2 border-black text-white font-black uppercase text-lg tracking-tighter group-hover:-translate-x-1 group-hover:-translate-y-1 transition-all active:translate-x-0 active:translate-y-0">
-                                                {isSending ? (
-                                                    <Loader2 className="w-6 h-6 animate-spin" />
-                                                ) : (
-                                                    <><Send className="w-6 h-6" />SEND SCRIPT TO INFLUENCER</>
-                                                )}
+                                    <div className="space-y-6">
+                                        <div className="bg-[#D946EF] border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4">
+                                            <div className="bg-white/20 p-3 rounded-xl">
+                                                <Video className="w-8 h-8 text-white" />
                                             </div>
-                                        </button>
-                                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight text-center mt-6">
-                                            {isSending ? 'SENDING EMAIL...' : 'TRIGGERS AUTOMATED EMAIL WITH SCRIPT CONTENT'}
-                                        </p>
+                                            <div>
+                                                <h4 className="text-white font-black uppercase text-lg leading-none">INFLUENCER VIDEO</h4>
+                                                <p className="text-white/70 text-[10px] font-bold uppercase mt-1">PASTE OUTPUT LINK BELOW</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 pt-4 pb-12">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase text-slate-400">Submission URL</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="PASTE RAW VIDEO LINK HERE"
+                                                    className="w-full bg-white border-2 border-black p-5 font-black text-xs uppercase focus:outline-none focus:bg-slate-50 placeholder:text-slate-300"
+                                                    defaultValue={project.video_link || ''}
+                                                    id="video_link_input"
+                                                />
+                                            </div>
+
+                                            <button
+                                                onClick={() => {
+                                                    const val = (document.getElementById('video_link_input') as HTMLInputElement)?.value;
+                                                    if (val) {
+                                                        handleUpdateInstance(WorkflowStage.VIDEO_EDITING);
+                                                    } else {
+                                                        toast.error('Please provide a video link');
+                                                    }
+                                                }}
+                                                className="w-full py-6 bg-black text-white font-black uppercase text-xl tracking-tighter hover:bg-[#D946EF] transition-all border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:shadow-none"
+                                            >
+                                                SUBMIT VIDEO LINK
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            ) : (
+                                <div className="bg-white p-0 transition-all">
+                                    <div className="flex items-center gap-4 mb-2">
+                                        <Send className="w-8 h-8 text-[#D946EF] transform -rotate-12" />
+                                        <h2 className="text-3xl font-black uppercase tracking-tighter">NEW OUTREACH</h2>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-[#D946EF] mb-8" />
+
+                                    <div className="space-y-8">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
+                                                INFLUENCER NAME <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={influencerName}
+                                                    onChange={(e) => setInfluencerName(e.target.value)}
+                                                    className={`w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all ${!influencerName && 'border-slate-300'}`}
+                                                    placeholder="Enter influencer name"
+                                                />
+                                                {!influencerName && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
+                                                INFLUENCER EMAIL <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="email"
+                                                    value={influencerEmail}
+                                                    onChange={(e) => setInfluencerEmail(e.target.value)}
+                                                    className={`w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all ${!influencerEmail && 'border-slate-300'}`}
+                                                    placeholder="Enter influencer email"
+                                                />
+                                                {!influencerEmail && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">INTERNAL NOTES</label>
+                                            <textarea
+                                                rows={4}
+                                                value={contentDescription}
+                                                onChange={(e) => setContentDescription(e.target.value)}
+                                                className="w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all resize-none"
+                                                placeholder="Add context for this outreach..."
+                                            />
+                                        </div>
+
+                                        <div className="pt-4 pb-12">
+                                            <button
+                                                onClick={() => setShowConfirmModal(true)}
+                                                disabled={isSending}
+                                                className="w-full relative group"
+                                            >
+                                                <div className="absolute inset-0 bg-black translate-x-1.5 translate-y-1.5 transition-transform group-hover:translate-x-2.5 group-hover:translate-y-2.5" />
+                                                <div className="relative flex items-center justify-center gap-4 py-6 bg-[#F472B6] border-2 border-black text-white font-black uppercase text-lg tracking-tighter group-hover:-translate-x-1 group-hover:-translate-y-1 transition-all active:translate-x-0 active:translate-y-0">
+                                                    {isSending ? (
+                                                        <Loader2 className="w-6 h-6 animate-spin" />
+                                                    ) : (
+                                                        <><Send className="w-6 h-6" />LAUNCH CAMPAIGN</>
+                                                    )}
+                                                </div>
+                                            </button>
+                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight text-center mt-6">
+                                                {isSending ? 'PROCESSING...' : 'SENDS CLIENT SCRIPT AUTOMATICALLY'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </aside>
                 </div>
             </div>
@@ -545,6 +581,29 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         if (onComplete) await onComplete();
                     }}
                 />
+            )}
+
+            {showSuccessModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white border-[4px] border-black p-10 max-w-lg w-full shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] relative animate-scale-in flex flex-col items-center text-center">
+                        <div className="w-24 h-24 bg-[#22C55E] border-4 border-black flex items-center justify-center mb-8 rotate-3">
+                            <Sparkles className="w-12 h-12 text-white" />
+                        </div>
+                        <h3 className="text-4xl font-black uppercase mb-4 tracking-tighter italic">CAMPAIGN LAUNCHED</h3>
+                        <p className="text-slate-600 font-bold mb-8 text-lg leading-tight uppercase">
+                            The script has been delivered to <span className="text-[#0085FF]">{influencerName}</span> successfully.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowSuccessModal(false);
+                                onBack();
+                            }}
+                            className="w-full py-5 bg-black text-white font-black uppercase text-xl tracking-widest hover:bg-[#D946EF] transition-all active:translate-y-1 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+                        >
+                            GOT IT!
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
