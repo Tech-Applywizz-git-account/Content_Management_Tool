@@ -566,6 +566,36 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </div>
                                 )}
 
+                                {(project.data?.script_content || project.data?.script_reference_link) && (
+                                    <div className="bg-white p-6 border-2 border-slate-300">
+                                        <h4 className="font-black text-lg text-slate-900 mb-4">
+                                            Script Information
+                                        </h4>
+                                        {project.data?.script_content && (
+                                            <div className="mb-4">
+                                                <p className="text-sm font-bold text-slate-700 uppercase mb-2">Script Content:</p>
+                                                <div 
+                                                    className="text-slate-900 text-sm whitespace-pre-wrap"
+                                                    dangerouslySetInnerHTML={{ __html: project.data.script_content }}
+                                                />
+                                            </div>
+                                        )}
+                                        {project.data?.script_reference_link && (
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700 uppercase mb-2">Script Reference Link:</p>
+                                                <a
+                                                    href={project.data.script_reference_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all"
+                                                >
+                                                    {project.data.script_reference_link}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* Fallback: show data.video_link if edited_video_link column is empty (older direct-upload projects) */}
                                 {!project.edited_video_link && project.data?.video_link && (
                                     <div className="bg-white p-6 border-2 border-blue-400">

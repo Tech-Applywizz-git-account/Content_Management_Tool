@@ -1147,6 +1147,36 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         </div>
                                     )}
 
+                                    {(project.data?.script_content || project.data?.script_reference_link) && (
+                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                            <div className="p-4">
+                                                <h4 className="font-black text-slate-900 text-sm uppercase mb-3">Script Information</h4>
+                                                {project.data?.script_content && (
+                                                    <div className="mt-4">
+                                                        <p className="text-sm font-bold text-slate-700 uppercase mb-1">Script Content:</p>
+                                                        <div 
+                                                            className="text-slate-900 text-sm whitespace-pre-wrap"
+                                                            dangerouslySetInnerHTML={{ __html: project.data.script_content }}
+                                                        />
+                                                    </div>
+                                                )}
+                                                {project.data?.script_reference_link && (
+                                                    <div>
+                                                        <p className="text-xs font-bold text-slate-700 uppercase mb-1">Script Reference Link:</p>
+                                                        <a
+                                                            href={project.data.script_reference_link}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-blue-600 underline break-all text-sm"
+                                                        >
+                                                            {project.data.script_reference_link}
+                                                        </a>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Thumbnail/Creative Asset */}
                                     {project.thumbnail_link ? (
                                         <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
