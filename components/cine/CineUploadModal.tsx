@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Channel, Priority } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { ArrowLeft, Send } from 'lucide-react';
+import { ArrowLeft, Send, Bold, Type, SpellCheck } from 'lucide-react';
 import Popup from '../Popup';
 
 interface Props {
@@ -27,6 +27,7 @@ const NICHES = [
 ] as const;
 
 const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
+  const editorRef = useRef<HTMLDivElement>(null);
   const [title, setTitle] = useState('');
   const [videoLink, setVideoLink] = useState('');
   const [channel, setChannel] = useState<Channel>(Channel.YOUTUBE);
@@ -39,6 +40,423 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
   const [stageName, setStageName] = useState('');
+  const [scriptContent, setScriptContent] = useState('');
+  const [scriptReferenceLink, setScriptReferenceLink] = useState('');
+
+  // Corrections feature state
+  const [correctionsEnabled, setCorrectionsEnabled] = useState(false);
+  const [correctionsRunning, setCorrectionsRunning] = useState(false);
+  const [correctionErrors, setCorrectionErrors] = useState<any[]>([]);
+  const [lastCheckedContent, setLastCheckedContent] = useState<string>('');
+  const [isLimitExceeded, setIsLimitExceeded] = useState(false);
+
+  // Character count
+  const scriptCharCount = React.useMemo(() => {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = scriptContent || '';
+    const text = tempDiv.textContent || '';
+    return text.length;
+  }, [scriptContent]);
+
+  // Add CSS styles for grammar errors
+  useEffect(() => {
+    let styleElement = document.getElementById('grammar-error-styles-upload') as HTMLStyleElement;
+    if (!styleElement) {
+      styleElement = document.createElement('style');
+      styleElement.id = 'grammar-error-styles-upload';
+      styleElement.textContent = `
+        .grammar-error {
+          text-decoration: underline wavy red !important;
+          text-decoration-skip-ink: none;
+          cursor: pointer;
+          position: relative;
+          display: inline !important;
+        }
+        .grammar-error.spelling { text-decoration-color: #ef4444 !important; }
+        .grammar-error.grammar { text-decoration-color: #f59e0b !important; }
+        .grammar-error.formation { text-decoration-color: #f59e0b !important; }
+        .grammar-error.enhancement { text-decoration-color: #3b82f6 !important; }
+
+        .grammar-error:hover {
+          background-color: rgba(255, 0, 0, 0.05);
+        }
+        .grammar-error.spelling:hover { background-color: rgba(239, 68, 68, 0.1); }
+        .grammar-error.grammar:hover { background-color: rgba(245, 158, 11, 0.1); }
+
+        .grammar-error::after {
+          content: attr(data-label) ": " attr(data-suggestion);
+          position: absolute;
+          bottom: 100%;
+          left: 50%;
+          transform: translateX(-50%) translateY(-10px);
+          background: #1e293b !important;
+          color: #ffffff !important;
+          padding: 8px 16px;
+          border-radius: 6px;
+          white-space: pre-wrap;
+          max-width: 250px;
+          z-index: 2147483647 !important;
+          font-size: 13px;
+          font-weight: 600;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border: 1px solid #334155;
+          text-align: center;
+          line-height: 1.4;
+        }
+        
+        .grammar-error.spelling::after { border-bottom: 3px solid #ef4444; }
+        .grammar-error.grammar::after { border-bottom: 3px solid #f59e0b; }
+
+        .grammar-error::before {
+          content: "";
+          position: absolute;
+          bottom: 100%;
+          left: 50%;
+          transform: translateX(-50%) translateY(0);
+          border: 6px solid transparent;
+          border-top-color: #1e293b;
+          z-index: 2147483647 !important;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          margin-bottom: -2px;
+        }
+        .grammar-error:hover::after,
+        .grammar-error:focus::after {
+          opacity: 1 !important;
+          visibility: visible !important;
+          transform: translateX(-50%) translateY(-14px);
+        }
+        .grammar-error:hover::before,
+        .grammar-error:focus::before {
+          opacity: 1 !important;
+          visibility: visible !important;
+          transform: translateX(-50%) translateY(-2px);
+        }
+      `;
+      document.head.appendChild(styleElement);
+    }
+
+    return () => {
+      if (styleElement && document.head.contains(styleElement)) {
+        document.head.removeChild(styleElement);
+      }
+    };
+  }, []);
+
+  // Function to check grammar and spelling using OpenAI API
+  const checkGrammarAndSpelling = async (text: string) => {
+    try {
+      const normalizedText = text.replace(/\s+/g, ' ').trim();
+
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      let data;
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/openai-correction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'apikey': supabaseAnonKey,
+          },
+          body: JSON.stringify({ text: normalizedText }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Service error: ${response.status}`);
+        }
+
+        data = await response.json();
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') throw new Error('Correction request timed out. Please try again.');
+        throw fetchErr;
+      }
+
+      const issues = data.issues || [];
+      const errors: any[] = [];
+      const usedRanges: { start: number; end: number }[] = [];
+
+      issues.forEach((issue: any) => {
+        const incorrect = issue.incorrect;
+        if (!incorrect) return;
+
+        let searchIndex = 0;
+        while ((searchIndex = text.indexOf(incorrect, searchIndex)) !== -1) {
+          const startIndex = searchIndex;
+          const endIndex = startIndex + incorrect.length;
+
+          const isOverlapping = usedRanges.some(range =>
+            (startIndex >= range.start && startIndex < range.end) ||
+            (endIndex > range.start && endIndex <= range.end)
+          );
+
+          if (!isOverlapping) {
+            errors.push({
+              offset: startIndex,
+              length: incorrect.length,
+              message: `${issue.type}: ${incorrect} -> ${issue.suggestion}`,
+              type: issue.type,
+              suggestions: [issue.suggestion],
+            });
+            usedRanges.push({ start: startIndex, end: endIndex });
+            break;
+          }
+          searchIndex++;
+        }
+      });
+
+      return errors.sort((a, b) => a.offset - b.offset);
+    } catch (error: any) {
+      console.error('Correction failed:', error);
+      alert(error.message || 'Correction failed');
+      return [];
+    }
+  };
+
+  // Function to apply corrections
+  const applyCorrections = async () => {
+    if (!editorRef.current) return;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = editorRef.current.innerHTML;
+    tempDiv.querySelectorAll('.grammar-error').forEach(span => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+    const plainText = tempDiv.textContent || tempDiv.innerText || '';
+
+    if (plainText.length > 6000) {
+      setIsLimitExceeded(true);
+      alert('Script is too long for automated correction (max 6000 chars).');
+      setTimeout(() => setIsLimitExceeded(false), 5000);
+      return;
+    }
+
+    if (plainText === lastCheckedContent && correctionErrors.length > 0) {
+      const highlightsApplied = editorRef.current.querySelectorAll('.grammar-error').length > 0;
+      if (!highlightsApplied) {
+        processHighlights(editorRef.current, correctionErrors);
+        setCorrectionsEnabled(true);
+      }
+      return;
+    }
+
+    setCorrectionsRunning(true);
+    setIsLimitExceeded(false);
+
+    try {
+      const errors = await checkGrammarAndSpelling(plainText);
+      setCorrectionErrors(errors);
+      setLastCheckedContent(plainText);
+
+      processHighlights(editorRef.current, errors);
+      setCorrectionsEnabled(true);
+    } catch (error) {
+      console.error('Error applying corrections:', error);
+    } finally {
+      setCorrectionsRunning(false);
+    }
+  };
+
+  // Helper function to process highlights
+  const processHighlights = (container: HTMLElement, errors: any[]) => {
+    const editorClone = document.createElement('div');
+    editorClone.innerHTML = container.innerHTML;
+
+    editorClone.querySelectorAll('.grammar-error').forEach(span => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+
+    const sortedErrors = [...errors].sort((a, b) => b.offset - a.offset);
+
+    for (const error of sortedErrors) {
+      const { offset, length, message, suggestions } = error;
+      wrapTextAtPosition(editorClone, offset, length, message, suggestions, error.type);
+    }
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = editorClone.innerHTML;
+    }
+  };
+
+  // Helper function to wrap text at specific position
+  const wrapTextAtPosition = (container: HTMLElement, offset: number, length: number, message: string, suggestions: string[], type: string) => {
+    let currentOffset = 0;
+    let remainingLength = length;
+    let currentTargetOffset = offset;
+
+    const walker = document.createTreeWalker(
+      container,
+      NodeFilter.SHOW_TEXT
+    );
+
+    let node: Node | null;
+    const nodesToReplace: { node: Node; start: number; end: number }[] = [];
+
+    while (node = walker.nextNode()) {
+      const nodeValue = node.nodeValue || '';
+      const nodeLength = nodeValue.length;
+
+      if (currentOffset + nodeLength <= currentTargetOffset) {
+        currentOffset += nodeLength;
+        continue;
+      }
+
+      const startInNode = Math.max(0, currentTargetOffset - currentOffset);
+      const actualRemainingLength = Math.min(remainingLength, nodeLength - startInNode);
+      const endInNode = startInNode + actualRemainingLength;
+
+      if (startInNode < nodeLength && actualRemainingLength > 0) {
+        nodesToReplace.push({
+          node: node,
+          start: startInNode,
+          end: endInNode
+        });
+
+        remainingLength -= actualRemainingLength;
+        currentTargetOffset += actualRemainingLength;
+      }
+
+      if (remainingLength <= 0) break;
+      currentOffset += nodeLength;
+    }
+
+    for (const item of nodesToReplace) {
+      const { node, start, end } = item;
+      const nodeValue = node.nodeValue || '';
+
+      const beforeText = nodeValue.substring(0, start);
+      const errorText = nodeValue.substring(start, end);
+      const afterText = nodeValue.substring(end);
+
+      const fragment = document.createDocumentFragment();
+
+      if (beforeText) {
+        fragment.appendChild(document.createTextNode(beforeText));
+      }
+
+      const errorSpan = document.createElement('span');
+      const typeClass = type?.toLowerCase() || 'grammar';
+      errorSpan.className = `grammar-error ${typeClass}`;
+
+      const labelMap: Record<string, string> = {
+        'spelling': 'Spelling',
+        'grammar': 'Grammar',
+        'formation': 'Formation',
+        'enhancement': 'Enhancement'
+      };
+
+      errorSpan.setAttribute('data-label', labelMap[typeClass] || 'Correction');
+      errorSpan.setAttribute('data-suggestion', suggestions && suggestions.length > 0 ? suggestions[0] : 'Correction available');
+      errorSpan.setAttribute('title', message);
+      errorSpan.setAttribute('tabindex', '0');
+      errorSpan.textContent = errorText;
+      fragment.appendChild(errorSpan);
+
+      if (afterText) {
+        fragment.appendChild(document.createTextNode(afterText));
+      }
+
+      node.parentNode?.replaceChild(fragment, node);
+    }
+  };
+
+  // Function to clear corrections
+  const clearCorrections = () => {
+    if (!editorRef.current) return;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = editorRef.current.innerHTML;
+
+    const errorSpans = tempDiv.querySelectorAll('.grammar-error');
+    errorSpans.forEach(span => {
+      const textNode = document.createTextNode(span.textContent || '');
+      span.parentNode?.replaceChild(textNode, span);
+    });
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = tempDiv.innerHTML;
+    }
+
+    setCorrectionsEnabled(false);
+    setCorrectionErrors([]);
+  };
+
+  // Function to apply a specific correction
+  const applyCorrection = (spanElement: HTMLElement) => {
+    const suggestion = spanElement.getAttribute('data-suggestion');
+    if (!suggestion || suggestion === 'Correction available') return;
+
+    const textNode = document.createTextNode(suggestion);
+    const parent = spanElement.parentNode;
+    if (parent) {
+      parent.replaceChild(textNode, spanElement);
+
+      if (editorRef.current) {
+        const newContent = editorRef.current.innerHTML;
+        setScriptContent(newContent);
+      }
+    }
+  };
+
+  // Function to apply bold formatting
+  const applyBold = () => {
+    if (!editorRef.current) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.toString().trim() === '') return;
+
+    document.execCommand('bold', false, null);
+
+    const content = editorRef.current.innerHTML;
+    setScriptContent(content);
+  };
+
+  // Function to apply color to selected text
+  const applyColor = (color: string) => {
+    if (!editorRef.current) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.toString().trim() === '') return;
+
+    const colorMap: Record<string, string> = {
+      'red': '#990000',
+      'blue': '#000099',
+      'green': '#006600',
+      'purple': '#6600cc',
+      'orange': '#cc6600',
+      'black': '#000000',
+    };
+
+    const darkColor = colorMap[color] || color;
+
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('foreColor', false, darkColor);
+
+    const content = editorRef.current.innerHTML;
+    setScriptContent(content);
+  };
+
+  // Function to handle editor content change
+  const handleEditorChange = () => {
+    if (editorRef.current) {
+      setScriptContent(editorRef.current.innerHTML);
+    }
+  };
 
   const handleSubmit = async () => {
     // Basic validation
@@ -62,7 +480,9 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
         'NORMAL',
         brand,
         niche,
-        niche === 'OTHER' ? nicheOther : undefined
+        niche === 'OTHER' ? nicheOther : undefined,
+        scriptContent,
+        scriptReferenceLink
       );
 
       setPopupMessage(
@@ -242,6 +662,112 @@ const CineUploadModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                   />
                 </div>
               )}
+
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Script Content</label>
+                
+                {/* Formatting Toolbar */}
+                <div className="flex items-center gap-2 mb-2 p-2 bg-slate-100 border-2 border-black rounded">
+                  <button
+                    onClick={applyBold}
+                    className="p-2 hover:bg-slate-200 transition-colors border border-slate-300 rounded"
+                    title="Bold"
+                  >
+                    <Bold className="w-4 h-4" />
+                  </button>
+                  <div className="w-px h-6 bg-slate-300"></div>
+                  
+                  {/* Color Picker */}
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => applyColor('#990000')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#990000' }}
+                      title="Red"
+                    />
+                    <button
+                      onClick={() => applyColor('#000099')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#000099' }}
+                      title="Blue"
+                    />
+                    <button
+                      onClick={() => applyColor('#006600')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#006600' }}
+                      title="Green"
+                    />
+                    <button
+                      onClick={() => applyColor('#6600cc')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#6600cc' }}
+                      title="Purple"
+                    />
+                    <button
+                      onClick={() => applyColor('#cc6600')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#cc6600' }}
+                      title="Orange"
+                    />
+                    <button
+                      onClick={() => applyColor('#000000')}
+                      className="w-6 h-6 rounded border border-slate-300 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: '#000000' }}
+                      title="Black"
+                    />
+                  </div>
+                  
+                  <div className="w-px h-6 bg-slate-300"></div>
+                  <button
+                    onClick={applyCorrections}
+                    disabled={correctionsRunning}
+                    className={`p-2 hover:bg-slate-200 transition-colors border border-slate-300 rounded flex items-center gap-2 ${correctionsRunning ? 'opacity-50' : ''}`}
+                    title="Check Grammar & Spelling"
+                  >
+                    <SpellCheck className="w-4 h-4" />
+                    {correctionsRunning ? 'Checking...' : 'Spell Check'}
+                  </button>
+                  {correctionsEnabled && (
+                    <>
+                      <div className="w-px h-6 bg-slate-300"></div>
+                      <button
+                        onClick={clearCorrections}
+                        className="p-2 hover:bg-slate-200 transition-colors border border-slate-300 rounded text-xs font-bold uppercase"
+                        title="Clear Corrections"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                  <div className="ml-auto text-xs font-bold text-slate-600">
+                    {scriptCharCount} chars
+                  </div>
+                </div>
+
+                {/* Rich Text Editor */}
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  onInput={handleEditorChange}
+                  className="w-full p-4 border-2 border-black bg-white focus:outline-none focus:ring-2 focus:ring-black font-bold text-sm md:text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all min-h-[120px] max-h-[400px] overflow-y-auto"
+                  style={{ outline: 'none' }}
+                  suppressContentEditableWarning={true}
+                />
+                {isLimitExceeded && (
+                  <p className="text-xs text-red-600 mt-1 font-bold">Script is too long for automated correction (max 6000 chars).</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-500 mb-2">Script Reference Link</label>
+                <input
+                  type="url"
+                  value={scriptReferenceLink}
+                  onChange={(e) => setScriptReferenceLink(e.target.value)}
+                  className="w-full p-3 md:p-4 border-2 border-black bg-white focus:outline-none focus:ring-2 focus:ring-black font-bold text-sm md:text-base placeholder:text-slate-300 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                  placeholder="https://docs.google.com/document/d/..."
+                />
+              </div>
             </div>
           </div>
         </div>

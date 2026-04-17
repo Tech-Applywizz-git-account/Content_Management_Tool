@@ -703,6 +703,38 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
                 </div>
               )}
 
+              {/* Script Information */}
+              {(localProject.data?.script_content || localProject.data?.script_reference_link) && (
+                <div className="bg-white border-2 border-black p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <FileText className="w-5 h-5 text-slate-700" />
+                    <p className="text-sm font-bold uppercase text-slate-700">Script Information</p>
+                  </div>
+                  {localProject.data?.script_content && (
+                    <div className="mb-3">
+                      <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Content:</p>
+                      <div 
+                        className="text-slate-900 text-sm whitespace-pre-wrap break-words"
+                        dangerouslySetInnerHTML={{ __html: localProject.data.script_content }}
+                      />
+                    </div>
+                  )}
+                  {localProject.data?.script_reference_link && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Reference Link:</p>
+                      <a
+                        href={localProject.data.script_reference_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 underline break-all text-sm"
+                      >
+                        {localProject.data.script_reference_link}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Show upload input for direct uploads and other editable/rework projects */}
               {(isDirectUpload || isRework || canEdit || !hasEditedVideo || hasEditedVideo) && (
                 <div className="space-y-4">

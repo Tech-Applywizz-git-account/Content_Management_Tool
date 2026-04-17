@@ -329,6 +329,38 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                     </div>
                                 )}
 
+                                {/* Script Information */}
+                                {(project.data?.script_content || project.data?.script_reference_link) && (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <FileText size={16} className="text-slate-700" />
+                                            <label className="text-sm font-bold text-slate-700">Script Information:</label>
+                                        </div>
+                                        {project.data?.script_content && (
+                                            <div className="mb-2">
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Content:</p>
+                                                <div 
+                                                    className="text-slate-900 text-sm whitespace-pre-wrap break-words"
+                                                    dangerouslySetInnerHTML={{ __html: project.data.script_content }}
+                                                />
+                                            </div>
+                                        )}
+                                        {project.data?.script_reference_link && (
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Reference Link:</p>
+                                                <a
+                                                    href={project.data.script_reference_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all text-sm"
+                                                >
+                                                    {project.data.script_reference_link}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* Thumbnail */}
                                 {project.thumbnail_link && (
                                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">

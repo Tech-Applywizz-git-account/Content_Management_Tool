@@ -480,6 +480,35 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                         )}
                                     </div>
                                 )}
+
+                                {/* Script Information */}
+                                {(project.data?.script_content || project.data?.script_reference_link) && (
+                                    <div className="bg-white p-4 border-2 border-orange-300">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold text-orange-800">Script Information</h4>
+                                        </div>
+                                        {project.data?.script_content && (
+                                            <div className="mb-3">
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Content:</p>
+                                                <p className="text-slate-900 text-sm whitespace-pre-wrap break-words">{project.data.script_content}</p>
+                                            </div>
+                                        )}
+                                        {project.data?.script_reference_link && (
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Reference Link:</p>
+                                                <a
+                                                    href={project.data.script_reference_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all text-sm"
+                                                >
+                                                    {project.data.script_reference_link}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {!writerAlreadyActed ? (
                                     <div className="flex space-x-4 pt-4">
                                         <button

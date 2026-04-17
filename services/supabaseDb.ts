@@ -3549,7 +3549,7 @@ export const db = {
         return createdProject;
     },
 
-    async createDirectVideoProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
+    async createDirectVideoProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string, scriptContent?: string, scriptReferenceLink?: string): Promise<Project> {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
 
@@ -3575,7 +3575,9 @@ export const db = {
             data: {
                 brand,
                 video_link: videoLink,
-                source: 'EDITOR_DIRECT_UPLOAD'
+                source: 'EDITOR_DIRECT_UPLOAD',
+                script_content: scriptContent,
+                script_reference_link: scriptReferenceLink
             },
             // Set creator information
             created_by_user_id: publicUser.id,
@@ -3614,7 +3616,7 @@ export const db = {
         return createdProject;
     },
 
-    async createCineDirectProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string): Promise<Project> {
+    async createCineDirectProject(title: string, channel: Channel, dueDate: string, videoLink: string, priority: Priority = 'NORMAL', brand?: string, niche?: string, nicheOther?: string, scriptContent?: string, scriptReferenceLink?: string): Promise<Project> {
         // ALWAYS fetch the public user profile to ensure ID consistency and prevent FK violations
         const publicUser = await auth.getPublicUser();
 
@@ -3642,7 +3644,9 @@ export const db = {
                 niche,
                 niche_other: nicheOther,
                 raw_footage_link: videoLink,
-                source: 'CINE_DIRECT_UPLOAD'
+                source: 'CINE_DIRECT_UPLOAD',
+                script_content: scriptContent,
+                script_reference_link: scriptReferenceLink
             },
             // Set creator information
             created_by_user_id: publicUser.id,

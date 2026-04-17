@@ -244,7 +244,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             setIsSubmitting(true);
 
             // Use advanceWorkflow to handle everything atomically
-            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments.trim(), videoLink);
+            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments.trim(), { video_link: videoLink });
 
             // Clear comments state
             setCineComments('');
@@ -1065,6 +1065,38 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                 {(localProject.video_link || localProject.video_url || localProject.data?.raw_footage_link)}
                                             </a>
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* Script Information */}
+                                {(localProject.data?.script_content || localProject.data?.script_reference_link) && (
+                                    <div className="bg-white border-2 border-black p-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <FileText className="w-5 h-5 text-slate-700" />
+                                            <p className="text-sm font-bold uppercase text-slate-700">Script Information</p>
+                                        </div>
+                                        {localProject.data?.script_content && (
+                                            <div className="mb-3">
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Content:</p>
+                                                <div 
+                                                    className="text-slate-900 text-sm whitespace-pre-wrap break-words"
+                                                    dangerouslySetInnerHTML={{ __html: localProject.data.script_content }}
+                                                />
+                                            </div>
+                                        )}
+                                        {localProject.data?.script_reference_link && (
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Reference Link:</p>
+                                                <a
+                                                    href={localProject.data.script_reference_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-600 underline break-all text-sm"
+                                                >
+                                                    {localProject.data.script_reference_link}
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

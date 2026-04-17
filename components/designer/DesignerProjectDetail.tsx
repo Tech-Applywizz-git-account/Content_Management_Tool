@@ -454,10 +454,23 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                             {isVideo ? 'Script Reference' : 'Content Brief'}
                         </h2>
                     </div>
-                    <ScriptDisplay 
-                        content={localProject.data.script_content || ''} 
+                    <ScriptDisplay
+                        content={localProject.data.script_content || ''}
                         caption={localProject.data.captions}
                     />
+                    {localProject.data?.script_reference_link && (
+                        <div className="mt-4 pt-4 border-t-2 border-slate-200">
+                            <p className="text-xs font-bold text-slate-600 uppercase mb-2">Script Reference Link:</p>
+                            <a
+                                href={localProject.data.script_reference_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 underline break-all text-sm"
+                            >
+                                {localProject.data.script_reference_link}
+                            </a>
+                        </div>
+                    )}
                 </div>
 
                 {/* Thumbnail Requirements - Show if video and thumbnail required */}
