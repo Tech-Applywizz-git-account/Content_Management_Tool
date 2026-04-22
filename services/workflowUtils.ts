@@ -10,24 +10,49 @@ export interface WorkflowState {
 }
 
 /**
- * Check if the project is an influencer video (JOBBOARD or LEAD MAGNET)
+ * Category 1: carreridentifier, applywizz, applywizzusa jobs, shyam personal branding
+ */
+export function isCareerApplyShyamGroup(project: Project | any): boolean {
+  if (!project) return false;
+  const brandSelection = (project.brand || project.data?.brand || project.brandSelected || '').toLowerCase().trim();
+  const normalizedBrand = brandSelection.replace(/_/g, ' ');
+  
+  return [
+    'carreridentifier',
+    'career identifier',
+    'applywizz',
+    'applywizzusa jobs',
+    'applywizz usa jobs',
+    'shyam personal branding',
+    'shyams personal branding',
+    'shyam\'s personal branding'
+  ].includes(normalizedBrand) || brandSelection === 'carreridentifier';
+}
+
+/**
+ * Category 2: influencer (jobboard, leadmangent)
+ */
+export function isGeneralInfluencerVideo(project: Project | any): boolean {
+  if (!project) return false;
+  const brandSelection = (project.brand || project.data?.brand || project.brandSelected || '').toLowerCase().trim();
+  const normalizedBrand = brandSelection.replace(/_/g, ' ');
+  
+  return [
+    'applywizz job board',
+    'applywizz jobboard',
+    'jobboard',
+    'job board',
+    'lead magnet',
+    'lead magnet rtw',
+    'leadmagnet'
+  ].includes(normalizedBrand);
+}
+
+/**
+ * Check if the project is any form of influencer/branded video
  */
 export function isInfluencerVideo(project: Project | any): boolean {
-  if (!project) return false;
-  
-  // Check brand (new)
-  const brandSelection = project.brand || project.data?.brand || project.brandSelected; // Handle different object shapes
-  if (['APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING'].includes(brandSelection)) {
-    return true;
-  }
-  
-  // Backward compatibility with legacy content_type
-  const contentType = project.content_type || project.contentType;
-  if (['JOBBOARD', 'LEAD_MAGNET'].includes(contentType)) {
-    return true;
-  }
-  
-  return false;
+  return isGeneralInfluencerVideo(project) || isCareerApplyShyamGroup(project);
 }
 
 /**

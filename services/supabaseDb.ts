@@ -12,7 +12,7 @@ import {
     HistoryEvent
 } from '../types';
 import { Notification } from '../types';
-import { getTimestampUpdate, isReworkProject, isInfluencerVideo } from './workflowUtils';
+import { getTimestampUpdate, isReworkProject, isInfluencerVideo, isCareerApplyShyamGroup, isGeneralInfluencerVideo } from './workflowUtils';
 
 // 🚀 DATABASE CLIENT CONFIGURATION
 // Use standard client for all operations to ensure session consistency and bypass project mismatches.
@@ -213,18 +213,20 @@ export const auth = {
         try {
             if (currentUserCache) return currentUserCache;
 
-            const { data: { user: authUser }, error: authError } = await withTimeout(
+            const authResponse = await withTimeout(
                 supabase.auth.getUser(),
                 8000,
                 'Authentication timed out. Please refresh and try again.'
-            );
+            ) as any;
+            const authUser = authResponse.data?.user;
+            const authError = authResponse.error;
             if (authError || !authUser?.email) {
                 console.warn('❌ getPublicUser: No authenticated session found');
                 return null;
             }
 
             // 1. Primary Lookup: By Auth ID
-            let { data: userRecord, error: fetchError } = await withTimeout(
+            const fetchResponse = await withTimeout(
                 supabase
                     .from('users')
                     .select('*')
@@ -232,11 +234,14 @@ export const auth = {
                     .maybeSingle(),
                 8000,
                 'User profile lookup timed out. Please refresh and try again.'
-            );
+            ) as any;
+
+            let userRecord = fetchResponse.data;
+            let fetchError = fetchResponse.error;
 
             // 2. Secondary Lookup: By Email (Handle Desynchronized Profiles)
             if (!userRecord) {
-                const { data: emailMatch } = await withTimeout(
+                const emailMatchResponse = await withTimeout(
                     supabase
                         .from('users')
                         .select('*')
@@ -244,11 +249,13 @@ export const auth = {
                         .maybeSingle(),
                     8000,
                     'User profile lookup by email timed out. Please refresh and try again.'
-                );
+                ) as any;
+
+                const emailMatch = emailMatchResponse.data;
 
                 if (emailMatch) {
                     console.warn(`🔄 Syncing User ID for ${authUser.email}: Changing ${emailMatch.id} -> ${authUser.id}`);
-                    const { data: syncedUser } = await withTimeout(
+                    const syncedUserResponse = await withTimeout(
                         dbClient
                             .from('users')
                             .update({ id: authUser.id })
@@ -257,8 +264,8 @@ export const auth = {
                             .single(),
                         8000,
                         'User profile sync timed out. Please refresh and try again.'
-                    );
-                    userRecord = syncedUser;
+                    ) as any;
+                    userRecord = syncedUserResponse.data;
                 }
             }
 
@@ -269,7 +276,7 @@ export const auth = {
                     authUser.user_metadata?.name ||
                     authUser.email.split('@')[0];
 
-                const { data: newUser, error: createError } = await withTimeout(
+                const newUserResponse = await withTimeout(
                     dbClient
                         .from('users')
                         .insert([{
@@ -283,10 +290,10 @@ export const auth = {
                         .single(),
                     8000,
                     'User profile creation timed out. Please refresh and try again.'
-                );
+                ) as any;
 
-                if (createError) throw createError;
-                userRecord = newUser;
+                if (newUserResponse.error) throw newUserResponse.error;
+                userRecord = newUserResponse.data;
             }
 
             currentUserCache = userRecord as User;
@@ -2867,8 +2874,14 @@ export const helpers = {
             return rejectMap[currentStage];
         }
 
-        // Special workflow for Job Board and Lead Magnet: Writer -> CMO -> CEO -> Writer -> CMO -> Editor -> Writer
-        if (isInfluencer || projectData?.niche === 'LEAD_MAGNET') {
+        // Category 2: Influencer (Job Board, Lead Magnet)
+        const isInfluencerJobLead = isGeneralInfluencerVideo(project);
+        
+        // Category 1: carreridentifier, applywizz, applywizzusa jobs, shyam personal branding
+        // Workflow: Writer -> CMO Script Approval -> CEO Script Approval -> CINE -> WRITER (approval) -> EDITOR -> CMO & OPS (Parallel) -> CEO -> OPS
+        const isCareerApplyShyam = isCareerApplyShyamGroup(project);
+
+        if (isInfluencerJobLead) {
             const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
@@ -2878,9 +2891,23 @@ export const helpers = {
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
                 [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.VIDEO_EDITING]: isCaptionBased
-                    ? { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO } // SKIP MULTI_WRITER_APPROVAL: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }
+                    ? { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }
                     : { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
+                // Note: The user said it ends at Writer (who submitted the script)
                 [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POSTED, role: Role.OPS }
+            };
+            const next = customMap[currentStage];
+            if (next) return next;
+        }
+
+        if (isCareerApplyShyam) {
+            const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
+                [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
+                [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
+                [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
+                [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }
             };
             const next = customMap[currentStage];
             if (next) return next;

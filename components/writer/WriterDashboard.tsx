@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage } from '../../types';
+import { Project, Role, TaskStatus, STAGE_LABELS, WorkflowStage, Channel, User } from '../../types';
 import { Plus, Lightbulb, Clock, PlayCircle, CloudUpload, MessageSquare } from 'lucide-react';
 import CreateScript from './CreateScript';
 import CreateIdeaProject from './CreateIdeaProject';
@@ -18,7 +18,7 @@ import FestivalNotifications from './FestivalNotifications';
 import { isInfluencerVideo } from '../../services/workflowUtils';
 
 interface Props {
-    user: { full_name: string; role: Role };
+    user: User;
     inboxProjects: Project[];
     historyProjects: Project[];
     scriptProjects?: Project[];
@@ -248,8 +248,13 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         }
 
         if (p.current_stage === WorkflowStage.WRITER_REVISION) {
-            // Writer revision (upload processed video)
-            return isWriterRole;
+            // Writer revision (upload processed video) - only for specific channels and the assigned writer
+            // Requirement: Only JobBoard/LeadMagnet AND submitted by this writer AND CEO approved
+            const isTargetContent = p.channel === Channel.JOBBOARD || p.channel === Channel.LEAD_MAGNET;
+            const isAssignedWriter = p.writer_id === (user as any).id || p.created_by_user_id === (user as any).id;
+            const isCeoApproved = !!p.ceo_approved_at;
+
+            return isWriterRole && isTargetContent && isAssignedWriter && isCeoApproved;
         }
 
         return false;

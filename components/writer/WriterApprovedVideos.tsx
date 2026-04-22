@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, WorkflowStage } from '../../types';
+import { Project, WorkflowStage, TaskStatus } from '../../types';
 import { Video, Clock, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { isInfluencerVideo } from '../../services/workflowUtils';
@@ -32,7 +32,7 @@ const WriterApprovedVideos: React.FC<Props> = ({ user, projects, onSelectProject
             h => h.stage === WorkflowStage.WRITER_VIDEO_APPROVAL && h.action === 'APPROVED'
         );
 
-        return isPostEditor || hasApproved || p.status === 'COMPLETED';
+        return isPostEditor || hasApproved || p.status === TaskStatus.DONE;
     });
 
     const filteredProjects = approvedProjects.filter(p =>
