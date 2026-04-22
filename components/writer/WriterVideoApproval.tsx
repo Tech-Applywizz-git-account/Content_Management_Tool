@@ -93,6 +93,11 @@ const WriterVideoApproval: React.FC<Props> = ({ projects, onBack, refreshProject
                                                   ? (project.brand || project.brandSelected || project.data?.brand || 'Brand').replace(/_/g, ' ') 
                                                   : 'Needs Approval'}
                                             </span>
+                                            {project.ceo_approved_at && (
+                                                <span className="px-2 py-1 text-[10px] font-black uppercase border-2 border-black bg-green-500 text-white ml-2">
+                                                    CEO Approved
+                                                </span>
+                                            )}
                                         </div>
 
                                         <h3 className="font-black text-lg text-slate-900 uppercase mb-2">{project.title}</h3>
@@ -638,7 +643,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <div className="space-y-4">
                                     <label className="text-lg font-black text-slate-900 uppercase mb-2 flex items-center gap-2">
                                         <Video className="w-6 h-6 text-slate-900" />
-                                        INFLUENCER VIDEO
+                                        {isInfluencerVideo(project) ? 'INFLUENCER VIDEO' : 'SHOOT VIDEO'}
                                     </label>
                                     <div className="flex flex-col sm:flex-row gap-4">
                                         <input
