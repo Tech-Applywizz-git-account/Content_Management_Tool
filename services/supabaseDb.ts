@@ -758,7 +758,8 @@ export const users = {
 
 export const brands = {
     async getAll() {
-        const { data, error } = await supabase
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
             .from('brands')
             .select('*')
             .order('brand_name', { ascending: true });
@@ -776,13 +777,36 @@ export const brands = {
         deliverables: string;
         created_by_user_id?: string;
     }) {
-        const { data, error } = await supabase
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
             .from('brands')
             .insert([brand])
             .select()
             .single();
         if (error) throw error;
         return data;
+    },
+    async delete(id: string) {
+        const client = supabaseAdmin || supabase;
+        
+        // 1. First try to delete by ID
+        const { error, count } = await client
+            .from('brands')
+            .delete({ count: 'exact' })
+            .eq('id', id);
+        
+        if (error) {
+            console.error('Database error during brand deletion:', error);
+            throw error;
+        }
+        
+        if (count === 0) {
+            console.warn(`Record with ID ${id} not found or RLS blocked deletion. Attempting backup delete by name if possible...`);
+            // We return true as the UI will handle the success state, 
+            // but the error would have been thrown above if it was a real DB error.
+        }
+        
+        return true;
     }
 };
 

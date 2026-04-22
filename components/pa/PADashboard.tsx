@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Project, Role, WorkflowStage, Channel } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle } from 'lucide-react';
+import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../Layout';
@@ -70,20 +70,21 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
   const [brands, setBrands] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'PENDING' | 'EDITOR' | 'POSTED'>('PENDING');
+  const [brandToDelete, setBrandToDelete] = useState<{id: string, name: string} | null>(null);
+
+  const fetchBrands = async () => {
+    try {
+      const data = await db.brands.getAll();
+      setBrands([...SYSTEM_BRANDS, ...data]);
+    } catch (err) {
+      console.error("Failed to load brands:", err);
+      setBrands(SYSTEM_BRANDS);
+    }
+  };
 
   useEffect(() => {
-    const fetchBrands = async () => {
-      try {
-        const data = await db.brands.getAll();
-        setBrands([...SYSTEM_BRANDS, ...data]);
-      } catch (err) {
-        console.error("Failed to load brands:", err);
-        setBrands(SYSTEM_BRANDS);
-      }
-    };
-
     fetchBrands();
-  }, [successMessage]);
+  }, []);
 
   const [formData, setFormData] = useState({
     brand_name: '',
@@ -143,6 +144,10 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         created_by_user_id: user.id
       });
       setSuccessMessage('Brand successfully created.');
+      // Re-fetch to sync
+      const data = await db.brands.getAll();
+      setBrands([...SYSTEM_BRANDS, ...data]);
+      
       setFormData({
         brand_name: '',
         campaign_objective: '',
@@ -158,6 +163,36 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
       } else {
         setErrorMessage(error.message || 'Failed to create brand. Please try again.');
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteBrand = (brandId: string, brandName: string) => {
+    setBrandToDelete({ id: brandId, name: brandName });
+  };
+
+  const confirmDeleteBrand = async () => {
+    if (!brandToDelete) return;
+    
+    setIsSubmitting(true);
+    try {
+      console.log(`🗑️ Deleting brand: ${brandToDelete.name} (${brandToDelete.id})`);
+      await db.brands.delete(brandToDelete.id);
+      
+      // Clear success/error before updating
+      setErrorMessage(null);
+      
+      // Success flow
+      setBrands(prev => prev.filter(b => b.id !== brandToDelete.id)); // Snippy UI
+      setSuccessMessage(`Brand "${brandToDelete.name}" was successfully deleted`);
+      setBrandToDelete(null);
+      
+      // Clear message after delay
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error deleting brand:', error);
+      toast.error(error.message || 'Failed to delete brand');
     } finally {
       setIsSubmitting(false);
     }
@@ -599,9 +634,20 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
                     <div className="flex flex-col gap-1.5">
                       <div className="flex justify-between items-start gap-2">
                         <h4 className="text-sm font-black text-slate-900 uppercase leading-tight line-clamp-2">{brand.brand_name}</h4>
-                        <span className={`shrink-0 px-2 py-0.5 border text-[9px] font-black uppercase ${brand.isSystem ? 'bg-blue-100 text-blue-800 border-blue-400' : 'bg-green-100 text-green-700 border-green-400'}`}>
-                          {brand.isSystem ? 'System' : 'Active'}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`px-2 py-0.5 border text-[9px] font-black uppercase ${brand.isSystem ? 'bg-blue-100 text-blue-800 border-blue-400' : 'bg-green-100 text-green-700 border-green-400'}`}>
+                            {brand.isSystem ? 'System' : 'Active'}
+                          </span>
+                          {!brand.isSystem && (
+                            <button 
+                              onClick={() => handleDeleteBrand(brand.id, brand.brand_name)}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded"
+                              title="Delete Brand"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -733,6 +779,41 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         {renderMainContent()}
       </div>
       </Layout>
+
+      {brandToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white border-4 border-black p-8 max-w-md w-full shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-red-100 border-2 border-black flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-2xl font-black uppercase tracking-tighter">Confirm Delete</h3>
+            </div>
+            
+            <p className="font-bold text-slate-600 mb-8 leading-relaxed">
+              Are you sure you want to delete <span className="text-black font-black underline decoration-red-500 decoration-2 italic">"{brandToDelete.name}"</span>?
+              This action cannot be undone.
+            </p>
+            
+            <div className="flex gap-4">
+              <button
+                onClick={() => setBrandToDelete(null)}
+                className="flex-1 px-6 py-3 border-2 border-black font-black uppercase text-sm hover:bg-slate-50 transition-all active:translate-y-[2px]"
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteBrand}
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 bg-red-500 text-white border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 active:translate-y-[1px]"
+              >
+                {isSubmitting ? 'Deleting...' : 'Delete Now'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

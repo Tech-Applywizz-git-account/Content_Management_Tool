@@ -14,7 +14,15 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
     const navigate = useNavigate();
 
     const influencerStats = useMemo(() => {
-        const stats: Record<string, { name: string; scriptSent: number; rawReceived: number; editedSent: number, totalProjects: number, influencerProjects: Project[] }> = {};
+        const stats: Record<string, { 
+            name: string; 
+            scriptSent: number; 
+            rawReceived: number; 
+            editedSent: number, 
+            totalProjects: number, 
+            influencerProjects: Project[],
+            brands: Set<string>
+        }> = {};
 
         projects.forEach(p => {
             // Only process projects marked as PA brands
@@ -26,11 +34,25 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             const nameKey = influencerName.toLowerCase().trim();
 
             if (!stats[nameKey]) {
-                stats[nameKey] = { name: influencerName, scriptSent: 0, rawReceived: 0, editedSent: 0, totalProjects: 0, influencerProjects: [] };
+                stats[nameKey] = { 
+                    name: influencerName, 
+                    scriptSent: 0, 
+                    rawReceived: 0, 
+                    editedSent: 0, 
+                    totalProjects: 0, 
+                    influencerProjects: [],
+                    brands: new Set<string>()
+                };
             }
 
             stats[nameKey].totalProjects += 1;
             stats[nameKey].influencerProjects.push(p);
+
+            // Track brand
+            const brandName = p.brand || p.data?.brand || p.data?.brand_other;
+            if (brandName) {
+                stats[nameKey].brands.add(brandName);
+            }
 
             // Script sent: stage is beyond PARTNER_REVIEW
             const isScriptSent = p.current_stage !== WorkflowStage.PARTNER_REVIEW;
@@ -53,7 +75,12 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             if (isEditedSent) stats[nameKey].editedSent += 1;
         });
 
-        return Object.values(stats).sort((a, b) => b.totalProjects - a.totalProjects);
+        return Object.values(stats)
+            .map(stat => ({
+                ...stat,
+                brandList: Array.from(stat.brands).sort()
+            }))
+            .sort((a, b) => b.totalProjects - a.totalProjects);
     }, [projects]);
 
     const handleInfluencerClick = (influencerName: string) => {
@@ -101,6 +128,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                             <thead>
                                 <tr className="bg-slate-100">
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm">Influencer Name</th>
+                                    <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-orange-50 text-orange-900">Brands</th>
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-purple-100 text-purple-900">
                                         <div className="flex items-center gap-2"><Send className="w-4 h-4" /> Scripts Sent</div>
                                     </th>
@@ -123,6 +151,22 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                                             <div className="flex items-center gap-2">
                                                 <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
                                                 {stat.name}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 border-2 border-black">
+                                            <div className="flex flex-wrap gap-1">
+                                                {stat.brandList.length > 0 ? (
+                                                    stat.brandList.map((brand, bIdx) => (
+                                                        <span 
+                                                            key={bIdx} 
+                                                            className="px-2 py-0.5 bg-orange-100 border border-orange-300 text-orange-900 text-[10px] font-black uppercase rounded"
+                                                        >
+                                                            {brand.replace(/_/g, ' ')}
+                                                        </span>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs italic">No Brands</span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="p-4 border-2 border-black text-center font-bold text-xl text-purple-700">

@@ -18,15 +18,13 @@ export function isCareerApplyShyamGroup(project: Project | any): boolean {
   const normalizedBrand = brandSelection.replace(/_/g, ' ');
   
   return [
-    'carreridentifier',
-    'career identifier',
     'applywizz',
     'applywizzusa jobs',
     'applywizz usa jobs',
     'shyam personal branding',
     'shyams personal branding',
     'shyam\'s personal branding'
-  ].includes(normalizedBrand) || brandSelection === 'carreridentifier';
+  ].includes(normalizedBrand);
 }
 
 /**
