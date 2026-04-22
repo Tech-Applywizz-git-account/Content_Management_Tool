@@ -145,37 +145,9 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [dynamicBrands, setDynamicBrands] = useState<any[]>([]);
 
-  // Fetch dynamic brands and subscribe to realtime inserts so newly created
-  // brands (e.g. added by a PA) appear immediately under the Brands heading.
+  // Fetch dynamic brands is disabled as per user request to remove PA-created brands
   useEffect(() => {
-    const fetchBrands = async () => {
-      try {
-        const brandsData = await db.brands.getAll();
-        setDynamicBrands(brandsData);
-      } catch (err) {
-        console.error('Failed to load dynamic brands:', err);
-      }
-    };
-
-    // Initial fetch
-    fetchBrands();
-
-    // Subscribe to INSERT events on the brands table so the list stays live
-    const channel = supabase
-      .channel('create-script-brands-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'brands' },
-        () => {
-          // Re-fetch the full list so the new brand name shows up immediately
-          fetchBrands();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    setDynamicBrands([]);
   }, []);
 
   // Track editor initialization to prevent cursor jumping
@@ -810,7 +782,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
         ? JSON.parse(project.data)
         : project.data;
 
-    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS', 'CAREER_IDENTIFIER'].includes(b) || dynamicBrands.some(db => db.brand_name === b);
+    const isPredefinedBrand = (b: string) => ['APPLYWIZZ', 'APPLYWIZZ_JOB_BOARD', 'LEAD_MAGNET_RTW', 'SHYAMS_PERSONAL_BRANDING', 'APPLYWIZZ_USA_JOBS'].includes(b);
     
     // Always update formData when project changes to ensure content is preserved
     setFormData(prev => {
@@ -2099,7 +2071,6 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
                           { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
                           { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#0EA5E9]' },
-                          ...dynamicBrands.map(b => ({ value: b.brand_name, label: `✨ ${b.brand_name}`, color: 'bg-slate-800' })),
                         ]).map(brand => (
                           <button
                             key={brand.value}

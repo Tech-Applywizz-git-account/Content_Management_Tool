@@ -593,8 +593,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
                                                         p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
                                                             p.brand === 'SHYAMS_PERSONAL_BRANDING' ? 'bg-[#F97316] text-white' :
-                                                            p.brand === 'CAREER_IDENTIFIER' ? 'bg-[#0EA5E9] text-white' :
-                                                                'bg-[#D946EF] text-white'
+                                                            'bg-[#D946EF] text-white'
                                                 }`}>
                                                 {p.channel}
                                             </span>
