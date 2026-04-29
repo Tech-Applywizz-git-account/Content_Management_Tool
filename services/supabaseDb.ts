@@ -756,6 +756,14 @@ export const users = {
     }
 };
 
+export const SYSTEM_BRANDS = [
+  { id: 'sys-1', brand_name: 'Shyam Personal Brand', target_audience: 'Founders & Creators', campaign_objective: 'Personal Branding', isSystem: true },
+  { id: 'sys-2', brand_name: 'ApplyWizz', target_audience: 'Job Seekers', campaign_objective: 'App Installations', isSystem: true },
+  { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true },
+  { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true },
+  { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true },
+];
+
 export const brands = {
     async getAll() {
         const client = supabaseAdmin || supabase;
@@ -801,9 +809,9 @@ export const brands = {
         }
         
         if (count === 0) {
-            console.warn(`Record with ID ${id} not found or RLS blocked deletion. Attempting backup delete by name if possible...`);
-            // We return true as the UI will handle the success state, 
-            // but the error would have been thrown above if it was a real DB error.
+            const msg = `Failed to delete brand: Record with ID ${id} not found or permission denied (RLS).`;
+            console.error(msg);
+            throw new Error(msg);
         }
         
         return true;
@@ -3018,7 +3026,8 @@ export const helpers = {
 
             [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.SENT_TO_INFLUENCER, role: Role.PARTNER_ASSOCIATE },
 
-            [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.PA_VIDEO_CMO_REVIEW, role: Role.CMO },
+            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
             [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE },
 
@@ -3238,7 +3247,55 @@ export const notifications = {
     },
 };
 
-const influencers = {
+export const influencers = {
+    async getAll() {
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
+            .from('influencers')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.warn('Could not fetch influencers', error);
+            return [];
+        }
+        return data || [];
+    },
+
+    async create(influencer: {
+        influencer_name: string;
+        instagram_profile: string;
+        influencer_email: string;
+        campaign_type: string;
+        niche: string;
+        commercials: string;
+        location: string;
+        budget: string;
+        brand_name: string;
+        created_by_user_id?: string;
+    }) {
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
+            .from('influencers')
+            .insert([influencer])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async delete(id: string) {
+        const client = supabaseAdmin || supabase;
+        const { error, count } = await client
+            .from('influencers')
+            .delete({ count: 'exact' })
+            .eq('id', id);
+        
+        if (error) throw error;
+        if (count === 0) throw new Error('Failed to delete influencer');
+        return true;
+    },
+
     /**
      * Log a new influencer outreach to the dedicated influencers table
      */
@@ -3255,7 +3312,8 @@ const influencers = {
     }) {
         console.log('📝 Logging influencer to dedicated table:', data.influencer_name);
         try {
-            const { error } = await dbClient
+            const client = supabaseAdmin || supabase;
+            const { error } = await client
                 .from('influencers')
                 .insert([{
                     ...data,
@@ -3263,8 +3321,7 @@ const influencers = {
                 }]);
 
             if (error) {
-                // If table doesn't exist yet, we log a warning but don't crash
-                console.warn('⚠️ Could not log to influencers table (Table might not exist):', error.message);
+                console.warn('⚠️ Could not log to influencers table:', error.message);
                 return false;
             }
             return true;
@@ -3278,7 +3335,8 @@ const influencers = {
      * Get all influencers for a specific parent script
      */
     async getByParent(parentId: string) {
-        const { data, error } = await supabase
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
             .from('influencers')
             .select('*')
             .eq('parent_project_id', parentId)
@@ -3288,6 +3346,36 @@ const influencers = {
             console.warn('Error fetching from influencers table:', error);
             return [];
         }
+        return data;
+    },
+
+    /**
+     * Get all influencers associated with a specific brand
+     */
+    async getByBrand(brandName: string) {
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
+            .from('influencers')
+            .select('*')
+            .eq('brand_name', brandName)
+            .order('influencer_name', { ascending: true });
+
+        if (error) {
+            console.warn(`Error fetching influencers for brand ${brandName}:`, error);
+            return [];
+        }
+        return data || [];
+    },
+
+    async update(id: string, updates: Partial<any>) {
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
+            .from('influencers')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
         return data;
     }
 };

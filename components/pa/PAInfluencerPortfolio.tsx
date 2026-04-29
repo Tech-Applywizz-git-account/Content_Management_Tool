@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, User, STAGE_LABELS, WorkflowStage } from '../../types';
+import { Project, User, STAGE_LABELS, WorkflowStage, TaskStatus, Role } from '../../types';
 import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, Loader2, Check } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
 import { toast } from 'sonner';
@@ -20,8 +20,67 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [uploadingId, setUploadingId] = useState<string | null>(null);
+    const [newVideoLink, setNewVideoLink] = useState('');
 
     const influencerDisplayName = project.data?.influencer_name || (project as any).influencer_name || 'Influencer';
+
+    const handleUploadRawVideo = async (projId: string) => {
+        if (!newVideoLink.trim()) {
+            toast.error('Please enter a video link');
+            return;
+        }
+
+        setIsSending(true);
+        try {
+            // 1. Fetch latest project data
+            const { data: latestProject } = await supabase.from('projects').select('*').eq('id', projId).single();
+            if (!latestProject) throw new Error('Project not found');
+
+            const currentHistory = latestProject.cine_video_links_history || [];
+            const updatedHistory = [...currentHistory, newVideoLink];
+
+            // 2. Update project with new link
+            const updateData: any = {
+                video_link: newVideoLink,
+                cine_video_links_history: updatedHistory
+            };
+
+            await db.projects.update(projId, updateData);
+
+            // 3. Advance workflow to CMO Review
+            // If the project is currently in SENT_TO_INFLUENCER, it should move to PA_VIDEO_CMO_REVIEW
+            if (latestProject.current_stage === WorkflowStage.SENT_TO_INFLUENCER) {
+                await db.projects.update(projId, {
+                    current_stage: WorkflowStage.PA_VIDEO_CMO_REVIEW,
+                    assigned_to_role: Role.CMO,
+                    assigned_to_user_id: null,
+                    status: TaskStatus.WAITING_APPROVAL
+                });
+                
+                await db.influencers.log({
+                    parent_project_id: latestProject.data?.parent_script_id || latestProject.id,
+                    instance_project_id: projId,
+                    influencer_name: latestProject.data?.influencer_name || 'Influencer',
+                    influencer_email: latestProject.data?.influencer_email || '',
+                    action: 'VIDEO_UPLOADED_FOR_CMO_REVIEW',
+                    sent_by: user.full_name,
+                    sent_by_id: user.id,
+                    status: 'CMO_VIDEO_REVIEW'
+                });
+            }
+
+            toast.success('Footage link added successfully');
+            setNewVideoLink('');
+            setUploadingId(null);
+            onComplete(); // Refresh data
+        } catch (error: any) {
+            console.error('Error uploading footage:', error);
+            toast.error('Failed to add footage link');
+        } finally {
+            setIsSending(false);
+        }
+    };
     
     const sortedProjects = [...allInfluencerProjects].sort((a, b) => 
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -162,11 +221,6 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-3">
-                    <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg shadow-indigo-200">
-                        <Layers className="w-4 h-4 text-indigo-300" /> Executive Analytics
-                    </div>
-                </div>
             </header>
 
             <div className="flex-1 overflow-y-auto">
@@ -178,7 +232,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                 {influencerDisplayName.charAt(0)}
                            </div>
                            <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none relative z-10">{influencerDisplayName}</h2>
-                           <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || 'No email set'}</p>
+                           <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || '—'}</p>
                         </div>
 
                         <div className="p-8 bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-200 text-white flex flex-col justify-center relative overflow-hidden">
@@ -295,11 +349,10 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                             <div className="space-y-6 max-h-[450px] overflow-y-auto pr-4 custom-scrollbar">
                                                 {influencerHistory.length > 0 ? (
                                                     influencerHistory
-                                                        .filter((entry: any) => entry.sent_by_id === user.id)
                                                         .map((entry: any, hIdx: number) => (
                                                             <div key={hIdx} className="p-6 bg-indigo-50/30 rounded-3xl border-2 border-indigo-50">
                                                                 <div className="text-sm font-medium text-slate-700 italic">
-                                                                    <ScriptDisplay content={entry.script_content || 'Content synchronized'} showBox={false} />
+                                                                    <ScriptDisplay content={entry.script_content || proj.data?.script_content || 'No script content found'} showBox={false} />
                                                                 </div>
                                                             </div>
                                                         )).reverse()
@@ -313,9 +366,39 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
 
                                         <div className="p-8 space-y-8 bg-slate-50/30">
                                             <div className="space-y-4">
-                                                <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                    <Video className="w-5 h-5" /> Footage Logs ({rawLinksHistory.length})
-                                                </span>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-3">
+                                                        <Video className="w-5 h-5" /> Footage Logs ({rawLinksHistory.length})
+                                                    </span>
+                                                    {proj.current_stage !== WorkflowStage.POSTED && (
+                                                        <button 
+                                                            onClick={() => setUploadingId(uploadingId === proj.id ? null : proj.id)}
+                                                            className="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-[9px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all"
+                                                        >
+                                                            {uploadingId === proj.id ? 'Cancel' : 'Add Link'}
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {uploadingId === proj.id && (
+                                                    <div className="p-4 bg-blue-50/50 border-2 border-blue-100 rounded-2xl flex flex-col gap-3 animate-scale-in">
+                                                        <input 
+                                                            type="url" 
+                                                            value={newVideoLink}
+                                                            onChange={(e) => setNewVideoLink(e.target.value)}
+                                                            placeholder="Paste footage link here (Google Drive/Dropbox)"
+                                                            className="w-full bg-white border border-blue-200 p-3 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        />
+                                                        <button 
+                                                            onClick={() => handleUploadRawVideo(proj.id)}
+                                                            disabled={isSending}
+                                                            className="w-full py-3 bg-blue-600 text-white font-black uppercase text-[10px] rounded-xl flex items-center justify-center gap-2"
+                                                        >
+                                                            {isSending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Submit Footage'}
+                                                        </button>
+                                                    </div>
+                                                )}
+
                                                 <div className="grid grid-cols-1 gap-3">
                                                     {rawLinksHistory.map((link, lIdx) => (
                                                         <a key={lIdx} href={link} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white border-2 border-blue-50 rounded-2xl group">

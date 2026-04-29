@@ -15,6 +15,7 @@ const BRANDS = [
   { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
   { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet', color: 'bg-[#6366F1]' },
   { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
+  { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#EF4444]' },
   
   { value: 'SHYAMS_PERSONAL_BRANDING', label: '✨ Shyam\'s Personal Branding', color: 'bg-[#F97316]' },
 ] as const;

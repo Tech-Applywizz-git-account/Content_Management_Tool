@@ -15,7 +15,8 @@ import {
   Eye,
   FileText,
   CheckCircle2,
-  MessageSquare
+  MessageSquare,
+  Building2
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -98,26 +99,26 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               {user.role !== Role.CEO && user.role !== Role.ADMIN && (
                 <button
                   onClick={() => handleNavigate('mywork')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'mywork'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'mywork'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <PenTool className="w-5 h-5" />
-                  <span>My Work</span>
+                  <PenTool className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">My Work</span>
                 </button>
               )}
               {/* Overview - For CMO and Partnership Associate */}
               {(user.role === Role.CMO || user.role === Role.PARTNER_ASSOCIATE) && (
                 <button
                   onClick={() => handleNavigate('overview')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'overview'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'overview'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <BarChart3 className="w-5 h-5" />
-                  <span>Overview</span>
+                  <BarChart3 className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Overview</span>
                 </button>
               )}
 
@@ -125,16 +126,16 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               {user.role === Role.CMO && (
                 <button
                   onClick={() => handleNavigate('final-review')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'final-review'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'final-review'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <Eye className="w-5 h-5" />
-                  <span className="flex items-center">
+                  <Eye className="w-5 h-5 flex-shrink-0" />
+                  <span className="flex items-center text-left leading-tight text-xs">
                     Final Review
                     {finalReviewCount !== undefined && finalReviewCount > 0 && (
-                      <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                      <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
                         {finalReviewCount}
                       </span>
                     )}
@@ -146,13 +147,13 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.SUB_EDITOR)) && (
                 <button
                   onClick={() => handleNavigate('calendar')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'calendar'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'calendar'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <Calendar className="w-5 h-5" />
-                  <span>Calendar</span>
+                  <Calendar className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Calendar</span>
                 </button>
               )}
 
@@ -160,16 +161,16 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               {user.role === Role.WRITER && (
                 <button
                   onClick={() => handleNavigate('approved-videos')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'approved-videos'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'approved-videos'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <Video className="w-5 h-5" />
-                  <span className="flex items-center">
+                  <Video className="w-5 h-5 flex-shrink-0" />
+                  <span className="flex items-center text-left leading-tight text-xs">
                     Approved Influencer Videos
                     {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
-                      <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                      <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
                         {approvedVideosCount}
                       </span>
                     )}
@@ -181,27 +182,41 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               {user.role === Role.WRITER && (
                 <button
                   onClick={() => handleNavigate('writer-captions')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'writer-captions'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'writer-captions'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <MessageSquare className="w-5 h-5" />
-                  <span>Write Captions</span>
+                  <MessageSquare className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Write Captions</span>
                 </button>
               )}
 
               {/* CEO Approved Scripts - Visible for PARTNER_ASSOCIATE */}
-              {user.role === Role.PARTNER_ASSOCIATE && (
+              {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
                 <button
                   onClick={() => handleNavigate('ceo-approved-scripts')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-bold uppercase transition-all ${activeView === 'ceo-approved-scripts'
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'ceo-approved-scripts'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>CEO Approved Scripts</span>
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-left leading-tight text-xs">CEO Approved Scripts</span>
+                </button>
+              )}
+
+              {/* Brands - Visible for PARTNER_ASSOCIATE and ADMIN */}
+              {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.ADMIN) && (
+                <button
+                  onClick={() => handleNavigate('brands')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'brands'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <Building2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Brands</span>
                 </button>
               )}
 
@@ -322,11 +337,11 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
               onClick={() => { handleNavigate('approved-videos'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'approved-videos' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
             >
-              <Video className="w-5 h-5" />
-              <span className="flex items-center">
+              <Video className="w-5 h-5 flex-shrink-0" />
+              <span className="flex items-center text-left leading-tight text-xs">
                 Approved Influencer Videos
                 {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
-                  <span className="ml-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                  <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
                     {approvedVideosCount}
                   </span>
                 )}
@@ -335,13 +350,24 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
           )}
 
           {/* Mobile CEO Approved Scripts */}
-          {user.role === Role.PARTNER_ASSOCIATE && (
+          {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
             <button
               onClick={() => { handleNavigate('ceo-approved-scripts'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'ceo-approved-scripts' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
             >
               <CheckCircle2 className="w-5 h-5" />
               <span>CEO Approved Scripts</span>
+            </button>
+          )}
+
+          {/* Mobile Brands */}
+          {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.ADMIN) && (
+            <button
+              onClick={() => { handleNavigate('brands'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'brands' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <Building2 className="w-5 h-5" />
+              <span>Brands</span>
             </button>
           )}
 

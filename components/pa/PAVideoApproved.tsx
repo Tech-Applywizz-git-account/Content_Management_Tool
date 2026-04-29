@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, WorkflowStage, STAGE_LABELS } from '../../types';
-import { ArrowLeft, Clock, User as UserIcon, FileText, Video } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, FileText, Video, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Props {
@@ -80,12 +80,61 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                                                     {format(new Date(project.created_at), 'MMM dd, yyyy')}
                                                 </span>
                                             </div>
+                                            {project.post_scheduled_date && (
+                                                <div className="flex justify-between py-1 bg-amber-50 px-2 -mx-2">
+                                                    <span className="font-bold text-amber-700 uppercase text-xs">Scheduled</span>
+                                                    <span className="font-black text-amber-900">
+                                                        {format(new Date(project.post_scheduled_date), 'MMM dd, yyyy')}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {project.data?.posting_proof_link && (
+                                                <div className="flex justify-between py-1 bg-emerald-50 px-2 -mx-2">
+                                                    <span className="font-bold text-emerald-700 uppercase text-xs">Posted</span>
+                                                    <a 
+                                                        href={project.data.posting_proof_link} 
+                                                        target="_blank" 
+                                                        rel="noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="font-black text-emerald-900 flex items-center gap-1 hover:underline"
+                                                    >
+                                                        Live Link <ExternalLink className="w-3 h-3" />
+                                                    </a>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="mt-4 pt-4 border-t-2 border-slate-100">
-                                            <button className="w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-green-500 hover:bg-green-600 transition-colors">
-                                                View Project
-                                            </button>
+                                            {(() => {
+                                                const now = new Date();
+                                                now.setHours(0, 0, 0, 0);
+                                                const scheduledDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : null;
+                                                if (scheduledDate) scheduledDate.setHours(0, 0, 0, 0);
+                                                
+                                                const isDatePassed = scheduledDate ? now >= scheduledDate : false;
+                                                const hasProof = !!project.data?.posting_proof_link;
+                                                const isOverdue = isDatePassed && !hasProof;
+
+                                                if (isOverdue) {
+                                                    return (
+                                                        <div className="space-y-3">
+                                                            <div className="flex items-center gap-2 text-red-600 animate-bounce">
+                                                                <AlertCircle className="w-4 h-4" />
+                                                                <span className="text-[10px] font-black uppercase">Post Overdue!</span>
+                                                            </div>
+                                                            <button className="w-full text-white px-4 py-3 text-xs font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-amber-500 hover:bg-amber-600 transition-all active:shadow-none translate-y-[-2px] active:translate-y-0">
+                                                                Add Proof Now
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <button className="w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-green-500 hover:bg-green-600 transition-colors">
+                                                        View Details
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 ))}

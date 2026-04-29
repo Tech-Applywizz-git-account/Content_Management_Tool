@@ -39,6 +39,7 @@ import PAProjectDetailPage from './components/pa/PAProjectDetailPage';
 import PAInfluencerPortfolioPage from './components/pa/PAInfluencerPortfolioPage';
 import Auth from './components/Auth';
 import SetPassword from './components/SetPassword';
+import PABrandDetails from './components/pa/PABrandDetails';
 
 interface AppRoutesProps {
     user: User | null;
@@ -200,6 +201,7 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                         <Route path="project/:projectId" element={<PAProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} refreshData={refreshData} />} />
                         <Route path="influencer/:projectId" element={<PAInfluencerPortfolioPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
                         <Route path="review/:projectId" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
+                        <Route path="brand-details/:brandName" element={<PABrandDetails user={user!} />} />
                         <Route path="*" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
                     </Routes>
                 </ProtectedRoute>

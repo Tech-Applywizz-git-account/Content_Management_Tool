@@ -729,11 +729,9 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                   </span>
                 )}
 
-                {isInfluencerVideo(task) && (
-                  <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-orange-400 text-white">
-                    INFLUENCER / USA JOBS
-                  </span>
-                )}
+                <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-slate-900 text-white">
+                  {task.brand ? task.brand.replace(/_/g, ' ') : task.data?.brand ? task.data.brand.replace(/_/g, ' ') : 'GENERAL'}
+                </span>
 
                 {/* Show IDEA badge for idea projects */}
                 {(task.data?.source === 'IDEA_PROJECT' || !task.data?.script_content) && (
@@ -741,17 +739,6 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                     IDEA
                   </span>
                 )}
-
-                <span
-                  className={`px-3 py-1 text-xs font-black uppercase border-2 border-black ${task.priority === 'HIGH'
-                    ? 'bg-red-500 text-white'
-                    : task.priority === 'NORMAL'
-                      ? 'bg-yellow-500 text-black'
-                      : 'bg-green-500 text-white'
-                    }`}
-                >
-                  {task.priority}
-                </span>
 
                 <span
                   className={`px-3 py-1 text-xs font-black uppercase border-2 ${

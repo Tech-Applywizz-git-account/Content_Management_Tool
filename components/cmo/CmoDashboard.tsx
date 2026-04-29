@@ -308,7 +308,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       p.status !== TaskStatus.DONE
   );
 
-  // Column 3: Projects for Editor (Projects assigned to Editor role)
+  // Column 3: PA Video Review (NEW)
+  const paVideoReviewProjects = dashboardProjects.filter(
+    p => p.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW
+  ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
   const inEditor = dashboardProjects.filter(
     p =>
       p.assigned_to_role === Role.EDITOR &&
@@ -609,7 +613,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
 
                 {/* Column 1: Scripts Pending Approval at CMO */}
                 <div className="space-y-4">
@@ -747,8 +751,69 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     {ideasPendingAtCMO.length === 0 && <div className="p-8 text-center text-gray-500">No idea projects pending approval</div>}
                   </div>
                 </div>
+                
+                {/* Column 3: PA Video Review (NEW) */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-indigo-600 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-black uppercase tracking-wide">PA Video Review</h3>
+                    <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{paVideoReviewProjects.length}</span>
+                  </div>
+                  <div className="space-y-4">
+                    {paVideoReviewProjects.map(p => (
+                      <div
+                        key={p.id}
+                        className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                        onClick={() => navigateWithScroll(`/cmo/review/${p.id}`, { initialProject: p })}
+                      >
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                            p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                              p.channel === 'INSTAGRAM' ? 'bg-[#D946EF] text-white' :
+                                p.channel === 'JOBBOARD' ? 'bg-[#00A36C] text-white' :
+                                  'bg-black text-white'
+                            }`}>
+                            {p.channel}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-green-500 text-white'
+                              }`}>
+                            {p.priority}
+                          </span>
+                          <span className="bg-indigo-100 text-indigo-800 px-2 py-0.5 border border-indigo-200 text-[10px] font-bold uppercase">
+                            PA BRAND
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-start mb-2">
+                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                          <button
+                            onClick={(e) => handleDeleteProject(e, p.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
+                           <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase mb-1">
+                             Influencer: {p.data?.influencer_name || '—'}
+                           </div>
+                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                            <Clock className="w-3 h-3 mr-1" />
+                            By: {p.data?.writer_name || p.created_by_name || '—'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {paVideoReviewProjects.length === 0 && (
+                      <div className="p-8 text-center text-slate-400 font-bold uppercase text-xs border-2 border-dashed border-slate-200 bg-slate-50/50">
+                        No videos pending review
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                {/* Column 3: Projects Pending at CEO */}
+                {/* Column 4: Projects Pending at CEO */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <h3 className="font-black uppercase tracking-wide">In Review (Pending at CEO)</h3>

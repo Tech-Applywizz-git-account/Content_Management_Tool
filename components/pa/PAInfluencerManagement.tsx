@@ -203,8 +203,22 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             let msg = '';
             let sName = '';
             if (stage === WorkflowStage.VIDEO_EDITING) {
-                msg = 'The influencer video is uplaoded it moves to the editor';
-                sName = 'VIDEO EDITING';
+                // If is_pa_brand, move to CMO review first
+                if (project.data?.is_pa_brand) {
+                    await db.projects.update(project.id, {
+                        current_stage: WorkflowStage.PA_VIDEO_CMO_REVIEW,
+                        status: TaskStatus.TODO
+                    });
+                    msg = 'The influencer video is uploaded. It now moves to the CMO for video approval.';
+                    sName = 'CMO VIDEO REVIEW';
+                } else {
+                    await db.projects.update(project.id, {
+                        current_stage: stage,
+                        status: status
+                    });
+                    msg = 'The influencer video is uploaded. It now moves to the editor.';
+                    sName = 'VIDEO EDITING';
+                }
             } else if (stage === WorkflowStage.PA_FINAL_REVIEW) {
                 msg = 'Editor has uploaded the video. Ready for Final Approval.';
                 sName = 'PA FINAL REVIEW';
@@ -275,7 +289,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Brand</label>
-                                <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || 'UNBRANDED'}</div>
+                                <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || '—'}</div>
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
@@ -313,11 +327,9 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                     const parentProject = allInfluencerProjects.find(p => p.id === parentId);
 
                                     const internalHistory = (parentProject?.data?.influencer_history || [])
-                                        .filter((h: any) => h.sent_by_id === user.id)
                                         .map((h: any) => ({ ...h, source: 'Internal' }));
 
-                                    const externalLog = externalHistory
-                                        .filter(h => h.sent_by_id === user.id)
+                                    const externalLog = (externalHistory || [])
                                         .map(h => ({ ...h, source: 'Registry', action: h.action || 'CAMPAIGN_OUTREACH' }));
 
                                     const combined = [...internalHistory, ...externalLog]

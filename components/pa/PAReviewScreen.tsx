@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Project, User, WorkflowStage, Channel, STAGE_LABELS, Role, TaskStatus } from '../../types';
 import ScriptDisplay from '../ScriptDisplay';
 import Popup from '../Popup';
-import { ArrowLeft, Send, Loader2, Video, Check, RotateCcw, X, ExternalLink, CheckCircle2, Play, Download } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Video, Check, RotateCcw, X, ExternalLink, CheckCircle2, Play, Download, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -13,9 +13,10 @@ interface Props {
     onBack: () => void;
     onComplete: () => void;
     fromCeoApproved?: boolean; // Track if opened from CEO Approved Scripts page
+    allProjects?: Project[];
 }
 
-const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fromCeoApproved = false }) => {
+const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fromCeoApproved = false, allProjects = [] }) => {
     // Shared states
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -39,16 +40,29 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
     // Stage 4: PA_FINAL_REVIEW
     const [finalDecision, setFinalDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [reworkReason, setReworkReason] = useState('');
+    const [postScheduledDate, setPostScheduledDate] = useState(project.post_scheduled_date || '');
+    const [postingProofLink, setPostingProofLink] = useState(project.data?.posting_proof_link || '');
+    const [externalHistory, setExternalHistory] = useState<any[]>([]);
 
     const currentStage = project.current_stage;
 
     // Determine if this project is a child instance or the shared parent
     const isChildInstance = project.data?.influencer_instance === true;
 
+    React.useEffect(() => {
+        const fetchHistory = async () => {
+            const parentId = project.data?.parent_script_id || project.id;
+            const data = await db.influencers.getByParent(parentId);
+            setExternalHistory(data || []);
+        };
+        fetchHistory();
+    }, [project.id, project.data?.parent_script_id]);
+
     // Stage checks — for parent projects in PARTNER_REVIEW, PA sees the "Send to Influencer" form
     // For child instances, they see the relevant action for their stage
     const isInitialReview = currentStage === WorkflowStage.PARTNER_REVIEW;
-    const isSentToInfluencer = currentStage === WorkflowStage.SENT_TO_INFLUENCER && isChildInstance;
+    // Widen SENT_TO_INFLUENCER check — don't require isChildInstance flag in case it's missing
+    const isSentToInfluencer = currentStage === WorkflowStage.SENT_TO_INFLUENCER;
     const isEditing = currentStage === WorkflowStage.VIDEO_EDITING && isChildInstance;
     const isFinalReview = currentStage === WorkflowStage.PA_FINAL_REVIEW && isChildInstance;
     const isApproved = currentStage === WorkflowStage.POSTED && isChildInstance;
@@ -133,6 +147,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
 
             setPopupMessage('Script sent to ' + influencerName + '. Your personal pipeline has been updated.');
             setStageName('SENT TO INFLUENCER');
+            toast.success('Script sent to ' + influencerName);
             setShowPopup(true);
             setShowConfirmModal(false);
         } catch (error: any) {
@@ -146,37 +161,44 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
     const handleUploadRawVideo = async () => {
         setIsSending(true);
         try {
-            // ✅ FIX: Update only the child instance that belongs to this PA user.
-            // This scopes the video upload to: logged-in PA + specific influencer + specific script.
+            console.log('Attempting to update project', project.id, 'to stage PA_VIDEO_CMO_REVIEW');
+
+            // Use db.projects.update to ensure correct column mapping (status → task_status)
             await db.projects.update(project.id, {
                 video_link: rawVideoLink,
-                current_stage: WorkflowStage.VIDEO_EDITING,
-                assigned_to_role: Role.EDITOR,
-                status: TaskStatus.IN_PROGRESS,
-                assigned_to_user_id: user.id,
+                current_stage: WorkflowStage.PA_VIDEO_CMO_REVIEW,
+                assigned_to_role: Role.CMO,
+                status: TaskStatus.WAITING_APPROVAL,
+                assigned_to_user_id: null,
                 data: {
                     ...(project.data || {}),
+                    sent_by_id: project.data?.sent_by_id || user.id,
                     uploaded_by_pa_id: user.id,
                     uploaded_by_pa_name: user.full_name,
                     influencer_instance: true
                 }
-            });
+            } as any);
+
+            console.log('Update successful, logging history...');
 
             await supabase.from('workflow_history').insert({
                 project_id: project.id,
-                action: 'VIDEO_UPLOADED',
+                action: 'VIDEO_UPLOADED_FOR_CMO_REVIEW',
                 actor_name: user.full_name || 'PA',
                 actor_role: 'PARTNER_ASSOCIATE',
                 from_stage: WorkflowStage.SENT_TO_INFLUENCER,
-                to_stage: WorkflowStage.VIDEO_EDITING,
+                to_stage: WorkflowStage.PA_VIDEO_CMO_REVIEW,
                 from_role: 'PARTNER_ASSOCIATE',
-                to_role: 'EDITOR',
-                comment: `Influencer video received by ${user.full_name} and sent to editor`,
-                stage: WorkflowStage.VIDEO_EDITING
+                to_role: 'CMO',
+                comment: `Influencer video received by ${user.full_name} and sent to CMO for review`,
+                stage: WorkflowStage.PA_VIDEO_CMO_REVIEW
             });
 
-            setPopupMessage('The influencer video is uploaded. It moves to the editor stage.');
-            setStageName('VIDEO EDITING');
+            console.log('History logged, showing popup...');
+
+            setPopupMessage('The influencer video is uploaded. It moves to the CMO for review.');
+            setStageName('CMO VIDEO REVIEW');
+            toast.success('Video uploaded and sent to CMO for review');
             setShowPopup(true);
             setShowConfirmModal(false);
         } catch (error: any) {
@@ -194,7 +216,9 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
             if (finalDecision === 'APPROVE') {
                 await db.advanceWorkflow(project.id, 'PA Final Approval - Video ready for posting');
                 // Ensure it stays assigned to the PA who approved it for their "Completed" count
-                await db.projects.update(project.id, { assigned_to_user_id: user.id });
+                await db.projects.update(project.id, { 
+                    assigned_to_user_id: user.id
+                });
             } else if (finalDecision === 'REWORK') {
                 if (!reworkReason.trim()) {
                     toast.error('Please provide a rework reason');
@@ -240,18 +264,40 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
             if (finalDecision === 'APPROVE') {
                 setPopupMessage('The video is approved now it shows in the video approved page');
                 setStageName('POSTED');
+                toast.success('Video approved successfully!');
             } else if (finalDecision === 'REWORK') {
                 setPopupMessage('PA has sent the content back for rework to the Editor.');
                 setStageName('Rework → Editor');
+                toast.success('Sent back for rework');
             } else if (finalDecision === 'REJECT') {
                 setPopupMessage('PA has rejected the content.');
                 setStageName('REJECTED');
+                toast.success('Project rejected');
             }
             setShowPopup(true);
             setShowConfirmModal(false);
         } catch (error: any) {
             toast.error(error.message || 'Error processing decision.');
             setShowConfirmModal(false);
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const handleUpdatePostingProof = async () => {
+        setIsSending(true);
+        try {
+            await db.projects.update(project.id, {
+                post_scheduled_date: postScheduledDate,
+                data: {
+                    ...(project.data || {}),
+                    posting_proof_link: postingProofLink
+                }
+            });
+            toast.success('Project details updated');
+            if (onComplete) await onComplete();
+        } catch (error) {
+            toast.error('Failed to update project details');
         } finally {
             setIsSending(false);
         }
@@ -284,6 +330,9 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                 setPopupType('error');
                 setShowPopup(true);
                 return; 
+            }
+            if (finalDecision === 'APPROVE') {
+                // No validation needed for approved
             }
             if (finalDecision === 'REWORK' && !reworkReason.trim()) { 
                 setPopupMessage('Please provide a reason for the rework requested');
@@ -425,6 +474,98 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                 />
                             </div>
                         </section>
+
+                        {fromCeoApproved && (
+                            <section className="space-y-6 pt-12 pb-12">
+                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-4">
+                                    <History className="w-8 h-8 text-black" /> Influencer History
+                                </h3>
+                                <div className="space-y-8">
+                                    {(() => {
+                                        const parentId = project.data?.parent_script_id || project.id;
+                                        
+                                        // Internal history from project data
+                                        const internalHistory = (project.data?.influencer_history || [])
+                                            .map((h: any) => ({ ...h, source: 'Internal' }));
+
+                                        // External logs from influencers table
+                                        const externalLog = (externalHistory || [])
+                                            .map(h => ({ ...h, source: 'Registry', action: h.action || 'CAMPAIGN_OUTREACH' }));
+
+                                        const combined = [...internalHistory, ...externalLog]
+                                            .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+
+                                        if (combined.length === 0) return (
+                                            <div className="p-10 border-2 border-dashed border-slate-300 text-center text-slate-400 font-bold uppercase text-sm bg-white">
+                                                No Outreach History Recorded
+                                            </div>
+                                        );
+
+                                        return (
+                                            <div className="space-y-4">
+                                                {combined.map((entry: any, idx: number) => {
+                                                    const instanceProject = allProjects.find(p => p.id === entry.instance_id || p.id === entry.instance_project_id);
+                                                    const rawVideo = instanceProject?.video_link || entry.video_link;
+                                                    const editedVideo = instanceProject?.edited_video_link || entry.edited_video_link;
+
+                                                    return (
+                                                        <div key={idx} className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 flex flex-col gap-4 animate-slide-up">
+                                                            <div className="flex items-center justify-between border-b-2 border-slate-100 pb-4">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className={`w-8 h-8 ${entry.source === 'Internal' ? 'bg-black' : 'bg-[#0085FF]'} text-white flex items-center justify-center font-black text-[10px] border-2 border-black`}>#{combined.length - idx}</div>
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <h4 className="font-black uppercase text-sm">{entry.influencer_name}</h4>
+                                                                            <span className={`px-1.5 py-0.5 text-[7px] font-black border border-black uppercase ${entry.source === 'Internal' ? 'bg-black text-white' : 'bg-[#D946EF] text-white'}`}>
+                                                                                {entry.source === 'Internal' ? 'PRIMARY' : 'REGISTRY'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{entry.influencer_email || 'No Email'}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Launch Date</div>
+                                                                    <div className="text-xs font-black uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="text-xs font-medium text-slate-600 italic">
+                                                                {entry.script_content || 'Initial Outreach'}
+                                                            </div>
+
+                                                            {(rawVideo || editedVideo) && (
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                                                    <div className="flex items-center justify-between bg-slate-50 p-3 border border-black">
+                                                                        <span className="text-[9px] font-black uppercase flex items-center gap-2">
+                                                                            <Video className="w-4 h-4 text-slate-900" /> Raw
+                                                                        </span>
+                                                                        {rawVideo ? (
+                                                                            <a href={rawVideo} target="_blank" rel="noopener noreferrer" className="text-[8px] font-black text-white bg-black px-3 py-1.5 hover:bg-slate-800 transition-colors border border-black">VIEW</a>
+                                                                        ) : (
+                                                                            <span className="text-[8px] font-black text-slate-300 uppercase italic">Pending</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center justify-between bg-blue-50 p-3 border border-black">
+                                                                        <span className="text-[9px] font-black text-[#0085FF] uppercase flex items-center gap-2">
+                                                                            <CheckCircle2 className="w-4 h-4" /> Final
+                                                                        </span>
+                                                                        {editedVideo ? (
+                                                                            <a href={editedVideo} target="_blank" rel="noopener noreferrer" className="text-[8px] font-black text-white bg-[#0085FF] px-3 py-1.5 hover:bg-blue-700 transition-colors border border-black">VIEW</a>
+                                                                        ) : (
+                                                                            <span className="text-[8px] font-black text-blue-200 uppercase italic">Waiting</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </section>
+                        )}
                         
                         {/* Compact Asset Section after Script (Matching CMO style) */}
                         {isFinalReview && (project.edited_video_link || project.video_link) && (
@@ -590,7 +731,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                                     type="text"
                                                     value={influencerName}
                                                     onChange={(e) => setInfluencerName(e.target.value)}
-                                                    className="w-full bg-white border-2 border-black p-4 font-black uppercase text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
                                                     placeholder="Enter Full Name"
                                                 />
                                             </div>
@@ -609,7 +750,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                                 <textarea
                                                     value={contentDescription}
                                                     onChange={(e) => setContentDescription(e.target.value)}
-                                                    className="w-full bg-white border-2 border-black p-4 font-black uppercase text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all min-h-[120px]"
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all min-h-[120px]"
                                                     placeholder="What is this script about?"
                                                 />
                                             </div>
@@ -632,7 +773,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                             type="text"
                                             value={rawVideoLink}
                                             onChange={(e) => setRawVideoLink(e.target.value)}
-                                            className="w-full bg-white border-2 border-black p-6 font-black uppercase text-xs text-slate-900 focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] placeholder:text-slate-300"
+                                            className="w-full bg-white border-2 border-black p-6 font-black text-sm text-slate-900 focus:outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] placeholder:text-slate-300"
                                             placeholder="Paste Raw Video Link Here"
                                         />
                                     </div>
@@ -654,6 +795,8 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                                     <Check className="w-8 h-8 opacity-40 ml-auto" />
                                                 </div>
                                             </label>
+
+                                            {/* Removed Scheduled Date Field */}
 
                                             <label className={`block p-6 border-2 cursor-pointer transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${finalDecision === 'REWORK' ? 'border-black bg-[#EAB308] text-white' : 'border-black bg-white text-slate-900'}`}
                                                    onClick={() => setFinalDecision('REWORK')}>
@@ -690,11 +833,76 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                                 <textarea
                                                     value={reworkReason}
                                                     onChange={(e) => setReworkReason(e.target.value)}
-                                                    className="w-full bg-white border-2 border-black p-6 font-black uppercase text-xs text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] min-h-[120px]"
+                                                    className="w-full bg-white border-2 border-black p-6 font-black text-xs text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] min-h-[120px]"
                                                     placeholder={finalDecision === 'REWORK' ? "Describe necessary edits in detail..." : "Briefly explain the reason for rejection..."}
                                                 />
                                             </div>
                                         )}
+                                    </div>
+                                )}
+
+                                {isApproved && (
+                                    <div className="space-y-6 animate-fade-in">
+                                        <div className="p-6 border-2 border-black bg-emerald-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4">
+                                            <div className="bg-white/20 p-3 rounded-xl">
+                                                <CheckCircle2 className="w-8 h-8 text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-lg uppercase leading-none">APPROVED</h4>
+                                            </div>
+                                        </div>
+
+                                        {(() => {
+                                            const now = new Date();
+                                            now.setHours(0, 0, 0, 0);
+                                            const scheduledDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : null;
+                                            if (scheduledDate) scheduledDate.setHours(0, 0, 0, 0);
+                                            
+                                            const isDatePassed = scheduledDate ? now >= scheduledDate : true; // Default to true if no date set
+
+                                            if (!isDatePassed) {
+                                                return (
+                                                    <div className="p-8 border-2 border-dashed border-slate-300 text-center bg-slate-50">
+                                                        <Clock className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                            Proof of posting can be added on or after {project.post_scheduled_date ? new Date(project.post_scheduled_date).toLocaleDateString() : 'the scheduled date'}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <div className="space-y-6 animate-slide-up">
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 text-black">Scheduled Date</label>
+                                                        <input
+                                                            type="date"
+                                                            value={postScheduledDate}
+                                                            onChange={(e) => setPostScheduledDate(e.target.value)}
+                                                            className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                        />
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 text-black">Proof of Posting (Link)</label>
+                                                        <input
+                                                            type="url"
+                                                            value={postingProofLink}
+                                                            onChange={(e) => setPostingProofLink(e.target.value)}
+                                                            className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                            placeholder="Paste live link (Instagram/LinkedIn/etc)"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={handleUpdatePostingProof}
+                                                        disabled={isSending}
+                                                        className="w-full py-4 bg-black text-white font-black uppercase text-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Project Details'}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </div>
