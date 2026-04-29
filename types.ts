@@ -42,6 +42,7 @@ export enum WorkflowStage {
   PARTNER_REVIEW = 'PARTNER_REVIEW', // Partner Associate review stage
   SENT_TO_INFLUENCER = 'SENT_TO_INFLUENCER', // Sent to Influencer
   PA_FINAL_REVIEW = 'PA_FINAL_REVIEW', // Partner Associate final review
+  PA_VIDEO_CMO_REVIEW = 'PA_VIDEO_CMO_REVIEW', // CMO reviews influencer raw video
 }
 
 export enum TaskStatus {
@@ -247,6 +248,7 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.PARTNER_REVIEW]: 'Partner Review',
   [WorkflowStage.SENT_TO_INFLUENCER]: 'Sent to Influencer',
   [WorkflowStage.PA_FINAL_REVIEW]: 'Final Review (PA)',
+  [WorkflowStage.PA_VIDEO_CMO_REVIEW]: 'Video Review (CMO)',
 };
 
 // Notification types

@@ -428,7 +428,7 @@ function App() {
 
   // Track the ID of the last user we fetched data for to avoid redundant fetches
   const lastFetchedUserIdRef = React.useRef<string | null>(null);
-  const isFetchingDataRef = React.useRef<boolean>(false);
+  const fetchPromiseRef = React.useRef<Promise<void> | null>(null);
 
   const refreshData = async (u: User = user!) => {
     if (!u) {
@@ -436,15 +436,15 @@ function App() {
       return;
     }
 
-    // Skip if we are already fetching data for this user
-    if (isFetchingDataRef.current && lastFetchedUserIdRef.current === u.id) {
-      console.debug('App.tsx: Skipping refreshData, already in progress for this user');
-      return;
+    // Return the existing promise if we are already fetching data for this user
+    if (fetchPromiseRef.current && lastFetchedUserIdRef.current === u.id) {
+      console.debug('App.tsx: Returning existing refreshData promise, already in progress for this user');
+      return fetchPromiseRef.current;
     }
 
-    console.log('🔄 App.tsx: refreshData called for user:', u?.full_name, 'role:', u?.role);
-    isFetchingDataRef.current = true;
-    lastFetchedUserIdRef.current = u.id;
+    const doFetch = async () => {
+      console.log('🔄 App.tsx: refreshData called for user:', u?.full_name, 'role:', u?.role);
+      lastFetchedUserIdRef.current = u.id;
 
     try {
       if (u.role === Role.ADMIN) {
@@ -521,9 +521,21 @@ function App() {
       }
       console.log('✅ App.tsx: refreshData completed successfully');
     } catch (error) {
+      console.error('❌ App.tsx: Error inside doFetch:', error);
+      throw error; // Propagate to outer catch
+    }
+  };
+
+    fetchPromiseRef.current = doFetch();
+    try {
+      await fetchPromiseRef.current;
+    } catch (error) {
       console.error('❌ App.tsx: Error refreshing data:', error);
     } finally {
-      isFetchingDataRef.current = false;
+      // Clear the ref only if it's still our promise
+      if (lastFetchedUserIdRef.current === u.id) {
+        fetchPromiseRef.current = null;
+      }
     }
   };
 

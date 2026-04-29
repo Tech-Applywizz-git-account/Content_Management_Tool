@@ -145,9 +145,17 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   const [dynamicBrands, setDynamicBrands] = useState<any[]>([]);
 
-  // Fetch dynamic brands is disabled as per user request to remove PA-created brands
+  // Fetch dynamic brands to show brands created by PA
   useEffect(() => {
-    setDynamicBrands([]);
+    const fetchDynamicBrands = async () => {
+      try {
+        const brands = await db.brands.getAll();
+        setDynamicBrands(brands);
+      } catch (err) {
+        console.error("Failed to load dynamic brands:", err);
+      }
+    };
+    fetchDynamicBrands();
   }, []);
 
   // Track editor initialization to prevent cursor jumping
@@ -2071,6 +2079,25 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                           { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
                           { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
                           { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#0EA5E9]' },
+                          ...dynamicBrands
+                            .filter(b => {
+                              const normalizedName = (b.brand_name || '').trim().toUpperCase().replace(/[\s_]/g, '');
+                              const systemBrands = [
+                                'SHYAMS_PERSONAL_BRANDING', 
+                                'APPLYWIZZ', 
+                                'APPLYWIZZ_JOB_BOARD', 
+                                'LEAD_MAGNET_RTW', 
+                                'APPLYWIZZ_USA_JOBS', 
+                                'CAREER_IDENTIFIER'
+                              ].map(s => s.replace(/[\s_]/g, '').toUpperCase());
+                              return !systemBrands.includes(normalizedName);
+                            })
+                            .map(b => ({
+                              value: b.brand_name,
+                              label: `🏢 ${b.brand_name}`,
+                              color: 'bg-[#10B981]',
+                              isDynamic: true
+                            }))
                         ]).map(brand => (
                           <button
                             key={brand.value}
@@ -2081,8 +2108,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                             disabled={!canEdit}
                             className={`px-4 py-3 text-xs font-black uppercase border-2 border-black transition-all ${
                               formData.brand === brand.value
-                                ? `${brand.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`
-                                : 'bg-white hover:bg-slate-50'
+                                ? `${brand.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:opacity-90`
+                                : `bg-white hover:border-[#10B981] hover:text-[#10B981] hover:bg-emerald-50`
                             } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
                             {brand.label}

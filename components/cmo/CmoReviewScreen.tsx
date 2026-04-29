@@ -405,6 +405,25 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             nextStageInfo.role,
                             comment || 'Approved by CMO'
                         );
+                    } else if (project.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+                        // Special handling for PA Video Review -> moves to Editor
+                        await db.projects.update(project.id, {
+                            current_stage: WorkflowStage.VIDEO_EDITING,
+                            assigned_to_role: Role.EDITOR,
+                            assigned_to_user_id: null,
+                            status: TaskStatus.TODO
+                        });
+                        
+                        await db.influencers.log({
+                            parent_project_id: project.data?.parent_script_id || project.id,
+                            instance_project_id: project.id,
+                            influencer_name: project.data?.influencer_name || 'Influencer',
+                            influencer_email: project.data?.influencer_email || '',
+                            action: 'CMO_APPROVED_PA_VIDEO',
+                            sent_by: user.full_name,
+                            sent_by_id: user.id,
+                            status: 'VIDEO_EDITING'
+                        });
                     } else {
                         // Ensure we have a valid user ID
                         if (!publicUser?.id) {
@@ -578,6 +597,11 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
         // CMO can send back to Writer from Script Review L1
         if (project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1) {
             return [{ value: WorkflowStage.SCRIPT, label: 'Writer (Fix Script)' }];
+        }
+
+        // CMO can send back to PA from PA Video Review
+        if (project.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+            return [{ value: WorkflowStage.SENT_TO_INFLUENCER, label: 'Partner Associate (Fix Footage)' }];
         }
 
         // For Final Review CMO and POST_WRITER_REVIEW, can send back to various roles
@@ -762,6 +786,14 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 </div>
                             </div>
                         )}
+                        {project.data?.sent_by_name && (
+                            <div>
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Sent By (PA)</label>
+                                <div className="font-bold text-slate-900 uppercase">
+                                    {project.data.sent_by_name}
+                                </div>
+                            </div>
+                        )}
                         {project.data?.referral_link && (
                             <div>
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Referral Link</label>
@@ -912,10 +944,10 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
 
 
-                    {/* Assets Section (Only for final review) */}
-                    {(project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW) && (
+                    {/* Assets Section */}
+                    {(project.current_stage === WorkflowStage.FINAL_REVIEW_CMO || project.current_stage === WorkflowStage.POST_WRITER_REVIEW || project.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) && (
                         <section className="space-y-4 pt-6 border-t-4 border-black">
-                            <h3 className="text-2xl font-black text-slate-900 uppercase">Production Assets</h3>
+                            <h3 className="text-2xl font-black text-slate-900 uppercase">{project.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW ? 'Influencer Video' : 'Production Assets'}</h3>
 
                             {previousScript || previousAssets || project.data?.cmo_rework_context?.before ? (
                                 (() => {
@@ -1147,35 +1179,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                         </div>
                                     )}
 
-                                    {(project.data?.script_content || project.data?.script_reference_link) && (
-                                        <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                            <div className="p-4">
-                                                <h4 className="font-black text-slate-900 text-sm uppercase mb-3">Script Information</h4>
-                                                {project.data?.script_content && (
-                                                    <div className="mt-4">
-                                                        <p className="text-sm font-bold text-slate-700 uppercase mb-1">Script Content:</p>
-                                                        <div 
-                                                            className="text-slate-900 text-sm whitespace-pre-wrap"
-                                                            dangerouslySetInnerHTML={{ __html: project.data.script_content }}
-                                                        />
-                                                    </div>
-                                                )}
-                                                {project.data?.script_reference_link && (
-                                                    <div>
-                                                        <p className="text-xs font-bold text-slate-700 uppercase mb-1">Script Reference Link:</p>
-                                                        <a
-                                                            href={project.data.script_reference_link}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-blue-600 underline break-all text-sm"
-                                                        >
-                                                            {project.data.script_reference_link}
-                                                        </a>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
 
                                     {/* Thumbnail/Creative Asset */}
                                     {project.thumbnail_link ? (
@@ -1230,6 +1233,7 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     <span className="block font-black text-lg uppercase text-slate-900">Approve Content</span>
                                     <span className="text-xs font-bold uppercase text-slate-600">
                                         {project.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Move to CEO Review' :
+                                            project.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW ? 'Send to Editor' :
                                             ((project.channel === Channel.JOBBOARD || project.channel === Channel.LEAD_MAGNET) && project.current_stage === WorkflowStage.FINAL_REVIEW_CMO) ? 'Send to Editor' :
                                                 'Ready for Publishing'}
                                     </span>

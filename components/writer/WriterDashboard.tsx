@@ -583,11 +583,6 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {isInfluencerVideo(p) && (
-                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    INFLUENCER / USA JOBS
-                                                </span>
-                                            )}
                                             <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
                                                 p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
                                                     p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
@@ -603,15 +598,8 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                                 </span>
                                             )}
-                                            <span
-                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                    ? 'bg-red-600 text-white font-black'
-                                                    : p.priority === 'NORMAL'
-                                                        ? 'bg-yellow-500 text-black'
-                                                        : 'bg-green-500 text-white'
-                                                    }`}
-                                            >
-                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
+                                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-slate-900 text-white">
+                                                {p.brand ? p.brand.replace(/_/g, ' ') : p.data?.brand ? p.data.brand.replace(/_/g, ' ') : 'GENERAL'}
                                             </span>
                                             {p.status === TaskStatus.REJECTED && (
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rejected</span>
@@ -681,27 +669,23 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             CREATIVE
                                                         </span>
                                                     )}
-                                                    {isInfluencerVideo(p) && (
-                                                        <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                            INFLUENCER / USA JOBS
-                                                        </span>
-                                                    )}
-                                                    <span className="text-xs font-black uppercase tracking-wider text-slate-400">{p.channel}</span>
                                                     {/* Show IDEA badge for idea projects */}
                                                     {p.data?.source === 'IDEA_PROJECT' && (
                                                         <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                                                             {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                                         </span>
                                                     )}
-                                                    <span
-                                                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                            ? 'bg-red-600 text-white font-black'
-                                                            : p.priority === 'NORMAL'
-                                                                ? 'bg-yellow-500 text-black'
-                                                                : 'bg-green-500 text-white'
-                                                            }`}
-                                                    >
-                                                        {p.priority}{p.priority === 'HIGH' && ' ★'}
+                                                    <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                                        p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                                            p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                                p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                                    p.brand === 'SHYAMS_PERSONAL_BRANDING' ? 'bg-[#F97316] text-white' :
+                                                                    'bg-[#D946EF] text-white'
+                                                        }`}>
+                                                        {p.channel}
+                                                    </span>
+                                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-slate-900 text-white">
+                                                        {p.brand ? p.brand.replace(/_/g, ' ') : p.data?.brand ? p.data.brand.replace(/_/g, ' ') : 'GENERAL'}
                                                     </span>
                                                     {/* Show Approved badge for idea projects that were returned to writer after CEO approval */}
                                                     {p.data?.source === 'IDEA_PROJECT' && p.current_stage === WorkflowStage.SCRIPT && p.assigned_to_role === Role.WRITER && p.status === TaskStatus.WAITING_APPROVAL && (
@@ -709,7 +693,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             Approved
                                                         </span>
                                                     )}
-                                                    <span className="bg-blue-100 text-blue-800 px-2 py-0.5 border border-blue-200 text-[10px] font-bold uppercase">
+                                                    <span
+                                                        className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-blue-100 text-blue-800`}
+                                                    >
                                                         {p.current_stage === WorkflowStage.SCRIPT_REVIEW_L1 ? 'Script Review (CMO)' :
                                                             p.current_stage === WorkflowStage.SCRIPT_REVIEW_L2 ? 'Script Review (CEO)' :
                                                                 p.current_stage === WorkflowStage.FINAL_REVIEW_CMO ? 'Final Review (CMO)' :
@@ -747,33 +733,23 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {isInfluencerVideo(p) && (
-                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    INFLUENCER / USA JOBS
-                                                </span>
-                                            )}
-                                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
-                                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
-                                                    p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
-                                                        p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
-                                                            'bg-[#D946EF] text-white'
-                                                }`}>
-                                                {p.channel}
-                                            </span>
                                             {/* Show IDEA badge for idea projects */}
                                             {p.data?.source === 'IDEA_PROJECT' && (
                                                 <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-purple-100 text-purple-900">
                                                     {p.data?.script_content ? 'IDEA-TO-SCRIPT' : 'IDEA'}
                                                 </span>
                                             )}
-                                            <span
-                                                className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH'
-                                                    ? 'bg-red-600 text-white font-black'
-                                                    : p.priority === 'NORMAL'
-                                                        ? 'bg-yellow-500 text-black'
-                                                        : 'bg-green-500 text-white'
-                                                    }`}>
-                                                {p.priority}{p.priority === 'HIGH' && ' ★'}
+                                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === 'YOUTUBE' ? 'bg-[#FF4F4F] text-white' :
+                                                p.channel === 'LINKEDIN' ? 'bg-[#0085FF] text-white' :
+                                                    p.brand === 'APPLYWIZZ_JOB_BOARD' || p.channel === 'JOBBOARD' ? 'bg-[#F59E0B] text-white' :
+                                                        p.brand === 'LEAD_MAGNET_RTW' || p.channel === 'LEAD_MAGNET' ? 'bg-[#10B981] text-white' :
+                                                            p.brand === 'SHYAMS_PERSONAL_BRANDING' ? 'bg-[#F97316] text-white' :
+                                                            'bg-[#D946EF] text-white'
+                                                }`}>
+                                                {p.channel}
+                                            </span>
+                                            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-slate-900 text-white">
+                                                {p.brand ? p.brand.replace(/_/g, ' ') : p.data?.brand ? p.data.brand.replace(/_/g, ' ') : 'GENERAL'}
                                             </span>
                                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 border-2 border-black ${p.assigned_to_role === Role.CINE ? 'bg-purple-100 text-purple-800' :
                                                 p.assigned_to_role === Role.EDITOR ? 'bg-yellow-100 text-yellow-800' :
@@ -840,11 +816,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                     CREATIVE
                                                 </span>
                                             )}
-                                            {isInfluencerVideo(p) && (
-                                                <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-orange-400 text-white">
-                                                    INFLUENCER / USA JOBS
-                                                </span>
-                                            )}
+                                            <span className="px-3 py-1 text-xs font-black uppercase border-2 border-black bg-slate-900 text-white">
+                                                {p.brand ? p.brand.replace(/_/g, ' ') : p.data?.brand ? p.data.brand.replace(/_/g, ' ') : 'GENERAL'}
+                                            </span>
                                             <span className="text-[10px] font-bold uppercase bg-slate-100 px-2 py-0.5 border-2 border-black">
                                                 Idea → Script
                                             </span>

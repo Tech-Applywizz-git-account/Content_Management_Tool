@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Project, User } from '../../types';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import PAInfluencerPortfolio from './PAInfluencerPortfolio';
 
@@ -12,6 +12,8 @@ interface PAInfluencerPortfolioPageProps {
 
 const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ user, refreshData }) => {
     const { projectId } = useParams<{ projectId: string }>();
+    const [searchParams] = useSearchParams();
+    const influencerNameParam = searchParams.get('name');
     const navigate = useNavigate();
 
     const [influencerProjects, setInfluencerProjects] = useState<Project[]>([]);
@@ -20,46 +22,71 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
 
     useEffect(() => {
         const fetchAllData = async () => {
-            if (!projectId) return;
-
             try {
                 setLoading(true);
                 
-                // 1. Fetch ALL projects that are marked as PA Brand projects
+                // 1. Fetch ALL PA projects for this user
                 const { data: allPaProjects, error: fetchError } = await supabase
                     .from('projects')
                     .select('*')
                     .eq('data->>is_pa_brand', 'true')
-                    .eq('assigned_to_user_id', user.id) // Properly filter by current user
                     .order('created_at', { ascending: false });
 
                 if (fetchError) throw fetchError;
-                if (!allPaProjects || allPaProjects.length === 0) throw new Error('No PA projects found');
 
-                // 2. Find the target project to get the influencer name
-                const targetProject = allPaProjects.find(p => p.id === projectId);
-                if (!targetProject) throw new Error('Target project not found');
+                let targetInfluencerName = '';
+                let matchingProjects: Project[] = [];
 
-                const influencerName = (
-                    targetProject.data?.influencer_name || 
-                    (targetProject as any).influencer_name || 
-                    ''
-                ).toLowerCase().trim();
-
-                if (influencerName) {
-                    // 3. Filter projects matching this influencer
-                    const matchingProjects = allPaProjects.filter(p => {
-                        const projInfluencerName = (
-                            p.data?.influencer_name || 
-                            (p as any).influencer_name || 
-                            ''
-                        ).toLowerCase().trim();
-                        return projInfluencerName === influencerName;
-                    });
-                    setInfluencerProjects(matchingProjects as Project[]);
-                } else {
-                    setInfluencerProjects([targetProject as Project]);
+                if (projectId && projectId !== 'new') {
+                    // Find by ID
+                    const targetProject = (allPaProjects || []).find(p => p.id === projectId);
+                    if (targetProject) {
+                        targetInfluencerName = (targetProject.data?.influencer_name || '').toLowerCase().trim();
+                    }
+                } else if (influencerNameParam) {
+                    // Use name from query param
+                    targetInfluencerName = influencerNameParam.toLowerCase().trim();
                 }
+
+                if (targetInfluencerName) {
+                    matchingProjects = (allPaProjects || []).filter(p => {
+                        const pName = (p.data?.influencer_name || '').toLowerCase().trim();
+                        const pTitle = (p.title || '').toLowerCase().trim();
+                        return pName === targetInfluencerName || pTitle.includes(targetInfluencerName);
+                    });
+                }
+
+                // 2. If no projects found but we have a name, fetch from registry to create a dummy
+                if (matchingProjects.length === 0 && targetInfluencerName) {
+                    const { data: regData } = await supabase
+                        .from('influencers')
+                        .select('*')
+                        .ilike('influencer_name', targetInfluencerName)
+                        .single();
+                    
+                    if (regData) {
+                        // Create a dummy project object for the UI to render
+                        const dummyProject: any = {
+                            id: 'temp-' + Date.now(),
+                            title: `DRAFT: ${regData.influencer_name}`,
+                            current_stage: WorkflowStage.PARTNER_REVIEW,
+                            data: {
+                                influencer_name: regData.influencer_name,
+                                influencer_email: regData.influencer_email,
+                                is_pa_brand: true,
+                                brand: regData.brand_name
+                            },
+                            created_at: new Date().toISOString()
+                        };
+                        matchingProjects = [dummyProject];
+                    }
+                }
+
+                if (matchingProjects.length === 0) {
+                    throw new Error('Influencer profile not found');
+                }
+
+                setInfluencerProjects(matchingProjects as Project[]);
             } catch (err) {
                 console.error('Error fetching project data:', err);
                 setError('Failed to load influencer portfolio.');
@@ -69,7 +96,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         };
 
         fetchAllData();
-    }, [projectId]);
+    }, [projectId, influencerNameParam]);
 
     const handleBack = () => {
         navigate(-1);
