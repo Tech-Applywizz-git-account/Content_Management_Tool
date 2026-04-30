@@ -426,12 +426,14 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Influencer Name</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Instagram</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Email Address</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Date</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Campaign</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Niche</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Commercials</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Location</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Budget</th>
+                {currentBrandData?.brand_type === 'STORY' && (
+                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Stories</th>
+                )}
                 {currentBrandData?.brand_type === 'STORY' && (
                     <>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Payment</th>
@@ -492,11 +494,6 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                        <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
-                            {inf.created_at ? new Date(inf.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                        </span>
-                    </td>
-                    <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                             <Target className="w-4 h-4 text-orange-500" />
                             <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
@@ -526,6 +523,16 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="text-[11px] font-bold">{inf.budget || '—'}</span>
                         </div>
                     </td>
+
+                    {currentBrandData?.brand_type === 'STORY' && (
+                        <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                                <div className="px-3 py-1 bg-blue-50 text-blue-700 border-2 border-blue-200 text-[10px] font-black rounded-lg">
+                                    {inf.story_count || 0} POSTED
+                                </div>
+                            </div>
+                        </td>
+                    )}
 
                     {currentBrandData?.brand_type === 'STORY' && (
                         <>

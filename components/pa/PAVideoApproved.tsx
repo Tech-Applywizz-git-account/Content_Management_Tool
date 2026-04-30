@@ -12,40 +12,6 @@ interface Props {
 }
 
 const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject }) => {
-    const [selectedProjectForProof, setSelectedProjectForProof] = useState<Project | null>(null);
-    const [isProofModalOpen, setIsProofModalOpen] = useState(false);
-    const [postScheduledDate, setPostScheduledDate] = useState('');
-    const [postingProofLink, setPostingProofLink] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-
-    const handleOpenProofModal = (e: React.MouseEvent, project: Project) => {
-        e.stopPropagation();
-        setSelectedProjectForProof(project);
-        setPostScheduledDate(project.post_scheduled_date || '');
-        setPostingProofLink(project.data?.posting_proof_link || '');
-        setIsProofModalOpen(true);
-    };
-
-    const handleUpdateProof = async () => {
-        if (!selectedProjectForProof) return;
-        setIsSaving(true);
-        try {
-            await db.projects.update(selectedProjectForProof.id, {
-                post_scheduled_date: postScheduledDate,
-                data: {
-                    ...(selectedProjectForProof.data || {}),
-                    posting_proof_link: postingProofLink
-                }
-            });
-            toast.success('Project details updated');
-            setIsProofModalOpen(false);
-            // Optionally trigger a data refresh here if needed
-        } catch (error) {
-            toast.error('Failed to update project');
-        } finally {
-            setIsSaving(false);
-        }
-    };
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in pb-20">
@@ -152,30 +118,24 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                                                 const hasProof = !!project.data?.posting_proof_link;
                                                 const isOverdue = isDatePassed && !hasProof;
 
-                                                if (isOverdue) {
-                                                    return (
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center gap-2 text-red-600 animate-bounce">
-                                                                <AlertCircle className="w-4 h-4" />
-                                                                <span className="text-[10px] font-black uppercase">Post Overdue!</span>
-                                                            </div>
-                                                            <button 
-                                                                onClick={(e) => handleOpenProofModal(e, project)}
-                                                                className="w-full text-white px-4 py-3 text-xs font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-amber-500 hover:bg-amber-600 transition-all active:shadow-none translate-y-[-2px] active:translate-y-0"
-                                                            >
-                                                                Add Proof Now
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                }
-
                                                 return (
-                                                    <button 
-                                                        onClick={(e) => handleOpenProofModal(e, project)}
-                                                        className="w-full text-white px-4 py-2 text-xs font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-green-500 hover:bg-green-600 transition-colors"
-                                                    >
-                                                        Set Schedule / Proof
-                                                    </button>
+                                                    <div className="space-y-3">
+                                                        {isOverdue && (
+                                                            <div className="flex items-center gap-2 text-red-600 animate-pulse bg-red-50 p-2 border border-red-200">
+                                                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                                                <span className="text-[10px] font-black uppercase">Posting Overdue!</span>
+                                                            </div>
+                                                        )}
+                                                        <button 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onSelectProject(project);
+                                                            }}
+                                                            className={`w-full text-white px-4 py-3 text-xs font-black uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all active:shadow-none translate-y-[-2px] active:translate-y-0 flex items-center justify-center gap-2 ${isOverdue ? 'bg-red-500 hover:bg-red-600' : 'bg-black hover:bg-slate-800'}`}
+                                                        >
+                                                            {isOverdue ? 'Fix Now' : 'Open Project'} <ExternalLink className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 );
                                             })()}
                                         </div>
@@ -187,68 +147,7 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                 </div>
             </div>
 
-            {/* Proof of Posting Modal */}
-            {isProofModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in">
-                    <div className="bg-white border-[3px] border-black p-8 max-w-md w-full shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative animate-scale-in">
-                        <button 
-                            onClick={() => setIsProofModalOpen(false)}
-                            className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
-                        >
-                            <X className="w-6 h-6 text-slate-400" />
-                        </button>
-                        
-                        <h3 className="text-2xl font-black uppercase mb-2 tracking-tight text-slate-900 pr-8">POSTING DETAILS</h3>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-6">{selectedProjectForProof?.title}</p>
-                        
-                        <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Scheduled Posting Date</label>
-                                <div className="relative">
-                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="date"
-                                        value={postScheduledDate}
-                                        onChange={(e) => setPostScheduledDate(e.target.value)}
-                                        className="w-full bg-white border-2 border-black pl-12 pr-4 py-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Proof of Posting (Live Link)</label>
-                                <div className="relative">
-                                    <ExternalLink className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <input
-                                        type="url"
-                                        value={postingProofLink}
-                                        onChange={(e) => setPostingProofLink(e.target.value)}
-                                        className="w-full bg-white border-2 border-black pl-12 pr-4 py-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                        placeholder="https://..."
-                                    />
-                                </div>
-                                <p className="text-[9px] font-bold text-slate-400 italic mt-1 uppercase">* Paste the link once the video is live on social media</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 mt-8">
-                                <button 
-                                    onClick={() => setIsProofModalOpen(false)} 
-                                    className="py-4 border-2 border-black bg-white text-black font-black uppercase text-sm tracking-widest hover:bg-slate-50 transition-all active:translate-y-[2px]"
-                                >
-                                    CANCEL
-                                </button>
-                                <button 
-                                    onClick={handleUpdateProof} 
-                                    disabled={isSaving}
-                                    className="py-4 border-2 border-black bg-black text-white font-black uppercase text-sm tracking-widest hover:bg-slate-800 transition-all flex items-center justify-center gap-2 active:translate-y-[2px]"
-                                >
-                                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'SAVE CHANGES'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

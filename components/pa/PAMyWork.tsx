@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Send, Video, CheckCircle2, ExternalLink, FileText } from 'lucide-react';
+import { Users, Send, Video, CheckCircle2, ExternalLink, FileText, Link } from 'lucide-react';
 import { Project, WorkflowStage } from '../../types';
 
 interface PAMyWorkProps {
@@ -19,6 +19,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             scriptSent: number; 
             rawReceived: number; 
             editedSent: number, 
+            proofOfPosting: number,
             totalProjects: number, 
             influencerProjects: Project[],
             brands: Set<string>
@@ -39,6 +40,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                     scriptSent: 0, 
                     rawReceived: 0, 
                     editedSent: 0, 
+                    proofOfPosting: 0,
                     totalProjects: 0, 
                     influencerProjects: [],
                     brands: new Set<string>()
@@ -70,9 +72,13 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             // Edited Video Sent: POSTED
             const isEditedSent = p.current_stage === WorkflowStage.POSTED;
 
+            // Proof of Posting: has a live proof link
+            const hasProofOfPosting = !!(p.data?.posting_proof_link);
+
             if (isScriptSent) stats[nameKey].scriptSent += 1;
             if (hasRawVideo) stats[nameKey].rawReceived += 1;
             if (isEditedSent) stats[nameKey].editedSent += 1;
+            if (hasProofOfPosting) stats[nameKey].proofOfPosting += 1;
         });
 
         return Object.values(stats)
@@ -138,6 +144,9 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                                     <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-green-100 text-green-900">
                                         <div className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Edited Sent</div>
                                     </th>
+                                    <th className="p-4 border-2 border-black font-black uppercase tracking-wide text-sm bg-orange-100 text-orange-900">
+                                        <div className="flex items-center gap-2"><Link className="w-4 h-4" /> Proof of Posting</div>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -177,6 +186,14 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                                         </td>
                                         <td className="p-4 border-2 border-black text-center font-bold text-xl text-green-700">
                                             {stat.editedSent}
+                                        </td>
+                                        <td className="p-4 border-2 border-black text-center font-bold text-xl text-orange-700">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span>{stat.proofOfPosting}</span>
+                                                {stat.proofOfPosting > 0 && (
+                                                    <span className="text-[9px] font-black uppercase bg-orange-100 text-orange-700 px-2 py-0.5 rounded border border-orange-200">Live</span>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
