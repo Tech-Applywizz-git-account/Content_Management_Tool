@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import PAInfluencerPortfolio from './PAInfluencerPortfolio';
+import PAStoryInfluencerDetails from './PAStoryInfluencerDetails';
 
 interface PAInfluencerPortfolioPageProps {
     user: User;
@@ -19,6 +20,23 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     const [influencerProjects, setInfluencerProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [brandData, setBrandData] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchBrandInfo = async () => {
+            const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
+            const bName = currentProject?.data?.brand || currentProject?.brandSelected || currentProject?.brand;
+            
+            if (bName) {
+                const { data } = await supabase.from('brands').select('*').eq('brand_name', bName).single();
+                if (data) setBrandData(data);
+            }
+        };
+
+        if (influencerProjects.length > 0) {
+            fetchBrandInfo();
+        }
+    }, [influencerProjects, projectId]);
 
     useEffect(() => {
         const fetchAllData = async () => {
@@ -141,7 +159,24 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         );
     }
 
+
+
     const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
+    const isStoryBrand = brandData?.brand_type === 'STORY' || influencerProjects[0]?.data?.brand_type === 'STORY';
+
+    if (isStoryBrand) {
+        // Find the actual influencer ID from the project or registry
+        return (
+            <PAStoryInfluencerDetails 
+                influencerId={currentProject.data?.influencer_id || (projectId?.startsWith('temp-') ? null : projectId) || ''}
+                brandName={brandData?.brand_name || currentProject.data?.brand || ''}
+                influencerName={currentProject.data?.influencer_name || ''}
+                user={user}
+                onBack={handleBack}
+                onComplete={handleComplete}
+            />
+        );
+    }
 
     return (
         <PAInfluencerPortfolio

@@ -757,11 +757,11 @@ export const users = {
 };
 
 export const SYSTEM_BRANDS = [
-  { id: 'sys-1', brand_name: 'Shyam Personal Brand', target_audience: 'Founders & Creators', campaign_objective: 'Personal Branding', isSystem: true },
-  { id: 'sys-2', brand_name: 'ApplyWizz', target_audience: 'Job Seekers', campaign_objective: 'App Installations', isSystem: true },
-  { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true },
-  { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true },
-  { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true },
+  { id: 'sys-1', brand_name: 'Shyam Personal Brand', target_audience: 'Founders & Creators', campaign_objective: 'Personal Branding', isSystem: true, brand_type: 'REEL' },
+  { id: 'sys-2', brand_name: 'ApplyWizz', target_audience: 'Job Seekers', campaign_objective: 'App Installations', isSystem: true, brand_type: 'REEL' },
+  { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true, brand_type: 'REEL' },
+  { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true, brand_type: 'REEL' },
+  { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true, brand_type: 'REEL' },
 ];
 
 export const brands = {
@@ -783,6 +783,7 @@ export const brands = {
         campaign_objective: string;
         target_audience: string;
         deliverables: string;
+        brand_type: 'REEL' | 'STORY';
         created_by_user_id?: string;
     }) {
         const client = supabaseAdmin || supabase;
@@ -3272,6 +3273,10 @@ export const influencers = {
         location: string;
         budget: string;
         brand_name: string;
+        contact_details?: string;
+        brand_type?: string;
+        payment?: string;
+        platform_type?: string;
         created_by_user_id?: string;
     }) {
         const client = supabaseAdmin || supabase;
@@ -3395,6 +3400,37 @@ export const db = {
     notifications,
     aiTools,
     influencers,
+    influencerStories: {
+        async getByInfluencer(influencerId: string) {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('influencer_stories')
+                .select('*')
+                .eq('influencer_id', influencerId)
+                .order('story_date', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        async add(story: { influencer_id: string; story_date: string; story_link: string; created_by_user_id?: string }) {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('influencer_stories')
+                .insert([story])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        async delete(id: string) {
+            const client = supabaseAdmin || supabase;
+            const { error } = await client
+                .from('influencer_stories')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            return true;
+        }
+    },
 
 
     // ========================================================================
