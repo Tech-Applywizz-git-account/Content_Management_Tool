@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, User, STAGE_LABELS, WorkflowStage, TaskStatus, Role } from '../../types';
-import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, Loader2, Check } from 'lucide-react';
+import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, Loader2, Check, Link } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
 import { toast } from 'sonner';
 import { db } from '../../services/supabaseDb';
@@ -40,10 +40,11 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             const currentHistory = latestProject.cine_video_links_history || [];
             const updatedHistory = [...currentHistory, newVideoLink];
 
-            // 2. Update project with new link
+            // 2. Update project with new link and timestamp
             const updateData: any = {
                 video_link: newVideoLink,
-                cine_video_links_history: updatedHistory
+                cine_video_links_history: updatedHistory,
+                pa_raw_footage_uploaded_at: new Date().toISOString()
             };
 
             await db.projects.update(projId, updateData);
@@ -123,6 +124,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             const updatedHistory = [...currentHistory, newHistoryEntry];
 
             await db.projects.update(project.id, {
+                pa_script_sent_at: new Date().toISOString(),
                 data: {
                     ...(latestProject?.data || {}),
                     influencer_name: influencerName,
@@ -317,6 +319,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                             const influencerHistory = proj.data?.influencer_history || [];
                             const rawLinksHistory = [...(proj.cine_video_links_history || []), proj.video_link].filter(Boolean);
                             const editedLinksHistory = [...(proj.editor_video_links_history || []), ...(proj.sub_editor_video_links_history || []), proj.edited_video_link].filter(Boolean);
+                            const proofLink = proj.data?.posting_proof_link;
                             const isNew = idx === 0;
                             
                             return (
@@ -427,6 +430,26 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                         <div className="p-4 text-slate-400 text-[10px] font-black uppercase text-center border-2 border-dashed border-slate-100 rounded-2xl">No Live Outputs</div>
                                                     )}
                                                 </div>
+                                            </div>
+
+                                            {/* Proof of Posting */}
+                                            <div className="space-y-4">
+                                                <span className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] flex items-center gap-3">
+                                                    <Link className="w-5 h-5" /> Proof of Posting
+                                                </span>
+                                                {proofLink ? (
+                                                    <a href={proofLink} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-orange-50 border-2 border-orange-200 rounded-2xl group hover:bg-orange-100 transition-all">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
+                                                                <CheckCircle2 className="w-4 h-4 text-white" />
+                                                            </div>
+                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[160px]">{proofLink}</span>
+                                                        </div>
+                                                        <ExternalLink className="w-4 h-4 text-orange-400 group-hover:text-orange-600 transition-colors shrink-0" />
+                                                    </a>
+                                                ) : (
+                                                    <div className="p-4 text-slate-400 text-[10px] font-black uppercase text-center border-2 border-dashed border-slate-100 rounded-2xl">No Proof Added Yet</div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

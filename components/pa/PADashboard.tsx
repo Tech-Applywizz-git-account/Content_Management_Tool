@@ -380,7 +380,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     }
 
     if (activeView === 'calendar') {
-        return <PACalendar projects={myProjects} />;
+        return <PACalendar projects={allProjects} />;
     }
 
     if (activeView === 'video-approval') {

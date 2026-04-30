@@ -119,9 +119,10 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 created_by_user_id: user.id
             });
             
-            // Update influencer posting status
+            // Update influencer posting status and timestamp
             await db.influencers.update(actualInfluencerId, {
-                is_posted: true
+                is_posted: true,
+                last_story_added_at: new Date().toISOString()
             });
 
             toast.success('Story saved successfully');
@@ -160,7 +161,8 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
             
             // Update influencer posting status if needed
             await db.influencers.update(actualInfluencerId, {
-                is_posted: stories.length > 0
+                is_posted: stories.length > 0,
+                ...(stories.some(s => !s.id && s.story_link) ? { last_story_added_at: new Date().toISOString() } : {})
             });
 
             toast.success('Stories updated successfully');
@@ -209,6 +211,9 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                             </h1>
                             <div className="px-3 py-1 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-full">
                                 LIVE CAMPAIGN
+                            </div>
+                            <div className="px-3 py-1 bg-[#D946EF] text-white text-[10px] font-black uppercase tracking-widest rounded-full flex items-center gap-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] border border-black/10">
+                                <LinkIcon className="w-3 h-3" /> {stories.filter(s => !!s.story_link).length} STORIES
                             </div>
                         </div>
                         <p className="text-xs font-bold text-[#D946EF] uppercase tracking-[0.2em] mt-2 flex items-center gap-2">

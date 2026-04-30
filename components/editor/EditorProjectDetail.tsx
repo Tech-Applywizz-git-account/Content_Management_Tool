@@ -202,6 +202,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
         editor_uploaded_at: new Date().toISOString(),
+        pa_editor_video_uploaded_at: new Date().toISOString(),
         editor_name: publicUser.full_name || publicUser?.email || 'Unknown Editor', // Store editor name in direct column
         edited_by_role: 'EDITOR', // Track who actually edited
         edited_by_user_id: publicUser.id, // Track the specific user

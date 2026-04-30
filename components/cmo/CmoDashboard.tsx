@@ -389,7 +389,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
             selectedProject={null}
           />
         ) : activeView === 'calendar' ? (
-          <CmoCalendar projects={allProjects || []} />
+          <CmoCalendar projects={(allProjects || []).filter(p => p.data?.is_pa_brand !== true)} />
         ) : activeView === 'lead-magnet-scripts' ? (
           <LeadMagnetScripts
             user={user}

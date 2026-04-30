@@ -411,7 +411,8 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             current_stage: WorkflowStage.VIDEO_EDITING,
                             assigned_to_role: Role.EDITOR,
                             assigned_to_user_id: null,
-                            status: TaskStatus.TODO
+                            status: TaskStatus.TODO,
+                            pa_cmo_video_approved_at: new Date().toISOString()
                         });
                         
                         await db.influencers.log({

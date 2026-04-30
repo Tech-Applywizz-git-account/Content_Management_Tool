@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Project, User, WorkflowStage, Channel, STAGE_LABELS, Role, TaskStatus } from '../../types';
 import ScriptDisplay from '../ScriptDisplay';
 import Popup from '../Popup';
-import { ArrowLeft, Send, Loader2, Video, Check, RotateCcw, X, ExternalLink, CheckCircle2, Play, Download, History } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Video, Check, RotateCcw, X, ExternalLink, CheckCircle2, Play, Download, History, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -41,6 +41,11 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
     const [finalDecision, setFinalDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [reworkReason, setReworkReason] = useState('');
     const [externalHistory, setExternalHistory] = useState<any[]>([]);
+
+    // Posting Details (for POSTED stage)
+    const [postScheduledDate, setPostScheduledDate] = useState(project.post_scheduled_date || '');
+    const [postingProofLink, setPostingProofLink] = useState(project.data?.posting_proof_link || '');
+    const [isSavingPosting, setIsSavingPosting] = useState(false);
 
     const currentStage = project.current_stage;
 
@@ -84,6 +89,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                 priority: project.priority,
                 brand: project.brand,
                 due_date: project.due_date,
+                pa_script_sent_at: new Date().toISOString(),
                 assigned_to_role: Role.PARTNER_ASSOCIATE,
                 assigned_to_user_id: user.id,
                 created_by_user_id: user.id,
@@ -168,6 +174,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                 assigned_to_role: Role.CMO,
                 status: TaskStatus.WAITING_APPROVAL,
                 assigned_to_user_id: null,
+                pa_raw_footage_uploaded_at: new Date().toISOString(),
                 data: {
                     ...(project.data || {}),
                     sent_by_id: project.data?.sent_by_id || user.id,
@@ -215,7 +222,8 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                 await db.advanceWorkflow(project.id, 'PA Final Approval - Video ready for posting');
                 // Ensure it stays assigned to the PA who approved it for their "Completed" count
                 await db.projects.update(project.id, { 
-                    assigned_to_user_id: user.id
+                    assigned_to_user_id: user.id,
+                    pa_final_approval_at: new Date().toISOString()
                 });
             } else if (finalDecision === 'REWORK') {
                 if (!reworkReason.trim()) {
@@ -247,7 +255,8 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
             } else if (finalDecision === 'REJECT') {
                 await db.projects.update(project.id, {
                     status: TaskStatus.REJECTED,
-                    assigned_to_user_id: user.id
+                    assigned_to_user_id: user.id,
+                    pa_rejection_at: new Date().toISOString()
                 });
                 await supabase.from('workflow_history').insert({
                     project_id: project.id,
@@ -279,6 +288,25 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
             setShowConfirmModal(false);
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleUpdatePostingDetails = async () => {
+        setIsSavingPosting(true);
+        try {
+            await db.projects.update(project.id, {
+                post_scheduled_date: postScheduledDate,
+                pa_posting_proof_added_at: new Date().toISOString(),
+                data: {
+                    ...(project.data || {}),
+                    posting_proof_link: postingProofLink
+                }
+            } as any);
+            toast.success('Posting details updated successfully');
+        } catch (error: any) {
+            toast.error(error.message || 'Error updating posting details');
+        } finally {
+            setIsSavingPosting(false);
         }
     };
 
@@ -636,6 +664,38 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Proof of Posting Card */}
+                                    <div className="border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+                                        <div className="p-2 bg-orange-500 border-b-2 border-black">
+                                            <h4 className="font-black text-white text-[10px] uppercase text-center tracking-widest">Proof of Posting</h4>
+                                        </div>
+                                        {project.data?.posting_proof_link ? (
+                                            <div className="p-4">
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <div className="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center shrink-0">
+                                                        <CheckCircle2 className="w-4 h-4 text-white" />
+                                                    </div>
+                                                    <span className="text-[9px] font-black text-orange-700 uppercase">Live on Social Media</span>
+                                                </div>
+                                                <a 
+                                                    href={project.data.posting_proof_link} 
+                                                    target="_blank" 
+                                                    rel="noreferrer"
+                                                    className="block p-3 bg-orange-50 border border-orange-200 text-orange-700 font-bold text-[10px] break-all hover:bg-orange-100 transition-colors"
+                                                >
+                                                    {project.data.posting_proof_link}
+                                                </a>
+                                            </div>
+                                        ) : (
+                                            <div className="aspect-video bg-slate-50 flex flex-col items-center justify-center gap-2 text-slate-300 p-4">
+                                                <div className="w-10 h-10 border-2 border-dashed border-slate-200 rounded-full flex items-center justify-center">
+                                                    <ExternalLink className="w-5 h-5" />
+                                                </div>
+                                                <span className="text-[9px] font-black uppercase text-slate-300">Awaiting Proof</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </section>
                         )}
@@ -688,6 +748,33 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Proof of Posting Row */}
+                                    <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-12 h-12 flex items-center justify-center text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${project.data?.posting_proof_link ? 'bg-orange-500' : 'bg-slate-300'}`}>
+                                                <ExternalLink className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-slate-900 uppercase tracking-tight text-lg leading-none mb-1">Proof of Posting</h4>
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase">
+                                                    {project.data?.posting_proof_link ? 'Live on social media' : 'Not yet submitted'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {project.data?.posting_proof_link ? (
+                                            <a 
+                                                href={project.data.posting_proof_link} 
+                                                target="_blank" 
+                                                rel="noreferrer" 
+                                                className="flex-1 sm:flex-none px-6 py-3 border-2 border-black bg-orange-500 text-white font-black uppercase text-xs hover:bg-orange-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <ExternalLink className="w-4 h-4" /> View Live Post
+                                            </a>
+                                        ) : (
+                                            <span className="px-4 py-2 border-2 border-dashed border-slate-300 text-slate-400 font-black uppercase text-[10px]">Pending</span>
+                                        )}
+                                    </div>
                                 </div>
                             </section>
                         )}
@@ -695,10 +782,10 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                     </div>
 
                     {/* DYNAMIC RIGHT COLUMN */}
-                    {!isEditing && !isApproved && (
+                    {!isEditing && (
                         <div className="w-full md:w-[400px] bg-white border-l-2 border-black p-8 pt-0 sticky top-0 h-fit">
                              <h2 className="text-2xl font-black text-slate-900 uppercase mb-8 border-b-4 border-black pb-2 pt-8 inline-block">
-                                {isInitialReview ? 'SEND TO INFLUENCER' : isFinalReview ? 'PA DECISION' : 'SUBMIT ACTION'}
+                                {isInitialReview ? 'SEND TO INFLUENCER' : isFinalReview ? 'PA DECISION' : isApproved ? 'POSTING DETAILS' : 'SUBMIT ACTION'}
                             </h2>
 
                             <div className="space-y-6">
@@ -822,32 +909,76 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                     </div>
                                 )}
 
+                                {isApproved && (
+                                    <div className="space-y-8 animate-fade-in">
+                                        <div className="space-y-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
+                                                    <Calendar className="w-3 h-3" /> Scheduled Posting Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={postScheduledDate}
+                                                    onChange={(e) => setPostScheduledDate(e.target.value)}
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
+                                                    <ExternalLink className="w-3 h-3" /> Proof of Posting (Live Link)
+                                                </label>
+                                                <input
+                                                    type="url"
+                                                    value={postingProofLink}
+                                                    onChange={(e) => setPostingProofLink(e.target.value)}
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                    placeholder="https://social-media.com/post/..."
+                                                />
+                                                <p className="text-[9px] font-bold text-slate-400 italic mt-1 uppercase">
+                                                    * Paste the link once the video is live on social media
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={handleUpdatePostingDetails}
+                                            disabled={isSavingPosting}
+                                            className="w-full py-6 bg-green-500 hover:bg-green-600 text-white font-black uppercase text-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none transition-all flex items-center justify-center gap-3"
+                                        >
+                                            {isSavingPosting ? <Loader2 className="w-6 h-6 animate-spin" /> : 'SAVE POST DETAILS'}
+                                        </button>
+                                    </div>
+                                )}
+
 
                             </div>
 
-                            <div className="mt-10 pb-12">
-                                <button
-                                    onClick={triggerSubmit}
-                                    disabled={isSending || (isFinalReview && !finalDecision)}
-                                    className={`w-full py-6 font-black uppercase text-xl transition-all flex items-center justify-center gap-3 ${
-                                        isInitialReview 
-                                          ? 'bg-[#D946EF] hover:bg-[#9333EA] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                                          : isSending || (isFinalReview && !finalDecision) ? 'bg-slate-200 text-slate-400 cursor-not-allowed border-2 border-black' :
-                                          isFinalReview ? 'bg-[#0085FF] text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-none translate-y-0 active:translate-y-[6px] border-2 border-black' :
-                                          'bg-black text-white active:bg-slate-900 shadow-sm'
-                                    }`}
-                                >
-                                    {isSending ? <Loader2 className="w-6 h-6 animate-spin text-white" /> : 
-                                     isFinalReview ? 'SUBMIT DECISION' : 
-                                     isInitialReview ? (
-                                        <>
-                                            <Send className="w-6 h-6" />
-                                            SENT TO THE INFLUENCER
-                                        </>
-                                     ) : 
-                                     'SUBMIT VIDEO LINK'}
-                                </button>
-                            </div>
+                            {!isApproved && (
+                                <div className="mt-10 pb-12">
+                                    <button
+                                        onClick={triggerSubmit}
+                                        disabled={isSending || (isFinalReview && !finalDecision)}
+                                        className={`w-full py-6 font-black uppercase text-xl transition-all flex items-center justify-center gap-3 ${
+                                            isInitialReview 
+                                              ? 'bg-[#D946EF] hover:bg-[#9333EA] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                              : isSending || (isFinalReview && !finalDecision) ? 'bg-slate-200 text-slate-400 cursor-not-allowed border-2 border-black' :
+                                              isFinalReview ? 'bg-[#0085FF] text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-none translate-y-0 active:translate-y-[6px] border-2 border-black' :
+                                              'bg-black text-white active:bg-slate-900 shadow-sm'
+                                        }`}
+                                    >
+                                        {isSending ? <Loader2 className="w-6 h-6 animate-spin text-white" /> : 
+                                         isFinalReview ? 'SUBMIT DECISION' : 
+                                         isInitialReview ? (
+                                            <>
+                                                <Send className="w-6 h-6" />
+                                                SENT TO THE INFLUENCER
+                                            </>
+                                         ) : 
+                                         'SUBMIT VIDEO LINK'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
