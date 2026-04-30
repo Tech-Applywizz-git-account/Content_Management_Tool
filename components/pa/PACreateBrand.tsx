@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User } from '../../types';
 import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
-import { ArrowLeft, Building2, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Building2, Trash2, Plus, Video } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PACreateBrandProps {
@@ -21,7 +21,8 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
     brand_name: '',
     campaign_objective: '',
     target_audience: '',
-    deliverables: ''
+    deliverables: '',
+    brand_type: 'REEL' as 'REEL' | 'STORY'
   });
 
   const fetchBrands = async () => {
@@ -62,13 +63,9 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
       });
       
       toast.success('Brand created successfully!');
-      setFormData({
-        brand_name: '',
-        campaign_objective: '',
-        target_audience: '',
-        deliverables: ''
-      });
-      fetchBrands();
+      setTimeout(() => {
+        navigate('/partner_associate/brands');
+      }, 1000);
     } catch (error: any) {
       console.error('Error creating brand:', error);
       toast.error(error.message || 'Failed to create brand.');
@@ -121,6 +118,39 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
         {/* Left Side: Form */}
         <div className="lg:col-span-8 bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-8">
             <form onSubmit={handleBrandSubmit} className="space-y-8">
+                <div className="space-y-4">
+                    <label className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                        Content Format <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, brand_type: 'REEL' }))}
+                            className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
+                                formData.brand_type === 'REEL' 
+                                ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                            }`}
+                        >
+                            <Video className={`w-5 h-5 ${formData.brand_type === 'REEL' ? 'text-white' : 'text-slate-300 group-hover:text-[#8B5CF6]'}`} />
+                            <span className="text-sm tracking-tight">Reel</span>
+                        </button>
+                        
+                        <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, brand_type: 'STORY' }))}
+                            className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
+                                formData.brand_type === 'STORY' 
+                                ? 'bg-[#F59E0B] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                            }`}
+                        >
+                            <Building2 className={`w-5 h-5 ${formData.brand_type === 'STORY' ? 'text-white' : 'text-slate-300 group-hover:text-[#F59E0B]'}`} />
+                            <span className="text-sm tracking-tight">Story</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div className="space-y-3">
                     <label htmlFor="brand_name" className="block text-sm font-black text-slate-900 uppercase tracking-wide">
                         Brand Name <span className="text-red-500">*</span>
@@ -182,6 +212,8 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                     />
                 </div>
 
+
+
                 <button
                     type="submit"
                     disabled={isSubmitting}
@@ -208,9 +240,16 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                     </div>
                 ) : brands.map((brand: any) => (
                     <div key={brand.id} className="flex items-center justify-between p-3 border-2 border-black bg-white group">
-                        <span className="font-black text-sm text-slate-900 truncate flex-1 uppercase">
-                            {brand.brand_name}
-                        </span>
+                        <div className="flex-1 min-w-0 mr-2">
+                            <span className="font-black text-sm text-slate-900 truncate block uppercase">
+                                {brand.brand_name}
+                            </span>
+                            {brand.brand_type && (
+                                <span className={`text-[8px] font-black px-1.5 py-0.5 border border-black inline-block mt-1 ${brand.brand_type === 'REEL' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>
+                                    {brand.brand_type}
+                                </span>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2 shrink-0">
                             <span className={`px-2 py-0.5 border-2 border-black text-[9px] font-black uppercase ${brand.isSystem ? 'bg-[#0085FF] text-white' : 'bg-[#4ADE80] text-green-900'}`}>
                                 {brand.isSystem ? 'SYSTEM' : 'ACTIVE'}

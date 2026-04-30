@@ -40,8 +40,6 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
     // Stage 4: PA_FINAL_REVIEW
     const [finalDecision, setFinalDecision] = useState<'APPROVE' | 'REWORK' | 'REJECT' | null>(null);
     const [reworkReason, setReworkReason] = useState('');
-    const [postScheduledDate, setPostScheduledDate] = useState(project.post_scheduled_date || '');
-    const [postingProofLink, setPostingProofLink] = useState(project.data?.posting_proof_link || '');
     const [externalHistory, setExternalHistory] = useState<any[]>([]);
 
     const currentStage = project.current_stage;
@@ -284,24 +282,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
         }
     };
 
-    const handleUpdatePostingProof = async () => {
-        setIsSending(true);
-        try {
-            await db.projects.update(project.id, {
-                post_scheduled_date: postScheduledDate,
-                data: {
-                    ...(project.data || {}),
-                    posting_proof_link: postingProofLink
-                }
-            });
-            toast.success('Project details updated');
-            if (onComplete) await onComplete();
-        } catch (error) {
-            toast.error('Failed to update project details');
-        } finally {
-            setIsSending(false);
-        }
-    };
+
 
     const triggerSubmit = () => {
         if (isInitialReview) {
@@ -841,70 +822,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                                     </div>
                                 )}
 
-                                {isApproved && (
-                                    <div className="space-y-6 animate-fade-in">
-                                        <div className="p-6 border-2 border-black bg-emerald-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center gap-4">
-                                            <div className="bg-white/20 p-3 rounded-xl">
-                                                <CheckCircle2 className="w-8 h-8 text-white" />
-                                            </div>
-                                            <div>
-                                                <h4 className="font-black text-lg uppercase leading-none">APPROVED</h4>
-                                            </div>
-                                        </div>
 
-                                        {(() => {
-                                            const now = new Date();
-                                            now.setHours(0, 0, 0, 0);
-                                            const scheduledDate = project.post_scheduled_date ? new Date(project.post_scheduled_date) : null;
-                                            if (scheduledDate) scheduledDate.setHours(0, 0, 0, 0);
-                                            
-                                            const isDatePassed = scheduledDate ? now >= scheduledDate : true; // Default to true if no date set
-
-                                            if (!isDatePassed) {
-                                                return (
-                                                    <div className="p-8 border-2 border-dashed border-slate-300 text-center bg-slate-50">
-                                                        <Clock className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                            Proof of posting can be added on or after {project.post_scheduled_date ? new Date(project.post_scheduled_date).toLocaleDateString() : 'the scheduled date'}
-                                                        </p>
-                                                    </div>
-                                                );
-                                            }
-
-                                            return (
-                                                <div className="space-y-6 animate-slide-up">
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 text-black">Scheduled Date</label>
-                                                        <input
-                                                            type="date"
-                                                            value={postScheduledDate}
-                                                            onChange={(e) => setPostScheduledDate(e.target.value)}
-                                                            className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                                        />
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1 text-black">Proof of Posting (Link)</label>
-                                                        <input
-                                                            type="url"
-                                                            value={postingProofLink}
-                                                            onChange={(e) => setPostingProofLink(e.target.value)}
-                                                            className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all"
-                                                            placeholder="Paste live link (Instagram/LinkedIn/etc)"
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        onClick={handleUpdatePostingProof}
-                                                        disabled={isSending}
-                                                        className="w-full py-4 bg-black text-white font-black uppercase text-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none transition-all flex items-center justify-center gap-2"
-                                                    >
-                                                        {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Project Details'}
-                                                    </button>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                )}
                             </div>
 
                             <div className="mt-10 pb-12">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../../types';
 import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
-import { CheckCircle2, AlertCircle, Building2, Trash2, Plus, ArrowLeft, UserPlus, Users, Instagram, Mail, X, Shirt, Smartphone, Coffee, Clapperboard, Zap, ShoppingBag, Crown, Palette, Globe, Trophy } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Building2, Trash2, Plus, ArrowLeft, UserPlus, Users, Instagram, Mail, X, Shirt, Smartphone, Coffee, Clapperboard, Zap, ShoppingBag, Crown, Palette, Globe, Trophy, Video } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,6 +17,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [brandToDelete, setBrandToDelete] = useState<{ id: string, name: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'REEL' | 'STORY'>('REEL');
   
 
   const fetchBrands = async () => {
@@ -104,13 +105,6 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
             <Plus className="w-5 h-5" />
             <span>Create New Brand</span>
           </button>
-          <button
-            onClick={() => navigate('/partner_associate/add-influencer')}
-            className="flex items-center gap-2 px-6 py-4 bg-[#D946EF] text-white border-4 border-black font-black uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-          >
-            <UserPlus className="w-5 h-5" />
-            <span>Add Influencer</span>
-          </button>
         </div>
       </div>
 
@@ -127,25 +121,56 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
               <p className="text-slate-400 font-black uppercase tracking-widest">Loading Brands...</p>
           </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {brands.map((brand: any) => (
+        <>
+          <div className="flex gap-4 mb-12 overflow-x-auto pb-4 scrollbar-hide">
+              <button
+                  onClick={() => setActiveTab('REEL')}
+                  className={`flex-1 md:flex-none px-12 py-5 border-[3px] border-black font-black uppercase tracking-tight transition-all flex items-center gap-3 ${
+                      activeTab === 'REEL' 
+                      ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                      : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                  }`}
+              >
+                  <Video className={`w-5 h-5 ${activeTab === 'REEL' ? 'text-white' : 'text-slate-300'}`} />
+                  <span>Reels</span>
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] border-2 border-black ${activeTab === 'REEL' ? 'bg-white text-[#8B5CF6]' : 'bg-slate-100 text-slate-500'}`}>
+                    {brands.filter(b => (b.brand_type || 'REEL') === 'REEL').length}
+                  </span>
+              </button>
+              <button
+                  onClick={() => setActiveTab('STORY')}
+                  className={`flex-1 md:flex-none px-12 py-5 border-[3px] border-black font-black uppercase tracking-tight transition-all flex items-center gap-3 ${
+                      activeTab === 'STORY' 
+                      ? 'bg-[#F59E0B] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                      : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                  }`}
+              >
+                  <Building2 className={`w-5 h-5 ${activeTab === 'STORY' ? 'text-white' : 'text-slate-300'}`} />
+                  <span>Stories</span>
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] border-2 border-black ${activeTab === 'STORY' ? 'bg-white text-[#F59E0B]' : 'bg-slate-100 text-slate-500'}`}>
+                    {brands.filter(b => b.brand_type === 'STORY').length}
+                  </span>
+              </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {brands
+              .filter(brand => (brand.brand_type || 'REEL') === activeTab)
+              .map((brand: any) => (
             <div 
               key={brand.id} 
               onClick={() => handleBrandClick(brand)}
-              className={`bg-white border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col h-full cursor-pointer group ${brand.isSystem ? 'bg-slate-50/50' : ''}`}
+              className={`bg-white border-[3px] border-black p-6 transition-all flex flex-col h-full cursor-pointer group hover:translate-y-[-4px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${brand.isSystem ? 'bg-slate-50/50' : ''}`}
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="p-3 bg-white border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] group-hover:bg-yellow-400 transition-colors">
                   {getBrandIcon(brand.brand_name)}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 border-2 border-black text-[10px] font-black uppercase ${brand.isSystem ? 'bg-[#0085FF] text-white' : 'bg-[#4ADE80] text-green-900'}`}>
-                    {brand.isSystem ? 'System' : 'Active'}
-                  </span>
                   {!brand.isSystem && (
                     <button 
                       onClick={(e) => handleDeleteBrand(e, brand.id, brand.brand_name)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors border-2 border-transparent hover:border-black"
+                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors border-2 border-transparent hover:border-black rounded-lg"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -173,8 +198,9 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
 
