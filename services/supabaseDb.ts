@@ -757,11 +757,11 @@ export const users = {
 };
 
 export const SYSTEM_BRANDS = [
-  { id: 'sys-1', brand_name: 'Shyam Personal Brand', target_audience: 'Founders & Creators', campaign_objective: 'Personal Branding', isSystem: true, brand_type: 'REEL' },
-  { id: 'sys-2', brand_name: 'ApplyWizz', target_audience: 'Job Seekers', campaign_objective: 'App Installations', isSystem: true, brand_type: 'REEL' },
-  { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true, brand_type: 'REEL' },
-  { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true, brand_type: 'REEL' },
-  { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-1', brand_name: 'Shyam Personal Brand', target_audience: 'Founders & Creators', campaign_objective: 'Personal Branding', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-2', brand_name: 'ApplyWizz', target_audience: 'Job Seekers', campaign_objective: 'App Installations', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true, brand_type: 'REEL' },
 ];
 
 export const brands = {
@@ -797,24 +797,24 @@ export const brands = {
     },
     async delete(id: string) {
         const client = supabaseAdmin || supabase;
-        
+
         // 1. First try to delete by ID
         const { error, count } = await client
             .from('brands')
             .delete({ count: 'exact' })
             .eq('id', id);
-        
+
         if (error) {
             console.error('Database error during brand deletion:', error);
             throw error;
         }
-        
+
         if (count === 0) {
             const msg = `Failed to delete brand: Record with ID ${id} not found or permission denied (RLS).`;
             console.error(msg);
             throw new Error(msg);
         }
-        
+
         return true;
     }
 };
@@ -2909,7 +2909,7 @@ export const helpers = {
 
         // Category 2: Influencer (Job Board, Lead Magnet)
         const isInfluencerJobLead = isGeneralInfluencerVideo(project);
-        
+
         // Category 1: carreridentifier, applywizz, applywizzusa jobs, shyam personal branding
         // Workflow: Writer -> CMO Script Approval -> CEO Script Approval -> CINE -> WRITER (approval) -> EDITOR -> CMO & OPS (Parallel) -> CEO -> OPS
         const isCareerApplyShyam = isCareerApplyShyamGroup(project);
@@ -3277,12 +3277,31 @@ export const influencers = {
         brand_type?: string;
         payment?: string;
         platform_type?: string;
+        vercel_form_link?: string;
         created_by_user_id?: string;
     }) {
         const client = supabaseAdmin || supabase;
+        // Only insert columns that exist in the table schema
+        const insertPayload = {
+            influencer_name: influencer.influencer_name,
+            instagram_profile: influencer.instagram_profile,
+            influencer_email: influencer.influencer_email,
+            campaign_type: influencer.campaign_type,
+            niche: influencer.niche,
+            commercials: influencer.commercials,
+            location: influencer.location,
+            budget: influencer.budget,
+            brand_name: influencer.brand_name,
+            contact_details: influencer.contact_details,
+            brand_type: influencer.brand_type,
+            payment: influencer.payment,
+            platform_type: influencer.platform_type,
+            vercel_form_link: influencer.vercel_form_link,
+            created_by_user_id: influencer.created_by_user_id,
+        };
         const { data, error } = await client
             .from('influencers')
-            .insert([influencer])
+            .insert([insertPayload])
             .select()
             .single();
         if (error) throw error;
@@ -3295,7 +3314,7 @@ export const influencers = {
             .from('influencers')
             .delete({ count: 'exact' })
             .eq('id', id);
-        
+
         if (error) throw error;
         if (count === 0) throw new Error('Failed to delete influencer');
         return true;
@@ -3314,6 +3333,7 @@ export const influencers = {
         sent_by: string;
         sent_by_id?: string;
         status?: string;
+        brand_name?: string;
     }) {
         console.log('📝 Logging influencer to dedicated table:', data.influencer_name);
         try {
@@ -3407,15 +3427,26 @@ export const db = {
                 .from('influencer_stories')
                 .select('*')
                 .eq('influencer_id', influencerId)
-                .order('story_date', { ascending: false });
+                .order('story_date', { ascending: true });
             if (error) throw error;
             return data || [];
         },
-        async add(story: { influencer_id: string; story_date: string; story_link: string; created_by_user_id?: string }) {
+        async add(story: { influencer_id: string; story_date: string; story_link: string; story_caption?: string; created_by_user_id?: string }) {
             const client = supabaseAdmin || supabase;
             const { data, error } = await client
                 .from('influencer_stories')
                 .insert([story])
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        async update(id: string, updates: { story_date?: string; story_link?: string; story_caption?: string }) {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('influencer_stories')
+                .update(updates)
+                .eq('id', id)
                 .select()
                 .single();
             if (error) throw error;
@@ -3884,8 +3915,8 @@ export const db = {
             title,
             channel,
             content_type: contentType,
-            current_stage: WorkflowStage.FINAL_REVIEW_CMO, 
-            assigned_to_role: Role.CMO, 
+            current_stage: WorkflowStage.FINAL_REVIEW_CMO,
+            assigned_to_role: Role.CMO,
             status: TaskStatus.WAITING_APPROVAL,
             task_status: TaskStatus.WAITING_APPROVAL,
             due_date: dueDate,

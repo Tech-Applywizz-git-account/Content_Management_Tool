@@ -13,8 +13,11 @@ interface PAAddInfluencerProps {
 const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
   const navigate = useNavigate();
   const [brands, setBrands] = useState<any[]>([]);
+  const [existingInfluencers, setExistingInfluencers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [instagramError, setInstagramError] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const initialBrand = searchParams.get('brand');
   const initialTab = searchParams.get('tab');
@@ -31,7 +34,8 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
     budget: '',
     brand_name: '',
     payment: 'no',
-    platform_type: ''
+    platform_type: '',
+    vercel_form_link: ''
   });
 
   const fetchData = async () => {
@@ -48,6 +52,10 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         if (!a.isSystem && b.isSystem) return -1;
         return 0;
       }));
+      
+      // Fetch existing influencers for duplicate checking
+      const allInfluencers = await db.influencers.getAll();
+      setExistingInfluencers(allInfluencers);
     } catch (err) {
       console.error("Failed to load data:", err);
       toast.error("Failed to load data");
@@ -73,36 +81,75 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    setInstagramError(null);
+
     if (!formData.influencer_name.trim()) {
-        toast.error('Influencer name is required');
+        setFormError('Influencer name is required.');
         return;
     }
 
     if (!formData.instagram_profile.trim()) {
-        toast.error('Instagram profile is required');
+        setInstagramError('Instagram profile URL is required.');
+        return;
+    }
+
+    const instagramUrlRegex = /^(https?:\/\/)?(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/;
+    if (!instagramUrlRegex.test(formData.instagram_profile)) {
+        setInstagramError('Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)');
+        return;
+    }
+
+    // Check for duplicate influencer name in the same brand
+    const normalizedName = formData.influencer_name.trim().toLowerCase();
+    const duplicate = existingInfluencers.find(
+      inf => 
+        inf.influencer_name?.trim().toLowerCase() === normalizedName &&
+        inf.brand_name === formData.brand_name
+    );
+    
+    if (duplicate) {
+        setFormError(`An influencer with the name "${formData.influencer_name}" already exists for this brand.`);
         return;
     }
 
     setIsSubmitting(true);
     try {
-      // Determine brand_type from selection or tab
       const selectedBrand = brands.find(b => b.brand_name === formData.brand_name);
       const brand_type = initialTab || selectedBrand?.brand_type || 'REEL';
 
-      await db.influencers.create({
-        ...formData,
+      const payload = {
+        influencer_name: formData.influencer_name,
+        influencer_email: formData.influencer_email,
+        contact_details: formData.contact_details,
+        instagram_profile: formData.instagram_profile,
+        campaign_type: formData.campaign_type,
+        niche: formData.niche,
+        commercials: formData.commercials,
+        location: formData.location,
+        budget: formData.budget,
+        brand_name: formData.brand_name,
+        payment: formData.payment,
+        platform_type: formData.platform_type,
+        vercel_form_link: formData.vercel_form_link,
         brand_type,
         created_by_user_id: user.id
-      });
+      };
+
+      console.log('📤 Submitting influencer payload:', payload);
+      await db.influencers.create(payload);
       
       toast.success('Influencer added successfully!');
       setTimeout(() => {
         navigate(`/partner_associate/brand-details/${encodeURIComponent(formData.brand_name)}`);
       }, 500);
     } catch (error: any) {
-      console.error('Detailed Error adding influencer:', error);
-      const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : 'Failed to add influencer');
-      toast.error(errorMessage);
+      console.error('❌ Error adding influencer:', error);
+      const errorMessage = error?.message
+        || error?.details
+        || (typeof error === 'object' ? JSON.stringify(error) : 'Failed to add influencer');
+      setFormError(errorMessage);
+      toast.error('Failed to save influencer. See error above.');
     } finally {
       setIsSubmitting(false);
     }
@@ -132,6 +179,13 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         {/* Left Side: Form */}
         <div className="bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-8">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {formError && (
+                    <div className="md:col-span-2 p-4 bg-red-50 border-2 border-red-500 rounded text-red-700 font-bold text-sm flex items-start gap-3">
+                        <span className="text-red-500 mt-0.5 shrink-0">❌</span>
+                        <span>{formError}</span>
+                    </div>
+                )}
+
                 <div className="space-y-3 md:col-span-2">
                     <label className="block text-sm font-black text-slate-900 uppercase">Associate Brand *</label>
                     <select 
@@ -159,7 +213,20 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
                         <Instagram className="w-4 h-4 text-pink-500" /> Instagram Profile *
                     </label>
-                    <input type="text" name="instagram_profile" value={formData.instagram_profile} onChange={handleChange} required className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="@username" />
+                    <input
+                        type="text"
+                        name="instagram_profile"
+                        value={formData.instagram_profile}
+                        onChange={(e) => { handleChange(e); setInstagramError(null); }}
+                        required
+                        className={`w-full px-4 py-3 border-2 font-bold focus:outline-none ${
+                            instagramError ? 'border-red-500 bg-red-50' : 'border-black'
+                        }`}
+                        placeholder="https://www.instagram.com/username"
+                    />
+                    {instagramError && (
+                        <p className="text-red-600 text-xs font-bold mt-1">⚠️ {instagramError}</p>
+                    )}
                 </div>
 
                 <div className="space-y-3">
@@ -176,12 +243,14 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                     <input type="text" name="contact_details" value={formData.contact_details} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="Phone / WhatsApp / Other" />
                 </div>
 
-                <div className="space-y-3">
-                    <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <Target className="w-4 h-4 text-orange-500" /> Type of Campaign
-                    </label>
-                    <input type="text" name="campaign_type" value={formData.campaign_type} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Reel, Post, Story" />
-                </div>
+                {((initialTab || brands.find(b => b.brand_name === formData.brand_name)?.brand_type) !== 'STORY') && (
+                    <div className="space-y-3">
+                        <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
+                            <Target className="w-4 h-4 text-orange-500" /> Type of Campaign
+                        </label>
+                        <input type="text" name="campaign_type" value={formData.campaign_type} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Reel, Post, Story" />
+                    </div>
+                )}
 
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
@@ -190,12 +259,15 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                     <input type="text" name="niche" value={formData.niche} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Tech, Fashion, Travel" />
                 </div>
 
-                <div className="space-y-3">
-                    <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-green-600" /> Commercials
-                    </label>
-                    <input type="text" name="commercials" value={formData.commercials} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Paid, Barter" />
-                </div>
+                {((initialTab || brands.find(b => b.brand_name === formData.brand_name)?.brand_type) !== 'STORY') && (
+                    <div className="space-y-3">
+                        <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
+                            <Briefcase className="w-4 h-4 text-green-600" /> 
+                            Type of collab
+                        </label>
+                        <input type="text" name="commercials" value={formData.commercials} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Paid, Barter" />
+                    </div>
+                )}
 
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
@@ -242,6 +314,18 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                                 />
                             </div>
                         )}
+
+                        <div className="space-y-3 md:col-span-2">
+                            <label className="block text-sm font-black text-slate-900 uppercase">Vercel Form Link</label>
+                            <input 
+                                type="url" 
+                                name="vercel_form_link" 
+                                value={formData.vercel_form_link} 
+                                onChange={handleChange} 
+                                className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                                placeholder="https://forms.vercel.com/..." 
+                            />
+                        </div>
                     </>
                 )}
 

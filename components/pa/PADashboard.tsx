@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, Project, Role, WorkflowStage, Channel } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle, Trash2 } from 'lucide-react';
+import { supabase } from '../../src/integrations/supabase/client';
+import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle, Trash2, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../Layout';
@@ -33,6 +34,49 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
   const [searchParams] = useSearchParams();
   const isFromCeoApproved = searchParams.get('source') === 'ceo-approved';
   const activeView = location.pathname.split('/').pop() || 'dashboard';
+
+  // Delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Delete handler
+  const handleDeleteClick = (e: React.MouseEvent, p: Project) => {
+    e.stopPropagation();
+    setProjectToDelete(p);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      // Delete from projects table
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectToDelete.id);
+      
+      if (error) throw error;
+      
+      // Also delete from influencers table if exists
+      await supabase
+        .from('influencers')
+        .delete()
+        .eq('instance_project_id', projectToDelete.id);
+      
+      toast.success('Project deleted successfully');
+      setShowDeleteModal(false);
+      setProjectToDelete(null);
+      await refreshData(user);
+    } catch (error: any) {
+      console.error('Error deleting project:', error);
+      toast.error(error.message || 'Failed to delete project');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Wrapper for state + navigation
   const setSelectedProject = (p: Project | null, fromCeoApproved = false) => {
@@ -136,6 +180,17 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
               </span>
           )}
         </div>
+
+        {/* Delete Button */}
+        {!readOnly && (
+          <button
+            onClick={(e) => handleDeleteClick(e, p)}
+            className="absolute top-2 right-2 p-1.5 bg-slate-100 hover:bg-red-500 text-slate-400 hover:text-white rounded border border-slate-200 hover:border-red-500 transition-colors opacity-0 group-hover:opacity-100"
+            title="Delete Project"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     );
   };
@@ -197,28 +252,54 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     );
   };
 
+  // Helper to check is_pa_brand in both data and metadata
+  const isPaBrand = (p: any) => {
+    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+    const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+    return data?.is_pa_brand === true || metadata?.is_pa_brand === true;
+  };
+
+  const isInfluencerInstance = (p: any) => {
+    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+    const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+    return data?.influencer_instance === true || metadata?.influencer_instance === true;
+  };
+
+  const getSentById = (p: any) => {
+    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+    const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+    return data?.sent_by_id || metadata?.sent_by_id;
+  };
+
+  const getParentScriptId = (p: any) => {
+    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+    const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+    return data?.parent_script_id || metadata?.parent_script_id;
+  };
+
   const renderDashboardContent = () => {
+
     const myClaimedParentIds = new Set(
         allProjects
             .filter(p =>
-                p.data?.influencer_instance === true &&
-                (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id) &&
-                p.data?.parent_script_id
+                isInfluencerInstance(p) &&
+                (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
+                getParentScriptId(p)
             )
-            .map(p => p.data!.parent_script_id as string)
+            .map(p => getParentScriptId(p) as string)
     );
 
     const initialReviewProjects = allProjects.filter(p =>
         p.current_stage === WorkflowStage.PARTNER_REVIEW &&
         p.ceo_approved_at &&
-        p.data?.is_pa_brand === true &&
-        !p.data?.influencer_instance &&
+        isPaBrand(p) &&
+        !isInfluencerInstance(p) &&
         !myClaimedParentIds.has(p.id)
     ).sort((a, b) => new Date(b.ceo_approved_at!).getTime() - new Date(a.ceo_approved_at!).getTime());
 
     const myInstances = allProjects.filter(p =>
-        p.data?.influencer_instance === true &&
-        (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)
+        isInfluencerInstance(p) &&
+        (p.assigned_to_user_id === user.id || getSentById(p) === user.id)
     );
 
     const sentToInfluencerProjects = myInstances.filter(p =>
@@ -263,9 +344,9 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
             >
               <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
               <span>Video Approved</span>
-              {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && p.data?.is_pa_brand === true && p.data?.influencer_instance === true && (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)).length > 0 && (
+              {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && isPaBrand(p) && isInfluencerInstance(p) && (p.assigned_to_user_id === user.id || getSentById(p) === user.id)).length > 0 && (
                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-sm">
-                  {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && p.data?.is_pa_brand === true && p.data?.influencer_instance === true && (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)).length}
+                  {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && isPaBrand(p) && isInfluencerInstance(p) && (p.assigned_to_user_id === user.id || getSentById(p) === user.id)).length}
                 </span>
               )}
             </button>
@@ -329,8 +410,8 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
   const renderMainContent = () => {
     const myInstances = allProjects.filter(p =>
-        p.data?.influencer_instance === true &&
-        p.assigned_to_user_id === user?.id
+        isInfluencerInstance(p) &&
+        (p.assigned_to_user_id === user?.id || getSentById(p) === user?.id)
     );
     const myProjects = allProjects.filter(p => p.assigned_to_user_id === user?.id);
 
@@ -461,6 +542,46 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         {renderMainContent()}
       </div>
       </Layout>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && projectToDelete && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white border-4 border-red-500 shadow-[12px_12px_0px_0px_rgba(239,68,68,1)] max-w-md w-full p-10 animate-scale-in">
+            <AlertCircle className="w-16 h-16 text-red-500 mb-6" />
+            <h3 className="text-3xl font-black text-slate-900 uppercase mb-4">Confirm Delete</h3>
+            <p className="text-sm font-bold text-slate-500 uppercase mb-8 leading-relaxed">
+              Are you sure you want to delete <span className="text-red-600">{projectToDelete.title}</span>?<br/>
+              This action cannot be undone.
+            </p>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 py-4 border-2 border-black font-black uppercase text-xs hover:bg-slate-100 transition-all"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="flex-1 py-4 bg-red-500 text-white border-2 border-black font-black uppercase text-xs hover:bg-red-600 transition-all flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
