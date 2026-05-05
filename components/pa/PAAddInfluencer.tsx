@@ -10,6 +10,42 @@ interface PAAddInfluencerProps {
 }
 
 
+const NICHE_OPTIONS = [
+  'Lifestyle',
+  'Beauty',
+  'Fashion',
+  'Travel',
+  'Health & Fitness',
+  'Food',
+  'Comedy & Entertainment',
+  'Art & Photography',
+  'Music & Dance',
+  'mixed content',
+  'Education',
+  'Technology',
+  'Other'
+];
+
+const COUNTRY_OPTIONS = [
+  'Australia',
+  'Canada',
+  'Germany',
+  'India',
+  'Ireland',
+  'UK',
+  'USA',
+  'Other'
+];
+
+const COLLAB_OPTIONS = [
+  'Barter',
+  'Affiliate',
+  'Flat',
+  'Barter+Affiliate',
+  'Affiliate+Flat',
+  'Barter+Flat'
+];
+
 const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
   const navigate = useNavigate();
   const [brands, setBrands] = useState<any[]>([]);
@@ -27,16 +63,22 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
     influencer_email: '',
     contact_details: '',
     instagram_profile: '',
-    campaign_type: '',
     niche: '',
+    niche_other: '',
     commercials: '',
+    commercials_barter: '',
     location: '',
+    location_other: '',
     budget: '',
     brand_name: '',
     payment: 'no',
     platform_type: '',
     vercel_form_link: ''
   });
+
+  const [isOtherNiche, setIsOtherNiche] = useState(false);
+  const [isOtherLocation, setIsOtherLocation] = useState(false);
+  const [isBarterCollab, setIsBarterCollab] = useState(false);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -123,10 +165,9 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         influencer_email: formData.influencer_email,
         contact_details: formData.contact_details,
         instagram_profile: formData.instagram_profile,
-        campaign_type: formData.campaign_type,
-        niche: formData.niche,
-        commercials: formData.commercials,
-        location: formData.location,
+        niche: isOtherNiche ? formData.niche_other : formData.niche,
+        commercials: isBarterCollab ? `${formData.commercials} (${formData.commercials_barter})` : formData.commercials,
+        location: isOtherLocation ? formData.location_other : formData.location,
         budget: formData.budget,
         brand_name: formData.brand_name,
         payment: formData.payment,
@@ -243,20 +284,38 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                     <input type="text" name="contact_details" value={formData.contact_details} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="Phone / WhatsApp / Other" />
                 </div>
 
-                {((initialTab || brands.find(b => b.brand_name === formData.brand_name)?.brand_type) !== 'STORY') && (
-                    <div className="space-y-3">
-                        <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                            <Target className="w-4 h-4 text-orange-500" /> Type of Campaign
-                        </label>
-                        <input type="text" name="campaign_type" value={formData.campaign_type} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Reel, Post, Story" />
-                    </div>
-                )}
-
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
                         <Tag className="w-4 h-4 text-purple-500" /> Niche
                     </label>
-                    <input type="text" name="niche" value={formData.niche} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Tech, Fashion, Travel" />
+                    <select 
+                        name="niche" 
+                        value={formData.niche} 
+                        onChange={(e) => {
+                            handleChange(e);
+                            setIsOtherNiche(e.target.value === 'Other');
+                        }} 
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
+                    >
+                        <option value="">Select Niche</option>
+                        {NICHE_OPTIONS.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+
+                    {isOtherNiche && (
+                        <div className="mt-3 animate-slide-up">
+                            <input 
+                                type="text" 
+                                name="niche_other" 
+                                value={formData.niche_other} 
+                                onChange={handleChange} 
+                                className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                                placeholder="Please specify your niche..." 
+                                autoFocus
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {((initialTab || brands.find(b => b.brand_name === formData.brand_name)?.brand_type) !== 'STORY') && (
@@ -265,15 +324,75 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                             <Briefcase className="w-4 h-4 text-green-600" /> 
                             Type of collab
                         </label>
-                        <input type="text" name="commercials" value={formData.commercials} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., Paid, Barter" />
+                        <select 
+                            name="commercials" 
+                            value={formData.commercials} 
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                handleChange(e);
+                                const includesBarter = val.includes('Barter');
+                                setIsBarterCollab(includesBarter);
+                                if (includesBarter) {
+                                    setFormData(prev => ({ ...prev, budget: 'Barter' }));
+                                }
+                            }} 
+                            className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
+                        >
+                            <option value="">Select Collab Type</option>
+                            {COLLAB_OPTIONS.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+
+                        {isBarterCollab && (
+                            <div className="mt-3 animate-slide-up space-y-2">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Product Name / Barter Details</label>
+                                <input 
+                                    type="text" 
+                                    name="commercials_barter" 
+                                    value={formData.commercials_barter} 
+                                    onChange={handleChange} 
+                                    className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                                    placeholder="e.g. 2 units of Premium Product X..." 
+                                    autoFocus
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-red-500" /> Location
+                        <MapPin className="w-4 h-4 text-red-500" /> Country
                     </label>
-                    <input type="text" name="location" value={formData.location} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="City, Country" />
+                    <select 
+                        name="location" 
+                        value={formData.location} 
+                        onChange={(e) => {
+                            handleChange(e);
+                            setIsOtherLocation(e.target.value === 'Other');
+                        }} 
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
+                    >
+                        <option value="">Select Country</option>
+                        {COUNTRY_OPTIONS.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+
+                    {isOtherLocation && (
+                        <div className="mt-3 animate-slide-up">
+                            <input 
+                                type="text" 
+                                name="location_other" 
+                                value={formData.location_other} 
+                                onChange={handleChange} 
+                                className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                                placeholder="Please specify country..." 
+                                autoFocus
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-3">

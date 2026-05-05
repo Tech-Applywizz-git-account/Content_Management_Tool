@@ -12,19 +12,27 @@ interface Props {
     user: User;
     onBack: () => void;
     onComplete: () => void;
+    initialInfluencer?: any;
 }
 
-const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete }) => {
-    const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || (project as any).influencer_name || '');
-    const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || (project as any).influencer_email || '');
+const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete, initialInfluencer }) => {
+    const [influencerName, setInfluencerName] = useState(initialInfluencer?.influencer_name || project.data?.influencer_name || (project as any).influencer_name || '');
+    const [influencerEmail, setInfluencerEmail] = useState(initialInfluencer?.influencer_email || project.data?.influencer_email || (project as any).influencer_email || '');
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
     const [newVideoLink, setNewVideoLink] = useState('');
     const [isEditingInfluencer, setIsEditingInfluencer] = useState(false);
-    const [editForm, setEditForm] = useState<any>({});
-    const [influencerRecord, setInfluencerRecord] = useState<any>(null);
+    const [editForm, setEditForm] = useState<any>(initialInfluencer ? {
+        influencer_name: initialInfluencer.influencer_name,
+        instagram_profile: initialInfluencer.instagram_profile,
+        budget: initialInfluencer.budget,
+        raw_video: initialInfluencer.raw_video || '',
+        edited_video: initialInfluencer.edited_video || '',
+        proof_link: initialInfluencer.proof_link || ''
+    } : {});
+    const [influencerRecord, setInfluencerRecord] = useState<any>(initialInfluencer || null);
     const [launchStep, setLaunchStep] = useState<number>(0); // 0: closed, 1: select script, 2: preview
     const [availableScripts, setAvailableScripts] = useState<any[]>([]);
     const [selectedScript, setSelectedScript] = useState<any>(null);
@@ -300,9 +308,14 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             let projectId = project.id;
             let latestProject: any = null;
 
-            // Check if this is a temporary project that needs to be created first
-            if (projectId?.startsWith('temp-')) {
-                console.log('🆕 Creating new project from temp ID:', projectId);
+            // DETERMINISTIC LOGIC: Create a new project if the current one is already launched
+            // or if it's a temporary/draft project.
+            const shouldCreateNew = 
+                projectId?.startsWith('temp-') || 
+                project.current_stage !== WorkflowStage.PARTNER_REVIEW;
+
+            if (shouldCreateNew) {
+                console.log('🆕 Creating a NEW project record for this script outreach');
                 
                 // Create new project for each script - same influencer can have multiple projects
                 const brandName = project.brand || project.data?.brand || selectedScript.data?.brand || '';
@@ -373,7 +386,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                 });
                 console.log('✅ Created influencer record for brand:', brandName);
             } else {
-                // Fetch existing project
+                // Fetch existing project to update (only if it was in PARTNER_REVIEW)
                 const { data: existingProject } = await supabase.from('projects').select('*').eq('id', projectId).single();
                 latestProject = existingProject;
             }
@@ -495,6 +508,16 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1">Partnership Hub</p>
                     </div>
                 </div>
+
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setLaunchStep(1)}
+                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] transition-all flex items-center gap-2"
+                    >
+                        <Send className="w-4 h-4" />
+                        Send New Script
+                    </button>
+                </div>
             </header>
 
             <div className="flex-1 overflow-y-auto">
@@ -534,7 +557,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         </div>
 
                         <div className="p-8 bg-emerald-500 rounded-3xl shadow-xl shadow-emerald-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100 mb-2 relative z-10">Proof Posted</span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100 mb-2 relative z-10">Post Proof</span>
                             <div className="flex items-baseline gap-3 relative z-10">
                                 <p className="text-5xl font-black">{aggregatedStats.proofPosted}</p>
                                 <CheckCircle2 className="w-6 h-6 text-emerald-200" />
@@ -659,7 +682,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     <FileText className="w-5 h-5" /> Script Content ({influencerHistory.length || 1})
                                                 </span>
                                             </div>
-                                            <div className="space-y-6 max-h-[450px] overflow-y-auto pr-4 custom-scrollbar">
+                                            <div className="space-y-6 max-h-[450px] overflow-y-auto overflow-x-hidden pr-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                                                 {influencerHistory.length > 0 ? (
                                                     influencerHistory
                                                         .map((entry: any, hIdx: number) => (
@@ -958,7 +981,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                     <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Script Content Preview</label>
                                     <span className="text-[8px] font-black bg-indigo-100 text-indigo-600 px-3 py-1 rounded-full uppercase tracking-tighter">Read Only</span>
                                 </div>
-                                <div className="p-8 bg-indigo-50/30 border-2 border-indigo-50 rounded-[2rem] max-h-60 overflow-y-auto scrollbar-hide text-base font-medium text-slate-700 leading-relaxed italic shadow-inner">
+                                <div className="p-8 bg-indigo-50/30 border-2 border-indigo-50 rounded-[2rem] max-h-60 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden text-base font-medium text-slate-700 leading-relaxed italic shadow-inner">
                                     <ScriptDisplay content={selectedScript.data?.script_content || selectedScript.data?.idea_description || 'No content found'} showBox={false} />
                                 </div>
                             </div>

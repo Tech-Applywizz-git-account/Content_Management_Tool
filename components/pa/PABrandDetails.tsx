@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { User, WorkflowStage } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock } from 'lucide-react';
+import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { supabase } from '../../src/integrations/supabase/client';
@@ -10,6 +10,42 @@ import { supabase } from '../../src/integrations/supabase/client';
 interface PABrandDetailsProps {
   user: User;
 }
+
+const NICHE_OPTIONS = [
+  'Lifestyle',
+  'Beauty',
+  'Fashion',
+  'Travel',
+  'Health & Fitness',
+  'Food',
+  'Comedy & Entertainment',
+  'Art & Photography',
+  'Music & Dance',
+  'mixed content',
+  'Education',
+  'Technology',
+  'Other'
+];
+
+const COUNTRY_OPTIONS = [
+  'Australia',
+  'Canada',
+  'Germany',
+  'India',
+  'Ireland',
+  'UK',
+  'USA',
+  'Other'
+];
+
+const COLLAB_OPTIONS = [
+  'Barter',
+  'Affiliate',
+  'Flat',
+  'Barter+Affiliate',
+  'Affiliate+Flat',
+  'Barter+Flat'
+];
 
 const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const { brandName } = useParams<{ brandName: string }>();
@@ -29,6 +65,36 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
+  
+  // Advanced Filters
+  const [nicheFilter, setNicheFilter] = useState('ALL');
+  const [countryFilter, setCountryFilter] = useState('ALL');
+  const [collabFilter, setCollabFilter] = useState('ALL');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const handleUpdateProductStatus = async (infId: string, newStatus: string) => {
+      try {
+          setUpdatingId(infId);
+          const { error } = await supabase
+              .from('influencers')
+              .update({ product_received: newStatus })
+              .eq('id', infId);
+
+          if (error) throw error;
+          
+          // Optimistic update
+          setInfluencers(prev => prev.map(inf => 
+              inf.id === infId ? { ...inf, product_received: newStatus } : inf
+          ));
+          
+          toast.success(`Product marked as ${newStatus === 'yes' ? 'Received' : 'Pending'}`);
+      } catch (error) {
+          console.error('Error updating product status:', error);
+          toast.error('Failed to update status');
+      } finally {
+          setUpdatingId(null);
+      }
+  };
 
   const months = [
     "January", "February", "March", "April", "May", "June",
@@ -215,9 +281,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             if (currentBrandData?.brand_type !== 'STORY') {
                 if (!inf.proof_link) return false;
             }
-            // For STORY, already checked above
         }
       }
+
+      // Apply Advanced Filters
+      if (nicheFilter !== 'ALL' && inf.niche !== nicheFilter) return false;
+      if (countryFilter !== 'ALL' && inf.location !== countryFilter) return false;
+      if (collabFilter !== 'ALL' && !(inf.commercials || '').startsWith(collabFilter)) return false;
 
       return true;
     });
@@ -292,13 +362,31 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         }, 0)
   };
 
+  // Network Distribution Stats
+  const networkDistribution = {
+    countries: influencers.reduce((acc: any, inf) => {
+      const key = inf.location || 'Other/Unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+    niches: influencers.reduce((acc: any, inf) => {
+      const key = inf.niche || 'Other/Unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
+    collabs: influencers.reduce((acc: any, inf) => {
+      const key = (inf.commercials || 'Other/Unknown').split(' (')[0];
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {})
+  };
+
   const handleExport = () => {
-    const headers = ['Name', 'Instagram', 'Email', 'Campaign Type', 'Niche', 'Commercials', 'Location', 'Budget', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
+    const headers = ['Name', 'Instagram', 'Email', 'Niche', 'Commercials', 'Location', 'Budget', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
     const rows = influencers.map(inf => [
         inf.influencer_name,
         inf.instagram_profile,
         inf.influencer_email,
-        inf.campaign_type,
         inf.niche,
         inf.commercials,
         inf.location,
@@ -353,7 +441,6 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         influencer_name: editingInfluencer.influencer_name,
         instagram_profile: editingInfluencer.instagram_profile,
         influencer_email: editingInfluencer.influencer_email,
-        campaign_type: editingInfluencer.campaign_type,
         niche: editingInfluencer.niche,
         commercials: editingInfluencer.commercials,
         location: editingInfluencer.location,
@@ -523,7 +610,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POST_PENDING' ? 'bg-white/20' : 'bg-amber-50'}`}><Clock className={`w-5 h-5 ${activeFilter === 'POST_PENDING' ? 'text-white' : 'text-amber-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPostPending}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POST_PENDING' ? 'text-amber-100' : 'text-slate-500'}`}>Approved</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('POSTED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'POSTED' ? 'bg-[#10B981] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPosted}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Live</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPosted}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Post</span></div></div>
                 </button>
                 <div className="p-4 rounded-xl border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-24 text-left relative overflow-hidden">
                     <div className="flex items-center gap-3">
@@ -540,6 +627,64 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         )}
       </div>
 
+      {/* Network Distribution Breakdown */}
+      <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
+        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-red-500" /> Country Distribution
+            </h4>
+            <div className="flex flex-wrap gap-2">
+                {Object.entries(networkDistribution.countries).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                    <button 
+                        key={name} 
+                        onClick={() => setCountryFilter(countryFilter === name ? 'ALL' : name)}
+                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${countryFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                    >
+                        <span className="text-[10px] font-bold uppercase">{name}</span>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${countryFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-purple-500" /> Niche Distribution
+            </h4>
+            <div className="flex flex-wrap gap-2">
+                {Object.entries(networkDistribution.niches).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                    <button 
+                        key={name} 
+                        onClick={() => setNicheFilter(nicheFilter === name ? 'ALL' : name)}
+                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${nicheFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                    >
+                        <span className="text-[10px] font-bold uppercase">{name}</span>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${nicheFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+
+        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-green-600" /> Collab Type Distribution
+            </h4>
+            <div className="flex flex-wrap gap-2">
+                {Object.entries(networkDistribution.collabs).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                    <button 
+                        key={name} 
+                        onClick={() => setCollabFilter(collabFilter === name ? 'ALL' : name)}
+                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${collabFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                    >
+                        <span className="text-[10px] font-bold uppercase">{name}</span>
+                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${collabFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+      </div>
+
+      {/* Search Bar Row */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 mb-8">
         <div className="flex-1 bg-white border-2 border-black shadow-sm rounded-xl p-3 flex items-center">
             <div className="relative w-full">
@@ -547,11 +692,21 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 <input type="text" placeholder={`Search within ${activeFilter === 'ALL' ? 'all' : activeFilter.toLowerCase().replace('_', ' ')} records...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-slate-200 bg-slate-50 rounded-lg font-medium focus:outline-none focus:bg-white focus:border-slate-300 transition-all text-sm" />
             </div>
         </div>
-        {activeFilter !== 'ALL' && (
-          <button onClick={() => setActiveFilter('ALL')} className="px-6 py-4 bg-slate-100 hover:bg-slate-200 border-2 border-black rounded-xl font-bold uppercase text-xs transition-all flex items-center gap-2">
-            <X className="w-4 h-4" /> Clear Filter
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+            {(activeFilter !== 'ALL' || nicheFilter !== 'ALL' || countryFilter !== 'ALL' || collabFilter !== 'ALL') && (
+            <button 
+                onClick={() => {
+                    setActiveFilter('ALL');
+                    setNicheFilter('ALL');
+                    setCountryFilter('ALL');
+                    setCollabFilter('ALL');
+                }} 
+                className="px-6 py-4 bg-slate-100 hover:bg-slate-200 border-2 border-black rounded-xl font-bold uppercase text-[10px] transition-all flex items-center gap-2"
+            >
+                <X className="w-3 h-3" /> Reset Filters
+            </button>
+            )}
+        </div>
       </div>
 
       <div className="bg-white border-2 border-black shadow-md rounded-2xl overflow-hidden">
@@ -564,17 +719,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Influencer Name</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Instagram</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Email Address</th>
-                {currentBrandData?.brand_type !== 'STORY' && (
-                  <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Campaign</th>
-                )}
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Niche</th>
-                {currentBrandData?.brand_type !== 'STORY' && (
-                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">
-                      Type of collab
-                    </th>
-                )}
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Location</th>
+                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Niche</th>
+                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Collab Type</th>
+                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Country</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Budget</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-center">Product</th>
+                )}
                 {currentBrandData?.brand_type === 'STORY' && (
                     <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Stories</th>
                 )}
@@ -592,7 +743,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Script Sent</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Raw Video</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Edited Video</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Posted</th>
+                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Post</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Proof</th>
                     </>
                 )}
@@ -614,7 +765,20 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <td className="px-6 py-5 font-bold text-slate-400 text-sm whitespace-nowrap w-16">{(index + 1).toString().padStart(2, '0')}</td>
                     <td className="px-6 py-5"><button onClick={() => handleEditClick(inf)} className="p-2 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-4 h-4" /></button></td>
                     <td className="px-6 py-5">
-                        <button onClick={() => { const id = inf.project_id || 'new'; const name = encodeURIComponent(inf.influencer_name); const infId = encodeURIComponent(inf.id); navigate(`/partner_associate/influencer/${id}?name=${name}&inf_id=${infId}`); }} className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap text-left flex items-center gap-2 group/name">
+                        <button 
+                          onClick={() => { 
+                            const id = inf.project_id || 'new'; 
+                            const name = encodeURIComponent(inf.influencer_name); 
+                            const infId = encodeURIComponent(inf.id); 
+                            navigate(`/partner_associate/influencer/${id}?name=${name}&inf_id=${infId}`, { 
+                              state: { 
+                                influencer: inf, 
+                                brandType: currentBrandData?.brand_type 
+                              } 
+                            }); 
+                          }} 
+                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap text-left flex items-center gap-2 group/name"
+                        >
                           {inf.influencer_name}<ExternalLink className="w-3 h-3 opacity-0 group-hover/name:opacity-100 transition-opacity" />
                         </button>
                     </td>
@@ -638,28 +802,18 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <span className="text-slate-300 text-xs font-bold">—</span>
                       )}
                     </td>
-                    {currentBrandData?.brand_type !== 'STORY' && (
-                      <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                              <Target className="w-4 h-4 text-orange-500" />
-                              <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
-                          </div>
-                      </td>
-                    )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Tag className="w-4 h-4 text-purple-500" />
                         <span className="text-xs font-bold text-slate-600 uppercase">{inf.niche || '—'}</span>
                       </div>
                     </td>
-                    {currentBrandData?.brand_type !== 'STORY' && (
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Briefcase className="w-4 h-4 text-green-600" />
-                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
-                          </div>
-                        </td>
-                    )}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="w-4 h-4 text-green-600" />
+                        <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-red-500" />
@@ -672,6 +826,31 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="text-[11px] font-bold">{inf.budget || '—'}</span>
                         </div>
                     </td>
+
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-6 py-4">
+                            <div className="flex justify-center">
+                                {inf.commercials === 'Barter' ? (
+                                    <div className="relative">
+                                        <select 
+                                            value={inf.product_received || 'no'}
+                                            onChange={(e) => handleUpdateProductStatus(inf.id, e.target.value)}
+                                            disabled={updatingId === inf.id}
+                                            className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+                                        >
+                                            <option value="yes" className="bg-white text-black">Yes</option>
+                                            <option value="no" className="bg-white text-black">No</option>
+                                        </select>
+                                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3 rotate-90" />}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">N/A</span>
+                                )}
+                            </div>
+                        </td>
+                    )}
 
                     {currentBrandData?.brand_type === 'STORY' && (
                         <td className="px-6 py-4">
@@ -848,60 +1027,121 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   </div>
                 </div>
                 
-                {currentBrandData?.brand_type !== 'STORY' && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400">Campaign Type</label>
-                    <div className="relative">
-                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-500" />
-                      <input 
-                        type="text" 
-                        value={editingInfluencer.campaign_type || ''}
-                        onChange={(e) => setEditingInfluencer({...editingInfluencer, campaign_type: e.target.value})}
-                        className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                      />
-                    </div>
-                  </div>
-                )}
-                
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400">Niche</label>
                   <div className="relative">
                     <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-500" />
-                    <input 
-                      type="text" 
-                      value={editingInfluencer.niche || ''}
-                      onChange={(e) => setEditingInfluencer({...editingInfluencer, niche: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                    />
+                    <select 
+                      value={NICHE_OPTIONS.includes(editingInfluencer?.niche) ? editingInfluencer.niche : (editingInfluencer?.niche ? 'Other' : '')}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'Other') {
+                          // We don't clear it immediately to keep the custom text visible if they were already editing it
+                          // but if they just switched to other, we want them to type
+                          if (NICHE_OPTIONS.includes(editingInfluencer.niche)) {
+                             setEditingInfluencer({...editingInfluencer, niche: ''});
+                          }
+                        } else {
+                          setEditingInfluencer({...editingInfluencer, niche: val});
+                        }
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
+                    >
+                      <option value="">Select Niche</option>
+                      {NICHE_OPTIONS.map(option => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
                   </div>
+                  {editingInfluencer && (!NICHE_OPTIONS.includes(editingInfluencer.niche) || editingInfluencer.niche === 'Other') && (
+                    <div className="mt-2 animate-slide-up">
+                       <input 
+                        type="text" 
+                        value={editingInfluencer.niche === 'Other' ? '' : editingInfluencer.niche}
+                        onChange={(e) => setEditingInfluencer({...editingInfluencer, niche: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                        placeholder="Specify custom niche..."
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 {currentBrandData?.brand_type !== 'STORY' && (
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400">Commercials</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400">Type of collab</label>
                     <div className="relative">
                       <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-green-600" />
-                      <input 
-                        type="text" 
-                        value={editingInfluencer.commercials || ''}
-                        onChange={(e) => setEditingInfluencer({...editingInfluencer, commercials: e.target.value})}
-                        className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                      />
+                      <select 
+                        value={COLLAB_OPTIONS.find(opt => editingInfluencer.commercials?.startsWith(opt)) || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditingInfluencer({
+                            ...editingInfluencer, 
+                            commercials: val,
+                            budget: val.includes('Barter') ? 'Barter' : editingInfluencer.budget
+                          });
+                        }}
+                        className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
+                      >
+                        <option value="">Select Collab Type</option>
+                        {COLLAB_OPTIONS.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
                     </div>
+                    {editingInfluencer.commercials?.includes('Barter') && (
+                      <div className="mt-2 animate-slide-up space-y-2">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Product Name / Barter Details</label>
+                        <input 
+                          type="text" 
+                          value={editingInfluencer.commercials.includes('(') ? editingInfluencer.commercials.split('(')[1].replace(')', '') : ''}
+                          onChange={(e) => {
+                             const base = COLLAB_OPTIONS.find(opt => editingInfluencer.commercials?.startsWith(opt)) || 'Barter';
+                             setEditingInfluencer({...editingInfluencer, commercials: `${base} (${e.target.value})`});
+                          }}
+                          className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                          placeholder="e.g. 2 units of Premium Product X..." 
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400">Location</label>
+                  <label className="text-[10px] font-black uppercase text-slate-400">Country</label>
                   <div className="relative">
                     <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-red-500" />
-                    <input 
-                      type="text" 
-                      value={editingInfluencer.location || ''}
-                      onChange={(e) => setEditingInfluencer({...editingInfluencer, location: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                    />
+                    <select 
+                      value={COUNTRY_OPTIONS.includes(editingInfluencer?.location) ? editingInfluencer.location : (editingInfluencer?.location ? 'Other' : '')}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'Other') {
+                          if (COUNTRY_OPTIONS.includes(editingInfluencer.location)) {
+                            setEditingInfluencer({...editingInfluencer, location: ''});
+                          }
+                        } else {
+                          setEditingInfluencer({...editingInfluencer, location: val});
+                        }
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
+                    >
+                      <option value="">Select Country</option>
+                      {COUNTRY_OPTIONS.map(option => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
                   </div>
+                  {editingInfluencer && (!COUNTRY_OPTIONS.includes(editingInfluencer.location) || editingInfluencer.location === 'Other') && (
+                    <div className="mt-2 animate-slide-up">
+                       <input 
+                        type="text" 
+                        value={editingInfluencer.location === 'Other' ? '' : editingInfluencer.location}
+                        onChange={(e) => setEditingInfluencer({...editingInfluencer, location: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                        placeholder="Specify custom country..."
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400">Budget</label>

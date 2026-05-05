@@ -19,14 +19,15 @@ interface Props {
     user: User;
     onBack: () => void;
     onComplete: () => void;
+    initialInfluencer?: any;
 }
 
-const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, influencerName, user, onBack, onComplete }) => {
-    const [influencer, setInfluencer] = useState<any>(null);
-    const [stories, setStories] = useState<Story[]>([]);
-    const [loading, setLoading] = useState(true);
+const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, influencerName, user, onBack, onComplete, initialInfluencer }) => {
+    const [influencer, setInfluencer] = useState<any>(initialInfluencer || null);
+    const [stories, setStories] = useState<Story[]>(initialInfluencer?.stories || []);
+    const [loading, setLoading] = useState(!initialInfluencer);
     const [saving, setSaving] = useState(false);
-    const [actualInfluencerId, setActualInfluencerId] = useState<string | null>(null);
+    const [actualInfluencerId, setActualInfluencerId] = useState<string | null>(initialInfluencer?.id || null);
     const [isEditingInfluencer, setIsEditingInfluencer] = useState(false);
     const [editForm, setEditForm] = useState<any>({});
 
@@ -38,7 +39,9 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 budget: influencer.budget,
                 raw_video: influencer.raw_video || '',
                 edited_video: influencer.edited_video || '',
-                proof_link: influencer.proof_link || ''
+                proof_link: influencer.proof_link || '',
+                commercials: influencer.commercials || 'Paid',
+                product_received: influencer.product_received || 'no'
             });
         }
     }, [influencer]);
@@ -50,7 +53,9 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
             const updates = {
                 influencer_name: editForm.influencer_name,
                 instagram_profile: editForm.instagram_profile,
-                budget: editForm.budget
+                budget: editForm.budget,
+                commercials: editForm.commercials,
+                product_received: editForm.product_received
             };
             await db.influencers.update(actualInfluencerId, updates);
             toast.success('Influencer details updated');
@@ -211,10 +216,120 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                             <div className="px-3 py-1 bg-pink-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center gap-1.5 shadow-lg shadow-pink-100 border border-black">
                                 <LinkIcon className="w-3 h-3" /> {stories.filter(s => !!s.story_link).length} STORIES
                             </div>
+                            {influencer?.commercials === 'Barter' && (
+                                <div className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border border-black shadow-sm flex items-center gap-1.5 ${influencer?.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
+                                    <Sparkles className="w-3 h-3" /> {influencer?.product_received === 'yes' ? 'Product Received' : 'Product Pending'}
+                                </div>
+                            )}
+                            <button 
+                                onClick={() => setIsEditingInfluencer(true)}
+                                className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-slate-900"
+                                title="Edit Details"
+                            >
+                                <Save className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
                 </div>
             </header>
+
+            {isEditingInfluencer && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-white border-4 border-black w-full max-w-lg rounded-[2.5rem] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-scale-in">
+                        <div className="p-8 border-b-4 border-black bg-slate-50 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-white border-2 border-black rounded-xl flex items-center justify-center shadow-sm">
+                                    <UserIcon className="w-6 h-6 text-indigo-600" />
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Edit Influencer</h3>
+                            </div>
+                            <button onClick={() => setIsEditingInfluencer(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-all"><X className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Influencer Name</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.influencer_name}
+                                        onChange={(e) => setEditForm({...editForm, influencer_name: e.target.value})}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Instagram Profile</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.instagram_profile}
+                                        onChange={(e) => setEditForm({...editForm, instagram_profile: e.target.value})}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Collab Type</label>
+                                    <select 
+                                        value={editForm.commercials}
+                                        onChange={(e) => setEditForm({...editForm, commercials: e.target.value})}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                    >
+                                        <option value="Paid">Paid</option>
+                                        <option value="Barter">Barter</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Budget</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.budget}
+                                        onChange={(e) => setEditForm({...editForm, budget: e.target.value})}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {editForm.commercials === 'Barter' && (
+                                <div className="p-6 bg-amber-50 border-4 border-black rounded-3xl space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-white border-2 border-black rounded-xl flex items-center justify-center">
+                                                <Sparkles className="w-5 h-5 text-amber-500" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Barter Logistics</p>
+                                                <p className="text-sm font-black text-slate-900 uppercase">Product Received?</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex bg-white border-2 border-black rounded-xl p-1">
+                                            <button 
+                                                onClick={() => setEditForm({...editForm, product_received: 'yes'})}
+                                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${editForm.product_received === 'yes' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                Yes
+                                            </button>
+                                            <button 
+                                                onClick={() => setEditForm({...editForm, product_received: 'no'})}
+                                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${editForm.product_received === 'no' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                            >
+                                                No
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <button 
+                                onClick={handleUpdateInfluencer}
+                                disabled={saving}
+                                className="w-full py-5 bg-slate-900 text-white font-black uppercase text-xs rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3 mt-4"
+                            >
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> Save Influencer Profile</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="max-w-6xl mx-auto w-full p-6 space-y-6">
                 {/* Visual KPI Section */}
@@ -229,7 +344,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                             <div>
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Live Stories Posted</p>
                                 <div className="flex items-baseline gap-2">
-                                    <span className="text-5xl font-black text-slate-900 tracking-tighter">
+                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">
                                         {stories.filter(s => !!s.story_link).length}
                                     </span>
                                     <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Stories</span>
@@ -247,7 +362,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                             </div>
                             <div>
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Budget</p>
-                                    <span className="text-5xl font-black text-slate-900 tracking-tighter">
+                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">
                                         {totalAmount.toLocaleString()}
                                     </span>
                             </div>
@@ -265,7 +380,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Payout Status</p>
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-3">
-                                        <span className={`text-4xl font-black uppercase tracking-tight ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                        <span className={`text-3xl font-black uppercase tracking-tight ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
                                             {influencer?.payment === 'yes' ? 'Cleared' : 'Pending'}
                                         </span>
                                         {influencer?.payment === 'yes' && (
