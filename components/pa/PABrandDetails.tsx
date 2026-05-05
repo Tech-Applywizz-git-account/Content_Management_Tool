@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, WorkflowStage } from '../../types';
+import { User, WorkflowStage, Role } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -275,7 +275,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         if (activeFilter === 'SCRIPT_SENT' && !inf.script_sent) return false;
         if (activeFilter === 'FOOTAGE_RECEIVED' && !inf.raw_video) return false;
         if (activeFilter === 'EDITED_VIDEO' && !inf.edited_video) return false;
-        if (activeFilter === 'POST_PENDING' && (inf.project_status !== WorkflowStage.POSTED || !inf.edited_video || inf.proof_link)) return false;
+        if (activeFilter === 'POST_PENDING' && !([WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage))) return false;
         
         if (activeFilter === 'POSTED') {
             if (currentBrandData?.brand_type !== 'STORY') {
@@ -353,7 +353,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.edited_video).length,
     filteredPostPending: currentBrandData?.brand_type === 'STORY'
         ? 0
-        : influencers.filter(inf => isInfluencerInRange(inf) && inf.project_status === WorkflowStage.POSTED && !inf.proof_link).length,
+        : influencers.filter(inf => isInfluencerInRange(inf) && [WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage)).length,
     // For STORY: Budget shows based on influencers with created_at in range
     totalAmount: (currentBrandData?.brand_type === 'STORY' ? influencersByCreatedAt : filteredInfluencers)
         .reduce((acc, inf) => {
@@ -487,7 +487,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     <div className="animate-fade-in w-full px-4 md:px-8 py-6 font-sans pb-20">
       {/* Header Area */}
       <div className="mb-6">
-        <button onClick={() => navigate('/partner_associate/brands')} className="flex items-center gap-2 text-slate-500 font-bold hover:text-black mb-4 transition-colors group">
+        <button onClick={() => navigate(`/${user.role.toLowerCase()}/brands`)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-black mb-4 transition-colors group">
           <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
           <span>Back to Brands</span>
         </button>
@@ -546,7 +546,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 )}
 
                 <button onClick={handleExport} className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"><Download className="w-4 h-4" /> Export CSV</button>
-                <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-6 py-3 bg-[#D946EF] text-white border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-4 h-4" /> New Influencer</button>
+                {user.role !== Role.CMO && (
+                  <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-6 py-3 bg-[#D946EF] text-white border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-4 h-4" /> New Influencer</button>
+                )}
             </div>
         </div>
       </div>
@@ -628,61 +630,63 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       </div>
 
       {/* Network Distribution Breakdown */}
-      <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
-        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-red-500" /> Country Distribution
-            </h4>
-            <div className="flex flex-wrap gap-2">
-                {Object.entries(networkDistribution.countries).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                    <button 
-                        key={name} 
-                        onClick={() => setCountryFilter(countryFilter === name ? 'ALL' : name)}
-                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${countryFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
-                    >
-                        <span className="text-[10px] font-bold uppercase">{name}</span>
-                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${countryFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                    </button>
-                ))}
+      {influencers.length > 0 && (
+          <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
+            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-red-500" /> Country Distribution
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                    {Object.entries(networkDistribution.countries).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                        <button 
+                            key={name} 
+                            onClick={() => setCountryFilter(countryFilter === name ? 'ALL' : name)}
+                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${countryFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                        >
+                            <span className="text-[10px] font-bold uppercase">{name}</span>
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${countryFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
-        </div>
 
-        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                <Tag className="w-4 h-4 text-purple-500" /> Niche Distribution
-            </h4>
-            <div className="flex flex-wrap gap-2">
-                {Object.entries(networkDistribution.niches).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                    <button 
-                        key={name} 
-                        onClick={() => setNicheFilter(nicheFilter === name ? 'ALL' : name)}
-                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${nicheFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
-                    >
-                        <span className="text-[10px] font-bold uppercase">{name}</span>
-                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${nicheFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                    </button>
-                ))}
+            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-purple-500" /> Niche Distribution
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                    {Object.entries(networkDistribution.niches).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                        <button 
+                            key={name} 
+                            onClick={() => setNicheFilter(nicheFilter === name ? 'ALL' : name)}
+                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${nicheFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                        >
+                            <span className="text-[10px] font-bold uppercase">{name}</span>
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${nicheFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
-        </div>
 
-        <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                <Briefcase className="w-4 h-4 text-green-600" /> Collab Type Distribution
-            </h4>
-            <div className="flex flex-wrap gap-2">
-                {Object.entries(networkDistribution.collabs).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                    <button 
-                        key={name} 
-                        onClick={() => setCollabFilter(collabFilter === name ? 'ALL' : name)}
-                        className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${collabFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
-                    >
-                        <span className="text-[10px] font-bold uppercase">{name}</span>
-                        <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${collabFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                    </button>
-                ))}
+            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-green-600" /> Collab Type Distribution
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                    {Object.entries(networkDistribution.collabs).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                        <button 
+                            key={name} 
+                            onClick={() => setCollabFilter(collabFilter === name ? 'ALL' : name)}
+                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${collabFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+                        >
+                            <span className="text-[10px] font-bold uppercase">{name}</span>
+                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${collabFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
-        </div>
-      </div>
+          </div>
+      )}
 
       {/* Search Bar Row */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 mb-8">
@@ -715,13 +719,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             <thead>
               <tr className="bg-slate-50 text-slate-500 border-b-2 border-black">
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap w-16">S.No</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Actions</th>
+                {user.role !== Role.CMO && <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Actions</th>}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Influencer Name</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Instagram</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Email Address</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Niche</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Collab Type</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Country</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Collab Type</th>
+                )}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Budget</th>
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-center">Product</th>
@@ -737,7 +743,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     </>
                 )}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Added By</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Sent By</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Sent By</th>
+                )}
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Script Sent</th>
@@ -752,7 +760,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={currentBrandData?.brand_type === 'STORY' ? 15 : 20} className="px-6 py-20 text-center">
+                  <td colSpan={currentBrandData?.brand_type === 'STORY' ? 13 : 20} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-slate-200 border-t-[#D946EF] rounded-full animate-spin" />
                       <p className="font-black uppercase text-slate-400 tracking-widest text-xs">Loading Influence Data...</p>
@@ -763,14 +771,17 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 filteredInfluencers.map((inf, index) => (
                   <tr key={inf.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-5 font-bold text-slate-400 text-sm whitespace-nowrap w-16">{(index + 1).toString().padStart(2, '0')}</td>
-                    <td className="px-6 py-5"><button onClick={() => handleEditClick(inf)} className="p-2 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-4 h-4" /></button></td>
+                    {user.role !== Role.CMO && (
+                      <td className="px-6 py-5"><button onClick={() => handleEditClick(inf)} className="p-2 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-4 h-4" /></button></td>
+                    )}
                     <td className="px-6 py-5">
                         <button 
                           onClick={() => { 
                             const id = inf.project_id || 'new'; 
                             const name = encodeURIComponent(inf.influencer_name); 
                             const infId = encodeURIComponent(inf.id); 
-                            navigate(`/partner_associate/influencer/${id}?name=${name}&inf_id=${infId}`, { 
+                            const rolePath = user.role.toLowerCase();
+                            navigate(`/${rolePath}/influencer/${id}?name=${name}&inf_id=${infId}`, { 
                               state: { 
                                 influencer: inf, 
                                 brandType: currentBrandData?.brand_type 
@@ -810,16 +821,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-red-500" />
                         <span className="text-xs font-bold text-slate-600 uppercase">{inf.location || '—'}</span>
                       </div>
                     </td>
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-6 py-4">
+                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
+                        </td>
+                    )}
                     <td className="px-6 py-5">
                         <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full border border-black inline-flex items-center gap-1.5">
                             <DollarSign className="w-3 h-3" />
@@ -835,8 +845,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                         <select 
                                             value={inf.product_received || 'no'}
                                             onChange={(e) => handleUpdateProductStatus(inf.id, e.target.value)}
-                                            disabled={updatingId === inf.id}
-                                            className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+                                            disabled={updatingId === inf.id || user.role === Role.CMO}
+                                            className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
                                         >
                                             <option value="yes" className="bg-white text-black">Yes</option>
                                             <option value="no" className="bg-white text-black">No</option>
@@ -894,11 +904,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
                       {inf.added_by_name}
                     </td>
-                    <td className="px-6 py-5">
-                        <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                            {inf.sent_by_name}
-                        </span>
-                    </td>
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-6 py-5">
+                            <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                {inf.sent_by_name}
+                            </span>
+                        </td>
+                    )}
                     
                     {currentBrandData?.brand_type !== 'STORY' && (
                         <>
@@ -949,7 +961,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={currentBrandData?.brand_type === 'STORY' ? 15 : 20} className="px-6 py-20 text-center bg-slate-50">
+                  <td colSpan={currentBrandData?.brand_type === 'STORY' ? 13 : 20} className="px-6 py-20 text-center bg-slate-50">
                     <div className="max-w-xs mx-auto">
                         <Search className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                         <p className="font-black uppercase text-slate-400 text-sm mb-2">No results found</p>

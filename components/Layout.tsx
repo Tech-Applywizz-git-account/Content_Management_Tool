@@ -206,8 +206,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 </button>
               )}
 
-              {/* Brands - Visible for PARTNER_ASSOCIATE and ADMIN */}
-              {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.ADMIN) && (
+              {/* Brands - Visible for PARTNER_ASSOCIATE, CMO and ADMIN */}
+              {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.CMO || user.role === Role.ADMIN) && (
                 <button
                   onClick={() => handleNavigate('brands')}
                   className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'brands'
@@ -361,7 +361,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
           )}
 
           {/* Mobile Brands */}
-          {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.ADMIN) && (
+          {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) || user.role === Role.CMO || user.role === Role.ADMIN) && (
             <button
               onClick={() => { handleNavigate('brands'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'brands' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}

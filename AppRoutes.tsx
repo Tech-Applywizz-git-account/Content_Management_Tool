@@ -32,6 +32,7 @@ import WriterProjectDetailPage from './components/writer/WriterProjectDetailPage
 import WriterApprovedVideoDetailPage from './components/writer/WriterApprovedVideoDetailPage';
 import CmoProjectDetailPage from './components/cmo/CmoProjectDetailPage';
 import CmoHistoryDetail from './components/cmo/CmoHistoryDetail';
+import Layout from './components/Layout';
 
 import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
 import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
@@ -40,6 +41,7 @@ import PAInfluencerPortfolioPage from './components/pa/PAInfluencerPortfolioPage
 import Auth from './components/Auth';
 import SetPassword from './components/SetPassword';
 import PABrandDetails from './components/pa/PABrandDetails';
+import PABrands from './components/pa/PABrands';
 
 interface AppRoutesProps {
     user: User | null;
@@ -54,7 +56,7 @@ interface AppRoutesProps {
     editorScriptProjects: Project[];
     designerScriptProjects: Project[];
     subEditorScriptProjects: Project[];
-    onLogin: (user: User) => void;
+    onLogin: (user: User) => Promise<void>;
     onLogout: () => void;
     refreshData: (user: User) => Promise<void>;
 }
@@ -124,6 +126,21 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                         <Route path="review/:projectId" element={<CmoReviewPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
                         <Route path="history_detail/:projectId" element={
                             <CmoHistoryDetailWithParams currentUser={user!} onBack={() => window.history.back()} />
+                        } />
+                        <Route path="brands" element={
+                            <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands">
+                                <PABrands user={user!} />
+                            </Layout>
+                        } />
+                        <Route path="brand-details/:brandName" element={
+                            <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands" hideSidebar={true}>
+                                <PABrandDetails user={user!} />
+                            </Layout>
+                        } />
+                        <Route path="influencer/:projectId" element={
+                            <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands" hideSidebar={true}>
+                                <PAInfluencerPortfolioPage user={user!} onLogout={onLogout} refreshData={refreshData} />
+                            </Layout>
                         } />
                         <Route path="*" element={<CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>

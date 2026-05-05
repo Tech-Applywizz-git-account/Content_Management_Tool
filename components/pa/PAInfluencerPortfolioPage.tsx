@@ -72,7 +72,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                setLoading(true);
+                // Loading is handled by initial state; background fetch shouldn't trigger global loading screen
                 
                 // 1. Fetch the primary influencer registry record first if we have an ID
                 let canonicalName = influencerNameParam?.toLowerCase().trim() || '';
@@ -186,7 +186,6 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
             } catch (err) {
                 console.error('Error fetching project data:', err);
                 setError('Failed to load influencer portfolio.');
-            } finally {
                 setLoading(false);
             }
         };
@@ -203,16 +202,12 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         window.location.reload(); 
     };
 
-    if (loading) {
+    const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
+
+    if (!currentProject && loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-white font-sans">
-                <div className="flex flex-col items-center gap-6">
-                    <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
-                    <div className="space-y-2 text-center">
-                        <p className="font-black uppercase text-sm tracking-widest text-slate-900">Entering Partnership Hub</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] animate-pulse">Syncing Executive Analytics...</p>
-                    </div>
-                </div>
+                <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -238,8 +233,6 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     }
 
 
-
-    const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
     let pDataFirst = influencerProjects[0]?.data;
     try {
         if (typeof pDataFirst === 'string') pDataFirst = JSON.parse(pDataFirst);

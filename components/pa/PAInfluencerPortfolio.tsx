@@ -37,6 +37,8 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
     const [availableScripts, setAvailableScripts] = useState<any[]>([]);
     const [selectedScript, setSelectedScript] = useState<any>(null);
     const [customContent, setCustomContent] = useState('');
+    const [editingLinkInfo, setEditingLinkInfo] = useState<{ projId: string, type: 'RAW' | 'EDITED' | 'PROOF', index?: number } | null>(null);
+    const [editLinkValue, setEditLinkValue] = useState('');
 
     React.useEffect(() => {
         const fetchScripts = async () => {
@@ -217,7 +219,6 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     instance_project_id: projId,
                     influencer_name: latestProject.data?.influencer_name || 'Influencer',
                     influencer_email: latestProject.data?.influencer_email || '',
-                    action: 'VIDEO_UPLOADED_FOR_CMO_REVIEW',
                     sent_by: user.full_name,
                     sent_by_id: user.id,
                     status: 'CMO_VIDEO_REVIEW'
@@ -232,6 +233,67 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
         } catch (error: any) {
             console.error('Error uploading link:', error);
             toast.error('Failed to add link');
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const handleUpdateHistoryLink = async () => {
+        if (!editingLinkInfo || !editLinkValue.trim()) return;
+        
+        setIsSending(true);
+        try {
+            const { projId, type, index } = editingLinkInfo;
+            const { data: latestProject } = await supabase.from('projects').select('*').eq('id', projId).single();
+            if (!latestProject) throw new Error('Project not found');
+
+            let updateData: any = {};
+            
+            if (type === 'RAW') {
+                const history = [...(latestProject.cine_video_links_history || [])];
+                
+                // Determine if it's the main link or in history
+                if (index === history.length) {
+                    updateData.video_link = editLinkValue;
+                } else if (typeof index === 'number' && index < history.length) {
+                    history[index] = editLinkValue;
+                    updateData.cine_video_links_history = history;
+                }
+            } else if (type === 'EDITED') {
+                const history = [...(latestProject.editor_video_links_history || [])];
+                const subHistory = [...(latestProject.sub_editor_video_links_history || [])];
+                
+                const histLen = history.length;
+                const subHistLen = subHistory.length;
+                
+                if (index === histLen + subHistLen) {
+                    updateData.edited_video_link = editLinkValue;
+                } else if (typeof index === 'number') {
+                    if (index < histLen) {
+                        history[index] = editLinkValue;
+                        updateData.editor_video_links_history = history;
+                    } else if (index < histLen + subHistLen) {
+                        subHistory[index - histLen] = editLinkValue;
+                        updateData.sub_editor_video_links_history = subHistory;
+                    }
+                }
+            } else if (type === 'PROOF') {
+                updateData = {
+                    data: {
+                        ...(latestProject.data || {}),
+                        posting_proof_link: editLinkValue
+                    }
+                };
+            }
+
+            await db.projects.update(projId, updateData);
+            toast.success('Link updated successfully');
+            setEditingLinkInfo(null);
+            setEditLinkValue('');
+            onComplete();
+        } catch (error: any) {
+            console.error('Error updating link:', error);
+            toast.error('Failed to update link');
         } finally {
             setIsSending(false);
         }
@@ -510,13 +572,15 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => setLaunchStep(1)}
-                        className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] transition-all flex items-center gap-2"
-                    >
-                        <Send className="w-4 h-4" />
-                        Send New Script
-                    </button>
+                    {user.role !== Role.CMO && (
+                        <button
+                            onClick={() => setLaunchStep(1)}
+                            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-2px] transition-all flex items-center gap-2"
+                        >
+                            <Send className="w-4 h-4" />
+                            Send New Script
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -566,7 +630,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     </div>
 
                     {/* Outreach Action Area for unlaunched projects */}
-                    {project.current_stage === WorkflowStage.PARTNER_REVIEW && (
+                    {project.current_stage === WorkflowStage.PARTNER_REVIEW && user.role !== Role.CMO && (
                         <div className="relative group animate-slide-up">
                             {/* Decorative Background Blob - subtle indigo instead of multi-color/pink */}
                             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-hover:duration-200"></div>
@@ -666,13 +730,15 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                             </div>
                                         </div>
                                         {/* Delete Button */}
-                                        <button
-                                            onClick={() => handleDeleteClick(proj)}
-                                            className="p-2 bg-white/20 hover:bg-red-500 text-white rounded-lg transition-colors"
-                                            title="Delete Project"
-                                        >
-                                            <X className="w-5 h-5" />
-                                        </button>
+                                        {user.role !== Role.CMO && (
+                                            <button
+                                                onClick={() => handleDeleteClick(proj)}
+                                                className="p-2 bg-white/20 hover:bg-red-500 text-white rounded-lg transition-colors"
+                                                title="Delete Project"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-1 lg:grid-cols-2">
@@ -706,7 +772,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-3">
                                                         <Video className="w-5 h-5" /> Video Link ({rawLinksHistory.length})
                                                     </span>
-                                                    {proj.current_stage !== WorkflowStage.POSTED && (
+                                                    {proj.current_stage !== WorkflowStage.POSTED && user.role !== Role.CMO && (
                                                         <button 
                                                             onClick={() => {
                                                                 if (uploadingId === proj.id && uploadType === 'RAW') {
@@ -745,10 +811,42 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
 
                                                 <div className="grid grid-cols-1 gap-3">
                                                     {rawLinksHistory.map((link, lIdx) => (
-                                                        <a key={lIdx} href={link} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white border-2 border-blue-50 rounded-2xl group">
-                                                            <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">{link}</span>
-                                                            <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
-                                                        </a>
+                                                        <div key={lIdx} className="flex flex-col gap-2">
+                                                            {editingLinkInfo?.projId === proj.id && editingLinkInfo?.type === 'RAW' && editingLinkInfo?.index === lIdx ? (
+                                                                <div className="p-3 bg-white border-2 border-indigo-500 rounded-2xl flex flex-col gap-2 shadow-lg">
+                                                                    <input 
+                                                                        type="url" 
+                                                                        value={editLinkValue}
+                                                                        onChange={(e) => setEditLinkValue(e.target.value)}
+                                                                        className="w-full text-xs font-bold p-2 bg-slate-50 rounded-xl focus:outline-none"
+                                                                        autoFocus
+                                                                    />
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={handleUpdateHistoryLink} className="flex-1 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg hover:bg-indigo-700 transition-all">Save</button>
+                                                                        <button onClick={() => setEditingLinkInfo(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded-lg hover:bg-slate-200 transition-all">Cancel</button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 group">
+                                                                    <a href={link} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-between p-4 bg-white border-2 border-blue-50 rounded-2xl hover:border-blue-200 transition-all">
+                                                                        <span className="text-xs font-bold text-slate-600 truncate max-w-[180px]">{link}</span>
+                                                                        <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                                                                    </a>
+                                                                    {user.role !== Role.CMO && (
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setEditingLinkInfo({ projId: proj.id, type: 'RAW', index: lIdx });
+                                                                                setEditLinkValue(link);
+                                                                            }}
+                                                                            className="p-3 bg-white border-2 border-slate-50 text-slate-400 hover:text-indigo-600 hover:border-indigo-100 rounded-2xl transition-all"
+                                                                            title="Edit Link"
+                                                                        >
+                                                                            <Link className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )).reverse()}
                                                     {rawLinksHistory.length === 0 && (
                                                         <div className="p-4 text-slate-400 text-[10px] font-black uppercase text-center border-2 border-dashed border-slate-100 rounded-2xl">No Video Link Found</div>
@@ -761,20 +859,22 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] flex items-center gap-3">
                                                         <CheckCircle2 className="w-5 h-5" /> Edited Video ({editedLinksHistory.length})
                                                     </span>
-                                                    <button 
-                                                        onClick={() => {
-                                                            if (uploadingId === proj.id && uploadType === 'EDITED') {
-                                                                setUploadingId(null);
-                                                                setUploadType(null);
-                                                            } else {
-                                                                setUploadingId(proj.id);
-                                                                setUploadType('EDITED');
-                                                            }
-                                                        }}
-                                                        className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all"
-                                                    >
-                                                        {uploadingId === proj.id && uploadType === 'EDITED' ? 'Cancel' : 'Add Link'}
-                                                    </button>
+                                                    {proj.current_stage !== WorkflowStage.POSTED && user.role !== Role.CMO && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (uploadingId === proj.id && uploadType === 'EDITED') {
+                                                                    setUploadingId(null);
+                                                                    setUploadType(null);
+                                                                } else {
+                                                                    setUploadingId(proj.id);
+                                                                    setUploadType('EDITED');
+                                                                }
+                                                            }}
+                                                            className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-[9px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all"
+                                                        >
+                                                            {uploadingId === proj.id && uploadType === 'EDITED' ? 'Cancel' : 'Add Link'}
+                                                        </button>
+                                                    )}
                                                 </div>
 
                                                 {uploadingId === proj.id && uploadType === 'EDITED' && (
@@ -798,10 +898,42 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
 
                                                 <div className="grid grid-cols-1 gap-3">
                                                     {editedLinksHistory.map((link, lIdx) => (
-                                                        <a key={lIdx} href={link as string} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-white border-2 border-emerald-50 rounded-2xl group">
-                                                            <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">{link}</span>
-                                                            <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" />
-                                                        </a>
+                                                        <div key={lIdx} className="flex flex-col gap-2">
+                                                            {editingLinkInfo?.projId === proj.id && editingLinkInfo?.type === 'EDITED' && editingLinkInfo?.index === lIdx ? (
+                                                                <div className="p-3 bg-white border-2 border-indigo-500 rounded-2xl flex flex-col gap-2 shadow-lg">
+                                                                    <input 
+                                                                        type="url" 
+                                                                        value={editLinkValue}
+                                                                        onChange={(e) => setEditLinkValue(e.target.value)}
+                                                                        className="w-full text-xs font-bold p-2 bg-slate-50 rounded-xl focus:outline-none"
+                                                                        autoFocus
+                                                                    />
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={handleUpdateHistoryLink} className="flex-1 py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg hover:bg-indigo-700 transition-all">Save</button>
+                                                                        <button onClick={() => setEditingLinkInfo(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded-lg hover:bg-slate-200 transition-all">Cancel</button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 group">
+                                                                    <a href={link as string} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-between p-4 bg-white border-2 border-emerald-50 rounded-2xl hover:border-emerald-200 transition-all">
+                                                                        <span className="text-xs font-bold text-slate-600 truncate max-w-[180px]">{link}</span>
+                                                                        <ExternalLink className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                                                                    </a>
+                                                                    {user.role !== Role.CMO && (
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                setEditingLinkInfo({ projId: proj.id, type: 'EDITED', index: lIdx });
+                                                                                setEditLinkValue(link as string);
+                                                                            }}
+                                                                            className="p-3 bg-white border-2 border-slate-50 text-slate-400 hover:text-emerald-600 hover:border-emerald-100 rounded-2xl transition-all"
+                                                                            title="Edit Link"
+                                                                        >
+                                                                            <Link className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     )).reverse()}
                                                     {editedLinksHistory.length === 0 && (
                                                         <div className="p-4 text-slate-400 text-[10px] font-black uppercase text-center border-2 border-dashed border-slate-100 rounded-2xl">No Edited Video</div>
@@ -815,20 +947,22 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     <span className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] flex items-center gap-3">
                                                         <Link className="w-5 h-5" /> Proof of Posting
                                                     </span>
-                                                    <button 
-                                                        onClick={() => {
-                                                            if (uploadingId === proj.id && uploadType === 'PROOF') {
-                                                                setUploadingId(null);
-                                                                setUploadType(null);
-                                                            } else {
-                                                                setUploadingId(proj.id);
-                                                                setUploadType('PROOF');
-                                                            }
-                                                        }}
-                                                        className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-[9px] font-black uppercase hover:bg-orange-600 hover:text-white transition-all"
-                                                    >
-                                                        {uploadingId === proj.id && uploadType === 'PROOF' ? 'Cancel' : (proofLink ? 'Edit Link' : 'Add Link')}
-                                                    </button>
+                                                    {user.role !== Role.CMO && !proofLink && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (uploadingId === proj.id && uploadType === 'PROOF') {
+                                                                    setUploadingId(null);
+                                                                    setUploadType(null);
+                                                                } else {
+                                                                    setUploadingId(proj.id);
+                                                                    setUploadType('PROOF');
+                                                                }
+                                                            }}
+                                                            className="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-200 rounded-lg text-[9px] font-black uppercase hover:bg-orange-600 hover:text-white transition-all"
+                                                        >
+                                                            {uploadingId === proj.id && uploadType === 'PROOF' ? 'Cancel' : 'Add Link'}
+                                                        </button>
+                                                    )}
                                                 </div>
 
                                                 {uploadingId === proj.id && uploadType === 'PROOF' && (
@@ -850,16 +984,51 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     </div>
                                                 )}
 
-                                                {proofLink ? (
-                                                    <a href={proofLink} target="_blank" rel="noreferrer" className="flex items-center justify-between p-4 bg-orange-50 border-2 border-orange-200 rounded-2xl group hover:bg-orange-100 transition-all">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
-                                                                <CheckCircle2 className="w-4 h-4 text-white" />
-                                                            </div>
-                                                            <span className="text-xs font-bold text-slate-700 truncate max-w-[160px]">{proofLink}</span>
+                                                {editingLinkInfo?.projId === proj.id && editingLinkInfo?.type === 'PROOF' ? (
+                                                    <div className="p-4 bg-white border-2 border-orange-500 rounded-2xl flex flex-col gap-3 shadow-lg animate-scale-in">
+                                                        <input 
+                                                            type="url" 
+                                                            value={editLinkValue}
+                                                            onChange={(e) => setEditLinkValue(e.target.value)}
+                                                            className="w-full text-xs font-bold p-3 bg-slate-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                                            placeholder="Paste updated live URL"
+                                                            autoFocus
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <button 
+                                                                onClick={handleUpdateHistoryLink}
+                                                                disabled={isSending}
+                                                                className="flex-1 py-3 bg-orange-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-orange-700 transition-all flex items-center justify-center gap-2"
+                                                            >
+                                                                {isSending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save Changes'}
+                                                            </button>
+                                                            <button onClick={() => setEditingLinkInfo(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 text-[10px] font-black uppercase rounded-xl hover:bg-slate-200 transition-all">Cancel</button>
                                                         </div>
-                                                        <ExternalLink className="w-4 h-4 text-orange-400 group-hover:text-orange-600 transition-colors shrink-0" />
-                                                    </a>
+                                                    </div>
+                                                ) : proofLink ? (
+                                                    <div className="flex items-center gap-2 group">
+                                                        <a href={proofLink} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-between p-4 bg-orange-50 border-2 border-orange-200 rounded-2xl group hover:bg-orange-100 transition-all">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
+                                                                    <CheckCircle2 className="w-4 h-4 text-white" />
+                                                                </div>
+                                                                <span className="text-xs font-bold text-slate-700 truncate max-w-[160px]">{proofLink}</span>
+                                                            </div>
+                                                            <ExternalLink className="w-4 h-4 text-orange-400 group-hover:text-orange-600 transition-colors shrink-0" />
+                                                        </a>
+                                                        {user.role !== Role.CMO && (
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setEditingLinkInfo({ projId: proj.id, type: 'PROOF' });
+                                                                    setEditLinkValue(proofLink);
+                                                                }}
+                                                                className="p-4 bg-white border-2 border-orange-50 text-orange-400 hover:text-orange-600 hover:border-orange-200 rounded-2xl transition-all"
+                                                                title="Edit Link"
+                                                            >
+                                                                <Link className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <div className="p-4 text-slate-400 text-[10px] font-black uppercase text-center border-2 border-dashed border-slate-100 rounded-2xl">No Proof Added Yet</div>
                                                 )}
