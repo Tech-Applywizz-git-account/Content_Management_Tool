@@ -74,7 +74,14 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
         setIsSending(true);
         try {
             const { data: latestProject } = await supabase.from('projects').select('*').eq('id', project.id).single();
-            const scriptContent = project.data?.script_content || project.data?.idea_description || 'No script content available';
+            const scriptContent = 
+                project.data?.script_content || 
+                project.metadata?.script_content || 
+                project.data?.idea_description || 
+                project.metadata?.idea_description || 
+                project.data?.influencer_history?.[0]?.script_content ||
+                project.metadata?.influencer_history?.[0]?.script_content ||
+                'No script content available';
 
             // ✅ FIX: Create a new child project instance scoped to this PA user and influencer.
             // The parent project stays in PARTNER_REVIEW so other PAs can independently work on it.
@@ -142,7 +149,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                         project_id: createdProject.id,
                         actor_name: user.full_name || 'PA',
                         comment: 'Campaign launched by PA',
-                        content_description: contentDescription || project.data?.brief || 'Script content for review',
+                        content_description: contentDescription || project.data?.brief || project.metadata?.brief || 'Script content for review',
                         script_content: scriptContent,
                         influencer_name: influencerName
                     }
@@ -456,19 +463,23 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
-                                <div className="font-bold text-slate-900 uppercase text-xs truncate">{project.data?.influencer_name || (project as any).influencer_name || '—'}</div>
+                                <div className="font-bold text-slate-900 uppercase text-xs truncate">
+                                    {project.data?.influencer_name || project.metadata?.influencer_name || (project as any).influencer_name || '—'}
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Email</label>
-                                <div className="font-bold text-slate-900 uppercase text-xs truncate">{project.data?.influencer_email || (project as any).influencer_email || '—'}</div>
+                                <div className="font-bold text-slate-900 uppercase text-xs truncate">
+                                    {project.data?.influencer_email || project.metadata?.influencer_email || (project as any).influencer_email || '—'}
+                                </div>
                             </div>
                         </div>
 
-                        {project.data?.brief && (
+                        {(project.data?.brief || project.metadata?.brief) && (
                             <section className="space-y-4 pt-4">
                                 <h3 className="text-2xl font-black text-slate-900 uppercase">Campaign Brief</h3>
                                 <div className="border-2 border-black bg-white p-8 min-h-[100px] whitespace-pre-wrap text-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    {project.data.brief}
+                                    {project.data?.brief || project.metadata?.brief}
                                 </div>
                             </section>
                         )}
@@ -477,8 +488,18 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, fr
                             <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Script Content</h3>
                             <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                 <ScriptDisplay 
-                                    content={project.data?.script_content || project.data?.idea_description || 'Content empty.'} 
-                                    caption={project.data?.captions}
+                                    content={
+                                        project.data?.script_content || 
+                                        project.metadata?.script_content || 
+                                        project.data?.idea_description || 
+                                        project.metadata?.idea_description || 
+                                        project.data?.influencer_history?.[0]?.script_content ||
+                                        project.metadata?.influencer_history?.[0]?.script_content ||
+                                        project.data?.influencer_history?.[0]?.idea_description ||
+                                        project.metadata?.influencer_history?.[0]?.idea_description ||
+                                        'Content empty.'
+                                    } 
+                                    caption={project.data?.captions || project.metadata?.captions}
                                     showBox={false} 
                                 />
                             </div>

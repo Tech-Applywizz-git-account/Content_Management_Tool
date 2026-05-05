@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import PAInfluencerPortfolio from './PAInfluencerPortfolio';
@@ -13,15 +13,42 @@ interface PAInfluencerPortfolioPageProps {
 
 const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ user, refreshData }) => {
     const { projectId } = useParams<{ projectId: string }>();
+    const location = useLocation();
     const [searchParams] = useSearchParams();
     const influencerNameParam = searchParams.get('name');
     const influencerIdParam = searchParams.get('inf_id');
     const navigate = useNavigate();
+    const passedState = location.state as { influencer?: any, brandType?: string } | null;
 
     const [influencerProjects, setInfluencerProjects] = useState<Project[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!passedState?.influencer);
     const [error, setError] = useState<string | null>(null);
-    const [brandData, setBrandData] = useState<any>(null);
+    const [brandData, setBrandData] = useState<any>(passedState?.brandType ? { brand_type: passedState.brandType } : null);
+
+    // If we have passed state, initialize projects with it immediately
+    useEffect(() => {
+        if (passedState?.influencer) {
+            console.log('🚀 Using passed state for immediate render');
+            const inf = passedState.influencer;
+            
+            // Create a pseudo-project from the influencer data if needed, 
+            // but usually influencer data contains project info if merged in PABrandDetails
+            const pseudoProject: any = {
+                id: inf.project_id || (projectId?.startsWith('temp-') ? projectId : 'new'),
+                title: inf.influencer_name,
+                current_stage: inf.project_status || WorkflowStage.PARTNER_REVIEW,
+                data: {
+                    influencer_name: inf.influencer_name,
+                    influencer_email: inf.influencer_email,
+                    brand: inf.brand_name,
+                    registry_id: inf.id,
+                    is_pa_brand: true
+                },
+                created_at: inf.created_at
+            };
+            setInfluencerProjects([pseudoProject]);
+        }
+    }, []);
 
     useEffect(() => {
         const fetchBrandInfo = async () => {
@@ -219,7 +246,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     } catch (e) {
         console.warn('Error parsing first project data');
     }
-    const isStoryBrand = brandData?.brand_type === 'STORY' || pDataFirst?.brand_type === 'STORY';
+    const isStoryBrand = passedState?.brandType === 'STORY' || brandData?.brand_type === 'STORY' || pDataFirst?.brand_type === 'STORY';
 
     if (isStoryBrand) {
         // Find the actual influencer ID from the project or registry
@@ -240,6 +267,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                 user={user}
                 onBack={handleBack}
                 onComplete={handleComplete}
+                initialInfluencer={passedState?.influencer}
             />
         );
     }
@@ -251,6 +279,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
             user={user}
             onBack={handleBack}
             onComplete={handleComplete}
+            initialInfluencer={passedState?.influencer}
         />
     );
 };
