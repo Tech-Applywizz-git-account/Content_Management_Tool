@@ -26,10 +26,15 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
         }> = {};
 
         projects.forEach(p => {
-            // Only process projects marked as PA brands
-            if (!p.data?.is_pa_brand) return;
+            // Robust parsing for data and metadata
+            const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+            const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
 
-            const influencerName = p.data?.influencer_name || (p as any).metadata?.influencer_name || (p as any).influencer_name;
+            // Only process projects marked as PA brands (check both data and metadata)
+            const isPaBrand = pData?.is_pa_brand || pMetadata?.is_pa_brand;
+            if (!isPaBrand) return;
+
+            const influencerName = pData?.influencer_name || pMetadata?.influencer_name;
             if (!influencerName) return;
 
             const nameKey = influencerName.toLowerCase().trim();
@@ -50,8 +55,8 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             stats[nameKey].totalProjects += 1;
             stats[nameKey].influencerProjects.push(p);
 
-            // Track brand
-            const brandName = p.brand || p.data?.brand || p.data?.brand_other;
+            // Track brand (check both data and metadata)
+            const brandName = p.brand || pData?.brand || pMetadata?.brand;
             if (brandName) {
                 stats[nameKey].brands.add(brandName);
             }
@@ -73,7 +78,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             const isEditedSent = p.current_stage === WorkflowStage.POSTED;
 
             // Proof of Posting: has a live proof link
-            const hasProofOfPosting = !!(p.data?.posting_proof_link);
+            const hasProofOfPosting = !!(pData?.posting_proof_link || pMetadata?.posting_proof_link);
 
             if (isScriptSent) stats[nameKey].scriptSent += 1;
             if (hasRawVideo) stats[nameKey].rawReceived += 1;
@@ -90,10 +95,14 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
     }, [projects]);
 
     const handleInfluencerClick = (influencerName: string) => {
-        // Navigate to the influencer portfolio view
+        // Navigate to the influencer portfolio view (check both data and metadata)
         const influencerProjects = projects.filter(p => {
-            if (!p.data?.is_pa_brand) return false;
-            const projInfluencerName = p.data?.influencer_name || (p as any).metadata?.influencer_name || (p as any).influencer_name;
+            const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+            const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+
+            const isPaBrand = pData?.is_pa_brand || pMetadata?.is_pa_brand;
+            if (!isPaBrand) return false;
+            const projInfluencerName = pData?.influencer_name || pMetadata?.influencer_name;
             return projInfluencerName && projInfluencerName.toLowerCase().trim() === influencerName.toLowerCase().trim();
         });
 

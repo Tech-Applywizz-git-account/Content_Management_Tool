@@ -123,6 +123,7 @@ export interface Project {
   sub_editor_video_links_history?: string[]; // Array of all edited video links uploaded by sub-editor, including previous versions for rework scenarios
   designer_video_links_history?: string[]; // Array of all creative/thumbnail links uploaded by designer, including previous versions for rework scenarios
   data: ProjectData; // Flexible JSON blob for form inputs
+  metadata?: ProjectData; // Alternative JSON blob for PA brand data
   history: HistoryEvent[];
   rework_target_role?: Role;
   rework_initiator_role?: Role;

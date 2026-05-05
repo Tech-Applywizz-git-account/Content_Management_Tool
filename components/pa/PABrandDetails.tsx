@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User } from '../../types';
+import { User, WorkflowStage } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { WorkflowStage } from '../../types';
+
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface PABrandDetailsProps {
@@ -24,8 +24,43 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingInfluencer, setEditingInfluencer] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [editInstagramError, setEditInstagramError] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<'TODAY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM' | 'OVERALL'>('OVERALL');
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [customRange, setCustomRange] = useState({ start: '', end: '' });
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const checkRange = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    if (dateFilter === 'OVERALL') return true;
+    if (dateFilter === 'TODAY') return d.toDateString() === today.toDateString();
+    if (dateFilter === 'WEEKLY') {
+      const sun = new Date(today);
+      sun.setDate(today.getDate() - today.getDay());
+      sun.setHours(0, 0, 0, 0);
+      const sat = new Date(sun);
+      sat.setDate(sun.getDate() + 6);
+      sat.setHours(23, 59, 59, 999);
+      return d >= sun && d <= sat;
+    }
+    if (dateFilter === 'MONTHLY') return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+    if (dateFilter === 'CUSTOM' && customRange.start && customRange.end) {
+      const start = new Date(customRange.start);
+      const end = new Date(customRange.end);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      return d >= start && d <= end;
+    }
+    return false;
+  };
+
   const fetchInfluencers = async () => {
     if (!brandName) return;
     setIsLoading(true);
@@ -108,7 +143,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             WorkflowStage.VIDEO_EDITING,
             WorkflowStage.PA_FINAL_REVIEW, 
             WorkflowStage.POSTED
-          ].includes(project.current_stage) : (inf.status === 'SENT_TO_INFLUENCER'),
+          ].includes(project.current_stage) : false,
           raw_video: project?.video_link || project?.video_url,
           edited_video: project?.edited_video_link,
           is_posted: isActuallyPosted,
@@ -135,106 +170,126 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   }, [brandName]);
 
 
+  // Check if influencer created_at is in range
+  const isInfluencerInRange = (inf: any) => {
+    if (dateFilter === 'OVERALL') return true;
+    return checkRange(inf.created_at);
+  };
+
+  // Check if influencer has stories in range (for STORY brands)
+  const hasStoriesInRange = (inf: any) => {
+    if (dateFilter === 'OVERALL') return (inf.stories || []).length > 0;
+    return (inf.stories || []).some((s: any) => checkRange(s.story_date));
+  };
+
   const getFilteredData = (data: any[]) => {
-    return data.filter(inf => {
+    const filteredResults = data.filter(inf => {
+      // For STORY brands:
+      // - ALL filter: show influencers whose created_at is in range
+      // - POSTED filter: show influencers who have stories in range
+      let isInRange = false;
+      
+      if (currentBrandData?.brand_type === 'STORY') {
+        if (activeFilter === 'POSTED') {
+          // For POSTED filter, check stories date
+          isInRange = hasStoriesInRange(inf);
+        } else {
+          // For ALL and other filters, check influencer created_at
+          isInRange = isInfluencerInRange(inf);
+        }
+      } else {
+        // For non-STORY brands, check created_at
+        isInRange = isInfluencerInRange(inf);
+      }
+
+      if (!isInRange && dateFilter !== 'OVERALL') return false;
+
+      // 2. Then apply the KPI card (status) filter
       if (activeFilter !== 'ALL') {
         if (activeFilter === 'SCRIPT_SENT' && !inf.script_sent) return false;
         if (activeFilter === 'FOOTAGE_RECEIVED' && !inf.raw_video) return false;
         if (activeFilter === 'EDITED_VIDEO' && !inf.edited_video) return false;
         if (activeFilter === 'POST_PENDING' && (inf.project_status !== WorkflowStage.POSTED || !inf.edited_video || inf.proof_link)) return false;
-        if (activeFilter === 'POSTED' && !inf.proof_link) return false;
-      }
-
-      if (dateFilter !== 'OVERALL') {
-        const infDate = new Date(inf.created_at);
-        const now = new Date();
         
-        let isInRange = false;
-        
-        // Helper to check if a date is in range
-        const checkRange = (dateStr: string) => {
-            const d = new Date(dateStr);
-            if (dateFilter === 'TODAY') return d.toDateString() === now.toDateString();
-            if (dateFilter === 'WEEKLY') {
-                const oneWeekAgo = new Date();
-                oneWeekAgo.setDate(now.getDate() - 7);
-                return d >= oneWeekAgo;
+        if (activeFilter === 'POSTED') {
+            if (currentBrandData?.brand_type !== 'STORY') {
+                if (!inf.proof_link) return false;
             }
-            if (dateFilter === 'MONTHLY') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-            if (dateFilter === 'CUSTOM' && customRange.start && customRange.end) {
-                const start = new Date(customRange.start);
-                const end = new Date(customRange.end);
-                end.setHours(23, 59, 59, 999);
-                return d >= start && d <= end;
-            }
-            return false;
-        };
-
-        isInRange = checkRange(inf.created_at);
-
-        // For STORY brands, also check if any individual story is in range
-        if (!isInRange && currentBrandData?.brand_type === 'STORY' && (inf.stories || []).length > 0) {
-            isInRange = inf.stories.some((s: any) => checkRange(s.story_date));
+            // For STORY, already checked above
         }
-
-        if (!isInRange) return false;
-      }
-
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        return (
-          inf.influencer_name?.toLowerCase().includes(search) ||
-          inf.instagram_profile?.toLowerCase().includes(search) ||
-          inf.influencer_email?.toLowerCase().includes(search) ||
-          inf.location?.toLowerCase().includes(search)
-        );
       }
 
       return true;
     });
+
+    // 3. Finally apply search term
+    if (searchTerm) {
+        const lowerSearch = searchTerm.toLowerCase();
+        return filteredResults.filter(inf => 
+          inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
+          inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+          inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
+          inf.location?.toLowerCase().includes(lowerSearch) ||
+          (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
+        );
+    }
+
+    return filteredResults;
   };
+
+
 
   const filteredInfluencers = getFilteredData(influencers);
 
+  // Calculate stats for STORY brands separately
+  const influencersByCreatedAt = currentBrandData?.brand_type === 'STORY' 
+    ? influencers.filter(isInfluencerInRange)
+    : filteredInfluencers;
+
+  const storiesByStoryDate = currentBrandData?.brand_type === 'STORY'
+    ? influencers.filter(hasStoriesInRange)
+    : [];
+
   const stats = {
+    // These are global totals (unfiltered) - for reference only
     total: influencers.length,
     scriptsSent: influencers.filter(i => i.script_sent).length,
     footageReceived: influencers.filter(i => !!i.raw_video).length,
     editedVideos: influencers.filter(i => !!i.edited_video).length,
     postPending: influencers.filter(i => i.project_status === WorkflowStage.POSTED && !i.proof_link).length,
     posted: influencers.filter(i => !!i.proof_link).length,
-    filteredTotal: filteredInfluencers.length,
+    // Filtered counts based on date range and active filter
+    filteredTotal: currentBrandData?.brand_type === 'STORY'
+        ? influencersByCreatedAt.length
+        : filteredInfluencers.length,
+    // For STORY: Total Stories Posted shows count based on story dates
     filteredPosted: currentBrandData?.brand_type === 'STORY' 
-        ? filteredInfluencers.reduce((acc, i) => {
+        ? storiesByStoryDate.reduce((acc, i) => {
             if (dateFilter === 'OVERALL') return acc + (i.story_count || 0);
-            
-            // For other filters, count only stories in the range
-            const now = new Date();
-            const checkRange = (dateStr: string) => {
-                const d = new Date(dateStr);
-                if (dateFilter === 'TODAY') return d.toDateString() === now.toDateString();
-                if (dateFilter === 'WEEKLY') {
-                    const oneWeekAgo = new Date();
-                    oneWeekAgo.setDate(now.getDate() - 7);
-                    return d >= oneWeekAgo;
-                }
-                if (dateFilter === 'MONTHLY') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-                if (dateFilter === 'CUSTOM' && customRange.start && customRange.end) {
-                    const start = new Date(customRange.start);
-                    const end = new Date(customRange.end);
-                    end.setHours(23, 59, 59, 999);
-                    return d >= start && d <= end;
-                }
-                return false;
-            };
-            const storiesInRange = (i.stories || []).filter((s: any) => checkRange(s.story_date)).length;
-            return acc + storiesInRange;
+            // Count only stories in the range
+            const storiesInRangeCount = (i.stories || []).filter((s: any) => checkRange(s.story_date)).length;
+            return acc + storiesInRangeCount;
           }, 0)
         : filteredInfluencers.filter(i => !!i.proof_link).length,
-    totalAmount: filteredInfluencers.reduce((acc, inf) => {
-        const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
-        return acc + (isNaN(val) ? 0 : val);
-    }, 0)
+    // Filtered counts for REEL brands KPI cards (based on date filter only, not status filter)
+    filteredScriptsSent: currentBrandData?.brand_type === 'STORY' 
+        ? 0 
+        : influencers.filter(inf => isInfluencerInRange(inf) && inf.script_sent).length,
+    filteredFootageReceived: currentBrandData?.brand_type === 'STORY'
+        ? 0
+        : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.raw_video).length,
+    filteredEditedVideos: currentBrandData?.brand_type === 'STORY'
+        ? 0
+        : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.edited_video).length,
+    filteredPostPending: currentBrandData?.brand_type === 'STORY'
+        ? 0
+        : influencers.filter(inf => isInfluencerInRange(inf) && inf.project_status === WorkflowStage.POSTED && !inf.proof_link).length,
+    // For STORY: Budget shows based on influencers with created_at in range
+    totalAmount: (currentBrandData?.brand_type === 'STORY' ? influencersByCreatedAt : filteredInfluencers)
+        .reduce((acc, inf) => {
+            const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
+            return acc + (isNaN(val) ? 0 : val);
+        }, 0)
   };
 
   const handleExport = () => {
@@ -270,17 +325,66 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
   const handleEditClick = (inf: any) => {
     setEditingInfluencer({ ...inf });
+    setEditInstagramError(null);
     setIsEditModalOpen(true);
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingInfluencer || !editingInfluencer.id) return;
+    setEditInstagramError(null);
+
+    if (!editingInfluencer.instagram_profile?.trim()) {
+      setEditInstagramError('Instagram profile URL is required.');
+      return;
+    }
+
+    const instagramUrlRegex = /^(https?:\/\/)?(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/;
+    if (!instagramUrlRegex.test(editingInfluencer.instagram_profile)) {
+      setEditInstagramError('Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)');
+      return;
+    }
     
     setIsSaving(true);
     try {
-      const { id, project_status, script_sent, raw_video, edited_video, is_posted, proof_link, project_id, ...updates } = editingInfluencer;
+      const { id } = editingInfluencer;
+      
+      // Only include valid influencer table columns to avoid "unknown column" errors
+      const updates = {
+        influencer_name: editingInfluencer.influencer_name,
+        instagram_profile: editingInfluencer.instagram_profile,
+        influencer_email: editingInfluencer.influencer_email,
+        campaign_type: editingInfluencer.campaign_type,
+        niche: editingInfluencer.niche,
+        commercials: editingInfluencer.commercials,
+        location: editingInfluencer.location,
+        budget: editingInfluencer.budget,
+        contact_details: editingInfluencer.contact_details,
+        payment: editingInfluencer.payment,
+        platform_type: editingInfluencer.platform_type,
+        vercel_form_link: editingInfluencer.vercel_form_link
+      };
+
       await db.influencers.update(id, updates);
+      
+      // Also update the associated project if one exists, to keep data in sync
+      if (editingInfluencer.project_id) {
+          try {
+              const project = await db.projects.getById(editingInfluencer.project_id);
+              if (project) {
+                  await db.projects.update(editingInfluencer.project_id, {
+                      data: {
+                          ...(project.data || {}),
+                          influencer_name: updates.influencer_name,
+                          influencer_email: updates.influencer_email,
+                          instagram_profile: updates.instagram_profile
+                      }
+                  });
+              }
+          } catch (projErr) {
+              console.warn('Could not sync project data:', projErr);
+          }
+      }
+
       toast.success('Influencer updated successfully!');
       setIsEditModalOpen(false);
       fetchInfluencers();
@@ -324,6 +428,28 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         </button>
                     ))}
                 </div>
+                {dateFilter === 'MONTHLY' && (
+                    <div className="flex items-center gap-2 bg-white border-2 border-black px-3 py-1 rounded-lg shadow-sm">
+                        <select 
+                            className="text-[10px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                        >
+                            {months.map((month, idx) => (
+                                <option key={month} value={idx}>{month}</option>
+                            ))}
+                        </select>
+                        <select 
+                            className="text-[10px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5 border-l border-slate-200 pl-2"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                        >
+                            {[2024, 2025, 2026].map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 {dateFilter === 'CUSTOM' && (
                     <div className="flex items-center gap-2 bg-white border-2 border-black px-3 py-1.5 rounded-lg shadow-sm">
                         <input type="date" className="text-[10px] font-bold focus:outline-none" value={customRange.start} onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))} />
@@ -331,6 +457,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <input type="date" className="text-[10px] font-bold focus:outline-none" value={customRange.end} onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))} />
                     </div>
                 )}
+
                 <button onClick={handleExport} className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"><Download className="w-4 h-4" /> Export CSV</button>
                 <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-6 py-3 bg-[#D946EF] text-white border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-4 h-4" /> New Influencer</button>
             </div>
@@ -371,33 +498,44 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <div className="flex items-center gap-4 relative z-10">
                             <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center"><DollarSign className="w-6 h-6 text-green-600" /></div>
                             <div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Amount</p>
-                                <span className="text-3xl font-black leading-none text-green-600">₹{stats.totalAmount.toLocaleString()}</span>
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Budget</p>
+                                <span className="text-3xl font-black leading-none text-green-600">{stats.totalAmount.toLocaleString()}</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
                 <button onClick={() => setActiveFilter('ALL')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'ALL' ? 'bg-yellow-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-black/5 flex items-center justify-center"><Users className="w-5 h-5 text-black" /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.total}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Influencers</span></div></div>
+                    <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-black/5 flex items-center justify-center"><Users className="w-5 h-5 text-black" /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredTotal}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Influencers</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('SCRIPT_SENT')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'SCRIPT_SENT' ? 'bg-[#0085FF] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'SCRIPT_SENT' ? 'bg-white/20' : 'bg-blue-50'}`}><Send className={`w-5 h-5 ${activeFilter === 'SCRIPT_SENT' ? 'text-white' : 'text-blue-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.scriptsSent}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'SCRIPT_SENT' ? 'text-blue-100' : 'text-slate-500'}`}>Scripts Sent</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'SCRIPT_SENT' ? 'bg-white/20' : 'bg-blue-50'}`}><Send className={`w-5 h-5 ${activeFilter === 'SCRIPT_SENT' ? 'text-white' : 'text-blue-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredScriptsSent}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'SCRIPT_SENT' ? 'text-blue-100' : 'text-slate-500'}`}>Scripts Sent</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('FOOTAGE_RECEIVED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-[#D946EF] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-white/20' : 'bg-pink-50'}`}><Video className={`w-5 h-5 ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-white' : 'text-pink-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.footageReceived}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-pink-100' : 'text-slate-500'}`}>Raw Videos</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-white/20' : 'bg-pink-50'}`}><Video className={`w-5 h-5 ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-white' : 'text-pink-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredFootageReceived}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-pink-100' : 'text-slate-500'}`}>Raw Videos</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('EDITED_VIDEO')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'EDITED_VIDEO' ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'EDITED_VIDEO' ? 'bg-white/20' : 'bg-purple-50'}`}><Play className={`w-5 h-5 ${activeFilter === 'EDITED_VIDEO' ? 'text-white' : 'text-purple-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.editedVideos}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'EDITED_VIDEO' ? 'text-purple-100' : 'text-slate-500'}`}>Edited</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'EDITED_VIDEO' ? 'bg-white/20' : 'bg-purple-50'}`}><Play className={`w-5 h-5 ${activeFilter === 'EDITED_VIDEO' ? 'text-white' : 'text-purple-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredEditedVideos}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'EDITED_VIDEO' ? 'text-purple-100' : 'text-slate-500'}`}>Edited</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('POST_PENDING')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'POST_PENDING' ? 'bg-amber-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POST_PENDING' ? 'bg-white/20' : 'bg-amber-50'}`}><Clock className={`w-5 h-5 ${activeFilter === 'POST_PENDING' ? 'text-white' : 'text-amber-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.postPending}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POST_PENDING' ? 'text-amber-100' : 'text-slate-500'}`}>Approved</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POST_PENDING' ? 'bg-white/20' : 'bg-amber-50'}`}><Clock className={`w-5 h-5 ${activeFilter === 'POST_PENDING' ? 'text-white' : 'text-amber-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPostPending}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POST_PENDING' ? 'text-amber-100' : 'text-slate-500'}`}>Approved</span></div></div>
                 </button>
                 <button onClick={() => setActiveFilter('POSTED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'POSTED' ? 'bg-[#10B981] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.posted}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Live</span></div></div>
+                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPosted}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Live</span></div></div>
                 </button>
+                <div className="p-4 rounded-xl border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-24 text-left relative overflow-hidden">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                            <DollarSign className="w-5 h-5 text-green-600" />
+                        </div>
+                        <div className="flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black leading-none text-green-600">{stats.totalAmount.toLocaleString()}</span>
+                            <span className="text-[9px] font-bold text-slate-500 uppercase">Budget</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         )}
       </div>
@@ -426,9 +564,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Influencer Name</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Instagram</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Email Address</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Campaign</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                  <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Campaign</th>
+                )}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Niche</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Commercials</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">
+                      Type of collab
+                    </th>
+                )}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Location</th>
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Budget</th>
                 {currentBrandData?.brand_type === 'STORY' && (
@@ -438,6 +582,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Payment</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Platform</th>
+                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Vercel Form Link</th>
                     </>
                 )}
                 <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Added By</th>
@@ -469,7 +614,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <td className="px-6 py-5 font-bold text-slate-400 text-sm whitespace-nowrap w-16">{(index + 1).toString().padStart(2, '0')}</td>
                     <td className="px-6 py-5"><button onClick={() => handleEditClick(inf)} className="p-2 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-4 h-4" /></button></td>
                     <td className="px-6 py-5">
-                        <button onClick={() => { const id = inf.project_id || 'new'; const name = encodeURIComponent(inf.influencer_name); navigate(`/partner_associate/influencer/${id}?name=${name}`); }} className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap text-left flex items-center gap-2 group/name">
+                        <button onClick={() => { const id = inf.project_id || 'new'; const name = encodeURIComponent(inf.influencer_name); const infId = encodeURIComponent(inf.id); navigate(`/partner_associate/influencer/${id}?name=${name}&inf_id=${infId}`); }} className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap text-left flex items-center gap-2 group/name">
                           {inf.influencer_name}<ExternalLink className="w-3 h-3 opacity-0 group-hover/name:opacity-100 transition-opacity" />
                         </button>
                     </td>
@@ -493,24 +638,28 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <span className="text-slate-300 text-xs font-bold">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                            <Target className="w-4 h-4 text-orange-500" />
-                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
-                        </div>
-                    </td>
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                      <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                              <Target className="w-4 h-4 text-orange-500" />
+                              <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
+                          </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Tag className="w-4 h-4 text-purple-500" />
                         <span className="text-xs font-bold text-slate-600 uppercase">{inf.niche || '—'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
-                      </div>
-                    </td>
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <Briefcase className="w-4 h-4 text-green-600" />
+                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
+                          </div>
+                        </td>
+                    )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-red-500" />
@@ -528,8 +677,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
                                 <div className="px-3 py-1 bg-blue-50 text-blue-700 border-2 border-blue-200 text-[10px] font-black rounded-lg">
-                                    {inf.story_count || 0} POSTED
+                                    {(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length} POSTED
                                 </div>
+
                             </div>
                         </td>
                     )}
@@ -549,6 +699,16 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="text-xs font-bold text-slate-700">
                                 {inf.platform_type || '—'}
                             </span>
+                            </td>
+                            <td className="px-6 py-4">
+                            {inf.vercel_form_link ? (
+                                <a href={inf.vercel_form_link} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 transition-colors flex items-center gap-1">
+                                    <LinkIcon className="w-4 h-4" />
+                                    <span className="text-xs font-bold truncate max-w-[120px]">Link</span>
+                                </a>
+                            ) : (
+                                <span className="text-slate-300 text-xs font-bold">—</span>
+                            )}
                             </td>
                         </>
                     )}
@@ -653,18 +813,26 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400">Instagram Profile</label>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Instagram Profile *</label>
                   <div className="relative">
                     <Instagram className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-pink-500" />
                     <input 
                       type="text" 
                       value={editingInfluencer.instagram_profile || ''}
-                      onChange={(e) => setEditingInfluencer({...editingInfluencer, instagram_profile: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                      placeholder="@username"
+                      onChange={(e) => {
+                        setEditingInfluencer({...editingInfluencer, instagram_profile: e.target.value});
+                        setEditInstagramError(null);
+                      }}
+                      className={`w-full pl-10 pr-4 py-3 border-2 font-bold focus:outline-none focus:bg-slate-50 ${
+                        editInstagramError ? 'border-red-500 bg-red-50' : 'border-black'
+                      }`}
+                      placeholder="https://www.instagram.com/username"
                     />
                   </div>
+                  {editInstagramError && (
+                    <p className="text-red-600 text-xs font-bold">⚠️ {editInstagramError}</p>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -680,18 +848,20 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400">Campaign Type</label>
-                  <div className="relative">
-                    <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-500" />
-                    <input 
-                      type="text" 
-                      value={editingInfluencer.campaign_type || ''}
-                      onChange={(e) => setEditingInfluencer({...editingInfluencer, campaign_type: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                    />
+                {currentBrandData?.brand_type !== 'STORY' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400">Campaign Type</label>
+                    <div className="relative">
+                      <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-500" />
+                      <input 
+                        type="text" 
+                        value={editingInfluencer.campaign_type || ''}
+                        onChange={(e) => setEditingInfluencer({...editingInfluencer, campaign_type: e.target.value})}
+                        className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400">Niche</label>
@@ -706,18 +876,20 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400">Commercials</label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-green-600" />
-                    <input 
-                      type="text" 
-                      value={editingInfluencer.commercials || ''}
-                      onChange={(e) => setEditingInfluencer({...editingInfluencer, commercials: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                    />
+                {currentBrandData?.brand_type !== 'STORY' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400">Commercials</label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-green-600" />
+                      <input 
+                        type="text" 
+                        value={editingInfluencer.commercials || ''}
+                        onChange={(e) => setEditingInfluencer({...editingInfluencer, commercials: e.target.value})}
+                        className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
                 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-slate-400">Location</label>
@@ -770,6 +942,17 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         />
                       </div>
                     )}
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-[10px] font-black uppercase text-slate-400">Vercel Form Link</label>
+                      <input 
+                        type="url" 
+                        value={editingInfluencer.vercel_form_link || ''}
+                        onChange={(e) => setEditingInfluencer({...editingInfluencer, vercel_form_link: e.target.value})}
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                        placeholder="https://forms.vercel.com/..."
+                      />
+                    </div>
                   </>
                 )}
 
