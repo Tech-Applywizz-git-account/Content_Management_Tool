@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../../types';
-import { ArrowLeft, Plus, Calendar, Link as LinkIcon, Trash2, CheckCircle2, DollarSign, CreditCard, ExternalLink, Loader2, Save, User as UserIcon, Sparkles } from 'lucide-react';
+import { User, Role } from '../../types';
+import { ArrowLeft, Plus, Calendar, Link as LinkIcon, Trash2, CheckCircle2, DollarSign, CreditCard, ExternalLink, Loader2, Save, User as UserIcon, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -128,7 +128,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
         if (storyToRemove.id) {
             try {
                 await db.influencerStories.delete(storyToRemove.id);
-                toast.success('Story removed successfully');
+                toast.success('story deleted');
                 fetchInfluencerData(); // Refresh list
             } catch (err) {
                 console.error('Failed to delete story:', err);
@@ -165,7 +165,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                     story_link: story.story_link,
                     story_caption: story.story_caption
                 });
-                toast.success('Story updated successfully');
+                toast.success('saves updated');
             } else {
                 // Add new
                 await (db as any).influencerStories.add({
@@ -175,7 +175,7 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                     story_caption: story.story_caption,
                     created_by_user_id: user.id
                 });
-                toast.success('Story saved successfully');
+                toast.success('story added');
             }
             
             // Skip updating influencers table with missing columns for now
@@ -221,13 +221,15 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                     <Sparkles className="w-3 h-3" /> {influencer?.product_received === 'yes' ? 'Product Received' : 'Product Pending'}
                                 </div>
                             )}
-                            <button 
-                                onClick={() => setIsEditingInfluencer(true)}
-                                className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-slate-900"
-                                title="Edit Details"
-                            >
-                                <Save className="w-4 h-4" />
-                            </button>
+                            {user.role !== Role.CMO && (
+                                <button 
+                                    onClick={() => setIsEditingInfluencer(true)}
+                                    className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-slate-900"
+                                    title="Edit Details"
+                                >
+                                    <Save className="w-4 h-4" />
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -412,15 +414,17 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Live Story Link Registry</p>
                             </div>
                         </div>
-                        <button 
-                            onClick={handleAddStory} 
-                            className="px-8 py-3.5 bg-slate-900 text-white border border-black rounded-2xl font-black uppercase text-xs shadow-lg shadow-slate-200 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group/btn"
-                        >
-                            <div className="w-6 h-6 bg-[#D946EF] rounded-lg flex items-center justify-center group-hover/btn:rotate-90 transition-transform">
-                                <Plus className="w-4 h-4 text-white" />
-                            </div>
-                            Add New Story
-                        </button>
+                        {user.role !== Role.CMO && (
+                            <button 
+                                onClick={handleAddStory} 
+                                className="px-8 py-3.5 bg-slate-900 text-white border border-black rounded-2xl font-black uppercase text-xs shadow-lg shadow-slate-200 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group/btn"
+                            >
+                                <div className="w-6 h-6 bg-[#D946EF] rounded-lg flex items-center justify-center group-hover/btn:rotate-90 transition-transform">
+                                    <Plus className="w-4 h-4 text-white" />
+                                </div>
+                                Add New Story
+                            </button>
+                        )}
                     </div>
 
                     <div className="p-6 space-y-4 bg-white">
@@ -457,7 +461,8 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                                     type="date" 
                                                     value={story.story_date}
                                                     onChange={(e) => handleStoryChange(originalIndex, 'story_date', e.target.value)}
-                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all"
+                                                    disabled={user.role === Role.CMO}
+                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed"
                                                 />
                                             </div>
                                             <div className="space-y-2">
@@ -469,8 +474,9 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                                         type="url" 
                                                         value={story.story_link}
                                                         onChange={(e) => handleStoryChange(originalIndex, 'story_link', e.target.value)}
+                                                        disabled={user.role === Role.CMO}
                                                         placeholder="https://instagram.com/stories/..."
-                                                        className="w-full bg-slate-50 border border-black p-3 pr-16 rounded-xl font-bold text-sm outline-none transition-all"
+                                                        className="w-full bg-slate-50 border border-black p-3 pr-16 rounded-xl font-bold text-sm outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed"
                                                     />
                                                         {story.story_link && (
                                                             <a 
@@ -492,28 +498,31 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                                 <textarea 
                                                     value={story.story_caption || ''}
                                                     onChange={(e) => handleStoryChange(originalIndex, 'story_caption', e.target.value)}
+                                                    disabled={user.role === Role.CMO}
                                                     placeholder="Enter story caption here..."
-                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all resize-none h-16"
+                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all resize-none h-16 disabled:opacity-75 disabled:cursor-not-allowed"
                                                 />
                                             </div>
                                         </div>
 
-                                        <div className="flex justify-end gap-2 mt-4">
-                                            <button 
-                                                onClick={() => handleRemoveStory(originalIndex)} 
-                                                className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 border border-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                                                title="Remove Story"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleSaveSingle(originalIndex)} 
-                                                className="w-10 h-10 flex items-center justify-center bg-emerald-50 text-emerald-600 border border-black rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                                                title={story.id ? 'Update Story' : 'Save Story'}
-                                            >
-                                                <Save className="w-4 h-4" />
-                                            </button>
-                                        </div>
+                                        {user.role !== Role.CMO && (
+                                            <div className="flex justify-end gap-2 mt-4">
+                                                <button 
+                                                    onClick={() => handleRemoveStory(originalIndex)} 
+                                                    className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 border border-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                                    title="Remove Story"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleSaveSingle(originalIndex)} 
+                                                    className="w-10 h-10 flex items-center justify-center bg-emerald-50 text-emerald-600 border border-black rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                                                    title={story.id ? 'Update Story' : 'Save Story'}
+                                                >
+                                                    <Save className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     );
                                 })}

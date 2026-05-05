@@ -3,7 +3,8 @@ import { User } from '../../types';
 import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
 import { CheckCircle2, AlertCircle, Building2, Trash2, Plus, ArrowLeft, UserPlus, Users, Instagram, Mail, X, Shirt, Smartphone, Coffee, Clapperboard, Zap, ShoppingBag, Crown, Palette, Globe, Trophy, Video } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Role } from '../../types';
 
 interface PABrandsProps {
   user: User;
@@ -38,7 +39,8 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
   }, []);
 
   const handleBrandClick = (brand: any) => {
-    navigate(`/partner_associate/brand-details/${encodeURIComponent(brand.brand_name)}`);
+    const rolePath = user.role.toLowerCase();
+    navigate(`/${rolePath}/brand-details/${encodeURIComponent(brand.brand_name)}`);
   };
 
   const handleDeleteBrand = (e: React.MouseEvent, brandId: string, brandName: string) => {
@@ -97,15 +99,17 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 uppercase tracking-tighter mb-2">Brands Dashboard</h2>
           <p className="text-slate-600 font-bold text-lg">Browse and manage all registered partner brands.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <button
-            onClick={() => navigate('/partner_associate/create-brand')}
-            className="flex items-center gap-2 px-6 py-4 bg-yellow-400 text-black border-4 border-black font-black uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Create New Brand</span>
-          </button>
-        </div>
+        {user.role !== Role.CMO && (
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={() => navigate('/partner_associate/create-brand')}
+              className="flex items-center gap-2 px-6 py-4 bg-yellow-400 text-black border-4 border-black font-black uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Create New Brand</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {successMessage && (
@@ -167,7 +171,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                   {getBrandIcon(brand.brand_name)}
                 </div>
                 <div className="flex items-center gap-2">
-                  {!brand.isSystem && (
+                  {!brand.isSystem && user.role !== Role.CMO && (
                     <button 
                       onClick={(e) => handleDeleteBrand(e, brand.id, brand.brand_name)}
                       className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors border-2 border-transparent hover:border-black rounded-lg"

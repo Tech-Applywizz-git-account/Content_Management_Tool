@@ -142,6 +142,8 @@ export interface Project {
   brandSelected?: string; // Legacy support
   first_review_opened_at?: string; // Timestamp when first reviewer opened the project
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
+  pa_script_sent_at?: string; // When PA sends script to influencer
+  pa_raw_footage_uploaded_at?: string; // When PA uploads raw footage from influencer
 }
 
 export interface ProjectData {

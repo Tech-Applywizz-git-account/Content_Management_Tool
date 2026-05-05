@@ -570,7 +570,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
 
   const isSplitViewActive = ['CMO_REVIEW', 'CEO_REVIEW', 'IN_PRODUCTION'].includes(overviewFilter) || (WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage) !== -1 && !['POSTED', 'REWORK'].includes(overviewFilter));
 
-  const renderProjectCard = (project: Project, primaryMilestone?: { label: string; time: string | undefined; color?: string }) => {
+  const renderProjectCard = (project: Project, primaryMilestone?: { label: string; time: string | undefined; color?: string }, statusColor: string = 'bg-emerald-500') => {
     const rawMilestones = getMilestones(project);
     const finalMilestones: { label: string; time: string | undefined; color?: string }[] = [];
     if (primaryMilestone && primaryMilestone.time) {
@@ -592,17 +592,22 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
       >
         <div className="p-6 flex-grow relative">
           <div className="flex items-center justify-between mb-4">
-            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${project.channel === 'YOUTUBE' ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white'}`}>{project.channel}</span>
+            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+              project.channel === 'YOUTUBE' ? 'bg-violet-700 text-white' : 
+              project.channel === 'INSTAGRAM' ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm' :
+              project.channel === 'LINKEDIN' ? 'bg-indigo-700 text-white' :
+              'bg-violet-600 text-white'
+            }`}>{project.channel}</span>
             <div className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full border border-white shadow-sm ${project.priority === 'HIGH' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+              <span className={`w-2.5 h-2.5 rounded-full border border-white shadow-sm ${statusColor}`} />
             </div>
           </div>
           
           <h4 className="font-black text-lg text-slate-900 leading-tight mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[3rem] uppercase tracking-tighter">{project.title}</h4>
           
           {brand && (
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-4 opacity-80">
-              <Tag size={12} className="text-indigo-300" />
+            <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-4">
+              <Tag size={12} className="text-indigo-500" />
               {brand}
             </div>
           )}
@@ -1123,7 +1128,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                       : WORKFLOW_ORDER.indexOf(project.current_stage) - 1;
                     
                     const info = findPreviousApproval(project, targetIdx);
-                    return renderProjectCard(project, info || undefined);
+                    return renderProjectCard(project, info || undefined, 'bg-orange-500');
                   })}
                 </div>
               </div>
@@ -1135,7 +1140,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
                   {approvedList.map(project => {
                     // For approved items, we explicitly want the approval for the stage they just passed (overviewFilter)
                     const info = getStageApprovalInfo(project, overviewFilter);
-                    return renderProjectCard(project, info.time ? info : undefined);
+                    return renderProjectCard(project, info.time ? info : undefined, 'bg-emerald-500');
                   })}
                 </div>
               </div>
