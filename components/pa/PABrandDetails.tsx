@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { User, WorkflowStage, Role } from '../../types';
+import { User, WorkflowStage, Role, Project } from '../../types';
 import { db } from '../../services/supabaseDb';
-import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { supabase } from '../../src/integrations/supabase/client';
@@ -51,9 +51,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const { brandName } = useParams<{ brandName: string }>();
   const navigate = useNavigate();
   const [influencers, setInfluencers] = useState<any[]>([]);
+  const [brandProjects, setBrandProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'SCRIPT_SENT' | 'FOOTAGE_RECEIVED' | 'EDITED_VIDEO' | 'POST_PENDING' | 'POSTED'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'SCRIPT_SENT' | 'FOOTAGE_RECEIVED' | 'EDITED_VIDEO' | 'POST_PENDING' | 'APPROVED' | 'BUDGET'>('ALL');
   const [currentBrandData, setCurrentBrandData] = useState<any>(null);
   
   // Edit Modal States
@@ -71,6 +72,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [countryFilter, setCountryFilter] = useState('ALL');
   const [collabFilter, setCollabFilter] = useState('ALL');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [leadsCount, setLeadsCount] = useState<number | null>(null);
+  const [isLeadsLoading, setIsLeadsLoading] = useState(false);
 
   const handleUpdateProductStatus = async (infId: string, newStatus: string) => {
       try {
@@ -96,6 +99,30 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       }
   };
 
+  const handleUpdatePaymentStatus = async (infId: string, newStatus: string) => {
+      try {
+          setUpdatingId(infId);
+          const { error } = await supabase
+              .from('influencers')
+              .update({ payment: newStatus })
+              .eq('id', infId);
+
+          if (error) throw error;
+          
+          // Optimistic update
+          setInfluencers(prev => prev.map(inf => 
+              inf.id === infId ? { ...inf, payment: newStatus } : inf
+          ));
+          
+          toast.success(`Payment marked as ${newStatus === 'yes' ? 'Cleared' : 'Pending'}`);
+      } catch (error) {
+          console.error('Error updating payment status:', error);
+          toast.error('Failed to update payment status');
+      } finally {
+          setUpdatingId(null);
+      }
+  };
+
   const months = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
@@ -116,7 +143,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       sat.setHours(23, 59, 59, 999);
       return d >= sun && d <= sat;
     }
-    if (dateFilter === 'MONTHLY') return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+    if (dateFilter === 'MONTHLY') {
+      const d = new Date(dateStr);
+      // Use getUTC values to avoid timezone shifts for "YYYY-MM-DD" strings
+      const month = dateStr.includes('T') ? d.getMonth() : d.getUTCMonth();
+      const year = dateStr.includes('T') ? d.getFullYear() : d.getUTCFullYear();
+      return month === selectedMonth && year === selectedYear;
+    }
     if (dateFilter === 'CUSTOM' && customRange.start && customRange.end) {
       const start = new Date(customRange.start);
       const end = new Date(customRange.end);
@@ -127,49 +160,154 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     return false;
   };
 
+  const fetchLeadsData = async () => {
+    setIsLeadsLoading(true);
+    try {
+      let start, end;
+      const today = new Date();
+      
+      if (dateFilter === 'TODAY') {
+        start = end = today.toISOString().split('T')[0];
+      } else if (dateFilter === 'WEEKLY') {
+        const sun = new Date(today);
+        sun.setDate(today.getDate() - today.getDay());
+        const sat = new Date(sun);
+        sat.setDate(sun.getDate() + 6);
+        start = sun.toISOString().split('T')[0];
+        end = sat.toISOString().split('T')[0];
+      } else if (dateFilter === 'MONTHLY') {
+        const first = new Date(selectedYear, selectedMonth, 1);
+        const last = new Date(selectedYear, selectedMonth + 1, 0);
+        start = first.toISOString().split('T')[0];
+        end = last.toISOString().split('T')[0];
+      } else if (dateFilter === 'CUSTOM' && customRange.start && customRange.end) {
+        start = customRange.start;
+        end = customRange.end;
+      } else {
+        start = '2024-01-01';
+        end = today.toISOString().split('T')[0];
+      }
+
+      // ULTRA-ROBUST URL CLEANING
+      const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
+      const urlObj = new URL(rawUrl);
+      
+      // Clear any existing parameters and set our own
+      urlObj.search = ''; 
+      urlObj.searchParams.set('startDate', start);
+      urlObj.searchParams.set('endDate', end);
+      
+      const response = await fetch(urlObj.toString());
+      if (!response.ok) throw new Error('Failed to fetch leads');
+      const data = await response.json();
+      
+      // Robust count extraction for various API shapes
+      if (data.data && Array.isArray(data.data)) {
+        setLeadsCount(data.data.length);
+      } else if (Array.isArray(data)) {
+        setLeadsCount(data.length);
+      } else if (data.total !== undefined) {
+        setLeadsCount(data.total);
+      } else if (data.count !== undefined) {
+        setLeadsCount(data.count);
+      } else if (typeof data === 'number') {
+        setLeadsCount(data);
+      } else {
+        setLeadsCount(0);
+      }
+    } catch (err) {
+      console.warn('Leads fetch error (expected if server unreachable):', err);
+      setLeadsCount(null);
+    } finally {
+      setIsLeadsLoading(false);
+    }
+  };
+
   const fetchInfluencers = async () => {
     if (!brandName) return;
     setIsLoading(true);
     try {
       const decodedBrand = decodeURIComponent(brandName);
       
-      // Fetch both influencers and projects for this brand
+      // Fetch influencers from registry and projects
+      // Normalize brand name to handle format differences between URL and database
+      // URL: "Lead Magnet (RTW)" -> DB: "LEAD_MAGNET_RTW"
+      const normalizedBrand = decodedBrand
+        .replace(/[()]/g, '') // Remove parentheses
+        .replace(/\s+/g, '_')  // Replace spaces with underscores
+        .toUpperCase();        // Convert to uppercase
+      
+      console.log('🔍 Fetching data for brand:', {
+        original: decodedBrand,
+        normalized: normalizedBrand
+      });
+      
       const [infByBrand, allInfLogs, { data: allUsers }, brandData] = await Promise.all([
-        db.influencers.getByBrand(decodedBrand),
+        db.influencers.getByBrand(normalizedBrand),
         db.influencers.getAll(),
         supabase.from('users').select('id, full_name'),
         db.brands.getAll()
       ]);
+      
+      console.log('📊 Registry results:', {
+        infByBrandCount: infByBrand?.length || 0,
+        allInfLogsCount: allInfLogs?.length || 0,
+        infByBrand: infByBrand
+      });
 
-      const brand = brandData.find(b => b.brand_name === decodedBrand);
+      // Normalize brand names for comparison - handles all formats:
+      // "Lead Magnet (RTW)", "Lead Magnet RTW", "LEAD_MAGNET_RTW" all become "LEAD_MAGNET_RTW"
+      const normalizeBrandForComparison = (s: string) => (s || '')
+        .trim()
+        .replace(/[()]/g, '')      // Remove parentheses
+        .replace(/\s+/g, '_')       // Replace spaces with underscores
+        .toUpperCase();             // Convert to uppercase
+      
+      const target = normalizeBrandForComparison(decodedBrand);
+
+      const brand = brandData.find(b => normalizeBrandForComparison(b.brand_name) === target);
       if (brand) {
         setCurrentBrandData(brand);
       }
 
       const allProjects = await db.projects.getAll();
+
       const projData = allProjects.filter(p => {
-        const b1 = (p.brand || '').trim().toLowerCase();
-        const b2 = (p.data?.brand || '').trim().toLowerCase();
-        const b3 = (p.brandSelected || '').trim().toLowerCase();
-        const target = decodedBrand.trim().toLowerCase();
+        const b1 = normalizeBrandForComparison(p.brand);
+        const b2 = normalizeBrandForComparison(p.data?.brand);
+        const b3 = normalizeBrandForComparison(p.brandSelected);
         return b1 === target || b2 === target || b3 === target;
       });
+
+      setBrandProjects(projData);
 
       const projectIds = projData.map(p => p.id);
 
       const userMap = new Map(allUsers?.map(u => [u.id, u.full_name]) || []);
 
-      // Filter logs related to our projects or having the brand name
-      const relevantLogs = allInfLogs.filter(inf => 
+      // Filter registry entries related to our projects or matching brand name
+      const relevantRegistryEntries = allInfLogs.filter(inf => 
         (inf.parent_project_id && projectIds.includes(inf.parent_project_id)) ||
         (inf.instance_project_id && projectIds.includes(inf.instance_project_id)) ||
-        (inf.brand_name && inf.brand_name.trim().toLowerCase() === decodedBrand.trim().toLowerCase())
+        (inf.brand_name && normalizeBrandForComparison(inf.brand_name) === target)
       );
+      
+      console.log('📝 Registry entries matching brand:', relevantRegistryEntries.length, 
+        relevantRegistryEntries.map((e: any) => ({ name: e.influencer_name, brand: e.brand_name })));
 
-      // Merge and deduplicate by ID
+      // Merge all sources: getByBrand results + registry entries filtered by project/brand
       const combinedInf = [...infByBrand];
-      relevantLogs.forEach(inf => {
-        if (!combinedInf.find(c => c.id === inf.id)) {
+      
+      // Add registry-based entries that weren't already found by getByBrand
+      relevantRegistryEntries.forEach(inf => {
+        const exists = combinedInf.find(c => 
+          c.id === inf.id || 
+          (c.influencer_email && inf.influencer_email && 
+           c.influencer_email.toLowerCase() === inf.influencer_email.toLowerCase() &&
+           c.parent_project_id === inf.parent_project_id)
+        );
+        
+        if (!exists) {
           combinedInf.push(inf);
         }
       });
@@ -200,27 +338,48 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         const storyCount = infStories.length;
         const isActuallyPosted = currentBrandData?.brand_type === 'STORY' ? storyCount > 0 : (project?.current_stage === WorkflowStage.POSTED || !!project?.data?.live_url || !!project?.data?.posting_proof_link);
 
-        return {
+        // Determine if script was sent - check both project data and influencer registry data
+        const scriptSentFromProject = project && (!!project.pa_script_sent_at || !!project.data?.selected_script_id);
+        const scriptSentFromRegistry = !!inf.script_content || !!inf.sent_at || inf.status === 'SENT_TO_INFLUENCER';
+        const scriptSent = scriptSentFromProject || scriptSentFromRegistry;
+
+        const result = {
           ...inf,
           project_status: project?.current_stage,
-          script_sent: project ? [
-            WorkflowStage.SENT_TO_INFLUENCER, 
-            WorkflowStage.PA_VIDEO_CMO_REVIEW,
-            WorkflowStage.VIDEO_EDITING,
-            WorkflowStage.PA_FINAL_REVIEW, 
-            WorkflowStage.POSTED
-          ].includes(project.current_stage) : false,
-          raw_video: project?.video_link || project?.video_url,
-          edited_video: project?.edited_video_link,
+          script_sent: scriptSent,
+          raw_video: project?.video_link || project?.video_url || inf.video_link,
+          edited_video: project?.edited_video_link || inf.edited_video_link,
           is_posted: isActuallyPosted,
           proof_link: project?.data?.posting_proof_link || project?.data?.live_url || project?.data?.referral_link,
           project_id: project?.id,
           added_by_name: inf.created_by_user_id ? userMap.get(inf.created_by_user_id) || 'Unknown' : 'Unknown',
           sent_by_name: project?.data?.sent_by_name || inf.sent_by || '—',
           stories: infStories,
-          story_count: storyCount
+          story_count: storyCount,
+          project_title: project?.title,
+          // Store reference to project for debugging
+          _debug_project_id: project?.id,
+          _debug_video_link_source: project?.video_link ? 'project.video_link' : project?.video_url ? 'project.video_url' : inf.video_link ? 'inf.video_link' : 'none'
         };
+        
+        // Log for debugging video links
+        if (project?.video_link || inf.video_link) {
+          console.log(`📹 Video link for ${inf.influencer_name}:`, {
+            from_project: project?.video_link,
+            from_inf: inf.video_link,
+            final: result.raw_video,
+            project_id: project?.id
+          });
+        }
+        
+        return result;
       });
+
+      console.log(`✅ Setting ${mergedData.length} influencers for brand ${decodedBrand}`, mergedData.map(i => ({ 
+        name: i.influencer_name, 
+        has_video: !!i.raw_video,
+        project_id: i._debug_project_id 
+      })));
 
       setInfluencers(mergedData);
     } catch (err) {
@@ -233,13 +392,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
   useEffect(() => {
     fetchInfluencers();
-  }, [brandName]);
-
+    fetchLeadsData();
+  }, [brandName, dateFilter, selectedMonth, selectedYear, customRange]);
 
   // Check if influencer created_at is in range
   const isInfluencerInRange = (inf: any) => {
     if (dateFilter === 'OVERALL') return true;
-    return checkRange(inf.created_at);
+    // For log entries without created_at, check sent_at as fallback
+    const dateToCheck = inf.created_at || inf.sent_at;
+    if (!dateToCheck) return false;
+    return checkRange(dateToCheck) || checkRange(inf.updated_at);
+  };
+
+  // Check if project created_at is in range
+  const isProjectInRange = (p: any) => {
+    if (dateFilter === 'OVERALL') return true;
+    return checkRange(p.created_at) || checkRange(p.updated_at);
   };
 
   // Check if influencer has stories in range (for STORY brands)
@@ -249,6 +417,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   };
 
   const getFilteredData = (data: any[]) => {
+    console.log('🔍 Filtering data:', data.length, 'entries. Brand type:', currentBrandData?.brand_type, 'Date filter:', dateFilter, 'Active filter:', activeFilter);
+    
     const filteredResults = data.filter(inf => {
       // For STORY brands:
       // - ALL filter: show influencers whose created_at is in range
@@ -256,19 +426,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       let isInRange = false;
       
       if (currentBrandData?.brand_type === 'STORY') {
-        if (activeFilter === 'POSTED') {
-          // For POSTED filter, check stories date
+        if (activeFilter === 'APPROVED') {
+          // For APPROVED filter, show only those who are approved
           isInRange = hasStoriesInRange(inf);
         } else {
-          // For ALL and other filters, check influencer created_at
-          isInRange = isInfluencerInRange(inf);
+          // For ALL and other filters, show if created in range OR posted in range
+          isInRange = isInfluencerInRange(inf) || hasStoriesInRange(inf);
         }
       } else {
         // For non-STORY brands, check created_at
         isInRange = isInfluencerInRange(inf);
       }
 
-      if (!isInRange && dateFilter !== 'OVERALL') return false;
+      if (!isInRange) {
+        console.log('❌ Filtered out (not in range):', inf.influencer_name, 'created_at:', inf.created_at, 'sent_at:', inf.sent_at);
+        return false;
+      }
 
       // 2. Then apply the KPI card (status) filter
       if (activeFilter !== 'ALL') {
@@ -276,18 +449,31 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         if (activeFilter === 'FOOTAGE_RECEIVED' && !inf.raw_video) return false;
         if (activeFilter === 'EDITED_VIDEO' && !inf.edited_video) return false;
         if (activeFilter === 'POST_PENDING' && !([WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage))) return false;
+        if (activeFilter === 'BUDGET') {
+            const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
+            if (isNaN(val) || val === 0) return false;
+        }
         
-        if (activeFilter === 'POSTED') {
-            if (currentBrandData?.brand_type !== 'STORY') {
-                if (!inf.proof_link) return false;
-            }
+        if (activeFilter === 'APPROVED') {
+            if (![WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage)) return false;
         }
       }
 
       // Apply Advanced Filters
-      if (nicheFilter !== 'ALL' && inf.niche !== nicheFilter) return false;
-      if (countryFilter !== 'ALL' && inf.location !== countryFilter) return false;
-      if (collabFilter !== 'ALL' && !(inf.commercials || '').startsWith(collabFilter)) return false;
+      if (nicheFilter !== 'ALL') {
+        const actualNiche = inf.niche || 'Other/Unknown';
+        if (actualNiche !== nicheFilter) return false;
+      }
+      
+      if (countryFilter !== 'ALL') {
+        const actualLocation = inf.location || 'Other/Unknown';
+        if (actualLocation !== countryFilter) return false;
+      }
+      
+      if (collabFilter !== 'ALL') {
+        const actualCollab = (inf.commercials || 'Other/Unknown').split(' (')[0];
+        if (actualCollab !== collabFilter) return false;
+      }
 
       return true;
     });
@@ -295,15 +481,19 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     // 3. Finally apply search term
     if (searchTerm) {
         const lowerSearch = searchTerm.toLowerCase();
-        return filteredResults.filter(inf => 
+        const searchResults = filteredResults.filter(inf => 
           inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
           inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
           inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
           inf.location?.toLowerCase().includes(lowerSearch) ||
+          inf.project_title?.toLowerCase().includes(lowerSearch) ||
           (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
         );
+        console.log('🔍 After search filter:', searchResults.length, 'entries');
+        return searchResults;
     }
 
+    console.log('✅ Filtered results:', filteredResults.length, 'entries');
     return filteredResults;
   };
 
@@ -312,6 +502,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const filteredInfluencers = getFilteredData(influencers);
 
   // Calculate stats for STORY brands separately
+  const influencersActiveInRange = currentBrandData?.brand_type === 'STORY' 
+    ? influencers.filter(inf => isInfluencerInRange(inf) || hasStoriesInRange(inf))
+    : filteredInfluencers;
+
   const influencersByCreatedAt = currentBrandData?.brand_type === 'STORY' 
     ? influencers.filter(isInfluencerInRange)
     : filteredInfluencers;
@@ -327,10 +521,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     footageReceived: influencers.filter(i => !!i.raw_video).length,
     editedVideos: influencers.filter(i => !!i.edited_video).length,
     postPending: influencers.filter(i => i.project_status === WorkflowStage.POSTED && !i.proof_link).length,
-    posted: influencers.filter(i => !!i.proof_link).length,
+    approved: influencers.filter(i => i.project_status === WorkflowStage.PA_FINAL_REVIEW || i.project_status === WorkflowStage.POSTED).length,
     // Filtered counts based on date range and active filter
     filteredTotal: currentBrandData?.brand_type === 'STORY'
-        ? influencersByCreatedAt.length
+        ? influencersActiveInRange.length
         : filteredInfluencers.length,
     // For STORY: Total Stories Posted shows count based on story dates
     filteredPosted: currentBrandData?.brand_type === 'STORY' 
@@ -351,30 +545,61 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     filteredEditedVideos: currentBrandData?.brand_type === 'STORY'
         ? 0
         : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.edited_video).length,
-    filteredPostPending: currentBrandData?.brand_type === 'STORY'
+    filteredApproved: currentBrandData?.brand_type === 'STORY'
         ? 0
         : influencers.filter(inf => isInfluencerInRange(inf) && [WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage)).length,
-    // For STORY: Budget shows based on influencers with created_at in range
-    totalAmount: (currentBrandData?.brand_type === 'STORY' ? influencersByCreatedAt : filteredInfluencers)
+    // For STORY: Budget shows based on active influencers in range
+    totalAmount: (currentBrandData?.brand_type === 'STORY' ? influencersActiveInRange : filteredInfluencers)
         .reduce((acc, inf) => {
             const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
             return acc + (isNaN(val) ? 0 : val);
         }, 0)
   };
 
-  // Network Distribution Stats
+  // Base data for distribution counts (respects Date and Search filters)
+  const distributionBaseData = currentBrandData?.brand_type === 'STORY' 
+    ? influencers.filter(inf => {
+        const inRange = isInfluencerInRange(inf) || hasStoriesInRange(inf);
+        if (!inRange && dateFilter !== 'OVERALL') return false;
+        
+        if (searchTerm) {
+          const lowerSearch = searchTerm.toLowerCase();
+          return (
+            inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
+            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+            inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
+            inf.location?.toLowerCase().includes(lowerSearch) ||
+            (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
+          );
+        }
+        return true;
+      })
+    : influencers.filter(inf => {
+        if (!isInfluencerInRange(inf) && dateFilter !== 'OVERALL') return false;
+        if (searchTerm) {
+          const lowerSearch = searchTerm.toLowerCase();
+          return (
+            inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
+            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+            inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
+            inf.location?.toLowerCase().includes(lowerSearch)
+          );
+        }
+        return true;
+      });
+
   const networkDistribution = {
-    countries: influencers.reduce((acc: any, inf) => {
+    countries: distributionBaseData.reduce((acc: any, inf) => {
       const key = inf.location || 'Other/Unknown';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {}),
-    niches: influencers.reduce((acc: any, inf) => {
+    niches: distributionBaseData.reduce((acc: any, inf) => {
       const key = inf.niche || 'Other/Unknown';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {}),
-    collabs: influencers.reduce((acc: any, inf) => {
+    collabs: distributionBaseData.reduce((acc: any, inf) => {
       const key = (inf.commercials || 'Other/Unknown').split(' (')[0];
       acc[key] = (acc[key] || 0) + 1;
       return acc;
@@ -412,7 +637,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   };
 
   const handleEditClick = (inf: any) => {
-    setEditingInfluencer({ ...inf });
+    let productName = inf.product_name;
+    if (!productName && inf.commercials?.toLowerCase().includes('(')) {
+        productName = inf.commercials.split('(')[1].replace(')', '');
+    }
+    setEditingInfluencer({ ...inf, product_name: productName });
     setEditInstagramError(null);
     setIsEditModalOpen(true);
   };
@@ -448,7 +677,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         contact_details: editingInfluencer.contact_details,
         payment: editingInfluencer.payment,
         platform_type: editingInfluencer.platform_type,
-        vercel_form_link: editingInfluencer.vercel_form_link
+        vercel_form_link: editingInfluencer.vercel_form_link,
+        product_name: editingInfluencer.product_name
       };
 
       await db.influencers.update(id, updates);
@@ -494,11 +724,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-6">
-                <div className="w-16 h-16 bg-yellow-400 border-2 border-black shadow-sm rounded-xl flex items-center justify-center shrink-0">
-                    <Users className="w-8 h-8 text-black" />
+                <div className="w-12 h-12 bg-yellow-400 border-2 border-black shadow-sm rounded-xl flex items-center justify-center shrink-0">
+                    <Users className="w-6 h-6 text-black" />
                 </div>
                 <div>
-                    <h1 className="text-4xl md:text-5xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-2">{decodeURIComponent(brandName || '')}</h1>
+                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-2">{decodeURIComponent(brandName || '')}</h1>
                     <p className="font-bold text-slate-500 uppercase text-xs tracking-widest flex items-center gap-2">
                         <span>Partner Influence Network</span>
                         <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
@@ -546,6 +776,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 )}
 
                 <button onClick={handleExport} className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"><Download className="w-4 h-4" /> Export CSV</button>
+                <button 
+                  onClick={() => { fetchInfluencers(); fetchLeadsData(); }} 
+                  className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"
+                >
+                  <RefreshCw className="w-4 h-4" /> Refresh
+                </button>
                 {user.role !== Role.CMO && (
                   <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-6 py-3 bg-[#D946EF] text-white border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-4 h-4" /> New Influencer</button>
                 )}
@@ -559,69 +795,137 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 bg-[#D946EF] rounded-full animate-pulse"></div>
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] w-full">
                         Tracking Period: <span className="text-black">{dateFilter}</span>
                     </p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <button onClick={() => setActiveFilter('ALL')} className={`p-6 rounded-2xl border-4 border-black transition-all flex flex-col justify-center h-28 text-left ${activeFilter === 'ALL' ? 'bg-yellow-400 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center"><Users className="w-6 h-6 text-black" /></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    <button onClick={() => setActiveFilter('ALL')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left ${activeFilter === 'ALL' ? 'bg-[#6366F1] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeFilter === 'ALL' ? 'bg-white/20' : 'bg-indigo-50'}`}><Users className={`w-5 h-5 ${activeFilter === 'ALL' ? 'text-white' : 'text-indigo-600'}`} /></div>
                             <div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Influencers</p>
-                                <span className="text-3xl font-black leading-none">{stats.filteredTotal}</span>
+                                <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${activeFilter === 'ALL' ? 'text-indigo-100' : 'text-slate-500'}`}>Total Influencers</p>
+                                <span className="text-2xl font-black leading-none">{stats.filteredTotal}</span>
                             </div>
                         </div>
                     </button>
-                    <button onClick={() => setActiveFilter('POSTED')} className={`p-6 rounded-2xl border-4 border-black transition-all flex flex-col justify-center h-28 text-left ${activeFilter === 'POSTED' ? 'bg-[#10B981] text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                        <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-6 h-6 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div>
+                    <button onClick={() => setActiveFilter('APPROVED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left ${activeFilter === 'APPROVED' ? 'bg-[#10B981] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeFilter === 'APPROVED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'APPROVED' ? 'text-white' : 'text-emerald-500'}`} /></div>
                             <div>
-                                <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Total Stories Posted</p>
-                                <span className="text-3xl font-black leading-none">{stats.filteredPosted}</span>
+                                <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${activeFilter === 'APPROVED' ? 'text-emerald-100' : 'text-slate-500'}`}>Approved</p>
+                                <span className="text-2xl font-black leading-none">{stats.filteredApproved}</span>
                             </div>
                         </div>
                     </button>
-                    <div className="p-6 rounded-2xl border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-28 text-left relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -mr-12 -mt-12 opacity-50"></div>
-                        <div className="flex items-center gap-4 relative z-10">
-                            <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center"><DollarSign className="w-6 h-6 text-green-600" /></div>
+                    <button onClick={() => setActiveFilter('BUDGET')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left ${activeFilter === 'BUDGET' ? 'bg-[#059669] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeFilter === 'BUDGET' ? 'bg-white/20' : 'bg-green-50'}`}><DollarSign className={`w-5 h-5 ${activeFilter === 'BUDGET' ? 'text-white' : 'text-green-600'}`} /></div>
                             <div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Budget</p>
-                                <span className="text-3xl font-black leading-none text-green-600">{stats.totalAmount.toLocaleString()}</span>
+                                <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${activeFilter === 'BUDGET' ? 'text-green-100' : 'text-slate-500'}`}>Total Budget</p>
+                                <span className="text-2xl font-black leading-none">{stats.totalAmount.toLocaleString()}</span>
+                            </div>
+                        </div>
+                    </button>
+                    {currentBrandData?.revenue > 0 && (
+                        <div className="p-4 rounded-xl border-4 border-black bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-20 text-left">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-amber-50">
+                                    <DollarSign className="w-5 h-5 text-amber-600" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5 text-slate-500">Revenue</p>
+                                    <span className="text-2xl font-black leading-none text-amber-600">{Number(currentBrandData?.revenue).toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="p-4 rounded-xl border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-20 text-left">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-blue-50">
+                                <Users className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total Leads</p>
+                                    <button 
+                                        onClick={() => navigate('/partner_associate/leads')}
+                                        className="text-[7px] font-black uppercase bg-blue-600 text-white px-1.5 py-0.5 rounded shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                                    >
+                                        View →
+                                    </button>
+                                </div>
+                                <span className="text-2xl font-black leading-none text-blue-600">
+                                    {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
+                                </span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                <button onClick={() => setActiveFilter('ALL')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'ALL' ? 'bg-yellow-400 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-black/5 flex items-center justify-center"><Users className="w-5 h-5 text-black" /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredTotal}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Influencers</span></div></div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3">
+                <button onClick={() => setActiveFilter('ALL')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'ALL' ? 'bg-[#6366F1] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'ALL' ? 'bg-white/20' : 'bg-indigo-50'}`}><Users className={`w-4 h-4 ${activeFilter === 'ALL' ? 'text-white' : 'text-indigo-600'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredTotal}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'ALL' ? 'text-indigo-100' : 'text-slate-500'}`}>Influencers</span></div></div>
                 </button>
-                <button onClick={() => setActiveFilter('SCRIPT_SENT')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'SCRIPT_SENT' ? 'bg-[#0085FF] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'SCRIPT_SENT' ? 'bg-white/20' : 'bg-blue-50'}`}><Send className={`w-5 h-5 ${activeFilter === 'SCRIPT_SENT' ? 'text-white' : 'text-blue-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredScriptsSent}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'SCRIPT_SENT' ? 'text-blue-100' : 'text-slate-500'}`}>Scripts Sent</span></div></div>
+                <button onClick={() => setActiveFilter('SCRIPT_SENT')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'SCRIPT_SENT' ? 'bg-[#0085FF] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'SCRIPT_SENT' ? 'bg-white/20' : 'bg-blue-50'}`}><Send className={`w-4 h-4 ${activeFilter === 'SCRIPT_SENT' ? 'text-white' : 'text-blue-500'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredScriptsSent}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'SCRIPT_SENT' ? 'text-blue-100' : 'text-slate-500'}`}>Scripts</span></div></div>
                 </button>
-                <button onClick={() => setActiveFilter('FOOTAGE_RECEIVED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-[#D946EF] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-white/20' : 'bg-pink-50'}`}><Video className={`w-5 h-5 ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-white' : 'text-pink-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredFootageReceived}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-pink-100' : 'text-slate-500'}`}>Raw Videos</span></div></div>
+                <button onClick={() => setActiveFilter('FOOTAGE_RECEIVED')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-[#D946EF] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'FOOTAGE_RECEIVED' ? 'bg-white/20' : 'bg-pink-50'}`}><Video className={`w-4 h-4 ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-white' : 'text-pink-500'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredFootageReceived}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'FOOTAGE_RECEIVED' ? 'text-pink-100' : 'text-slate-500'}`}>Videos</span></div></div>
                 </button>
-                <button onClick={() => setActiveFilter('EDITED_VIDEO')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'EDITED_VIDEO' ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'EDITED_VIDEO' ? 'bg-white/20' : 'bg-purple-50'}`}><Play className={`w-5 h-5 ${activeFilter === 'EDITED_VIDEO' ? 'text-white' : 'text-purple-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredEditedVideos}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'EDITED_VIDEO' ? 'text-purple-100' : 'text-slate-500'}`}>Edited</span></div></div>
+                <button onClick={() => setActiveFilter('EDITED_VIDEO')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'EDITED_VIDEO' ? 'bg-[#8B5CF6] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'EDITED_VIDEO' ? 'bg-white/20' : 'bg-purple-50'}`}><Play className={`w-4 h-4 ${activeFilter === 'EDITED_VIDEO' ? 'text-white' : 'text-purple-500'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredEditedVideos}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'EDITED_VIDEO' ? 'text-purple-100' : 'text-slate-500'}`}>Edited</span></div></div>
                 </button>
-                <button onClick={() => setActiveFilter('POST_PENDING')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'POST_PENDING' ? 'bg-amber-500 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POST_PENDING' ? 'bg-white/20' : 'bg-amber-50'}`}><Clock className={`w-5 h-5 ${activeFilter === 'POST_PENDING' ? 'text-white' : 'text-amber-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPostPending}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POST_PENDING' ? 'text-amber-100' : 'text-slate-500'}`}>Approved</span></div></div>
+                <button onClick={() => setActiveFilter('POST_PENDING')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'POST_PENDING' ? 'bg-amber-500 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'POST_PENDING' ? 'bg-white/20' : 'bg-amber-50'}`}><Clock className={`w-4 h-4 ${activeFilter === 'POST_PENDING' ? 'text-white' : 'text-amber-500'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredPostPending}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'POST_PENDING' ? 'text-amber-100' : 'text-slate-500'}`}>Approved</span></div></div>
                 </button>
-                <button onClick={() => setActiveFilter('POSTED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-24 text-left ${activeFilter === 'POSTED' ? 'bg-[#10B981] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
-                    <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-lg flex items-center justify-center ${activeFilter === 'POSTED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'POSTED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex items-baseline gap-1.5"><span className="text-2xl font-black leading-none">{stats.filteredPosted}</span><span className={`text-[9px] font-bold uppercase ${activeFilter === 'POSTED' ? 'text-emerald-100' : 'text-slate-500'}`}>Post</span></div></div>
+                <button onClick={() => setActiveFilter('APPROVED')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'APPROVED' ? 'bg-[#10B981] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5"><div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'APPROVED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-4 h-4 ${activeFilter === 'APPROVED' ? 'text-white' : 'text-emerald-500'}`} /></div><div className="flex flex-col"><span className="text-lg font-black leading-none">{stats.filteredApproved}</span><span className={`text-[8px] font-bold uppercase ${activeFilter === 'APPROVED' ? 'text-emerald-100' : 'text-slate-500'}`}>Approve</span></div></div>
                 </button>
-                <div className="p-4 rounded-xl border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-24 text-left relative overflow-hidden">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                            <DollarSign className="w-5 h-5 text-green-600" />
+                <button onClick={() => setActiveFilter('BUDGET')} className={`p-2.5 rounded-lg border-2 border-black transition-all flex flex-col justify-center h-16 text-left ${activeFilter === 'BUDGET' ? 'bg-[#059669] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${activeFilter === 'BUDGET' ? 'bg-white/20' : 'bg-green-50'}`}>
+                            <DollarSign className={`w-4 h-4 ${activeFilter === 'BUDGET' ? 'text-white' : 'text-green-600'}`} />
                         </div>
-                        <div className="flex items-baseline gap-1.5">
-                            <span className="text-2xl font-black leading-none text-green-600">{stats.totalAmount.toLocaleString()}</span>
-                            <span className="text-[9px] font-bold text-slate-500 uppercase">Budget</span>
+                        <div className="flex flex-col">
+                            <span className="text-lg font-black leading-none">{stats.totalAmount.toLocaleString()}</span>
+                            <span className={`text-[8px] font-bold uppercase ${activeFilter === 'BUDGET' ? 'text-green-100' : 'text-slate-500'}`}>Budget</span>
+                        </div>
+                    </div>
+                </button>
+                {currentBrandData?.revenue > 0 && (
+                    <div className="p-2.5 rounded-lg border-2 border-black bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-16 text-left">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 bg-amber-50">
+                                <DollarSign className="w-4 h-4 text-amber-600" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-lg font-black leading-none text-amber-600">{Number(currentBrandData?.revenue).toLocaleString()}</span>
+                                <span className="text-[8px] font-bold uppercase text-slate-500">Revenue</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <div className="p-2.5 rounded-lg border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center h-16 text-left">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 bg-blue-50">
+                            <Users className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[8px] font-bold uppercase text-slate-500">Leads</span>
+                                <button 
+                                    onClick={() => navigate('/partner_associate/leads')}
+                                    className="text-[6px] font-black uppercase bg-blue-600 text-white px-1 py-0.5 rounded shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                                >
+                                    View →
+                                </button>
+                            </div>
+                            <span className="text-lg font-black leading-none text-blue-600">
+                                {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -631,60 +935,71 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       {/* Network Distribution Breakdown */}
       {influencers.length > 0 && (
-          <div className="mb-8 grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
-            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-red-500" /> Country Distribution
+          <div className={`mb-10 grid grid-cols-1 ${currentBrandData?.brand_type === 'STORY' ? 'lg:grid-cols-2 max-w-2xl' : 'lg:grid-cols-3 max-w-4xl'} gap-4 animate-slide-up`}>
+            <div className="bg-white border-2 border-black rounded-xl p-3 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3 flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-red-500" /> Country
                 </h4>
-                <div className="flex flex-wrap gap-2">
-                    {Object.entries(networkDistribution.countries).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                        <button 
-                            key={name} 
-                            onClick={() => setCountryFilter(countryFilter === name ? 'ALL' : name)}
-                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${countryFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
-                        >
-                            <span className="text-[10px] font-bold uppercase">{name}</span>
-                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${countryFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                        </button>
-                    ))}
+                <div className="relative">
+                    <select 
+                        value={countryFilter}
+                        onChange={(e) => setCountryFilter(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black rounded-lg text-[9px] font-black uppercase tracking-widest appearance-none focus:outline-none cursor-pointer bg-slate-50 hover:bg-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                        <option value="ALL">All Countries ({influencers.length})</option>
+                        {Object.entries(networkDistribution.countries).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                            <option key={name} value={name}>{name} ({count})</option>
+                        ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-purple-500" /> Niche Distribution
+            <div className="bg-white border-2 border-black rounded-xl p-3 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3 flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5 text-purple-500" /> Niche
                 </h4>
-                <div className="flex flex-wrap gap-2">
-                    {Object.entries(networkDistribution.niches).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                        <button 
-                            key={name} 
-                            onClick={() => setNicheFilter(nicheFilter === name ? 'ALL' : name)}
-                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${nicheFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
-                        >
-                            <span className="text-[10px] font-bold uppercase">{name}</span>
-                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${nicheFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                        </button>
-                    ))}
+                <div className="relative">
+                    <select 
+                        value={nicheFilter}
+                        onChange={(e) => setNicheFilter(e.target.value)}
+                        className="w-full px-3 py-2 border-2 border-black rounded-lg text-[9px] font-black uppercase tracking-widest appearance-none focus:outline-none cursor-pointer bg-slate-50 hover:bg-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                        <option value="ALL">All Niches ({influencers.length})</option>
+                        {Object.entries(networkDistribution.niches).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                            <option key={name} value={name}>{name} ({count})</option>
+                        ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white border-2 border-black rounded-2xl p-6 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4 flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-green-600" /> Collab Type Distribution
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                    {Object.entries(networkDistribution.collabs).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
-                        <button 
-                            key={name} 
-                            onClick={() => setCollabFilter(collabFilter === name ? 'ALL' : name)}
-                            className={`px-3 py-1.5 border-2 border-black rounded-lg flex items-center gap-2 transition-all hover:translate-y-[-2px] active:translate-y-0 ${collabFilter === name ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-slate-50 text-slate-600 hover:bg-white'}`}
+            {currentBrandData?.brand_type !== 'STORY' && (
+                <div className="bg-white border-2 border-black rounded-xl p-3 shadow-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3 flex items-center gap-2">
+                        <Briefcase className="w-3.5 h-3.5 text-green-600" /> Collab Type
+                    </h4>
+                    <div className="relative">
+                        <select 
+                            value={collabFilter}
+                            onChange={(e) => setCollabFilter(e.target.value)}
+                            className="w-full px-3 py-2 border-2 border-black rounded-lg text-[9px] font-black uppercase tracking-widest appearance-none focus:outline-none cursor-pointer bg-slate-50 hover:bg-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                         >
-                            <span className="text-[10px] font-bold uppercase">{name}</span>
-                            <span className={`px-1.5 py-0.5 text-[9px] font-black rounded-md ${collabFilter === name ? 'bg-white text-black' : 'bg-black text-white'}`}>{count}</span>
-                        </button>
-                    ))}
+                            <option value="ALL">All Collab Types ({influencers.length})</option>
+                            {Object.entries(networkDistribution.collabs).sort((a: any, b: any) => b[1] - a[1]).map(([name, count]: any) => (
+                                <option key={name} value={name}>{name} ({count})</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                            <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
           </div>
       )}
 
@@ -697,13 +1012,14 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             </div>
         </div>
         <div className="flex items-center gap-2">
-            {(activeFilter !== 'ALL' || nicheFilter !== 'ALL' || countryFilter !== 'ALL' || collabFilter !== 'ALL') && (
+            {(activeFilter !== 'ALL' || nicheFilter !== 'ALL' || countryFilter !== 'ALL' || collabFilter !== 'ALL' || searchTerm !== '') && (
             <button 
                 onClick={() => {
                     setActiveFilter('ALL');
                     setNicheFilter('ALL');
                     setCountryFilter('ALL');
                     setCollabFilter('ALL');
+                    setSearchTerm('');
                 }} 
                 className="px-6 py-4 bg-slate-100 hover:bg-slate-200 border-2 border-black rounded-xl font-bold uppercase text-[10px] transition-all flex items-center gap-2"
             >
@@ -751,7 +1067,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Script Sent</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Raw Video</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Edited Video</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Post</th>
+                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Approve</th>
                         <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Proof</th>
                     </>
                 )}
@@ -795,8 +1111,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     </td>
                     <td className="px-6 py-4">
                       {inf.instagram_profile ? (
-                        <a href={`https://instagram.com/${inf.instagram_profile.replace('@', '')}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-pink-600 font-bold hover:underline transition-all">
-                          <Instagram className="w-4 h-4" /><span className="text-xs">{inf.instagram_profile}</span><ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <a 
+                          href={inf.instagram_profile.startsWith('http') ? inf.instagram_profile : `https://instagram.com/${inf.instagram_profile.replace('@', '')}`} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="flex items-center gap-2 text-pink-600 font-bold hover:underline transition-all group/insta"
+                        >
+                          <Instagram className="w-4 h-4 shrink-0" />
+                          <span className="text-xs truncate max-w-[150px]">{inf.instagram_profile}</span>
+                          <ExternalLink className="w-3 h-3 opacity-0 group-hover/insta:opacity-100 transition-opacity shrink-0" />
                         </a>
                       ) : <span className="text-slate-300 text-xs font-bold">—</span>}
                     </td>
@@ -804,10 +1127,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                       {inf.influencer_email ? (
                         <a 
                           href={`mailto:${inf.influencer_email}`} 
-                          className="flex items-center gap-2 text-blue-600 font-bold hover:underline transition-all"
+                          className="flex items-center gap-2 text-blue-600 font-bold hover:underline transition-all group/mail"
                         >
-                          <Mail className="w-4 h-4" />
-                          <span className="text-xs lowercase">{inf.influencer_email}</span>
+                          <Mail className="w-4 h-4 shrink-0" />
+                          <span className="text-xs lowercase truncate max-w-[150px]">{inf.influencer_email}</span>
+                          <ExternalLink className="w-3 h-3 opacity-0 group-hover/mail:opacity-100 transition-opacity shrink-0" />
                         </a>
                       ) : (
                         <span className="text-slate-300 text-xs font-bold">—</span>
@@ -827,20 +1151,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     </td>
                     {currentBrandData?.brand_type !== 'STORY' && (
                         <td className="px-6 py-4">
-                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials || '—'}</span>
+                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials?.replace(/\s?\(\)/g, '') || '—'}</span>
                         </td>
                     )}
                     <td className="px-6 py-5">
-                        <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full border border-black inline-flex items-center gap-1.5">
-                            <DollarSign className="w-3 h-3" />
-                            <span className="text-[11px] font-bold">{inf.budget || '—'}</span>
+                        <div className={`px-3 py-1 rounded-full border border-black inline-flex items-center gap-1.5 ${(inf.product_name || inf.commercials?.toLowerCase().includes('barter')) ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+                            {(inf.product_name || inf.commercials?.toLowerCase().includes('barter')) ? <Tag className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
+                            <span className="text-[11px] font-bold">
+                                {inf.product_name || (inf.commercials?.toLowerCase().includes('barter') ? (inf.commercials.includes('(') ? inf.commercials.split('(')[1].replace(')', '') : 'Barter') : (inf.budget || '—'))}
+                            </span>
                         </div>
                     </td>
 
                     {currentBrandData?.brand_type !== 'STORY' && (
                         <td className="px-6 py-4">
                             <div className="flex justify-center">
-                                {inf.commercials === 'Barter' ? (
+                                {inf.commercials?.toLowerCase().includes('barter') ? (
                                     <div className="relative">
                                         <select 
                                             value={inf.product_received || 'no'}
@@ -864,11 +1190,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
                     {currentBrandData?.brand_type === 'STORY' && (
                         <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                                <div className="px-3 py-1 bg-blue-50 text-blue-700 border-2 border-blue-200 text-[10px] font-black rounded-lg">
-                                    {(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length} POSTED
-                                </div>
-
+                            <div className={`px-3 py-1 rounded-lg text-center ${(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length > 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-50 text-slate-400'} font-bold`}>
+                                <span className="text-sm">{(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length}</span>
+                                <span className="text-[10px] ml-1 uppercase tracking-tighter">Posted</span>
                             </div>
                         </td>
                     )}
@@ -876,13 +1200,20 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     {currentBrandData?.brand_type === 'STORY' && (
                         <>
                             <td className="px-6 py-4">
-                            {inf.payment ? (
-                                <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${inf.payment === 'yes' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
-                                {inf.payment}
-                                </span>
-                            ) : (
-                                <span className="text-slate-300 text-xs font-bold">—</span>
-                            )}
+                                <div className="relative">
+                                    <select 
+                                        value={inf.payment || 'no'}
+                                        onChange={(e) => handleUpdatePaymentStatus(inf.id, e.target.value)}
+                                        disabled={updatingId === inf.id || user.role === Role.CMO}
+                                        className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.payment === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
+                                    >
+                                        <option value="yes" className="bg-white text-black">Yes</option>
+                                        <option value="no" className="bg-white text-black">No</option>
+                                    </select>
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <ChevronRight className="w-3 h-3 rotate-90 text-white" />}
+                                    </div>
+                                </div>
                             </td>
                             <td className="px-6 py-4">
                             <span className="text-xs font-bold text-slate-700">
@@ -914,9 +1245,17 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     
                     {currentBrandData?.brand_type !== 'STORY' && (
                         <>
-                            <td className="px-6 py-5">
+                                <td className="px-6 py-5">
                                 {inf.script_sent ? (
-                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                    <div className="flex flex-col items-center gap-1">
+                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                        <span className="text-[8px] font-bold text-green-600 uppercase">Script Sent</span>
+                                    </div>
+                                ) : (inf.raw_video || inf.edited_video) ? (
+                                    <div className="flex flex-col items-center gap-1 animate-pulse">
+                                        <Video className="w-5 h-5 text-blue-500" />
+                                        <span className="text-[8px] font-bold text-blue-600 uppercase whitespace-nowrap">Direct Upload</span>
+                                    </div>
                                 ) : (
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
@@ -940,8 +1279,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                 )}
                             </td>
                             <td className="px-6 py-5 bg-slate-50/30">
-                                {inf.is_posted ? (
-                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                {inf.project_status === WorkflowStage.PA_FINAL_REVIEW || inf.project_status === WorkflowStage.POSTED ? (
+                                    <div className="flex flex-col items-center">
+                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                        <span className="text-[9px] font-bold text-green-600 mt-1">{stats.filteredApproved}</span>
+                                    </div>
                                 ) : (
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
@@ -978,15 +1320,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       {/* Edit Influencer Modal */}
       {isEditModalOpen && editingInfluencer && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white border-4 border-black w-full max-w-2xl shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-scale-in">
-            <div className="bg-black p-6 flex items-center justify-between">
+          <div className="bg-white border-2 border-black w-full max-w-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-scale-in">
+            <div className="bg-indigo-600 p-6 flex items-center justify-between border-b-2 border-black">
               <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3">
                 <Edit2 className="w-6 h-6 text-yellow-400" />
                 Edit Influencer Details
               </h3>
               <button 
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-white hover:text-red-400 transition-colors"
+                className="text-white hover:text-indigo-200 transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1168,6 +1510,20 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Product Name (for Barter)</label>
+                  <div className="relative">
+                    <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+                    <input 
+                      type="text" 
+                      value={editingInfluencer.product_name || ''}
+                      onChange={(e) => setEditingInfluencer({...editingInfluencer, product_name: e.target.value})}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                      placeholder="e.g. 2 units of Premium Product X"
+                    />
+                  </div>
+                </div>
+
                 {(editingInfluencer.brand_type === 'STORY' || currentBrandData?.brand_type === 'STORY') && (
                   <>
                     <div className="space-y-2">
@@ -1235,7 +1591,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 <button 
                   type="submit"
                   disabled={isSaving}
-                  className="flex-1 py-4 bg-black text-white border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.4)] transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-4 bg-indigo-600 text-white border-2 border-black font-black uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2"
                 >
                   {isSaving ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-5 h-5" />}
                   Save Changes

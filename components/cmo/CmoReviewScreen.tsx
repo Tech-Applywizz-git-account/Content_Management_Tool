@@ -420,7 +420,6 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                             instance_project_id: project.id,
                             influencer_name: project.data?.influencer_name || 'Influencer',
                             influencer_email: project.data?.influencer_email || '',
-                            action: 'CMO_APPROVED_PA_VIDEO',
                             sent_by: user.full_name,
                             sent_by_id: user.id,
                             status: 'VIDEO_EDITING'
@@ -649,6 +648,9 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
                             {project.data?.source === 'DESIGNER_INITIATED' ? 'Creative Review: ' : project.data?.source === 'IDEA_PROJECT' && !project.data?.script_content ? 'Idea Review: ' : 'Script Review: '}
                             {project.title}
+                            {project.brand && (
+                                <span className="text-slate-400 text-sm ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                            )}
                         </h1>
                         <div className="flex flex-wrap items-center gap-2 mt-1">
                             {project.data?.source === 'IDEA_PROJECT' && (
@@ -740,6 +742,12 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                     if (previousScript || previousAssets) return 'Rework';
                                     return 'New';
                                 })()}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                            <div className="font-bold text-slate-900 uppercase">
+                                {project.brand || '—'}
                             </div>
                         </div>
                         <div>
@@ -917,14 +925,18 @@ const CmoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
 
                                     return <ScriptDisplay content={displayContent || ''} caption={project.data?.captions} />;
                                 } else {
-                                    // For non-final review stages, show comparison if we have a previous script content
-                                    if (previousScript && previousScript.trim() !== '') {
-                                        const currentScriptContent = project.data?.script_content || '';
+                                    // For non-final review stages, show comparison ONLY if the script
+                                    // was actually changed during the rework cycle.
+                                    const currentScriptContent = project.data?.script_content || '';
+                                    const cleanedPrev = stripHtmlTags(previousScript || '').trim();
+                                    const cleanedCurrent = stripHtmlTags(currentScriptContent).trim();
+                                    const scriptActuallyChanged = cleanedPrev !== '' && cleanedPrev !== cleanedCurrent;
 
+                                    if (scriptActuallyChanged) {
                                         return (
                                             <ScriptComparison
-                                                previousScript={stripHtmlTags(previousScript)}
-                                                currentScript={stripHtmlTags(currentScriptContent)}
+                                                previousScript={previousScript || ''}
+                                                currentScript={currentScriptContent}
                                                 previousCaption={previousCaption}
                                                 currentCaption={project.data?.captions}
                                             />

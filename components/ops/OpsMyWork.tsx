@@ -175,7 +175,12 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                             </div>
 
                             {/* Title */}
-                            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight mb-3">{project.title}</h3>
+                            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight mb-2">
+                                {project.title}
+                                {project.brand && (
+                                    <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                                )}
+                            </h3>
 
                             {/* Content Type */}
                             <div className="flex items-center gap-2 mb-4 text-sm">

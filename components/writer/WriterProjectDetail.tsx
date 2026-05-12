@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Project, Role, STAGE_LABELS, UserStatus, WorkflowStage, User as PublicUser } from '../../types';
-import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, FileText, MessageSquare, Building2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
 import { getWorkflowState, isInfluencerVideo } from '../../services/workflowUtils';
@@ -14,9 +14,11 @@ interface Props {
     project: Project;
     onBack: () => void;
     showWorkflowStatus?: boolean;
+    hideActions?: boolean;
+    simplifiedView?: boolean;
 }
 
-const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowStatus = true }) => {
+const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowStatus = true, hideActions = false, simplifiedView = false }) => {
     const [publicUser, setPublicUser] = useState<PublicUser | null>(null);
     const [userError, setUserError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,6 +50,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
     const [popupMessage, setPopupMessage] = useState('');
     const [stageName, setStageName] = useState('');
     const [popupDuration, setPopupDuration] = useState(5000); // 5 seconds
+
+    // Reject video modal state
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [rejectReasonInput, setRejectReasonInput] = useState('');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -140,11 +146,24 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     };
 
                     setPreviousAssets({
-                        video_link: meta?.reworked_by_role === Role.CINE ? meta.before_link : (lastRework?.video_link || getLastHistoryItem(project.cine_video_links_history)),
-                        edited_video_link: (meta?.reworked_by_role === Role.EDITOR || meta?.reworked_by_role === Role.SUB_EDITOR) ? meta.before_link : (lastRework?.edited_video_link || getLastHistoryItem(project.editor_video_links_history) || getLastHistoryItem(project.sub_editor_video_links_history)),
-                        thumbnail_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.thumbnail_link || getLastHistoryItem(project.designer_video_links_history)),
-                        creative_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.creative_link || getLastHistoryItem(project.designer_video_links_history))
+                        video_link: meta?.reworked_by_role === Role.CINE ? meta.before_link : (lastRework?.video_link || getLastHistoryItem(project.cine_video_links)),
+                        edited_video_link: (meta?.reworked_by_role === Role.EDITOR || meta?.reworked_by_role === Role.SUB_EDITOR) ? meta.before_link : (lastRework?.edited_video_link || getLastHistoryItem(project.editor_video_links) || getLastHistoryItem(project.sub_editor_video_links)),
+                        thumbnail_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.thumbnail_link || getLastHistoryItem(project.designer_video_links)),
+                        creative_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.creative_link || getLastHistoryItem(project.designer_video_links))
                     });
+                } else if (project.current_stage === 'WRITER_VIDEO_APPROVAL') {
+                    // If no explicit rework entry, look through all history for a previous video_link
+                    // This covers the case where cine re-submitted after writer rejection
+                    const currentVideoLink = project.video_link;
+                    const prevVideoEntry = historyData.find(h => h.video_link && h.video_link !== currentVideoLink);
+                    if (prevVideoEntry) {
+                        setPreviousAssets({
+                            video_link: prevVideoEntry.video_link || null,
+                            edited_video_link: null,
+                            thumbnail_link: null,
+                            creative_link: null
+                        });
+                    }
                 }
 
                 const scriptEntry = historyData.find(h => h.script_content);
@@ -194,6 +213,58 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
     return (
         <div className="min-h-screen bg-white font-sans flex flex-col animate-fade-in">
+            {/* Reject Video Modal */}
+            {showRejectModal && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full p-8 animate-scale-in">
+                        <h3 className="text-xl font-black uppercase text-slate-900 mb-2">Reject Video</h3>
+                        <p className="text-sm font-bold text-slate-500 uppercase mb-5">Provide a reason for sending back to the cinematographer</p>
+                        <textarea
+                            value={rejectReasonInput}
+                            onChange={(e) => setRejectReasonInput(e.target.value)}
+                            placeholder="Enter rejection reason..."
+                            rows={4}
+                            className="w-full p-3 border-2 border-black focus:outline-none focus:ring-2 focus:ring-red-400 font-medium text-sm resize-none mb-5"
+                            autoFocus
+                        />
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setShowRejectModal(false)}
+                                className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={!rejectReasonInput.trim() || isSubmitting}
+                                onClick={async () => {
+                                    if (!rejectReasonInput.trim()) return;
+                                    try {
+                                        setIsSubmitting(true);
+                                        setShowRejectModal(false);
+                                        await db.rejectTask(project.id, WorkflowStage.CINEMATOGRAPHY, `Writer rejected the video: ${rejectReasonInput.trim()}`);
+                                        setPopupMessage('Video rejected. Sent back to cinematography for rework.');
+                                        setStageName('Cinematography');
+                                        setPopupDuration(5000);
+                                        setShowPopup(true);
+                                        setTimeout(() => onBack(), 5500);
+                                    } catch (error) {
+                                        console.error('Failed to reject video:', error);
+                                        setPopupMessage('Failed to reject video. Please try again.');
+                                        setStageName('Error');
+                                        setPopupDuration(5000);
+                                        setShowPopup(true);
+                                    } finally {
+                                        setIsSubmitting(false);
+                                    }
+                                }}
+                                className="flex-1 px-4 py-3 bg-red-600 border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50"
+                            >
+                                {isSubmitting ? 'Rejecting...' : 'Reject Video'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <header className="h-16 border-b-2 border-black flex items-center justify-between px-6 sticky top-0 bg-white/95 backdrop-blur z-20 shadow-[0_4px_0px_0px_rgba(0,0,0,0.1)]">
                 <div className="flex items-center space-x-4">
                     <button
@@ -252,16 +323,18 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     <p className="font-black text-lg uppercase">{STAGE_LABELS[project.current_stage]}</p>
                                 </div>
 
-                                <div className="bg-white p-6 border-2 border-black">
-                                    <div className="flex items-center space-x-2 mb-2">
-                                        <FileText className="w-5 h-5 text-blue-600" />
-                                        <span className="text-xs font-bold uppercase text-slate-500">Status</span>
+                                {/* Brand Field */}
+                                {project.brand && (
+                                    <div className="bg-white p-6 border-2 border-black">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                            <Building2 className="w-5 h-5 text-[#0085FF]" />
+                                            <span className="text-xs font-bold uppercase text-slate-500">Brand</span>
+                                        </div>
+                                        <p className="font-black text-lg uppercase text-[#0085FF]">
+                                            {project.brand.replace(/_/g, ' ')}
+                                        </p>
                                     </div>
-                                    <p className="font-black text-lg uppercase">
-                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
-                                            (getWorkflowState(project).isRework ? 'Rework' : project.status.replace(/_/g, ' '))}
-                                    </p>
-                                </div>
+                                )}
                             </div>
 
                             <div className="mt-6">
@@ -335,83 +408,100 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
 
 
 
-                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Project Details</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {project.data.brief && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brief</span>
-                                    <p className="text-slate-700 font-medium">{project.data.brief}</p>
-                                </div>
-                            )}
-                            {project.data.keywords && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Keywords</span>
-                                    <p className="text-slate-700 font-medium">{project.data.keywords}</p>
-                                </div>
-                            )}
-                            {project.brand && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brand</span>
-                                    <p className="font-black uppercase text-[#0085FF]">
-                                        {project.brand.replace(/_/g, ' ')}
-                                    </p>
-                                </div>
-                            )}
-                            {project.data.niche && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
-                                    <p className="text-slate-700 font-medium uppercase">
-                                        {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                                            : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                                                : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                                                    : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
-                                                        : project.data.niche === 'OTHER' && project.data.niche_other
-                                                            ? project.data.niche_other
-                                                            : project.data.niche}
-                                    </p>
-                                </div>
-                            )}
-                            {project.data?.influencer_name && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Influencer Name</span>
-                                    <p className="text-slate-700 font-medium">{project.data.influencer_name}</p>
-                                </div>
-                            )}
-                            {project.data?.referral_link && (
-                                <div>
-                                    <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Referral Link</span>
-                                    <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 font-medium hover:underline">View Link</a>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <Timeline project={{ ...project, history: comments }} />
-
-                        <div className="flex items-start space-x-4 mt-8 pt-6 border-t-2 border-dashed border-slate-300">
-                            <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
-                            <div className="flex-1 pl-6">
-                                <span className="text-xs font-bold uppercase text-slate-500">Current</span>
-                                <p className="font-black text-slate-900 uppercase mt-1">
-                                    {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
-                                        project.assigned_to_role === Role.CMO ? 'With CMO' :
-                                            project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
-                                </p>
-                                <p className="text-sm text-slate-600 mt-2">
-                                    {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
-                                </p>
+                    {!simplifiedView && (
+                        <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Project Details</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {project.data.brief && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brief</span>
+                                        <p className="text-slate-700 font-medium">{project.data.brief}</p>
+                                    </div>
+                                )}
+                                {project.data.keywords && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Keywords</span>
+                                        <p className="text-slate-700 font-medium">{project.data.keywords}</p>
+                                    </div>
+                                )}
+                                {project.brand && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Brand</span>
+                                        <p className="font-black uppercase text-[#0085FF]">
+                                            {project.brand.replace(/_/g, ' ')}
+                                        </p>
+                                    </div>
+                                )}
+                                {project.data.niche && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Niche</span>
+                                        <p className="text-slate-700 font-medium uppercase">
+                                            {project.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                                                : project.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                                                    : project.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                                                        : project.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                                                            : project.data.niche === 'OTHER' && project.data.niche_other
+                                                                ? project.data.niche_other
+                                                                : project.data.niche}
+                                        </p>
+                                    </div>
+                                )}
+                                {project.data?.influencer_name && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Influencer Name</span>
+                                        <p className="text-slate-700 font-medium">{project.data.influencer_name}</p>
+                                    </div>
+                                )}
+                                {project.data?.referral_link && (
+                                    <div>
+                                        <span className="text-xs font-bold uppercase text-slate-500 block mb-2">Referral Link</span>
+                                        <a href={project.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 font-medium hover:underline">View Link</a>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {(project.current_stage === 'MULTI_WRITER_APPROVAL' || project.current_stage === 'WRITER_VIDEO_APPROVAL') && (
-                        <div className="bg-orange-50 p-6 border-2 border-orange-400 mb-6">
+                        <div className="bg-orange-50 p-6 border-2 border-orange-400 mb-6 mt-6">
                             <h3 className="text-lg font-black uppercase text-orange-900 mb-4">
                                 {project.current_stage === 'MULTI_WRITER_APPROVAL' ? 'Multi-Writer Approval' : 'Video Approval'}
                             </h3>
                             <div className="space-y-4">
+                                {project.video_link && (
+                                    <div className="bg-white p-4 border-2 border-orange-300">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-bold text-orange-800">{isInfluencerVideo(project) ? 'Raw Video' : 'Shoot Video'}</h4>
+                                            {previousAssets?.video_link && (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-orange-200 border border-orange-400">Reworked Version</span>
+                                            )}
+                                        </div>
+                                        <a
+                                            href={project.video_link}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 underline break-all font-medium"
+                                        >
+                                            {project.video_link}
+                                        </a>
+
+                                        {previousAssets?.video_link && (
+                                            <div className="mt-4 pt-4 border-t border-dashed border-orange-200">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase italic">Previous Version (Before Rework)</h4>
+                                                </div>
+                                                <a
+                                                    href={previousAssets.video_link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-slate-500 underline break-all text-sm opacity-70"
+                                                >
+                                                    {previousAssets.video_link}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {project.edited_video_link && (
                                     <div className="bg-white p-4 border-2 border-orange-300">
                                         <div className="flex justify-between items-center mb-2">
@@ -481,123 +571,82 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                     </div>
                                 )}
 
-                                {/* Script Information */}
-                                {(project.data?.script_content || project.data?.script_reference_link) && (
-                                    <div className="bg-white p-4 border-2 border-orange-300">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-bold text-orange-800">Script Information</h4>
+                                {!hideActions && (
+                                    !writerAlreadyActed ? (
+                                        <div className="flex space-x-4 pt-4">
+                                            <button
+                                                onClick={async () => {
+                                                    if (!publicUser?.id) {
+                                                        alert('User profile not loaded. Please refresh and try again.');
+                                                        return;
+                                                    }
+                                                    try {
+                                                        setIsSubmitting(true);
+                                                        await db.advanceWorkflow(project.id, 'Writer approved the video');
+                                                        setPopupMessage('Video approved successfully! The project has been sent to Video Editing.');
+                                                        setStageName('Video Editing');
+                                                        setPopupDuration(5000);
+                                                        setShowPopup(true);
+                                                        setTimeout(() => onBack(), 5500);
+                                                    } catch (error) {
+                                                        console.error('Failed to approve video:', error);
+                                                        setPopupMessage('Failed to approve video. Please try again.');
+                                                        setStageName('Error');
+                                                        setPopupDuration(5000);
+                                                        setShowPopup(true);
+                                                    } finally {
+                                                        setIsSubmitting(false);
+                                                    }
+                                                }}
+                                                disabled={isSubmitting}
+                                                className="px-6 py-3 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
+                                            >
+                                                {isSubmitting ? 'Approving...' : 'Approve Video'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (!publicUser?.id) {
+                                                        alert('User profile not loaded. Please refresh and try again.');
+                                                        return;
+                                                    }
+                                                    setRejectReasonInput('');
+                                                    setShowRejectModal(true);
+                                                }}
+                                                disabled={isSubmitting}
+                                                className="px-6 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
+                                            >
+                                                {isSubmitting ? 'Rejecting...' : 'Reject Video'}
+                                            </button>
                                         </div>
-                                        {project.data?.script_content && (
-                                            <div className="mb-3">
-                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Content:</p>
-                                                <p className="text-slate-900 text-sm whitespace-pre-wrap break-words">{project.data.script_content}</p>
+                                    ) : (
+                                        <div className="pt-4">
+                                            <div className="bg-green-100 p-6 border-2 border-green-400 mb-4">
+                                                <h3 className="font-black text-green-800 mb-2">Action Already Taken</h3>
+                                                <p className="text-green-700">
+                                                    You have already acted on this project.
+                                                    No further action is required from you.
+                                                </p>
                                             </div>
-                                        )}
-                                        {project.data?.script_reference_link && (
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-600 uppercase mb-1">Script Reference Link:</p>
-                                                <a
-                                                    href={project.data.script_reference_link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 underline break-all text-sm"
-                                                >
-                                                    {project.data.script_reference_link}
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {!writerAlreadyActed ? (
-                                    <div className="flex space-x-4 pt-4">
-                                        <button
-                                            onClick={async () => {
-                                                if (!publicUser?.id) {
-                                                    alert('User profile not loaded. Please refresh and try again.');
-                                                    return;
-                                                }
-                                                try {
-                                                    setIsSubmitting(true);
-                                                    await db.advanceWorkflow(project.id, 'Writer approved the final video');
-                                                    setPopupMessage('Video approved successfully! The project has been sent to the ops team.');
-                                                    setStageName('Ops Scheduling');
-                                                    setPopupDuration(5000);
-                                                    setShowPopup(true);
-                                                    setTimeout(() => onBack(), 5500);
-                                                } catch (error) {
-                                                    console.error('Failed to approve video:', error);
-                                                    setPopupMessage('Failed to approve video. Please try again.');
-                                                    setStageName('Error');
-                                                    setPopupDuration(5000);
-                                                    setShowPopup(true);
-                                                } finally {
-                                                    setIsSubmitting(false);
-                                                }
-                                            }}
-                                            disabled={isSubmitting}
-                                            className="px-6 py-3 bg-green-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
-                                        >
-                                            {isSubmitting ? 'Approving...' : 'Approve Video'}
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                if (!publicUser?.id) {
-                                                    alert('User profile not loaded. Please refresh and try again.');
-                                                    return;
-                                                }
-                                                try {
-                                                    setIsSubmitting(true);
-                                                    await db.rejectTask(project.id, WorkflowStage.VIDEO_EDITING, 'Writer rejected the video - needs rework');
-                                                    setPopupMessage('Video rejected. Sent back to editor for rework.');
-                                                    setStageName('Video Editing');
-                                                    setPopupDuration(5000);
-                                                    setShowPopup(true);
-                                                    setTimeout(() => onBack(), 5500);
-                                                } catch (error) {
-                                                    console.error('Failed to reject video:', error);
-                                                    setPopupMessage('Failed to reject video. Please try again.');
-                                                    setStageName('Error');
-                                                    setPopupDuration(5000);
-                                                    setShowPopup(true);
-                                                } finally {
-                                                    setIsSubmitting(false);
-                                                }
-                                            }}
-                                            disabled={isSubmitting}
-                                            className="px-6 py-3 bg-red-600 text-white font-black uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[1px] transition-all disabled:opacity-50"
-                                        >
-                                            {isSubmitting ? 'Rejecting...' : 'Reject Video'}
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="pt-4">
-                                        <div className="bg-green-100 p-6 border-2 border-green-400 mb-4">
-                                            <h3 className="font-black text-green-800 mb-2">Action Already Taken</h3>
-                                            <p className="text-green-700">
-                                                You have already acted on this project.
-                                                No further action is required from you.
-                                            </p>
                                         </div>
-                                    </div>
+                                    )
                                 )}
                             </div>
                         </div>
                     )}
 
-                    {project.current_stage === WorkflowStage.WRITER_REVISION && (
-                        <div className="bg-blue-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold Greenland-900">Upload {isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} Video</h3>
-                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the {isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link for the editor to process.</p>
+                    {!hideActions && project.current_stage === WorkflowStage.WRITER_REVISION && (
+                        <div className="bg-blue-50 p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6 mt-6">
+                            <h3 className="text-xl font-black uppercase mb-6 text-slate-900 font-bold Greenland-900">Upload {isInfluencerVideo(project) ? 'Raw' : 'Shoot'} Video</h3>
+                            <p className="text-sm font-bold text-slate-500 uppercase mb-4">You have already acted on the script. Please upload the {isInfluencerVideo(project) ? 'raw' : 'shoot'} video link for the editor to process.</p>
 
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">{isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} Video Link (Google Drive / S3 / Direct)</label>
+                                    <label className="text-xs font-black text-slate-400 uppercase mb-1 block">{isInfluencerVideo(project) ? 'Raw' : 'Shoot'} Video Link (Google Drive / S3 / Direct)</label>
                                     <input
                                         type="text"
                                         value={videoLink}
                                         onChange={(e) => setVideoLink(e.target.value)}
-                                        placeholder={`Enter the ${isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link here`}
+                                        placeholder={`Enter the ${isInfluencerVideo(project) ? 'raw' : 'shoot'} video link here`}
                                         className="w-full p-3 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                                     />
                                 </div>
@@ -613,7 +662,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                                             await db.projects.update(project.id, { video_link: videoLink });
                                             await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
 
-                                            setPopupMessage(`${isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
+                                            setPopupMessage(`${isInfluencerVideo(project) ? 'Raw' : 'Shoot'} video uploaded and project sent for final CMO review!`);
                                             setStageName('Final Review (CMO)');
                                             setPopupDuration(5000);
                                             setShowPopup(true);
@@ -635,6 +684,30 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                             </div>
                         </div>
                     )}
+
+                    <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <Timeline project={{ ...project, history: comments }} />
+
+                        {!simplifiedView && (
+                            <div className="flex items-start space-x-4 mt-8 pt-6 border-t-2 border-dashed border-slate-300">
+                                <div className={`w-3 h-3 border-2 border-black rounded-full mt-2 ${isRejected ? 'bg-red-600' : 'bg-slate-300 animate-pulse'}`}></div>
+                                <div className="flex-1 pl-6">
+                                    <span className="text-xs font-bold uppercase text-slate-500">Current</span>
+                                    <p className="font-black text-slate-900 uppercase mt-1">
+                                        {isRejected ? (returnType === 'reject' ? 'Project Rejected' : 'Rework Required') :
+                                            project.assigned_to_role === Role.CMO ? 'With CMO' :
+                                                project.assigned_to_role === Role.CEO ? 'With CEO' : 'In Process'}
+                                    </p>
+                                    <p className="text-sm text-slate-600 mt-2">
+                                        {isRejected ? 'Awaiting resubmission with changes' : 'Awaiting review decision'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+
+
 
                     <div className={`p-6 ${(isRejected || project.status === 'REWORK') ? 'bg-red-50 border-2 border-red-400' : 'bg-yellow-50 border-2 border-yellow-400'}`}>
                         <p className={`text-sm font-bold ${(isRejected || project.status === 'REWORK') ? 'text-red-900' : 'text-yellow-900'}`}>

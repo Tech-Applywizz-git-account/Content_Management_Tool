@@ -20,6 +20,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
             rawReceived: number; 
             editedSent: number, 
             proofOfPosting: number,
+            directUploads: number,
             totalProjects: number, 
             influencerProjects: Project[],
             brands: Set<string>
@@ -46,6 +47,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                     rawReceived: 0, 
                     editedSent: 0, 
                     proofOfPosting: 0,
+                    directUploads: 0,
                     totalProjects: 0, 
                     influencerProjects: [],
                     brands: new Set<string>()
@@ -61,8 +63,11 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                 stats[nameKey].brands.add(brandName);
             }
 
-            // Script sent: stage is beyond PARTNER_REVIEW
-            const isScriptSent = p.current_stage !== WorkflowStage.PARTNER_REVIEW;
+            // Direct Upload: has video but no script content/selection
+            const isDirectUpload = !!p.video_link && !pData?.script_content && !pData?.idea_description && !pData?.selected_script_id;
+
+            // Script sent: stage is beyond PARTNER_REVIEW and NOT a direct upload
+            const isScriptSent = (p.current_stage !== WorkflowStage.PARTNER_REVIEW) && !isDirectUpload;
 
             // Raw Video Received: past SENT_TO_INFLUENCER and has a link, or stage is explicitly editing/review
             const hasRawVideo = !!p.video_link || [
@@ -74,13 +79,14 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                 WorkflowStage.OPS_SCHEDULING
             ].includes(p.current_stage);
 
-            // Edited Video Sent: POSTED
-            const isEditedSent = p.current_stage === WorkflowStage.POSTED;
+            // Edited Video Sent: Has a link or stage is POSTED
+            const isEditedSent = !!p.edited_video_link || (p.editor_video_links_history || []).length > 0 || p.current_stage === WorkflowStage.POSTED;
 
             // Proof of Posting: has a live proof link
             const hasProofOfPosting = !!(pData?.posting_proof_link || pMetadata?.posting_proof_link);
 
             if (isScriptSent) stats[nameKey].scriptSent += 1;
+            if (isDirectUpload) stats[nameKey].directUploads += 1;
             if (hasRawVideo) stats[nameKey].rawReceived += 1;
             if (isEditedSent) stats[nameKey].editedSent += 1;
             if (hasProofOfPosting) stats[nameKey].proofOfPosting += 1;
@@ -188,7 +194,27 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
                                             </div>
                                         </td>
                                         <td className="p-4 border-2 border-black text-center font-bold text-xl text-purple-700">
-                                            {stat.scriptSent}
+                                            <div className="flex flex-col items-center justify-center h-full">
+                                                {stat.scriptSent > 0 ? (
+                                                    <>
+                                                        <span>{stat.scriptSent}</span>
+                                                        {stat.directUploads > 0 && (
+                                                            <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1">
+                                                                +{stat.directUploads} Direct
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                ) : stat.directUploads > 0 ? (
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-100/50 px-3 py-1 rounded-full border-2 border-blue-200 shadow-sm">
+                                                            Direct
+                                                        </span>
+                                                        <span className="text-[9px] text-blue-400 mt-1 font-bold">({stat.directUploads})</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-300">0</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="p-4 border-2 border-black text-center font-bold text-xl text-blue-700">
                                             {stat.rawReceived}

@@ -244,7 +244,7 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
             setIsSubmitting(true);
 
             // Use advanceWorkflow to handle everything atomically
-            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments.trim(), { video_link: videoLink });
+            const updatedProject = await db.advanceWorkflow(localProject.id, cineComments.trim(), videoLink);
 
             // Clear comments state
             setCineComments('');
@@ -639,6 +639,24 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                                                     : localProject.data.niche === 'OTHER' && localProject.data.niche_other
                                                         ? localProject.data.niche_other
                                                         : localProject.data.niche}
+                                </p>
+                            </div>
+                        )}
+                        {localProject.data?.influencer_name && (
+                            <div className="col-span-full md:col-span-2 border-t pt-4 mt-2">
+                                <span className="font-bold text-slate-400 uppercase text-[10px]">Influencer</span>
+                                <p className="font-bold text-slate-900 mt-0.5 uppercase">
+                                    {localProject.data.influencer_name}
+                                </p>
+                            </div>
+                        )}
+                        {localProject.data?.referral_link && (
+                            <div className="col-span-full md:col-span-2 border-t pt-4 mt-2">
+                                <span className="font-bold text-slate-400 uppercase text-[10px]">Referral Link</span>
+                                <p className="font-bold text-slate-900 mt-0.5">
+                                    <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
+                                        View Link
+                                    </a>
                                 </p>
                             </div>
                         )}
@@ -1345,8 +1363,9 @@ const CineProjectDetail: React.FC<Props> = ({ project: initialProject, userRole,
                 </div>
             )}
 
-            {
-                showPopup && (
+
+                {
+                    showPopup && (
                     <Popup
                         message={popupMessage}
                         stageName={stageName}

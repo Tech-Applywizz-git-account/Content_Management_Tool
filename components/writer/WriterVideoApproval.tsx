@@ -333,7 +333,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
             await db.projects.update(project.id, { video_link: videoLink });
             await db.advanceWorkflow(project.id, `Writer uploaded video: ${videoLink}`);
 
-            setPopupMessage(`${isInfluencerVideo(project) ? 'Influencer' : 'Shoot'} video uploaded and project sent for final CMO review!`);
+            setPopupMessage(`${isInfluencerVideo(project) ? 'Raw' : 'Shoot'} video uploaded and project sent for final CMO review!`);
             setStageName('Final Review (CMO)');
             setPopupDuration(5000);
             setShowPopup(true);
@@ -539,10 +539,48 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                             <h3 className="text-xl font-black uppercase mb-6 text-slate-900">Video Content</h3>
 
                             <div className="space-y-6">
+                                {/* Previous Video History */}
+                                {(() => {
+                                    try {
+                                        const history = typeof (project as any).cine_video_links_history === 'string'
+                                            ? JSON.parse((project as any).cine_video_links_history)
+                                            : (project as any).cine_video_links_history;
+                                            
+                                        if (Array.isArray(history) && history.length > 0) {
+                                            return (
+                                                <div className="bg-slate-100 p-6 border-2 border-dashed border-slate-400">
+                                                    <h4 className="font-black text-sm text-slate-500 uppercase mb-4 flex items-center gap-2">
+                                                        <Clock className="w-4 h-4" />
+                                                        Previous Video Versions (History)
+                                                    </h4>
+                                                    <div className="space-y-3">
+                                                        {history.map((link: string, idx: number) => (
+                                                            <div key={idx} className="flex items-center gap-3 bg-white p-3 border border-slate-200">
+                                                                <span className="text-[10px] font-black bg-slate-200 px-1.5 py-0.5 rounded">V{idx + 1}</span>
+                                                                <a
+                                                                    href={link}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-blue-500 hover:underline text-xs break-all"
+                                                                >
+                                                                    {link}
+                                                                </a>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                    return null;
+                                })()}
+
                                 {(project.video_link || project.data?.raw_footage_link) && (
                                     <div className="bg-white p-6 border-2 border-slate-300">
                                         <h4 className="font-black text-lg text-slate-900 mb-4">
-                                            {project.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Raw Footage (Cine Direct)' : (isInfluencerVideo(project) ? 'Influencer Video' : 'Shoot Video')}
+                                            {project.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Raw Footage (Cine Direct)' : (isInfluencerVideo(project) ? 'Raw Video' : 'Shoot Video')}
                                         </h4>
                                         <a
                                             href={project.video_link || project.data?.raw_footage_link}
@@ -571,35 +609,7 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                     </div>
                                 )}
 
-                                {(project.data?.script_content || project.data?.script_reference_link) && (
-                                    <div className="bg-white p-6 border-2 border-slate-300">
-                                        <h4 className="font-black text-lg text-slate-900 mb-4">
-                                            Script Information
-                                        </h4>
-                                        {project.data?.script_content && (
-                                            <div className="mb-4">
-                                                <p className="text-sm font-bold text-slate-700 uppercase mb-2">Script Content:</p>
-                                                <div 
-                                                    className="text-slate-900 text-sm whitespace-pre-wrap"
-                                                    dangerouslySetInnerHTML={{ __html: project.data.script_content }}
-                                                />
-                                            </div>
-                                        )}
-                                        {project.data?.script_reference_link && (
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-700 uppercase mb-2">Script Reference Link:</p>
-                                                <a
-                                                    href={project.data.script_reference_link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-600 underline break-all"
-                                                >
-                                                    {project.data.script_reference_link}
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+
 
                                 {/* Fallback: show data.video_link if edited_video_link column is empty (older direct-upload projects) */}
                                 {!project.edited_video_link && project.data?.video_link && (
@@ -643,14 +653,14 @@ const VideoApprovalDetail: React.FC<VideoApprovalDetailProps> = ({ project, onBa
                                 <div className="space-y-4">
                                     <label className="text-lg font-black text-slate-900 uppercase mb-2 flex items-center gap-2">
                                         <Video className="w-6 h-6 text-slate-900" />
-                                        {isInfluencerVideo(project) ? 'INFLUENCER VIDEO' : 'SHOOT VIDEO'}
+                                        {isInfluencerVideo(project) ? 'RAW VIDEO' : 'SHOOT VIDEO'}
                                     </label>
                                     <div className="flex flex-col sm:flex-row gap-4">
                                         <input
                                             type="url"
                                             value={videoLink}
                                             onChange={(e) => setVideoLink(e.target.value)}
-                                            placeholder={`Enter the ${isInfluencerVideo(project) ? 'influencer' : 'shoot'} video link here`}
+                                            placeholder={`Enter the ${isInfluencerVideo(project) ? 'raw' : 'shoot'} video link here`}
                                             className="flex-1 p-4 border-2 border-black focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-lg bg-orange-50/30"
                                         />
                                         <button

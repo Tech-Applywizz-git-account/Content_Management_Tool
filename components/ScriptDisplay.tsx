@@ -27,16 +27,24 @@ const ScriptDisplay: React.FC<ScriptDisplayProps> = ({
     const decodedContent = decodeHtmlEntities(content);
 
     // Enforce standard styling to match the writer's editor
-    // We only force bold tags to be bold, and allow paragraph spacing.
-    // We do NOT enforce weight on the container, allowing natural inheritance.
+    // We force bold tags to be bold and allow paragraph spacing.
+    // We also ensure that any spans with color styles are respected.
     const styles = (
         <style dangerouslySetInnerHTML={{
             __html: `
             .script-content-display b, .script-content-display strong {
-                font-weight: bold;
+                font-weight: bold !important;
             }
             .script-content-display p {
-                margin-bottom: 1.5em;
+                margin-bottom: 1.2em;
+                display: block;
+            }
+            .script-content-display span[style*="color"] {
+                display: inline;
+            }
+            /* Ensure text-slate-900 doesn't override inline color styles */
+            .script-content-display span {
+                color: inherit;
             }
         `}} />
     );

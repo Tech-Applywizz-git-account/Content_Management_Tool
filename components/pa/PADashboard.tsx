@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Project, Role, WorkflowStage, Channel } from '../../types';
+import { User, Project, Role, WorkflowStage, Channel, TaskStatus } from '../../types';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 import { Plus, CheckCircle2, AlertCircle, Building2, FilePlus, ArrowLeft, Clock, User as UserIcon, PlayCircle, Trash2, Loader2 } from 'lucide-react';
@@ -18,12 +18,14 @@ import PAInfluencerManagement from './PAInfluencerManagement';
 import PABrands from './PABrands';
 import PACreateBrand from './PACreateBrand';
 import PAAddInfluencer from './PAAddInfluencer';
+import PAScripts from './PAScripts';
+import PAScriptMyWork from './PAScriptMyWork';
 
 interface PADashboardProps {
   user: User;
   onLogout: () => void;
   allProjects: Project[];
-  refreshData: (user: User) => Promise<void>;
+  refreshData: (user: User, force?: boolean) => Promise<void>;
 }
 
 const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, refreshData }) => {
@@ -33,12 +35,18 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const isFromCeoApproved = searchParams.get('source') === 'ceo-approved';
+  const isFromOverview = searchParams.get('source') === 'overview';
   const activeView = location.pathname.split('/').pop() || 'dashboard';
 
   // Delete state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reworkComments, setReworkComments] = useState<Record<string, string>>({});
+
+  // Optimistic UI: track project IDs that were just resubmitted so they
+  // disappear from the Rework column immediately, before the DB refresh.
+  const [pendingRemovals, setPendingRemovals] = useState<Set<string>>(new Set());
 
   // Delete handler
   const handleDeleteClick = (e: React.MouseEvent, p: Project) => {
@@ -49,27 +57,35 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
   const handleConfirmDelete = async () => {
     if (!projectToDelete) return;
-    
+
     setIsDeleting(true);
     try {
-      // Delete from projects table
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectToDelete.id);
-      
-      if (error) throw error;
-      
-      // Also delete from influencers table if exists
-      await supabase
+      const projectId = projectToDelete.id;
+
+      // 1. Delete from influencers table FIRST to avoid potential FK violations
+      // instance_project_id might have a reference to project.id
+      const { error: influencerError } = await supabase
         .from('influencers')
         .delete()
-        .eq('instance_project_id', projectToDelete.id);
-      
+        .eq('instance_project_id', projectId);
+
+      if (influencerError) {
+        console.warn('Note: Influencer record deletion warning:', influencerError);
+      }
+
+      // 2. Use standard projects.delete which handles history
+      await db.projects.delete(projectId);
+
+      // 3. Optimistically remove from UI
+      setPendingRemovals(prev => new Set([...prev, projectId]));
+
       toast.success('Project deleted successfully');
       setShowDeleteModal(false);
       setProjectToDelete(null);
+
+      // 4. Refresh in background and clear overrides
       await refreshData(user);
+      setPendingRemovals(new Set());
     } catch (error: any) {
       console.error('Error deleting project:', error);
       toast.error(error.message || 'Failed to delete project');
@@ -78,11 +94,12 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     }
   };
 
+
   // Wrapper for state + navigation
-  const setSelectedProject = (p: Project | null, fromCeoApproved = false) => {
+  const setSelectedProject = (p: Project | null, fromCeoApproved = false, fromOverview = false) => {
     if (p) {
       // Always navigate to /review/{projectId} with source parameter
-      const sourceParam = fromCeoApproved ? '?source=ceo-approved' : '';
+      const sourceParam = fromCeoApproved ? '?source=ceo-approved' : fromOverview ? '?source=overview' : '';
       navigate(`/partner_associate/review/${p.id}${sourceParam}`);
     } else {
       navigate('/partner_associate');
@@ -98,9 +115,38 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         console.log('Project loaded from URL:', p.id, 'isFromCeoApproved:', isFromCeoApproved);
       }
     } else if (!routeProjectId && selectedProject) {
-        setSelectedProjectState(null);
+      setSelectedProjectState(null);
     }
-  }, [routeProjectId, allProjects, selectedProject]);
+  }, [routeProjectId, allProjects, selectedProject, isFromCeoApproved]);
+
+  useEffect(() => {
+    const fetchReworkComments = async () => {
+      const projectsInRework = allProjects.filter(p => p.status === TaskStatus.REWORK);
+      if (projectsInRework.length === 0) return;
+
+      const projectIds = projectsInRework.map(p => p.id);
+
+      const { data, error } = await supabase
+        .from('workflow_history')
+        .select('project_id, comment, timestamp')
+        .in('project_id', projectIds)
+        .eq('action', 'REWORK')
+        .order('timestamp', { ascending: false });
+
+      if (!error && data) {
+        const commentMap: Record<string, string> = {};
+        // Since it's ordered by timestamp desc, the first one we find for each project_id is the latest
+        data.forEach(item => {
+          if (!commentMap[item.project_id]) {
+            commentMap[item.project_id] = item.comment || '';
+          }
+        });
+        setReworkComments(commentMap);
+      }
+    };
+
+    fetchReworkComments();
+  }, [allProjects]);
 
   const handleViewChange = (view: string) => {
     const rolePath = 'partner_associate';
@@ -113,71 +159,87 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
   const renderProjectCard = (p: Project, readOnly = false) => {
     return (
-      <div 
-        key={p.id} 
-        className={`relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col group ${
-            readOnly ? 'opacity-80' : 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'
-        }`}
+      <div
+        key={p.id}
+        className={`relative bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex flex-col group ${readOnly ? 'opacity-80' : 'cursor-pointer hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]'
+          }`}
         onClick={() => !readOnly && setSelectedProject(p)}
       >
         <div className="flex flex-wrap gap-2 mb-4">
-          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${
-            p.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
-            p.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
-            p.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
-            'bg-black text-white'
-          }`}>
+          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
+              p.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
+                p.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
+                  'bg-black text-white'
+            }`}>
             {p.channel}
           </span>
-          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${
-            p.priority === 'HIGH' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-900'
-          }`}>
+          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.priority === 'HIGH' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-900'
+            }`}>
             {p.priority}
           </span>
           <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.ceo_approved_at ? 'bg-[#0085FF] text-white' : 'bg-yellow-400 text-black'}`}>
-              {p.current_stage?.replace(/_/g, ' ')}
+            {p.current_stage?.replace(/_/g, ' ')}
           </span>
+          {p.status === TaskStatus.REWORK && (
+            <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-red-600 text-white animate-pulse">
+              REWORK
+            </span>
+          )}
         </div>
 
+
         <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
-            {p.data?.influencer_name && p.title.includes(p.data.influencer_name) 
-              ? p.title.replace(p.data.influencer_name, '').replace(/^ - | - $/g, '').trim() || p.title
-              : p.title
+          {(() => {
+            let displayTitle = p.title;
+            if (p.data?.influencer_name) {
+              displayTitle = displayTitle.replace(new RegExp(p.data.influencer_name, 'gi'), '');
             }
+            if (p.brand) {
+              displayTitle = displayTitle.replace(new RegExp(p.brand.replace(/_/g, ' '), 'gi'), '');
+            }
+            return displayTitle.replace(/^ - | - $/g, '').replace(/\( - \)/g, '').replace(/\(\)/g, '').trim() || p.title;
+          })()}
         </h4>
-        
+
         <div className="flex flex-col gap-1 mb-4">
-            {p.data?.influencer_name && (
-                <div className="text-[10px] font-black text-slate-900 uppercase flex items-center gap-1">
-                    <UserIcon className="w-3 h-3" /> {p.data.influencer_name}
-                </div>
-            )}
-            <div className="text-xs font-black text-[#0085FF] uppercase">
-                {p.brand?.replace(/_/g, ' ') || 'UNBRANDED'}
+          {p.data?.influencer_name && (
+            <div className="text-[10px] font-black text-slate-900 uppercase flex items-center gap-1">
+              <UserIcon className="w-3 h-3" /> {p.data.influencer_name}
             </div>
-            <div className="text-[9px] font-bold text-slate-400 uppercase">
-                BY {p.writer_name || p.created_by_name || 'System'}
-            </div>
+          )}
+          <div className="text-xs font-black text-[#0085FF] uppercase">
+            {p.brand?.replace(/_/g, ' ') || 'UNBRANDED'}
+          </div>
+          <div className="text-[9px] font-bold text-slate-400 uppercase">
+            BY {p.writer_name || p.created_by_name || 'System'}
+          </div>
         </div>
+
+        {p.status === TaskStatus.REWORK && reworkComments[p.id] && (
+          <div className="mb-4 p-2 bg-red-50 border border-red-100 rounded text-[10px] text-red-700 italic font-medium line-clamp-3">
+            <span className="font-black uppercase not-italic block mb-1">CMO Feedback:</span>
+            "{reworkComments[p.id]}"
+          </div>
+        )}
 
         <div className="mt-auto pt-4 border-t-2 border-slate-50 flex items-center justify-between">
           <div className="flex flex-col">
             <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase">
               <Clock className="w-3 h-3 mr-1" />
-              {p.ceo_approved_at 
-                ? format(new Date(p.ceo_approved_at), 'MMM dd, yyyy') 
+              {p.ceo_approved_at
+                ? format(new Date(p.ceo_approved_at), 'MMM dd, yyyy')
                 : format(new Date(p.created_at), 'MMM dd, yyyy')}
             </div>
             <div className="text-[9px] font-medium text-slate-300 uppercase mt-0.5">
-                {p.ceo_approved_at 
-                  ? `Approved ${format(new Date(p.ceo_approved_at), 'h:mm a')}`
-                  : `Submitted ${format(new Date(p.created_at), 'h:mm a')}`}
+              {p.ceo_approved_at
+                ? `Approved ${format(new Date(p.ceo_approved_at), 'h:mm a')}`
+                : `Submitted ${format(new Date(p.created_at), 'h:mm a')}`}
             </div>
           </div>
           {!readOnly && (
-              <span className="text-[10px] font-black uppercase text-slate-900 flex items-center">
-                  Review <Plus className="w-3 h-3 ml-1" />
-              </span>
+            <span className="text-[10px] font-black uppercase text-slate-900 flex items-center">
+              Review <Plus className="w-3 h-3 ml-1" />
+            </span>
           )}
         </div>
 
@@ -205,12 +267,11 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         onClick={() => setSelectedProject(p)}
       >
         <div className="flex flex-wrap gap-2 mb-3">
-          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${
-            p.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
-            p.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
-            p.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
-            'bg-black text-white'
-          }`}>
+          <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${p.channel === Channel.YOUTUBE ? 'bg-[#FF4F4F] text-white' :
+              p.channel === Channel.LINKEDIN ? 'bg-[#0085FF] text-white' :
+                p.channel === Channel.INSTAGRAM ? 'bg-[#D946EF] text-white' :
+                  'bg-black text-white'
+            }`}>
             {p.channel}
           </span>
           <span className="px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black bg-slate-900 text-white">
@@ -220,6 +281,9 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
         <h4 className="font-black text-base text-slate-900 mb-3 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
           {p.title}
+          {p.brand && (
+            <span className="text-slate-400 ml-2">({p.brand.replace(/_/g, ' ')})</span>
+          )}
         </h4>
 
         <div className="flex flex-col gap-1.5 mb-3 p-3 bg-slate-50 border border-slate-200">
@@ -259,6 +323,12 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     return data?.is_pa_brand === true || metadata?.is_pa_brand === true;
   };
 
+  const isInfluencerProject = (p: any) => {
+    const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+    const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+    return data?.is_influencer === true || metadata?.is_influencer === true;
+  };
+
   const isInfluencerInstance = (p: any) => {
     const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
     const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
@@ -279,44 +349,78 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
 
   const renderDashboardContent = () => {
 
+    // Optimistically hide projects that were just submitted — removes them from
+    // the Rework column instantly without waiting for the background refresh.
+    const visibleProjects = pendingRemovals.size > 0
+      ? allProjects.filter(p => !pendingRemovals.has(p.id))
+      : allProjects;
+
     const myClaimedParentIds = new Set(
-        allProjects
-            .filter(p =>
-                isInfluencerInstance(p) &&
-                (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
-                getParentScriptId(p)
-            )
-            .map(p => getParentScriptId(p) as string)
+      visibleProjects
+        .filter(p =>
+          isInfluencerInstance(p) &&
+          (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
+          getParentScriptId(p)
+        )
+        .map(p => getParentScriptId(p) as string)
     );
 
-    const initialReviewProjects = allProjects.filter(p =>
-        p.current_stage === WorkflowStage.PARTNER_REVIEW &&
-        p.ceo_approved_at &&
-        isPaBrand(p) &&
-        !isInfluencerInstance(p) &&
-        !myClaimedParentIds.has(p.id)
-    ).sort((a, b) => new Date(b.ceo_approved_at!).getTime() - new Date(a.ceo_approved_at!).getTime());
+    const initialReviewProjects = visibleProjects.filter(p =>
+      [WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2, WorkflowStage.PARTNER_REVIEW].includes(p.current_stage as WorkflowStage) &&
+      (isPaBrand(p) || isInfluencerProject(p)) &&
+      !isInfluencerInstance(p) &&
+      !myClaimedParentIds.has(p.id) &&
+      p.status !== TaskStatus.REWORK
+    ).sort((a, b) => {
+      const aTime = a.ceo_approved_at ? new Date(a.ceo_approved_at).getTime() : new Date(a.created_at).getTime();
+      const bTime = b.ceo_approved_at ? new Date(b.ceo_approved_at).getTime() : new Date(b.created_at).getTime();
+      return bTime - aTime;
+    });
 
-    const myInstances = allProjects.filter(p =>
-        isInfluencerInstance(p) &&
-        (p.assigned_to_user_id === user.id || getSentById(p) === user.id)
+    const myInstances = visibleProjects.filter(p =>
+      isInfluencerInstance(p) &&
+      (p.assigned_to_user_id === user.id || getSentById(p) === user.id || p.created_by_user_id === user.id)
     );
+    const isReworkByMe = (p: Project) => 
+      p.status === TaskStatus.REWORK && 
+      (p.rework_initiator_role === Role.PARTNER_ASSOCIATE || p.data?.rework_initiator_role === Role.PARTNER_ASSOCIATE);
 
     const sentToInfluencerProjects = myInstances.filter(p =>
-        p.current_stage === WorkflowStage.SENT_TO_INFLUENCER
+      p.current_stage === WorkflowStage.SENT_TO_INFLUENCER && (p.status !== TaskStatus.REWORK || isReworkByMe(p))
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     const cmoReviewProjects = myInstances.filter(p =>
-        p.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW
+      p.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW && (p.status !== TaskStatus.REWORK || isReworkByMe(p))
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     const editorProjects = myInstances.filter(p =>
-        p.current_stage === WorkflowStage.VIDEO_EDITING
+      p.current_stage === WorkflowStage.VIDEO_EDITING && (p.status !== TaskStatus.REWORK || isReworkByMe(p))
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     const finalReviewProjects = myInstances.filter(p =>
-        p.current_stage === WorkflowStage.PA_FINAL_REVIEW
+      p.current_stage === WorkflowStage.PA_FINAL_REVIEW && (p.status !== TaskStatus.REWORK || isReworkByMe(p))
     ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+
+    const proofOfPostingProjects = myInstances.filter(p =>
+      p.current_stage === WorkflowStage.POSTED && !p.data?.posting_proof_link && (p.status !== TaskStatus.REWORK || isReworkByMe(p))
+    ).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const reworkProjects = visibleProjects.filter(p => 
+      p.status === TaskStatus.REWORK && 
+      !isReworkByMe(p) &&
+      (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
+      (isPaBrand(p) || isInfluencerProject(p))
+    ).sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
+
+
+    const completedCount = allProjects.filter(p =>
+      p.current_stage === WorkflowStage.POSTED &&
+      (isPaBrand(p) || isInfluencerProject(p)) &&
+      isInfluencerInstance(p) &&
+      (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
+      p.data?.posting_proof_link
+    ).length;
 
     return (
       <div className="space-y-8 animate-fade-in">
@@ -330,217 +434,299 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-4">
             <button
               onClick={() => navigate('/partner_associate/create-script')}
               className="px-6 py-4 bg-[#D946EF] text-white border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2 transition-all"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-6 h-6" />
               <span>New Script</span>
             </button>
+
             <button
               onClick={() => handleViewChange('video-approval')}
               className="px-6 py-4 bg-[#F59E0B] text-white border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] flex items-center space-x-2 transition-all relative"
             >
-              <PlayCircle className="w-6 h-6 border-2 border-white rounded-full" />
-              <span>Video Approved</span>
-              {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && isPaBrand(p) && isInfluencerInstance(p) && (p.assigned_to_user_id === user.id || getSentById(p) === user.id)).length > 0 && (
+              <CheckCircle2 className="w-6 h-6" />
+              <span>Completed</span>
+              {completedCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center border-2 border-white shadow-sm">
-                  {allProjects.filter(p => p.current_stage === WorkflowStage.POSTED && isPaBrand(p) && isInfluencerInstance(p) && (p.assigned_to_user_id === user.id || getSentById(p) === user.id)).length}
+                  {completedCount}
                 </span>
               )}
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">Initial Review</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{initialReviewProjects.length}</span>
-              </div>
-              <div className="space-y-4">
-                {initialReviewProjects.map(p => renderProjectCard(p))}
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#FF4F4F] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Rework Needed</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{reworkProjects.length}</span>
             </div>
-
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[#D946EF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">Sent to Influencer</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{sentToInfluencerProjects.length}</span>
-              </div>
-              <div className="space-y-4">
-                {sentToInfluencerProjects.map(p => renderProjectCard(p))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[#22C55E] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">CMO Review</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{cmoReviewProjects.length}</span>
-              </div>
-              <div className="space-y-4">
-                {cmoReviewProjects.map(p => renderProjectCard(p))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">Editor Stage</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{editorProjects.length}</span>
-              </div>
-              <div className="space-y-4">
-                {editorProjects.map(p => renderEditorCard(p))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase tracking-wide text-xs">Final Review</h3>
-                <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{finalReviewProjects.length}</span>
-              </div>
-              <div className="space-y-4">
-                {finalReviewProjects.map(p => renderProjectCard(p))}
-              </div>
+              {reworkProjects.map(p => renderProjectCard(p))}
             </div>
           </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#FF8C00] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Initial Review</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{initialReviewProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {initialReviewProjects.map(p => renderProjectCard(p))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#D946EF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Sent to Influencer</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{sentToInfluencerProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {sentToInfluencerProjects.map(p => renderProjectCard(p))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#22C55E] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">CMO Review</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{cmoReviewProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {cmoReviewProjects.map(p => renderProjectCard(p))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-900 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Editor Stage</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{editorProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {editorProjects.map(p => renderEditorCard(p))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#0085FF] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Final Review</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{finalReviewProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {finalReviewProjects.map(p => renderProjectCard(p))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#F59E0B] text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <h3 className="font-black uppercase tracking-wide text-xs">Proof of Posting</h3>
+              <span className="bg-white text-black px-2 py-0.5 font-bold text-xs border border-black">{proofOfPostingProjects.length}</span>
+            </div>
+            <div className="space-y-4">
+              {proofOfPostingProjects.map(p => renderProjectCard(p))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
 
   const renderMainContent = () => {
     const myInstances = allProjects.filter(p =>
-        isInfluencerInstance(p) &&
-        (p.assigned_to_user_id === user?.id || getSentById(p) === user?.id)
+      isInfluencerInstance(p) &&
+      (p.assigned_to_user_id === user?.id || getSentById(p) === user?.id || p.created_by_user_id === user?.id)
     );
     const myProjects = allProjects.filter(p => p.assigned_to_user_id === user?.id);
 
     if (activeView === 'influencer-management' && selectedProject) {
-        return (
-          <PAInfluencerManagement
-            project={selectedProject}
-            allInfluencerProjects={allProjects.filter(p => {
-                const parentId = selectedProject.data?.parent_script_id || selectedProject.id;
-                return p.data?.parent_script_id === parentId || p.id === parentId;
-            })}
-            user={user as any}
-            onBack={() => navigate('/partner_associate')}
-            onComplete={async () => {
-              await refreshData(user!);
-              const updatedProject = allProjects.find(p => p.id === selectedProject.id);
-              if (updatedProject) {
-                setSelectedProjectState(updatedProject);
-              }
-            }}
-          />
-        );
+      return (
+        <PAInfluencerManagement
+          project={selectedProject}
+          allInfluencerProjects={allProjects.filter(p => {
+            const parentId = selectedProject.data?.parent_script_id || selectedProject.id;
+            return p.data?.parent_script_id === parentId || p.id === parentId;
+          })}
+          user={user as any}
+          onBack={() => navigate(isFromCeoApproved ? '/partner_associate/ceo-approved-scripts' : '/partner_associate')}
+          refreshData={refreshData}
+          onComplete={async () => {
+            await refreshData(user!, true);
+            const updatedProject = allProjects.find(p => p.id === selectedProject.id);
+            if (updatedProject) {
+              setSelectedProjectState(updatedProject);
+            }
+            navigate(isFromCeoApproved ? '/partner_associate/ceo-approved-scripts' : '/partner_associate');
+          }}
+        />
+      );
     }
 
     if (selectedProject) {
+      // ✅ IF REWORK + INFLUENCER/PA SCRIPT (Parent Project) -> Show Editor (CreateScript)
+      if (selectedProject.status === TaskStatus.REWORK && 
+          (isInfluencerProject(selectedProject) || isPaBrand(selectedProject)) && 
+          !isInfluencerInstance(selectedProject)) {
         return (
-          <PAReviewScreen
+          <CreateScript
             project={selectedProject}
-            user={user}
-            allProjects={allProjects}
-            fromCeoApproved={isFromCeoApproved}
-            onBack={() => navigate('/partner_associate')}
-            onComplete={async () => {
-              await refreshData(user!);
+            onClose={() => {
+              setSelectedProjectState(null);
               navigate('/partner_associate');
             }}
-          />
-        );
-    }
-
-    if (activeView === 'mywork') {
-        return <PAMyWork user={user} projects={myInstances} onReview={setSelectedProject} />;
-    }
-
-    if (activeView === 'overview') {
-        return <PAOverview user={user} allProjects={myProjects} onSelectProject={setSelectedProject} />;
-    }
-
-    if (activeView === 'calendar') {
-        return <PACalendar projects={allProjects} />;
-    }
-
-    if (activeView === 'video-approval') {
-        const approvedInstances = allProjects.filter(p =>
-            p.current_stage === WorkflowStage.POSTED &&
-            p.data?.influencer_instance === true &&
-            (p.assigned_to_user_id === user.id || p.data?.sent_by_id === user.id)
-        );
-        return (
-          <PAVideoApproved
-            projects={approvedInstances}
-            onBack={() => handleViewChange('dashboard')}
-            onSelectProject={setSelectedProject}
-          />
-        );
-    }
-
-    if (activeView === 'ceo-approved-scripts') {
-        return (
-          <PACeoApprovedScripts 
-            projects={allProjects} 
-            onBack={() => handleViewChange('dashboard')} 
-            onSelectProject={setSelectedProject} 
-          />
-        );
-    }
-
-    if (activeView === 'brands') {
-        return <PABrands user={user} />;
-    }
-
-    if (activeView === 'create-brand') {
-        return <PACreateBrand user={user} />;
-    }
-
-    if (activeView === 'add-influencer') {
-        return <PAAddInfluencer user={user} />;
-    }
-
-    if (activeView === 'create-script') {
-        return (
-          <CreateScript 
-            onClose={() => navigate('/partner_associate')} 
             onSuccess={async () => {
-                await refreshData(user!);
-                navigate('/partner_associate');
-                toast.success('Script created successfully');
+              // Optimistically remove
+              setPendingRemovals(prev => new Set([...prev, selectedProject.id]));
+              setSelectedProjectState(null);
+              navigate('/partner_associate');
+              await refreshData(user!, true);
+              setPendingRemovals(new Set());
+              toast.success('Script resubmitted successfully');
             }}
             creatorRole={Role.PARTNER_ASSOCIATE}
           />
         );
+      }
+
+      return (
+        <PAReviewScreen
+          project={selectedProject}
+          user={user}
+          allProjects={allProjects}
+          fromCeoApproved={isFromCeoApproved}
+          onBack={() => {
+            setSelectedProjectState(null);
+            if (isFromCeoApproved) navigate('/partner_associate/ceo-approved-scripts');
+            else if (isFromOverview) navigate('/partner_associate/overview');
+            else navigate('/partner_associate');
+          }}
+          refreshData={refreshData}
+          onComplete={async () => {
+
+            // Optimistically remove the submitted project immediately so the
+            // Rework column updates without waiting for the DB round-trip.
+            const completedId = selectedProject?.id;
+            if (completedId) {
+              setPendingRemovals(prev => new Set([...prev, completedId]));
+            }
+            setSelectedProjectState(null);
+            if (isFromCeoApproved) navigate('/partner_associate/ceo-approved-scripts');
+            else if (isFromOverview) navigate('/partner_associate/overview');
+            else navigate('/partner_associate');
+            // Refresh in background — once done, clear the optimistic overrides
+            await refreshData(user!, true);
+            setPendingRemovals(new Set());
+          }}
+        />
+      );
+    }
+
+    if (activeView === 'mywork') {
+      return <PAMyWork user={user} projects={myInstances} onReview={setSelectedProject} />;
+    }
+
+    if (activeView === 'script-mywork') {
+      return (
+        <PAScriptMyWork
+          user={user}
+          projects={allProjects.filter(p => p.created_by_user_id === user.id)}
+          onBack={() => handleViewChange('scripts')}
+        />
+      );
+    }
+
+    if (activeView === 'overview') {
+      return <PAOverview user={user} allProjects={myProjects} onSelectProject={(p) => setSelectedProject(p, false, true)} />;
+    }
+
+    if (activeView === 'calendar') {
+      return <PACalendar projects={allProjects} />;
+    }
+
+    if (activeView === 'video-approval') {
+      const approvedInstances = allProjects.filter(p =>
+        p.current_stage === WorkflowStage.POSTED &&
+        (isPaBrand(p) || isInfluencerProject(p)) &&
+        isInfluencerInstance(p) &&
+        (p.assigned_to_user_id === user.id || getSentById(p) === user.id) &&
+        p.data?.posting_proof_link
+      );
+      return (
+        <PAVideoApproved
+          projects={approvedInstances}
+          onBack={() => handleViewChange('dashboard')}
+          onSelectProject={setSelectedProject}
+        />
+      );
+    }
+
+    if (activeView === 'ceo-approved-scripts') {
+      return (
+        <PACeoApprovedScripts
+          projects={allProjects}
+          onBack={() => handleViewChange('dashboard')}
+          onSelectProject={setSelectedProject}
+        />
+      );
+    }
+
+    if (activeView === 'brands') {
+      return <PABrands user={user} />;
+    }
+
+    if (activeView === 'create-brand') {
+      return <PACreateBrand user={user} />;
+    }
+
+    if (activeView === 'add-influencer') {
+      return <PAAddInfluencer user={user} />;
+    }
+
+    if (activeView === 'create-script') {
+      return (
+        <CreateScript
+          onClose={() => navigate('/partner_associate/scripts')}
+          onSuccess={async () => {
+            await refreshData(user!);
+            navigate('/partner_associate/scripts');
+            toast.success('Script created successfully');
+          }}
+          creatorRole={Role.PARTNER_ASSOCIATE}
+        />
+      );
+    }
+
+    if (activeView === 'scripts') {
+      return <PAScripts user={user} allProjects={allProjects} />;
     }
 
     return (
       <div className="space-y-8 animate-fade-in">
-         {renderDashboardContent()}
+        {renderDashboardContent()}
       </div>
     );
   };
 
   return (
     <>
-      <Layout 
-        user={user} 
+      <Layout
+        user={user}
         onLogout={onLogout}
         onOpenCreate={() => navigate('/partner_associate/create-script')}
         activeView={activeView === 'dashboard' || activeView === 'influencer-management' ? 'dashboard' : activeView}
         onChangeView={(view) => {
-            if (view === 'dashboard') {
-                navigate('/partner_associate');
-            } else {
-                handleViewChange(view as any);
-            }
+          if (view === 'dashboard') {
+            navigate('/partner_associate');
+          } else {
+            handleViewChange(view as any);
+          }
         }}
         hideSidebar={!!selectedProject}
       >
-      <div className="w-full p-0 mt-2">
-        {renderMainContent()}
-      </div>
+        <div className="w-full p-0 mt-2">
+          {renderMainContent()}
+        </div>
       </Layout>
 
       {/* Delete Confirmation Modal */}
@@ -550,18 +736,18 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
             <AlertCircle className="w-16 h-16 text-red-500 mb-6" />
             <h3 className="text-3xl font-black text-slate-900 uppercase mb-4">Confirm Delete</h3>
             <p className="text-sm font-bold text-slate-500 uppercase mb-8 leading-relaxed">
-              Are you sure you want to delete <span className="text-red-600">{projectToDelete.title}</span>?<br/>
+              Are you sure you want to delete <span className="text-red-600">{projectToDelete.title}</span>?<br />
               This action cannot be undone.
             </p>
             <div className="flex gap-4">
-              <button 
+              <button
                 onClick={() => setShowDeleteModal(false)}
                 className="flex-1 py-4 border-2 border-black font-black uppercase text-xs hover:bg-slate-100 transition-all"
                 disabled={isDeleting}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
                 className="flex-1 py-4 bg-red-500 text-white border-2 border-black font-black uppercase text-xs hover:bg-red-600 transition-all flex items-center justify-center gap-2"

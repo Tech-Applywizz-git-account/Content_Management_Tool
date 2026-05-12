@@ -76,6 +76,9 @@ const CmoMyWork: React.FC<Props> = ({ user, projects, onReview }) => {
 
               <h3 className="text-2xl font-black uppercase mb-2">
                 {task.title}
+                {task.brand && (
+                  <span className="text-slate-400 text-sm ml-2">({task.brand.replace(/_/g, ' ')})</span>
+                )}
               </h3>
 
               {task.data?.brief && (

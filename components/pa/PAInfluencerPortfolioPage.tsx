@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -8,7 +8,7 @@ import PAStoryInfluencerDetails from './PAStoryInfluencerDetails';
 interface PAInfluencerPortfolioPageProps {
     user: User;
     onLogout: () => void;
-    refreshData: (user: User) => Promise<void>;
+    refreshData: (user: User, force?: boolean) => Promise<void>;
 }
 
 const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ user, refreshData }) => {
@@ -69,128 +69,155 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         }
     }, [influencerProjects, projectId]);
 
-    useEffect(() => {
-        const fetchAllData = async () => {
-            try {
-                // Loading is handled by initial state; background fetch shouldn't trigger global loading screen
-                
-                // 1. Fetch the primary influencer registry record first if we have an ID
-                let canonicalName = influencerNameParam?.toLowerCase().trim() || '';
-                let canonicalEmail = '';
-                let registryRecord: any = null;
+    // Fetch all data function - extracted to useCallback for reuse
+    const fetchAllData = useCallback(async () => {
+        try {
+            // Loading is handled by initial state; background fetch shouldn't trigger global loading screen
+            
+            // 1. Fetch the primary influencer registry record first if we have an ID
+            let canonicalName = influencerNameParam?.toLowerCase().trim() || '';
+            let canonicalEmail = '';
+            let registryRecord: any = null;
 
-                if (influencerIdParam) {
-                    const { data } = await supabase
-                        .from('influencers')
-                        .select('*')
-                        .eq('id', influencerIdParam)
-                        .maybeSingle();
-                    if (data) {
-                        registryRecord = data;
-                        canonicalName = (data.influencer_name || '').toLowerCase().trim();
-                        canonicalEmail = (data.influencer_email || '').toLowerCase().trim();
+            if (influencerIdParam) {
+                const { data } = await supabase
+                    .from('influencers')
+                    .select('*')
+                    .eq('id', influencerIdParam)
+                    .maybeSingle();
+                if (data) {
+                    registryRecord = data;
+                    canonicalName = (data.influencer_name || '').toLowerCase().trim();
+                    canonicalEmail = (data.influencer_email || '').toLowerCase().trim();
+                }
+            }
+
+            // 2. Fetch ALL projects and filter by is_pa_brand in JS (checks both data and metadata)
+            const { data: allProjects, error: fetchError } = await supabase
+                .from('projects')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (fetchError) throw fetchError;
+
+            // Filter for PA brand projects (check both data and metadata columns)
+            const allPaProjects = (allProjects || []).filter(p => {
+                try {
+                    const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+                    const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+                    const isPaBrand = pData?.is_pa_brand === true || pMetadata?.is_pa_brand === true;
+                    const isInfluencer = pData?.is_influencer === true || pMetadata?.is_influencer === true;
+                    return isPaBrand || isInfluencer;
+                } catch (e) {
+                    return false;
+                }
+            });
+
+            // 2b. If canonicalName is still empty but we have a projectId, try to find it in allPaProjects
+            if (!canonicalName && !canonicalEmail && projectId) {
+                const referenceProject = allPaProjects.find(p => p.id === projectId);
+                if (referenceProject) {
+                    try {
+                        const pData = typeof referenceProject.data === 'string' ? JSON.parse(referenceProject.data) : referenceProject.data;
+                        const pMetadata = typeof referenceProject.metadata === 'string' ? JSON.parse(referenceProject.metadata) : referenceProject.metadata;
+                        canonicalName = (pData?.influencer_name || pMetadata?.influencer_name || '').toLowerCase().trim();
+                        canonicalEmail = (pData?.influencer_email || pMetadata?.influencer_email || '').toLowerCase().trim();
+                    } catch (e) {
+                        console.warn('Error parsing reference project JSON');
                     }
                 }
+            }
 
-                // 2. Fetch ALL projects and filter by is_pa_brand in JS (checks both data and metadata)
-                const { data: allProjects, error: fetchError } = await supabase
-                    .from('projects')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-
-                if (fetchError) throw fetchError;
-
-                // Filter for PA brand projects (check both data and metadata columns)
-                const allPaProjects = (allProjects || []).filter(p => {
+            // 3. Filter projects strictly by name or email
+            let matchingProjects: Project[] = [];
+            if (canonicalName || canonicalEmail) {
+                matchingProjects = allPaProjects.filter(p => {
                     try {
                         const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
                         const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
-                        return pData?.is_pa_brand === true || pMetadata?.is_pa_brand === true;
+                        
+                        const pName = (pData?.influencer_name || pMetadata?.influencer_name || '').toLowerCase().trim();
+                        const pEmail = (pData?.influencer_email || pMetadata?.influencer_email || '').toLowerCase().trim();
+                        
+                        // Strict exact matching to avoid "Testing" matching "Harshitha Testing"
+                        const nameMatch = canonicalName && pName === canonicalName;
+                        const emailMatch = canonicalEmail && pEmail === canonicalEmail;
+                        
+                        return nameMatch || emailMatch;
                     } catch (e) {
                         return false;
                     }
                 });
+            }
 
-                // 2b. If canonicalName is still empty but we have a projectId, try to find it in allPaProjects
-                if (!canonicalName && !canonicalEmail && projectId) {
-                    const referenceProject = allPaProjects.find(p => p.id === projectId);
-                    if (referenceProject) {
-                        try {
-                            const pData = typeof referenceProject.data === 'string' ? JSON.parse(referenceProject.data) : referenceProject.data;
-                            const pMetadata = typeof referenceProject.metadata === 'string' ? JSON.parse(referenceProject.metadata) : referenceProject.metadata;
-                            canonicalName = (pData?.influencer_name || pMetadata?.influencer_name || '').toLowerCase().trim();
-                            canonicalEmail = (pData?.influencer_email || pMetadata?.influencer_email || '').toLowerCase().trim();
-                        } catch (e) {
-                            console.warn('Error parsing reference project JSON');
-                        }
-                    }
+            // 4. If no projects found, create a dummy one from the registry record
+            if (matchingProjects.length === 0) {
+                // If we didn't have a registryRecord yet (e.g. no inf_id but have name), try to find one
+                if (!registryRecord && canonicalName) {
+                    const { data } = await supabase
+                        .from('influencers')
+                        .select('*')
+                        .ilike('influencer_name', canonicalName)
+                        .maybeSingle();
+                    registryRecord = data;
                 }
-
-                // 3. Filter projects strictly by name or email
-                let matchingProjects: Project[] = [];
-                if (canonicalName || canonicalEmail) {
-                    matchingProjects = allPaProjects.filter(p => {
-                        try {
-                            const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
-                            const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
-                            
-                            const pName = (pData?.influencer_name || pMetadata?.influencer_name || '').toLowerCase().trim();
-                            const pEmail = (pData?.influencer_email || pMetadata?.influencer_email || '').toLowerCase().trim();
-                            
-                            // Strict exact matching to avoid "Testing" matching "Harshitha Testing"
-                            const nameMatch = canonicalName && pName === canonicalName;
-                            const emailMatch = canonicalEmail && pEmail === canonicalEmail;
-                            
-                            return nameMatch || emailMatch;
-                        } catch (e) {
-                            return false;
-                        }
-                    });
+                
+                if (registryRecord) {
+                    const dummyProject: any = {
+                        id: 'temp-' + Date.now(),
+                        title: `DRAFT: ${registryRecord.influencer_name}`,
+                        current_stage: WorkflowStage.PARTNER_REVIEW,
+                        data: {
+                            influencer_name: registryRecord.influencer_name,
+                            influencer_email: registryRecord.influencer_email,
+                            is_pa_brand: true,
+                            brand: registryRecord.brand_name,
+                            registry_id: registryRecord.id,
+                        },
+                        created_at: new Date().toISOString()
+                    };
+                    matchingProjects = [dummyProject];
                 }
+            }
 
-                // 4. If no projects found, create a dummy one from the registry record
-                if (matchingProjects.length === 0) {
-                    // If we didn't have a registryRecord yet (e.g. no inf_id but have name), try to find one
-                    if (!registryRecord && canonicalName) {
-                        const { data } = await supabase
-                            .from('influencers')
-                            .select('*')
-                            .ilike('influencer_name', canonicalName)
-                            .maybeSingle();
-                        registryRecord = data;
-                    }
-                    
-                    if (registryRecord) {
-                        const dummyProject: any = {
-                            id: 'temp-' + Date.now(),
-                            title: `DRAFT: ${registryRecord.influencer_name}`,
-                            current_stage: WorkflowStage.PARTNER_REVIEW,
-                            data: {
-                                influencer_name: registryRecord.influencer_name,
-                                influencer_email: registryRecord.influencer_email,
-                                is_pa_brand: true,
-                                brand: registryRecord.brand_name,
-                                registry_id: registryRecord.id,
-                            },
-                            created_at: new Date().toISOString()
-                        };
-                        matchingProjects = [dummyProject];
-                    }
-                }
+            if (matchingProjects.length === 0) {
+                throw new Error('Influencer profile not found');
+            }
 
-                if (matchingProjects.length === 0) {
-                    throw new Error('Influencer profile not found');
-                }
+            setInfluencerProjects(matchingProjects as Project[]);
+        } catch (err) {
+            console.error('Error fetching project data:', err);
+            setError('Failed to load influencer portfolio.');
+            setLoading(false);
+        }
+    }, [projectId, influencerNameParam, influencerIdParam]);
 
-                setInfluencerProjects(matchingProjects as Project[]);
-            } catch (err) {
-                console.error('Error fetching project data:', err);
-                setError('Failed to load influencer portfolio.');
-                setLoading(false);
+    useEffect(() => {
+        fetchAllData();
+    }, [fetchAllData]);
+
+    // Refresh data when window regains focus (user returns from review screen)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('Window visible, refreshing portfolio data...');
+                fetchAllData();
             }
         };
 
-        fetchAllData();
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        const handleFocus = () => {
+            console.log('Window focused, refreshing portfolio data...');
+            fetchAllData();
+        };
+        
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [projectId, influencerNameParam, influencerIdParam]);
 
     const handleBack = () => {

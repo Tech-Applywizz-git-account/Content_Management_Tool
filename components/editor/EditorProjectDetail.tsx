@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, User, UserStatus } from '../../types';
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film, Link } from 'lucide-react';
+import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, Film, Link, Building2, User as UserIcon, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -196,27 +196,36 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
         comment
       );
 
-      // Update the project with the edited video link and advance the workflow
-      // This will properly check thumbnail_required and route to correct stage
-      // projects.update now handles history preservation automatically
+      // Update the project with the edited video link and advance the workflow.
+      // Explicitly build editor_video_links_history so the old link is always preserved
+      // regardless of user-cache state. This is critical for rework resubmissions.
+      const existingEditorHistory: string[] = Array.isArray(localProject.editor_video_links_history)
+        ? (localProject.editor_video_links_history as string[])
+        : [];
+      const previousEditedLink = localProject.edited_video_link;
+      const updatedEditorHistory =
+        previousEditedLink && previousEditedLink !== editedVideoLink && !existingEditorHistory.includes(previousEditedLink)
+          ? [...existingEditorHistory, previousEditedLink]
+          : existingEditorHistory;
+
       await db.projects.update(project.id, {
         edited_video_link: editedVideoLink,
         editor_uploaded_at: new Date().toISOString(),
         pa_editor_video_uploaded_at: new Date().toISOString(),
-        editor_name: publicUser.full_name || publicUser?.email || 'Unknown Editor', // Store editor name in direct column
-        edited_by_role: 'EDITOR', // Track who actually edited
-        edited_by_user_id: publicUser.id, // Track the specific user
-        edited_by_name: publicUser.full_name || publicUser?.email || 'Unknown Editor', // Track the name
-        edited_at: new Date().toISOString(), // Track when edited
+        editor_name: publicUser.full_name || publicUser?.email || 'Unknown Editor',
+        edited_by_role: 'EDITOR',
+        edited_by_user_id: publicUser.id,
+        edited_by_name: publicUser.full_name || publicUser?.email || 'Unknown Editor',
+        edited_at: new Date().toISOString(),
         status: TaskStatus.WAITING_APPROVAL,
+        // Explicit history: preserves old link before it is overwritten
+        ...(updatedEditorHistory.length > 0 ? { editor_video_links_history: updatedEditorHistory } : {}),
         data: {
           ...project.data,
           needs_sub_editor: false,
           thumbnail_required: project.data?.thumbnail_required
         }
       });
-      // Update project data to persist any changes made during this session
-      // Include edited_video_link in the update so timestamp logic can detect the upload
 
 
       // Advance workflow to next stage based on project settings
@@ -326,7 +335,12 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="text-2xl font-black uppercase text-slate-900">{project.title}</h1>
+            <h1 className="text-xl font-black uppercase text-slate-900 truncate" title={project.title}>
+                {project.title}
+                {project.brand && (
+                    <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                )}
+            </h1>
             {fromView !== 'SCRIPTS' && (
               <div className="flex items-center gap-3 mt-1">
                 <span
@@ -371,17 +385,81 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
 
       {/* Content */}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        {/* Project Details */}
+        <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+          <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+              <p className="font-bold text-slate-900 mt-1">
+                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+              </p>
+            </div>
+            <div>
+              <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+              <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+            </div>
+            {localProject.brand && (
+              <div className="col-span-2 border-t border-slate-100 pt-3">
+                <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
+                <p className="font-black text-[#0085FF] mt-1 uppercase">
+                  {localProject.brand.replace(/_/g, ' ')}
+                </p>
+              </div>
+            )}
+            {localProject.data?.niche && (
+              <div className="col-span-2 border-t border-slate-100 pt-3">
+                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                <p className="font-bold text-slate-900 mt-1 uppercase">
+                  {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                      : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                        : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                            ? localProject.data.niche_other
+                            : localProject.data.niche}
+                </p>
+              </div>
+            )}
+            {localProject.data?.influencer_name && (
+              <div className="col-span-1 border-t border-slate-100 pt-3">
+                <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
+                <p className="font-bold text-slate-900 mt-1 uppercase">
+                  {localProject.data.influencer_name}
+                </p>
+              </div>
+            )}
+            {localProject.data?.referral_link && (
+              <div className="col-span-1 border-t border-slate-100 pt-3">
+                <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
+                <p className="font-bold text-slate-900 mt-1">
+                  <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
+                    View Link
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
         {/* Raw Video from Cinematographer */}
         {(localProject.video_link || localProject.data?.raw_footage_link) && (fromView !== 'SCRIPTS' || localProject.data?.source === 'CINE_DIRECT_UPLOAD') && (
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
             <div className="flex items-center gap-2 mb-4">
               <Video className="w-5 h-5" />
               <h2 className="text-xl font-black uppercase">
-                {localProject.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Cine Direct Upload' : (isInfluencerVideo(localProject) ? 'Influencer Video' : 'Shoot Video')}
+                {localProject.data?.source === 'CINE_DIRECT_UPLOAD' ? 'Cine Direct Upload' : (localProject.data?.is_influencer === true ? 'Influencer Video' : 'Raw Video')}
               </h2>
             </div>
             <div className="bg-blue-50 border-2 border-blue-400 p-4">
-              {!isInfluencerVideo(localProject) && (
+              {localProject.data?.is_influencer !== true && (
                 <p className="text-sm font-bold text-blue-800 mb-2">
                   📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                 </p>
@@ -805,70 +883,7 @@ const EditorProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onUpd
           );
         })()}
 
-        {/* Project Info */}
-        <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-          <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-              <p className="font-bold text-slate-900 mt-1">
-                {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-              </p>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-              <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-            </div>
-            {localProject.brand && (
-              <div className="col-span-2 border-t border-slate-100 pt-3">
-                <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
-                <p className="font-black text-[#0085FF] mt-1 uppercase">
-                  {localProject.brand.replace(/_/g, ' ')}
-                </p>
-              </div>
-            )}
-            {localProject.data?.niche && (
-              <div className="col-span-2 border-t border-slate-100 pt-3">
-                <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                <p className="font-bold text-slate-900 mt-1 uppercase">
-                  {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                    : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                      : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                        : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
-                          : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                            ? localProject.data.niche_other
-                            : localProject.data.niche}
-                </p>
-              </div>
-            )}
-            {localProject.data?.influencer_name && (
-              <div className="col-span-1 border-t border-slate-100 pt-3">
-                <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
-                <p className="font-bold text-slate-900 mt-1 uppercase">
-                  {localProject.data.influencer_name}
-                </p>
-              </div>
-            )}
-            {localProject.data?.referral_link && (
-              <div className="col-span-1 border-t border-slate-100 pt-3">
-                <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
-                <p className="font-bold text-slate-900 mt-1">
-                  <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
-                    View Link
-                  </a>
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
+
       </div>
       {
         showPopup && (

@@ -16,7 +16,9 @@ import {
   FileText,
   CheckCircle2,
   MessageSquare,
-  Building2
+  Building2,
+  Users,
+  PlayCircle
 } from 'lucide-react';
 import { BarChart3 } from 'lucide-react';
 
@@ -121,6 +123,19 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   <span className="truncate">Overview</span>
                 </button>
               )}
+              {/* Leads - Visible for roles except PARTNER_ASSOCIATE */}
+              {user.role !== Role.PARTNER_ASSOCIATE && !user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) && (
+                <button
+                  onClick={() => handleNavigate('leads')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'leads'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <Users className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Leads</span>
+                </button>
+              )}
 
               {/* Final Review - Only for CMO */}
               {user.role === Role.CMO && (
@@ -143,66 +158,17 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 </button>
               )}
 
-              {/* Calendar - Visible for most roles */}
-              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.SUB_EDITOR)) && (
-                <button
-                  onClick={() => handleNavigate('calendar')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'calendar'
-                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
-                    }`}
-                >
-                  <Calendar className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">Calendar</span>
-                </button>
-              )}
-
-              {/* Approved Videos - Visible for WRITER */}
-              {user.role === Role.WRITER && (
-                <button
-                  onClick={() => handleNavigate('approved-videos')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'approved-videos'
-                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
-                    }`}
-                >
-                  <Video className="w-5 h-5 flex-shrink-0" />
-                  <span className="flex items-center text-left leading-tight text-xs">
-                    Approved Influencer Videos
-                    {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
-                      <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
-                        {approvedVideosCount}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )}
-              
-              {/* Write Captions - Visible for WRITER */}
-              {user.role === Role.WRITER && (
-                <button
-                  onClick={() => handleNavigate('writer-captions')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'writer-captions'
-                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
-                    }`}
-                >
-                  <MessageSquare className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">Write Captions</span>
-                </button>
-              )}
-
-              {/* CEO Approved Scripts - Visible for PARTNER_ASSOCIATE */}
+              {/* My Scripts - Visible for PARTNER_ASSOCIATE */}
               {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
                 <button
-                  onClick={() => handleNavigate('ceo-approved-scripts')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'ceo-approved-scripts'
+                  onClick={() => handleNavigate('scripts')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'scripts'
                     ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                     : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
                     }`}
                 >
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-left leading-tight text-xs">CEO Approved Scripts</span>
+                  <FileText className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">My Scripts</span>
                 </button>
               )}
 
@@ -220,7 +186,35 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                 </button>
               )}
 
-              {/* Lead Magnet Scripts - Visible for WRITER, CMO, CEO, SUB_EDITOR */}
+              {/* CEO Approved Scripts - Visible for PARTNER_ASSOCIATE */}
+              {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
+                <button
+                  onClick={() => handleNavigate('ceo-approved-scripts')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'ceo-approved-scripts'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-left leading-tight text-xs">CEO Approved Scripts</span>
+                </button>
+              )}
+
+              {/* Calendar - Visible for most roles */}
+              {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.SUB_EDITOR)) && (
+                <button
+                  onClick={() => handleNavigate('calendar')}
+                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'calendar'
+                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                    }`}
+                >
+                  <Calendar className="w-5 h-5 flex-shrink-0" />
+                  <span className="truncate">Calendar</span>
+                </button>
+              )}
+
+
 
             </div>
           </div>
@@ -298,15 +292,26 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
           )}
 
           {(user.role === Role.CMO || user.role === Role.PARTNER_ASSOCIATE) && (
-            <>
-              <button
-                onClick={() => { handleNavigate('overview'); setIsMobileMenuOpen(false); }}
-                className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'overview' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
-              >
-                <BarChart3 className="w-5 h-5" />
-                <span>Overview</span>
-              </button>
-            </>
+            <button
+              onClick={() => { handleNavigate('overview'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'overview' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span>Overview</span>
+            </button>
+          )}
+
+
+
+          {/* Mobile Leads - Visible for roles except PARTNER_ASSOCIATE */}
+          {user.role !== Role.PARTNER_ASSOCIATE && !user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) && (
+            <button
+              onClick={() => { handleNavigate('leads'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'leads' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <Users className="w-5 h-5" />
+              <span>Leads</span>
+            </button>
           )}
 
           {user.role === Role.CMO && (
@@ -321,42 +326,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             </>
           )}
 
-          {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE) && (
-            <button
-              onClick={() => { handleNavigate('calendar'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'calendar' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
-            >
-              <Calendar className="w-5 h-5" />
-              <span>Calendar</span>
-            </button>
-          )}
-
-          {/* Mobile Approved Influencer Videos */}
-          {user.role === Role.WRITER && (
-            <button
-              onClick={() => { handleNavigate('approved-videos'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'approved-videos' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
-            >
-              <Video className="w-5 h-5 flex-shrink-0" />
-              <span className="flex items-center text-left leading-tight text-xs">
-                Approved Influencer Videos
-                {approvedVideosCount !== undefined && approvedVideosCount > 0 && (
-                  <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
-                    {approvedVideosCount}
-                  </span>
-                )}
-              </span>
-            </button>
-          )}
-
-          {/* Mobile CEO Approved Scripts */}
+          {/* Mobile My Scripts */}
           {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
             <button
-              onClick={() => { handleNavigate('ceo-approved-scripts'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'ceo-approved-scripts' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+              onClick={() => { handleNavigate('scripts'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'scripts' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
             >
-              <CheckCircle2 className="w-5 h-5" />
-              <span>CEO Approved Scripts</span>
+              <FileText className="w-5 h-5" />
+              <span>My Scripts</span>
             </button>
           )}
 
@@ -371,16 +348,28 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
             </button>
           )}
 
-          {/* Mobile Lead Magnet Scripts */}
-          {(user.role === Role.WRITER || user.role === Role.CMO || user.role === Role.CEO || user.role === Role.SUB_EDITOR) && (
+          {/* Mobile CEO Approved Scripts */}
+          {(user.role === Role.PARTNER_ASSOCIATE || user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE)) && (
             <button
-              onClick={() => { handleNavigate('lead-magnet-scripts'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'lead-magnet-scripts' ? 'bg-[#6366F1] text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+              onClick={() => { handleNavigate('ceo-approved-scripts'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'ceo-approved-scripts' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
             >
-              <FileText className={`w-5 h-5 ${activeView === 'lead-magnet-scripts' ? 'text-white' : 'text-[#6366F1]'}`} />
-              <span>Lead Magnet Scripts</span>
+              <CheckCircle2 className="w-5 h-5" />
+              <span>CEO Approved Scripts</span>
             </button>
           )}
+
+          {(user.role === Role.CEO || user.role === Role.CMO || user.role === Role.SUB_EDITOR || user.role === Role.WRITER || user.role === Role.CINE || user.role === Role.EDITOR || user.role === Role.DESIGNER || user.role === Role.OPS || user.role === Role.PARTNER_ASSOCIATE) && (
+            <button
+              onClick={() => { handleNavigate('calendar'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'calendar' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+            >
+              <Calendar className="w-5 h-5" />
+              <span>Calendar</span>
+            </button>
+          )}
+
+
         </div>
 
         <div className="absolute bottom-0 w-full p-4 border-t-2 border-black bg-slate-50">

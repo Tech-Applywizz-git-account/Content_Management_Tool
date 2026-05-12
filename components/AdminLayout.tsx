@@ -15,7 +15,7 @@ import {
 
 import { useNavigate, useLocation } from 'react-router-dom';
 
-export type AdminView = 'DASH' | 'USERS' | 'USER_ADD' | 'ROLES' | 'LOGS' | 'SETTINGS';
+export type AdminView = 'DASH' | 'USERS' | 'USER_ADD' | 'ROLES' | 'LOGS' | 'SETTINGS' | 'LEADS';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -35,6 +35,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, onLogout }) =
     if (path.includes('/admin/users')) return 'USERS';
     if (path.includes('/admin/roles')) return 'ROLES';
     if (path.includes('/admin/logs')) return 'LOGS';
+    if (path.includes('/admin/leads')) return 'LEADS';
     if (path.includes('/admin/settings')) return 'SETTINGS';
     return 'DASH';
   };
@@ -48,6 +49,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, onLogout }) =
       case 'USER_ADD': navigate('/admin/users/add'); break;
       case 'ROLES': navigate('/admin/roles'); break;
       case 'LOGS': navigate('/admin/logs'); break;
+      case 'LEADS': navigate('/admin/leads'); break;
       case 'SETTINGS': navigate('/admin/settings'); break;
     }
   };
@@ -57,6 +59,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, user, onLogout }) =
     { id: 'USERS', label: 'Users', icon: Users },
     { id: 'ROLES', label: 'Roles & Permissions', icon: ShieldCheck },
     { id: 'LOGS', label: 'Audit Logs', icon: FileClock },
+    { id: 'LEADS', label: 'Lead Intelligence', icon: Users },
     { id: 'SETTINGS', label: 'System Settings', icon: Settings },
   ];
 

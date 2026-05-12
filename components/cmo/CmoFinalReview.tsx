@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, Role, WorkflowStage } from '../../types';
+import { Project, Role, WorkflowStage, User } from '../../types';
 import { format } from 'date-fns';
 import { Eye, Calendar, FileText, CheckCircle, Clock, Trash2 } from 'lucide-react';
 import { db } from '../../services/supabaseDb';
@@ -7,7 +7,7 @@ import { supabase } from '../../src/integrations/supabase/client';
 import CmoReviewScreen from './CmoReviewScreen';
 
 interface Props {
-  user: { id: string; full_name: string; role: Role };
+  user: User;
   onBack: () => void;
   onProjectSelect: (project: Project) => void;
   selectedProject: Project | null;
@@ -79,6 +79,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
             rework_initiator_stage: item.rework_initiator_stage,
             first_review_opened_at: item.first_review_opened_at,
             first_review_opened_by_role: item.first_review_opened_by_role,
+            brand: item.brand,
             updated_at: item.updated_at,
           }));
 
@@ -148,6 +149,9 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                   <div className="flex-1">
                     <h3 className="text-lg font-black text-slate-900 uppercase leading-tight group-hover:text-[#D946EF] transition-colors">
                       {project.title}
+                      {project.brand && (
+                        <span className="text-slate-400 text-sm ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                      )}
                     </h3>
                     <div className="flex items-center gap-2 mt-2">
                       <span

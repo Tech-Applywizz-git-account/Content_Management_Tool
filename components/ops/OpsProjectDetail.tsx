@@ -202,7 +202,12 @@ const OpsProjectDetail: React.FC<Props> = ({ project, onBack, onUpdate }) => {
                                 </span>
                             )}
                         </div>
-                        <h1 className="text-xl font-black uppercase text-slate-900 max-w-3xl truncate" title={project.title}>{project.title}</h1>
+                        <h1 className="text-xl font-black uppercase text-slate-900 max-w-3xl truncate" title={project.title}>
+                            {project.title}
+                            {project.brand && (
+                                <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                            )}
+                        </h1>
                     </div>
                 </div>
             </header>

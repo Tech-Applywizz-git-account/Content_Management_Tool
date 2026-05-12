@@ -633,6 +633,14 @@ const CeoReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete })
                                 </a>
                             </div>
                         )}
+                        {project.brand && (
+                            <div className="col-span-full border-t-2 border-slate-100 pt-4 mt-2">
+                                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                                <div className="font-black text-[#0085FF] uppercase text-lg">
+                                    {project.brand.replace(/_/g, ' ')}
+                                </div>
+                            </div>
+                        )}
                         {project.data?.thumbnail_notes && (
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase mb-1">Thumbnail Notes</label>

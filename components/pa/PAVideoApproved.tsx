@@ -23,7 +23,7 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <h1 className="text-xl font-black uppercase text-slate-900">Video Approved</h1>
+                    <h1 className="text-xl font-black uppercase text-slate-900">Completed Videos</h1>
                 </div>
             </header>
 
@@ -31,19 +31,19 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                 <div className="max-w-5xl mx-auto p-8 space-y-8">
                     <div className="bg-gradient-to-br p-8 border-2 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] from-orange-50 to-white border-orange-400">
                         <h2 className="text-2xl font-black uppercase mb-4 text-orange-900">
-                            Approved Videos
+                            Finalized Videos
                         </h2>
                         <p className="text-sm font-bold mb-6 text-orange-700">
-                            View projects that have received final approval
+                            View projects that have been posted live with proof of posting
                         </p>
 
                         {projects.length === 0 ? (
                             <div className="p-8 border-2 border-dashed rounded-lg text-center bg-orange-50 border-orange-300">
                                 <p className="text-lg font-bold text-orange-800">
-                                    No approved videos
+                                    No completed videos yet
                                 </p>
                                 <p className="text-orange-600 mt-2">
-                                    No videos have reached the approved stage yet
+                                    Videos will appear here once proof of posting is added
                                 </p>
                             </div>
                         ) : (
@@ -70,7 +70,12 @@ const PAVideoApproved: React.FC<Props> = ({ projects, onBack, onSelectProject })
                                             </span>
                                         </div>
 
-                                        <h3 className="font-black text-lg text-slate-900 uppercase mb-2">{project.title}</h3>
+                                        <h3 className="text-lg font-black text-slate-900 uppercase leading-tight mb-2">
+                                            {project.title}
+                                            {project.brand && (
+                                                <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                                            )}
+                                        </h3>
 
                                         <div className="space-y-2 text-sm">
                                             <div className="flex justify-between">

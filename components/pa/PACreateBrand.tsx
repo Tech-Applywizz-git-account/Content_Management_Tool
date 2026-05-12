@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { User } from '../../types';
 import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
-import { ArrowLeft, Building2, Trash2, Plus, Video } from 'lucide-react';
+import { ArrowLeft, Building2, Trash2, Plus, Video, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PACreateBrandProps {
@@ -12,17 +12,19 @@ interface PACreateBrandProps {
 
 const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const editBrand = location.state?.editBrand;
   const [brands, setBrands] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [brandToDelete, setBrandToDelete] = useState<{ id: string, name: string } | null>(null);
 
   const [formData, setFormData] = useState({
-    brand_name: '',
-    campaign_objective: '',
-    target_audience: '',
-    deliverables: '',
-    brand_type: 'REEL' as 'REEL' | 'STORY'
+    brand_name: editBrand?.brand_name || '',
+    campaign_objective: editBrand?.campaign_objective || '',
+    target_audience: editBrand?.target_audience || '',
+    brand_type: editBrand?.brand_type || 'REEL' as 'REEL' | 'STORY',
+    revenue: editBrand?.revenue?.toString() || ''
   });
 
   const fetchBrands = async () => {
@@ -56,19 +58,29 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
 
     setIsSubmitting(true);
     try {
-      await db.brands.create({
-        ...formData,
-        brand_name: formData.brand_name.toUpperCase(),
-        created_by_user_id: user.id
-      });
+      if (editBrand) {
+        await db.brands.update(editBrand.id, {
+          ...formData,
+          brand_name: formData.brand_name.toUpperCase(),
+          revenue: formData.revenue ? parseFloat(formData.revenue) : 0
+        });
+        toast.success('Brand updated successfully!');
+      } else {
+        await db.brands.create({
+          ...formData,
+          brand_name: formData.brand_name.toUpperCase(),
+          revenue: formData.revenue ? parseFloat(formData.revenue) : 0,
+          created_by_user_id: user.id
+        });
+        toast.success('Brand created successfully!');
+      }
       
-      toast.success('Brand created successfully!');
       setTimeout(() => {
         navigate('/partner_associate/brands');
       }, 1000);
     } catch (error: any) {
-      console.error('Error creating brand:', error);
-      toast.error(error.message || 'Failed to create brand.');
+      console.error('Error saving brand:', error);
+      toast.error(error.message || 'Failed to save brand.');
     } finally {
       setIsSubmitting(false);
     }
@@ -98,7 +110,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
     <div className="animate-fade-in w-full max-w-7xl mx-auto py-6 px-4">
       <div className="mb-10">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-slate-900 uppercase tracking-tighter mb-4">
-          Create New Brand
+          {editBrand ? 'Edit Brand' : 'Create New Brand'}
         </h1>
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-500">
@@ -119,7 +131,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
         <div className="lg:col-span-8 bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-8">
             <form onSubmit={handleBrandSubmit} className="space-y-8">
                 <div className="space-y-4">
-                    <label className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                    <label className="block text-sm font-black text-slate-900 tracking-wide">
                         Content Format <span className="text-red-500">*</span>
                     </label>
                     <div className="grid grid-cols-2 gap-4">
@@ -152,7 +164,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                 </div>
 
                 <div className="space-y-3">
-                    <label htmlFor="brand_name" className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                    <label htmlFor="brand_name" className="block text-sm font-black text-slate-900 tracking-wide">
                         Brand Name <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -168,7 +180,29 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                 </div>
 
                 <div className="space-y-3">
-                    <label htmlFor="campaign_objective" className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                    <label htmlFor="revenue" className="block text-sm font-black text-slate-900 tracking-wide">
+                        Revenue (USD)
+                    </label>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <DollarSign className="w-5 h-5 text-slate-400" />
+                        </div>
+                        <input
+                            type="number"
+                            id="revenue"
+                            name="revenue"
+                            value={formData.revenue}
+                            onChange={handleChange}
+                            step="0.01"
+                            min="0"
+                            className="w-full pl-12 pr-4 py-4 bg-white border-2 border-black font-bold placeholder:text-slate-300 focus:outline-none transition-all"
+                            placeholder="0.00"
+                        />
+                    </div>
+                </div>
+
+                <div className="space-y-3">
+                    <label htmlFor="campaign_objective" className="block text-sm font-black text-slate-900 tracking-wide">
                         Campaign Objective
                     </label>
                     <textarea
@@ -183,7 +217,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                 </div>
 
                 <div className="space-y-3">
-                    <label htmlFor="target_audience" className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                    <label htmlFor="target_audience" className="block text-sm font-black text-slate-900 tracking-wide">
                         Target Audience
                     </label>
                     <textarea
@@ -198,7 +232,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                 </div>
 
                 <div className="space-y-3">
-                    <label htmlFor="deliverables" className="block text-sm font-black text-slate-900 uppercase tracking-wide">
+                    <label htmlFor="deliverables" className="block text-sm font-black text-slate-900 tracking-wide">
                         Deliverables
                     </label>
                     <textarea
@@ -219,7 +253,7 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                     disabled={isSubmitting}
                     className="w-full sm:w-auto px-10 py-4 bg-[#D946EF] text-white border-2 border-black font-black uppercase text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[4px] transition-all disabled:opacity-50"
                 >
-                    {isSubmitting ? 'Saving...' : 'Save Brand'}
+                    {isSubmitting ? 'Saving...' : (editBrand ? 'Update Brand' : 'Save Brand')}
                 </button>
             </form>
         </div>

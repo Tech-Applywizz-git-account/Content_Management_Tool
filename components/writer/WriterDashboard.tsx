@@ -271,7 +271,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
         p.current_stage === WorkflowStage.WRITER_REVISION
     );
 
-    // Count for sidebar badge (Awaiting Approval influencer videos)
+    // Count for sidebar badge (Awaiting Approval raw videos)
     // We use localStorage to track when the writer last "cleared" this notification by opening the page
     // (using the lastViewedAt state defined above)
 
@@ -521,6 +521,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                             <Lightbulb className="w-6 h-6 border-2 border-white rounded-full" />
                             <span>New Idea</span>
                         </button>
+                        {/* Video Approval */}
                         <button
                             onClick={() => navigate('/writer/video-approval')}
                             className="w-full sm:w-auto bg-[#F59E0B] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
@@ -533,6 +534,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 </span>
                             )}
                         </button>
+                        {/* Video Uploads - HIDDEN BY USER REQUEST
                         <button
                             onClick={() => navigate('/writer/video-uploads')}
                             className="w-full sm:w-auto bg-[#0085FF] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
@@ -545,6 +547,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                 </span>
                             )}
                         </button>
+                        */}
                         <button
                             onClick={() => navigate('/writer/writer-captions')}
                             className="w-full sm:w-auto bg-[#22C55E] text-white border-2 border-black px-6 py-4 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center space-x-2 relative"
@@ -608,7 +611,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rework</span>
                                             )}
                                         </div>
-                                        <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">{p.title}</h4>
+                                        <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">
+                                            {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
+                                        </h4>
 
                                         <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                             <Clock className="w-3 h-3 mr-1" />
@@ -703,7 +708,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                                         p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
                                                     </span>
                                                 </div>
-                                                <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                                                <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">
+                                                    {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
+                                                </h4>
 
                                                 <div className="flex items-center text-xs font-bold text-slate-500 uppercase mt-2 border-t-2 border-slate-100 pt-2">
                                                     <Clock className="w-3 h-3 mr-1" />
@@ -762,7 +769,9 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             STAGE_LABELS[p.current_stage]}
                                             </span>
                                         </div>
-                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">{p.title}</h4>
+                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">
+                                            {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
+                                        </h4>
 
                                         {/* Show cine feedback if available */}
                                         {(p.data?.cine_notes_for_writer || p.data?.cine_comments || p.data?.cine_to_writer_feedback) && (
@@ -825,7 +834,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                         </div>
 
                                         <h4 className="font-black text-lg uppercase mb-2">
-                                            {p.title}
+                                            {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
                                         </h4>
 
                                         <p className="text-sm text-slate-600">

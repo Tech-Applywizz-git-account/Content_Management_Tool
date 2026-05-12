@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { decodeHtmlEntities } from '../../utils/htmlDecoder';
 import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_LABELS, TaskStatus, Priority } from '../../types';
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X, SpellCheck } from 'lucide-react';
+import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X, SpellCheck, MessageSquare } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
@@ -106,10 +105,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   const [formData, setFormData] = useState<ProjectData>({
     ...(parsedProjectData || {}),
     script_content: parsedProjectData?.script_content || '',
+    is_influencer: parsedProjectData?.is_influencer || false,
     _workflow_script_loaded: false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [reviewComment, setReviewComment] = useState<any>(null);
+  const [reviewComment, setReviewComment] = useState<any | null>(null);
+  const [reviewComments, setReviewComments] = useState<any[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [previousScript, setPreviousScript] = useState<string | null>(null);
   const [previousIdeaDescription, setPreviousIdeaDescription] = useState<string | null>(null);
@@ -120,10 +121,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Define newProjectDetails state properly
   const [newProjectDetails, setNewProjectDetails] = useState({
     title: project?.title || '',
-    channel: project?.channel || '', // No default selection
-    contentType: project?.content_type || '', // No default selection
+    channel: (project?.channel || '') as Channel | '',
+    contentType: (project?.content_type || '') as ContentType | '',
     dueDate: project?.due_date || new Date().toISOString().split('T')[0],
-    priority: project?.priority || 'NORMAL',
+    priority: (project?.priority || 'NORMAL') as Priority,
     brand: project?.brand || '',
     brand_other: project?.data?.brand_other || ''
   });
@@ -132,10 +133,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   useEffect(() => {
     setNewProjectDetails({
       title: project?.title || '',
-      channel: project?.channel || '',
-      contentType: project?.content_type || '',
+      channel: (project?.channel || '') as Channel | '',
+      contentType: (project?.content_type || '') as ContentType | '',
       dueDate: project?.due_date || new Date().toISOString().split('T')[0],
-      priority: project?.priority || 'NORMAL',
+      priority: (project?.priority || 'NORMAL') as Priority,
       brand: project?.brand || '',
       brand_other: project?.data?.brand_other || ''
     });
@@ -161,21 +162,25 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
   // Track editor initialization to prevent cursor jumping
   const isEditorInitialized = useRef(false);
 
-  // Initialize editor content when available
+  // Consolidated editor initialization effect
   useEffect(() => {
-    if (!loading && editorRef.current && formData.script_content) {
-      // Only set content if we haven't initialized yet
-      if (!isEditorInitialized.current) {
-        editorRef.current.innerHTML = formData.script_content;
-        isEditorInitialized.current = true;
-      }
-      // Or if we specifically loaded new content from workflow history (rework/reject)
-      // We check if the content is drastically different to avoid overwriting minor edits
-      else if (formData._workflow_script_loaded) {
-        const currentContent = editorRef.current.innerHTML;
-        if (currentContent !== formData.script_content && (currentContent === '' || currentContent === '<br>')) {
-          editorRef.current.innerHTML = formData.script_content;
-        }
+    if (!loading && editorRef.current && formData.script_content !== undefined) {
+      const contentToSet = formData.script_content || '';
+      const formattedContent = formatContentForEditor(contentToSet);
+      const currentHTML = editorRef.current.innerHTML;
+
+      // Force update if workflow script just loaded, or if editor is currently "empty/default"
+      const isEditorEmptyOrDefault = !currentHTML || 
+                                     currentHTML === '' || 
+                                     currentHTML === '<br>' || 
+                                     currentHTML === '<p><br></p>' ||
+                                     currentHTML === 'Start writing your script here...';
+
+      if (!isEditorInitialized.current || (formData._workflow_script_loaded && isEditorEmptyOrDefault)) {
+          if (contentToSet && (isEditorEmptyOrDefault || formData._workflow_script_loaded)) {
+            editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
+            isEditorInitialized.current = true;
+          }
       }
     }
   }, [loading, formData.script_content, formData._workflow_script_loaded]);
@@ -996,52 +1001,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     return content;
   };
 
-  // Effect to update editor when workflow script is loaded
-  useEffect(() => {
-    if (editorRef.current && formData._workflow_script_loaded && formData.script_content) {
-      // Save cursor position before updating content
-      const cursorPosition = saveCursorPosition();
-
-      // Format content for proper display in editor
-      const formattedContent = formatContentForEditor(formData.script_content);
-      editorRef.current.innerHTML = formattedContent;
-
-      // Restore cursor position after updating content
-      if (cursorPosition !== null) {
-        setTimeout(() => {
-          restoreCursorPosition(cursorPosition);
-        }, 0);
-      }
-    }
-  }, [formData._workflow_script_loaded, formData.script_content, editorRef]);
-
-  // This effect ensures the editor content is initialized with the script content when available
-  useEffect(() => {
-    if (editorRef.current && formData.script_content !== undefined && !formData._workflow_script_loaded) {
-      // Only initialize if the editor is currently empty or has default content
-      if (!editorRef.current.innerHTML ||
-        editorRef.current.innerHTML === '' ||
-        editorRef.current.innerHTML === 'Start writing your script here...') {
-        // Format content for proper display in editor, preserving formatting
-        const formattedContent = formatContentForEditor(formData.script_content);
-        editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
-      }
-    }
-  }, [formData.script_content, formData._workflow_script_loaded, editorRef]);
-
-  // Initialize editor content when formData.script_content changes or when component mounts
-  useEffect(() => {
-    if (editorRef.current && formData.script_content !== undefined) {
-      // Initialize if the editor is empty, has default content, or component just mounted
-      if (!editorRef.current.innerHTML ||
-        editorRef.current.innerHTML === '' ||
-        editorRef.current.innerHTML === 'Start writing your script here...') {
-        // Format content for proper display in editor, preserving formatting
-        const formattedContent = formatContentForEditor(formData.script_content);
-        editorRef.current.innerHTML = formattedContent || 'Start writing your script here...';
-      }
-    }
-  }, [formData.script_content, editorRef]); // Run when script_content or editorRef changes
+  // Removed redundant effects to avoid race conditions and cursor jumps.
+  // Initialization is now handled by the consolidated effect at the top of the component.
 
 
   // Fetch reviewer comments and previous script for rework/rejected projects
@@ -1049,25 +1010,26 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
     const fetchReviewData = async () => {
       if (project?.id) {
         try {
-          // Determine return type based on the latest action
-          if (workflowState?.isRejected) {
+          // Determine return type based on workflow state or project status
+          if (workflowState?.isRejected || project?.status === TaskStatus.REJECTED) {
             setReturnType('reject');
-          } else if (workflowState?.isRework) {
+          } else if (workflowState?.isRework || project?.status === TaskStatus.REWORK) {
             setReturnType('rework');
           }
 
-          // Fetch the most recent workflow history entry to get comments
+          // Fetch workflow history to get comments - get all rework/reject entries
           const { data: historyData, error: historyError } = await supabase
             .from('workflow_history')
             .select('actor_name, comment, timestamp, action')
             .eq('project_id', project.id)
-            .order('timestamp', { ascending: false })
-            .limit(1);
+            .in('action', ['REWORK', 'REJECTED'])
+            .order('timestamp', { ascending: false });
 
           if (historyError) {
             console.error('Error fetching workflow history:', historyError);
           } else if (historyData && historyData.length > 0) {
-            setReviewComment(historyData[0]);
+            setReviewComments(historyData);
+            setReviewComment(historyData[0]); // Keep for backward compatibility in existing UI if needed
           }
 
           // Fetch script version based on the latest action
@@ -1156,11 +1118,11 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             }));
           }
 
-          // For rework projects, also update formData with script content if available
           if (workflowState?.isRework && project.data?.script_content && !formData._workflow_script_loaded) {
             setFormData(prev => ({
               ...prev,
-              script_content: project.data?.script_content
+              script_content: project.data?.script_content,
+              _workflow_script_loaded: true
             }));
           }
         } catch (err) {
@@ -1311,10 +1273,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
         const createdProject = await db.createProject(
           newProjectDetails.title,
-          newProjectDetails.channel,
+          newProjectDetails.channel as Channel,
           newProjectDetails.dueDate,
-          newProjectDetails.contentType,
-          newProjectDetails.priority
+          newProjectDetails.contentType as ContentType,
+          newProjectDetails.priority as Priority
         );
         console.log('Created project with ID:', createdProject.id);
         await db.updateProjectData(createdProject.id, {
@@ -1335,7 +1297,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
       }
     }
     console.log('✅ Save draft completed');
-    onSuccess('draft_saved'); // This will trigger a refresh in the parent component
+    onSuccess(); // This will trigger a refresh in the parent component
   };
 
 
@@ -1430,10 +1392,10 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           // 1️⃣ CREATE PROJECT FIRST (if new)
           const createdProject = await db.createProject(
             newProjectDetails.title,
-            newProjectDetails.channel,
+            newProjectDetails.channel as Channel,
             newProjectDetails.dueDate,
-            newProjectDetails.contentType,
-            newProjectDetails.priority
+            newProjectDetails.contentType as ContentType,
+            newProjectDetails.priority as Priority
           );
           await (db.projects.update as any)(createdProject.id, {
             created_by_user_id: publicUser.id,
@@ -1448,7 +1410,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             brand_other: formData.brand_other,
             is_pa_brand: isPaBrand,
             writer_id: publicUser.id,
-            writer_name: currentUser.full_name
+            writer_name: currentUser?.full_name
           });
 
           if (!createdProject?.id) {
@@ -1529,8 +1491,8 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           // For scripts created from ideas, check if there have been rework actions since the script was created
           // Only consider rework actions that happened when the project was in script-related stages
           const scriptReworkActions = project.history.filter(h =>
-            h.action === 'REWORK' &&
-            (h.from_stage === WorkflowStage.SCRIPT_REVIEW_L1 || h.from_stage === WorkflowStage.SCRIPT_REVIEW_L2)
+            (h.action === 'REWORK' || h.action === 'REJECTED') &&
+            (h.stage === WorkflowStage.SCRIPT_REVIEW_L1 || h.stage === WorkflowStage.SCRIPT_REVIEW_L2)
           );
           isScriptInRework = scriptReworkActions.length > 0 && workflowState.latestAction !== 'APPROVED';
         } else {
@@ -1547,216 +1509,48 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           workflowState.isRework;
 
         if (isIdeaInRework) {
-          // For idea projects in rework, we need to determine who sent it for rework and route back to them
-          try {
-            // Fetch workflow history to determine who sent for rework
-            const { data: history, error: historyError } = await supabase
-              .from('workflow_history')
-              .select('actor_id, action, comment, timestamp')
-              .eq('project_id', project.id)
-              .order('timestamp', { ascending: false });
+          // For idea projects in rework, we use advanceWorkflow which now handles initiator return automatically
+          await db.advanceWorkflow(realProjectId, 'Idea resubmitted after rework');
+          console.log('✅ Successfully resubmitted idea rework project via advanceWorkflow');
+        } else if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
+          // Special case: Initial submission of a script created from an idea
+          await db.projects.update(realProjectId, {
+            current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
+            assigned_to_role: Role.CMO,
+            status: TaskStatus.WAITING_APPROVAL
+          });
 
-            if (historyError) {
-              console.error('Error fetching workflow history:', historyError);
-            }
+          const currentData =
+            typeof project?.data === 'string'
+              ? JSON.parse(project.data)
+              : project?.data || {};
 
-            const reworkHistory = history?.find(h => h.action === 'REWORK');
+          delete currentData.source; // remove IDEA_PROJECT flag
 
-            if (reworkHistory) {
-              let targetRole, targetStage;
+          await db.updateProjectData(realProjectId, currentData);
 
-              // Get the actor's role to determine where to send it back
-              const { data: userData, error: userError } = await supabase
-                .from('users')
-                .select('role')
-                .eq('id', reworkHistory.actor_id)
-                .single();
+          await db.workflow.recordAction(
+            realProjectId,
+            WorkflowStage.SCRIPT_REVIEW_L1,
+            publicUser.id,
+            currentUser.full_name,
+            'SUBMITTED',
+            'Script created from CEO-approved idea',
+            undefined,
+            Role.WRITER, // fromRole
+            Role.CMO, // toRole
+            currentUser.role as Role // actorRole
+          );
 
-              if (!userError && userData) {
-                // Determine where to send the rework based on who sent it
-                if (userData.role === Role.CMO) {
-                  targetRole = Role.CMO;
-                  // For idea projects, if CMO sent for rework, return to FINAL_REVIEW_CMO stage
-                  targetStage = WorkflowStage.FINAL_REVIEW_CMO;
-                } else if (userData.role === Role.CEO) {
-                  targetRole = Role.CEO;
-                  targetStage = WorkflowStage.FINAL_REVIEW_CEO;
-                } else {
-                  // Default fallback
-                  targetRole = Role.CMO;
-                  targetStage = WorkflowStage.FINAL_REVIEW_CMO;
-                }
-              } else {
-                // Default fallback if user role cannot be determined
-                targetRole = Role.CMO;
-                targetStage = WorkflowStage.FINAL_REVIEW_CMO;
-              }
-
-              // Update the idea project with the reworked content
-              await db.projects.update(realProjectId, {
-                current_stage: targetStage,
-                assigned_to_role: targetRole,
-                status: TaskStatus.WAITING_APPROVAL
-              });
-
-              // Add workflow history entry
-              await db.workflow.recordAction(
-                realProjectId,
-                targetStage as WorkflowStage,
-                publicUser.id,
-                currentUser.full_name,
-                'SUBMITTED',
-                'Idea resubmitted after rework',
-                undefined,
-                Role.WRITER, // fromRole
-                targetRole as Role, // toRole
-                currentUser.role as Role // actorRole
-              );
-
-              console.log(`✅ Successfully resubmitted idea rework project back to ${targetRole}`);
-            } else {
-              // If we can't determine who sent it for rework, use advanceWorkflow
-              await db.advanceWorkflow(realProjectId, 'Idea resubmitted after rework');
-              console.log('✅ Successfully resubmitted idea rework project via advanceWorkflow');
-            }
-          } catch (reworkError) {
-            console.error('Error determining idea rework routing:', reworkError);
-            // Fallback: use advanceWorkflow
-            await db.advanceWorkflow(realProjectId, 'Idea resubmitted after rework');
-            console.log('✅ Successfully resubmitted idea rework project via advanceWorkflow');
-          }
-        } else if (isScriptInRework) {
-          // Handle script rework - determine who sent it for rework
-          const { data: history, error: historyError } = await supabase
-            .from('workflow_history')
-            .select('actor_id, action, comment, timestamp')
-            .eq('project_id', realProjectId)
-            .order('timestamp', { ascending: false });
-
-          if (historyError) {
-            console.error('Error fetching workflow history:', historyError);
-            throw historyError;
-          }
-
-          // Find the most recent REWORK action
-          const reworkHistory = history?.find(h => h.action === 'REWORK');
-
-          if (reworkHistory) {
-            let targetRole: Role;
-            let targetStage: WorkflowStage;
-
-            // 🔍 Find who sent this project for rework
-            const { data: reviewer, error: reviewerError } = await supabase
-              .from('users')
-              .select('role')
-              .eq('id', reworkHistory.actor_id)
-              .single();
-
-            // ✅ Route based on WHO originally sent for rework
-            if (reviewer && reviewer.role === Role.CEO) {
-              // If CEO sent for rework, go directly back to CEO
-              targetRole = Role.CEO;
-              targetStage = WorkflowStage.SCRIPT_REVIEW_L2;
-            } else {
-              // If CMO or others sent for rework, go back to CMO
-              targetRole = Role.CMO;
-              targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
-            }
-
-            await db.projects.update(realProjectId, {
-              current_stage: targetStage,
-              assigned_to_role: targetRole,
-              status: TaskStatus.WAITING_APPROVAL
-            });
-
-            await db.workflow.recordAction(
-              realProjectId,
-              targetStage as WorkflowStage,
-              publicUser.id,
-              currentUser.full_name,
-              'SUBMITTED',
-              'Resubmitted after rework',
-              undefined,
-              Role.WRITER, // fromRole
-              targetRole as Role, // toRole
-              currentUser.role as Role // actorRole
-            );
-
-            console.log(`✅ Rework resubmitted back to ${targetRole}`);
-          } else {
-            await db.advanceWorkflow(realProjectId, 'Resubmitted after rework');
-            console.log('⚠️ Rework history missing → used advanceWorkflow');
-          }
+          console.log('✅ Script from idea sent to CMO');
         } else {
-          // ✅ IMPORTANT: Decide routing based on ACTUAL REVIEW, not creator role
-          const cmoHasOpened =
-            project?.first_review_opened_by_role === Role.CMO &&
-            project?.first_review_opened_at;
-
-          /* -----------------------------------
-             SCRIPT FROM CEO-APPROVED IDEA
-             ----------------------------------- */
-          if (mode === 'SCRIPT_FROM_APPROVED_IDEA') {
-            await db.projects.update(realProjectId, {
-              current_stage: WorkflowStage.SCRIPT_REVIEW_L1,
-              assigned_to_role: Role.CMO,
-              status: TaskStatus.WAITING_APPROVAL
-            });
-
-            const currentData =
-              typeof project?.data === 'string'
-                ? JSON.parse(project.data)
-                : project?.data || {};
-
-            delete currentData.source; // remove IDEA_PROJECT flag
-
-            await db.updateProjectData(realProjectId, currentData);
-
-            await db.workflow.recordAction(
-              realProjectId,
-              WorkflowStage.SCRIPT_REVIEW_L1,
-              publicUser.id,
-              currentUser.full_name,
-              'SUBMITTED',
-              'Script created from CEO-approved idea',
-              undefined,
-              Role.WRITER, // fromRole
-              Role.CMO, // toRole
-              currentUser.role as Role // actorRole
-            );
-
-            console.log('✅ Script from idea sent to CMO');
-          }
-
-          /* -----------------------------------
-             DEFAULT → FOLLOW PROPER WORKFLOW (Writer → CMO → CEO)
-             ----------------------------------- */
-          else {
-            // Follow standard workflow: Writer → CMO → CEO
-            const targetRole = Role.CMO;
-            const targetStage = WorkflowStage.SCRIPT_REVIEW_L1;
-
-            await db.projects.update(realProjectId, {
-              current_stage: targetStage,
-              assigned_to_role: targetRole,
-              status: TaskStatus.WAITING_APPROVAL
-            });
-
-            await db.workflow.recordAction(
-              realProjectId,
-              targetStage,
-              publicUser.id,
-              currentUser.full_name,
-              'SUBMITTED',
-              'Script submitted for CMO review',
-              undefined,
-              Role.WRITER, // fromRole
-              targetRole, // toRole
-              Role.WRITER // actorRole
-            );
-
-            console.log(`✅ Script submitted for review -> sent to ${targetRole}`);
-          }
+          // ✅ STANDARD SUBMISSION (including Script Rework)
+          // Use the centralized advanceWorkflow method which handles:
+          // 1. Rework initiator return (e.g., CEO -> PA -> CEO)
+          // 2. Standard progression (e.g., PA -> CMO -> CEO)
+          // 3. History recording and notifications
+          await db.advanceWorkflow(realProjectId, isScriptInRework ? 'Resubmitted after rework' : 'Script submitted for review');
+          console.log('✅ Project advanced via centralized advanceWorkflow');
         }
 
         /* =========================
@@ -1862,7 +1656,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   // ── Validation helpers (computed before JSX) ──────────────────────────────
   const _isInstagramVideo = newProjectDetails.channel === Channel.INSTAGRAM && newProjectDetails.contentType === 'VIDEO';
-  const _nicheRequired = (_isInstagramVideo && formData.brand === 'APPLYWIZZ') || newProjectDetails.channel !== Channel.INSTAGRAM;
+  const _nicheRequired = formData.brand === 'APPLYWIZZ' && (_isInstagramVideo || newProjectDetails.channel !== Channel.INSTAGRAM);
   const _nicheInvalid = _nicheRequired && (!formData.niche || (formData.niche === 'OTHER' && (!formData.niche_other || !formData.niche_other.trim())));
   const _draftDisabled = (
     !canEdit ||
@@ -1893,6 +1687,14 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up font-sans">
+      {/* Success Popup */}
+      {showPopup && (
+        <Popup
+          message={popupMessage}
+          stageName={stageName}
+          onClose={() => setShowPopup(false)}
+        />
+      )}
       {/* Header */}
       <header className="min-h-[4.5rem] md:h-20 border-b-2 border-black flex items-center justify-between px-3 md:px-6 bg-white shadow-sm gap-2">
         <div className="flex items-center space-x-2 md:space-x-6 overflow-hidden">
@@ -1960,6 +1762,57 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
           {/* ================= LEFT COLUMN ================= */}
           <div className="lg:col-span-1 space-y-4 md:space-y-6">
+            {/* Influencer Toggle - Only for Partner Associate and Writer */}
+            {(creatorRole === Role.PARTNER_ASSOCIATE || publicUser?.role === Role.WRITER) && (
+              <div className="bg-white p-6 border-2 border-black shadow-[4px_4px_0px_0px_rgba(217,70,239,1)] space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-black uppercase text-sm text-slate-900 tracking-tight">Influencer Campaign</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Enable influencer-specific workflow</p>
+                  </div>
+                  <button
+                    onClick={() => setFormData(prev => ({ ...prev, is_influencer: !prev.is_influencer }))}
+                    className={`w-14 h-8 border-2 border-black transition-all flex items-center px-1 ${formData.is_influencer ? 'bg-[#D946EF]' : 'bg-slate-200'}`}
+                  >
+                    <div className={`w-5 h-5 bg-white border-2 border-black transition-all ${formData.is_influencer ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {formData.is_influencer && (
+                  <div className="space-y-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Influencer Name</label>
+                      <input 
+                        type="text"
+                        value={formData.influencer_name || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, influencer_name: e.target.value }))}
+                        placeholder="Who is the influencer?"
+                        className="w-full p-3 border-2 border-black text-sm font-bold focus:bg-pink-50 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Influencer Email</label>
+                      <input 
+                        type="email"
+                        value={formData.influencer_email || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, influencer_email: e.target.value }))}
+                        placeholder="influencer@example.com"
+                        className="w-full p-3 border-2 border-black text-sm font-bold focus:bg-pink-50 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Campaign Brief / Notes</label>
+                      <textarea 
+                        value={formData.brief || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, brief: e.target.value }))}
+                        placeholder="Any extra context for this influencer campaign?"
+                        className="w-full p-3 border-2 border-black text-sm font-bold focus:bg-pink-50 focus:outline-none min-h-[100px] resize-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Project Info */}
             {!isPureIdeaEdit && (
@@ -2073,12 +1926,12 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {([
-                          { value: 'SHYAMS_PERSONAL_BRANDING', label: '🤵 Shyam Personal Brand', color: 'bg-[#F97316]' },
-                          { value: 'APPLYWIZZ', label: '🚀 ApplyWizz', color: 'bg-[#0085FF]' },
-                          { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]' },
-                          { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]' },
-                          { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]' },
-                          { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#0EA5E9]' },
+                          { value: 'SHYAMS_PERSONAL_BRANDING', label: '🤵 Shyam Personal Brand', color: 'bg-[#F97316]', brand_type: 'REEL' },
+                          { value: 'APPLYWIZZ', label: '🚀 ApplyWizz', color: 'bg-[#0085FF]', brand_type: 'REEL' },
+                          { value: 'APPLYWIZZ_JOB_BOARD', label: '💼 ApplyWizz Job Board', color: 'bg-[#00A36C]', brand_type: 'REEL' },
+                          { value: 'LEAD_MAGNET_RTW', label: '🧲 Lead Magnet (RTW lead magnet)', color: 'bg-[#6366F1]', brand_type: 'REEL' },
+                          { value: 'APPLYWIZZ_USA_JOBS', label: '🇺🇸 ApplyWizz USA Jobs', color: 'bg-[#8B5CF6]', brand_type: 'REEL' },
+                          { value: 'CAREER_IDENTIFIER', label: '🎯 Career Identifier', color: 'bg-[#0EA5E9]', brand_type: 'REEL' },
                           ...dynamicBrands
                             .filter(b => {
                               const normalizedName = (b.brand_name || '').trim().toUpperCase().replace(/[\s_]/g, '');
@@ -2096,14 +1949,21 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                               value: b.brand_name,
                               label: `🏢 ${b.brand_name}`,
                               color: 'bg-[#10B981]',
-                              isDynamic: true
+                              isDynamic: true,
+                              brand_type: b.brand_type
                             }))
                         ]).map(brand => (
                           <button
                             key={brand.value}
                             onClick={() => {
                               if (!canEdit) return;
-                              setFormData(prev => ({ ...prev, brand: brand.value, niche: undefined, niche_other: undefined }));
+                              setFormData(prev => ({ 
+                                ...prev, 
+                                brand: brand.value, 
+                                brand_type: brand.brand_type as any,
+                                niche: undefined, 
+                                niche_other: undefined 
+                              }));
                             }}
                             disabled={!canEdit}
                             className={`px-4 py-3 text-xs font-black uppercase border-2 border-black transition-all ${
@@ -2122,42 +1982,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
 
 
 
-                    {/* Influencer and Referral fields - only for Job Board or Lead Magnet */}
-                    {(formData.brand === 'APPLYWIZZ_JOB_BOARD' || formData.brand === 'LEAD_MAGNET_RTW') && (
-                      <div className="space-y-4 pt-4 border-t-2 border-dashed border-slate-200">
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                            Influencer Name
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.influencer_name || ''}
-                            onChange={e =>
-                              canEdit ? setFormData({ ...formData, influencer_name: e.target.value }) : null
-                            }
-                            readOnly={!canEdit}
-                            className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                            placeholder="Enter influencer name"
-                          />
-                        </div>
 
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
-                            Referral Link
-                          </label>
-                          <input
-                            type="url"
-                            value={formData.referral_link || ''}
-                            onChange={e =>
-                              canEdit ? setFormData({ ...formData, referral_link: e.target.value }) : null
-                            }
-                            readOnly={!canEdit}
-                            className="w-full p-4 border-2 border-black font-medium focus:bg-yellow-50 focus:outline-none"
-                            placeholder="Enter referral link"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -2305,7 +2130,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 </div>
 
                 {/* Cinematographer Instructions - Only for Video-based content */}
-                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'JOBBOARD' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && (
+                {(newProjectDetails.contentType === 'VIDEO' || newProjectDetails.contentType === 'LEAD_MAGNET' || newProjectDetails.contentType === 'CAPTION_BASED' || newProjectDetails.contentType === 'APPLYWIZZ_USA_JOBS') && (
                   <div className="bg-white p-5 md:p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-4 md:space-y-6">
                     <h3 className="font-black uppercase text-base md:text-lg text-slate-900">
                       Cinematography Instructions
@@ -2476,24 +2301,36 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
             {/* REVIEW COMMENTS (FOR REWORK/REJECTED PROJECTS) */}
             {(returnType === 'rework' || returnType === 'reject') && (
               <div className="bg-red-50 p-6 border-2 border-red-300 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                <h3 className="font-black uppercase text-lg text-red-800 mb-4">
-                  Review Comments
-                </h3>
+                <div className="flex items-center space-x-2 mb-4">
+                  <MessageSquare className="w-5 h-5 text-red-600" />
+                  <h3 className="font-black uppercase text-lg text-red-800">
+                    Review Comments
+                  </h3>
+                </div>
 
-                <div className="space-y-4">
-                  {reviewComment && (
+                {reviewComments && reviewComments.length > 0 ? (
+                  <div className="space-y-4">
+                    {reviewComments.map((comment, idx) => (
+                      <div key={idx} className="bg-white p-4 border-2 border-red-200 shadow-[4px_4px_0px_0px_rgba(254,226,226,1)]">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-bold text-slate-700">{comment.actor_name}</span>
+                          <span className="text-sm text-slate-500">{new Date(comment.timestamp).toLocaleString()}</span>
+                        </div>
+                        <p className="text-slate-700 whitespace-pre-wrap">{comment.comment || 'No specific comments provided.'}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  reviewComment && (
                     <div className="bg-white p-4 border-2 border-red-200">
                       <div className="flex justify-between items-start mb-2">
                         <span className="font-bold text-slate-700">{reviewComment.actor_name}</span>
                         <span className="text-sm text-slate-500">{new Date(reviewComment.timestamp).toLocaleString()}</span>
                       </div>
                       <p className="text-slate-700 whitespace-pre-wrap">{reviewComment.comment || 'No specific comments provided.'}</p>
-                      <div className="mt-2 px-3 py-1 bg-red-100 text-red-800 font-bold text-sm border border-red-300 inline-block">
-                        {reviewComment.action}
-                      </div>
                     </div>
-                  )}
-                </div>
+                  )
+                )}
               </div>
             )}
 
@@ -2557,6 +2394,7 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                         <button onClick={() => applyColor('red')} className="w-5 h-5 md:w-6 md:h-6 bg-red-800 border border-black rounded-sm" title="Red" />
                         <button onClick={() => applyColor('blue')} className="w-5 h-5 md:w-6 md:h-6 bg-blue-800 border border-black rounded-sm" title="Blue" />
                         <button onClick={() => applyColor('green')} className="w-5 h-5 md:w-6 md:h-6 bg-green-800 border border-black rounded-sm" title="Green" />
+                        <button onClick={() => applyColor('black')} className="w-5 h-5 md:w-6 md:h-6 bg-black border border-black rounded-sm" title="Black" />
                         <button onClick={() => applyBold()} className="w-5 h-5 md:w-6 md:h-6 bg-gray-500 border border-black rounded-sm flex items-center justify-center font-bold text-white text-[10px]" title="Bold">B</button>
                       </div>
                     )}

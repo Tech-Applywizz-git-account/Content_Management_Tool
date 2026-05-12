@@ -69,11 +69,12 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
     commercials_barter: '',
     location: '',
     location_other: '',
-    budget: '',
+    vercel_form_link: '',
+    product_name: '',
     brand_name: '',
+    budget: '',
     payment: 'no',
-    platform_type: '',
-    vercel_form_link: ''
+    platform_type: ''
   });
 
   const [isOtherNiche, setIsOtherNiche] = useState(false);
@@ -166,7 +167,7 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         contact_details: formData.contact_details,
         instagram_profile: formData.instagram_profile,
         niche: isOtherNiche ? formData.niche_other : formData.niche,
-        commercials: isBarterCollab ? `${formData.commercials} (${formData.commercials_barter})` : formData.commercials,
+        commercials: isBarterCollab ? `${formData.commercials} (${formData.product_name})` : formData.commercials,
         location: isOtherLocation ? formData.location_other : formData.location,
         budget: formData.budget,
         brand_name: formData.brand_name,
@@ -174,7 +175,9 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         platform_type: formData.platform_type,
         vercel_form_link: formData.vercel_form_link,
         brand_type,
-        created_by_user_id: user.id
+        campaign_type: brand_type, // Using brand_type as campaign_type
+        created_by_user_id: user.id,
+        product_name: formData.product_name
       };
 
       console.log('📤 Submitting influencer payload:', payload);
@@ -349,8 +352,8 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Product Name / Barter Details</label>
                                 <input 
                                     type="text" 
-                                    name="commercials_barter" 
-                                    value={formData.commercials_barter} 
+                                    name="product_name" 
+                                    value={formData.product_name} 
                                     onChange={handleChange} 
                                     className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
                                     placeholder="e.g. 2 units of Premium Product X..." 

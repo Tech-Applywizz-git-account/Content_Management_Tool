@@ -43,6 +43,8 @@ export enum WorkflowStage {
   SENT_TO_INFLUENCER = 'SENT_TO_INFLUENCER', // Sent to Influencer
   PA_FINAL_REVIEW = 'PA_FINAL_REVIEW', // Partner Associate final review
   PA_VIDEO_CMO_REVIEW = 'PA_VIDEO_CMO_REVIEW', // CMO reviews influencer raw video
+  PA_VIDEO_UPLOAD = 'PA_VIDEO_UPLOAD', // PA uploads influencer video
+  PA_VIDEO_APPROVAL = 'PA_VIDEO_APPROVAL', // PA approves CINE video
 }
 
 export enum TaskStatus {
@@ -60,7 +62,7 @@ export enum UserStatus {
 }
 
 export type Priority = 'HIGH' | 'NORMAL' | 'LOW';
-export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'CAPTION_BASED' | 'APPLYWIZZ_USA_JOBS';
+export type ContentType = 'VIDEO' | 'CREATIVE_ONLY' | 'CAPTION_BASED' | 'APPLYWIZZ_USA_JOBS' | 'LEAD_MAGNET';
 
 export interface User {
   id: string;
@@ -85,6 +87,7 @@ export interface Project {
   assigned_to_user_id?: string; // Optional, usually assigned by role
   status: TaskStatus;
   brand?: string;
+  brand_type?: 'REEL' | 'STORY';
   priority: Priority;
   due_date: string;
   created_by_user_id?: string; // User ID of the creator (managed by backend)
@@ -144,6 +147,13 @@ export interface Project {
   first_review_opened_by_role?: Role; // Role of the first reviewer who opened the project
   pa_script_sent_at?: string; // When PA sends script to influencer
   pa_raw_footage_uploaded_at?: string; // When PA uploads raw footage from influencer
+  pa_video_cmo_review_at?: string; // When influencer video is sent for CMO review
+  pa_cmo_video_approved_at?: string; // When CMO approves influencer video
+  pa_editor_video_uploaded_at?: string; // When editor uploads influencer video
+  pa_final_approval_at?: string; // When PA gives final approval
+  pa_rejection_at?: string; // When PA rejects the project
+  pa_posting_proof_added_at?: string; // When PA adds proof of posting
+  updated_at?: string;
 }
 
 export interface ProjectData {
@@ -173,6 +183,7 @@ export interface ProjectData {
   influencer_email?: string;
   content_description?: string;
   referral_link?: string;
+  brand_type?: 'REEL' | 'STORY';
   [key: string]: any;
 }
 
@@ -252,6 +263,8 @@ export const STAGE_LABELS: Record<WorkflowStage, string> = {
   [WorkflowStage.SENT_TO_INFLUENCER]: 'Sent to Influencer',
   [WorkflowStage.PA_FINAL_REVIEW]: 'Final Review (PA)',
   [WorkflowStage.PA_VIDEO_CMO_REVIEW]: 'Video Review (CMO)',
+  [WorkflowStage.PA_VIDEO_UPLOAD]: 'Video Upload (PA)',
+  [WorkflowStage.PA_VIDEO_APPROVAL]: 'Video Approval (PA)',
 };
 
 // Notification types

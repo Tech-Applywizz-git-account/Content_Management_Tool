@@ -456,6 +456,71 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             </div>
           </div>
 
+          {/* Project Details */}
+          <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6 mb-6">
+            <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
+                <p className="font-bold text-slate-900 mt-1">
+                  {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
+                </p>
+              </div>
+              <div>
+                <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
+                <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
+              </div>
+              {localProject.brand && (
+                <div className="col-span-2 border-t border-slate-100 pt-3">
+                  <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
+                  <p className="font-black text-[#0085FF] mt-1 uppercase">
+                    {localProject.brand.replace(/_/g, ' ')}
+                  </p>
+                </div>
+              )}
+              {localProject.data?.niche && (
+                <div className="col-span-2 border-t border-slate-100 pt-3">
+                  <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
+                  <p className="font-bold text-slate-900 mt-1 uppercase">
+                    {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
+                      : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
+                        : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
+                          : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
+                            : localProject.data.niche === 'OTHER' && localProject.data.niche_other
+                              ? localProject.data.niche_other
+                              : localProject.data.niche}
+                  </p>
+                </div>
+              )}
+              {localProject.data?.influencer_name && (
+                <div className="col-span-1 border-t border-slate-100 pt-3">
+                  <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
+                  <p className="font-bold text-slate-900 mt-1 uppercase">
+                    {localProject.data.influencer_name}
+                  </p>
+                </div>
+              )}
+              {localProject.data?.referral_link && (
+                <div className="col-span-1 border-t border-slate-100 pt-3">
+                  <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
+                  <p className="font-bold text-slate-900 mt-1">
+                    <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
+                      View Link
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* New Project Progress Bar */}
           <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6 mb-8 overflow-hidden">
              <div className="flex items-center gap-2 mb-6">
@@ -512,11 +577,11 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
                 <div className="flex items-center gap-2 mb-4">
                   <Video className="w-5 h-5" />
                   <h2 className="text-xl font-black uppercase">
-                    {isInfluencerVideo(localProject) ? 'Influencer Video' : 'Shoot Video'}
+                    {localProject.data?.is_influencer === true ? 'Influencer Video' : 'Raw Video'}
                   </h2>
                 </div>
                 <div className="bg-blue-50 border-2 border-blue-400 p-4">
-                  {!isInfluencerVideo(localProject) && (
+                  {localProject.data?.is_influencer !== true && (
                     <p className="text-sm font-bold text-blue-800 mb-2">
                       📹 Shoot Date: {localProject.shoot_date || 'Not specified'}
                     </p>
@@ -832,74 +897,7 @@ const SubEditorProjectDetail: React.FC<Props> = ({ project: initialProject, user
             )
           }
 
-          {/* Project Info */}
-          {
-            fromView !== 'SCRIPTS' && (
-              <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
-                <h2 className="text-xl font-black uppercase mb-4">Project Details</h2>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-bold text-slate-400 uppercase text-xs">Status</span>
-                    <p className="font-bold text-slate-900 mt-1">{localProject.status}</p>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-400 uppercase text-xs">Priority</span>
-                    <p className="font-bold text-slate-900 mt-1">{localProject.priority}</p>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-400 uppercase text-xs">Created</span>
-                    <p className="font-bold text-slate-900 mt-1">
-                      {format(new Date(localProject.created_at), 'MMM dd, yyyy h:mm a')}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-400 uppercase text-xs">Content Type</span>
-                    <p className="font-bold text-slate-900 mt-1">{localProject.content_type}</p>
-                  </div>
-                  {localProject.brand && (
-                    <div className="col-span-2 border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-400 uppercase text-xs">Brand</span>
-                      <p className="font-black text-[#0085FF] mt-1 uppercase">
-                        {localProject.brand.replace(/_/g, ' ')}
-                      </p>
-                    </div>
-                  )}
-                  {localProject.data?.niche && (
-                    <div className="col-span-2 border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-400 uppercase text-xs">Niche</span>
-                      <p className="font-bold text-slate-900 mt-1 uppercase">
-                        {localProject.data.niche === 'PROBLEM_SOLVING' ? 'Problem Solving'
-                          : localProject.data.niche === 'SOCIAL_PROOF' ? 'Social Proof'
-                            : localProject.data.niche === 'LEAD_MAGNET' ? 'Lead Magnet'
-                              : localProject.data.niche === 'CAPTION_BASED' ? 'Caption Based'
-                                : localProject.data.niche === 'OTHER' && localProject.data.niche_other
-                                  ? localProject.data.niche_other
-                                  : localProject.data.niche}
-                      </p>
-                    </div>
-                  )}
-                  {localProject.data?.influencer_name && (
-                    <div className="col-span-1 border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-400 uppercase text-xs">Influencer</span>
-                      <p className="font-bold text-slate-900 mt-1 uppercase">
-                        {localProject.data.influencer_name}
-                      </p>
-                    </div>
-                  )}
-                  {localProject.data?.referral_link && (
-                    <div className="col-span-1 border-t border-slate-100 pt-3">
-                      <span className="font-bold text-slate-400 uppercase text-xs">Referral Link</span>
-                      <p className="font-bold text-slate-900 mt-1">
-                        <a href={localProject.data.referral_link} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline uppercase">
-                          View Link
-                        </a>
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          }
+
         </div >
       </main >
       <div className="fixed inset-0 pointer-events-none z-50">
