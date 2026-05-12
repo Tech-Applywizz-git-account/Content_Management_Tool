@@ -42,15 +42,14 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
 
     React.useEffect(() => {
         const fetchScripts = async () => {
-            let brandName = project.data?.brand || project.brandSelected || project.brand || '';
+            let brandName = project.brand || project.data?.brand || '';
             if (!brandName) return;
 
             // Clean brand name - remove (REEL), (STORY), etc. if present
             const cleanBrand = brandName.split(' (')[0].trim().toLowerCase();
             console.log('🔍 Filtering scripts for brand (cleaned):', cleanBrand);
 
-            // Fetch ALL projects for the library and filter in JS to avoid malformed PostgREST queries
-            // This also bypasses issues with missing columns like 'brandSelected' or 'is_deleted'
+            // Fetch ALL projects for the library and filter in JS
             const { data, error } = await supabase
                 .from('projects')
                 .select('*');
@@ -61,28 +60,48 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             }
             
             if (data) {
-                // Filter by brand name first and check for PA/Influencer flags
+                // Helper to normalize brand names (remove spaces, underscores, etc.)
+                const normalizeBrand = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+                const normalizedTargetBrand = normalizeBrand(cleanBrand);
+
+                // Filter by brand name AND PA/Influencer flags
                 const brandProjects = data.filter(p => {
-                    const b1 = (p.brand || '').trim().toLowerCase();
-                    const b2 = (p.brandSelected || '').trim().toLowerCase();
-                    const b3 = (p.data?.brand || '').trim().toLowerCase();
+                    let pData = p.data;
+                    let pMetadata = p.metadata;
                     
-                    const isBrandMatch = b1.includes(cleanBrand) || b2.includes(cleanBrand) || b3.includes(cleanBrand);
+                    try {
+                        if (typeof pData === 'string') pData = JSON.parse(pData);
+                        if (typeof pMetadata === 'string') pMetadata = JSON.parse(pMetadata);
+                    } catch (e) {}
+
+                    const b1 = normalizeBrand(p.brand);
+                    const b2 = normalizeBrand(p.brandSelected);
+                    const b3 = normalizeBrand(pData?.brand);
                     
-                    // User Request: Only show scripts with is_pa_brand=true OR is_influencer=true
-                    const isPaBrand = p.data?.is_pa_brand === true || p.metadata?.is_pa_brand === true;
-                    const isInfluencer = p.data?.is_influencer === true || p.metadata?.is_influencer === true;
+                    // Flexi-match: Either project brand contains target, or target contains project brand
+                    const isBrandMatch = 
+                        (b1 && (b1.includes(normalizedTargetBrand) || normalizedTargetBrand.includes(b1))) ||
+                        (b2 && (b2.includes(normalizedTargetBrand) || normalizedTargetBrand.includes(b2))) ||
+                        (b3 && (b3.includes(normalizedTargetBrand) || normalizedTargetBrand.includes(b3)));
+                    
+                    const isPaBrand = pData?.is_pa_brand === true || pMetadata?.is_pa_brand === true;
+                    const isInfluencer = pData?.is_influencer === true || pMetadata?.is_influencer === true;
                     
                     return isBrandMatch && (isPaBrand || isInfluencer);
                 });
 
-                console.log(`📊 Found ${brandProjects.length} filtered projects for brand: ${cleanBrand}`);
+                console.log(`📊 Found ${brandProjects.length} filtered projects for PA/Influencer scripts in brand context: ${normalizedTargetBrand}`);
                 
                 // Then filter to only include those that are actually scripts and have PASSED CEO review (SCRIPT_REVIEW_L2)
                 const filtered = brandProjects.filter(p => {
+                    let pData = p.data;
+                    try {
+                        if (typeof pData === 'string') pData = JSON.parse(pData);
+                    } catch (e) {}
+
                     // 1. Strict script content check
                     // ONLY include projects that have actual script_content
-                    if (!p.data?.script_content) {
+                    if (!pData?.script_content) {
                         console.debug(`❌ Skipping ${p.title}: No script_content found`);
                         return false;
                     }
@@ -99,7 +118,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         h.stage === 'SCRIPT_REVIEW_L2' && h.action === 'APPROVED'
                     );
 
-                    const isFinalized = hasMovedPastL2 || wasApprovedByCeo || p.status === 'DONE';
+                    const isFinalized = hasMovedPastL2 || wasApprovedByCeo || p.status === 'DONE' || !!pData?.pa_final_approval_at || p.current_stage === WorkflowStage.POSTED;
                     
                     if (!isFinalized) {
                         console.debug(`❌ Skipping ${p.title}: Still in stage ${p.current_stage} and no L2 approval in history`);

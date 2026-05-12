@@ -14,9 +14,15 @@ import {
   Calendar,
   DollarSign,
   ChevronRight,
-  Database
+  Database,
+  CheckCircle2,
+  Clock,
+  Target,
+  MessageSquare,
+  PhoneOff,
+  MinusCircle
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 interface Lead {
   id: string;
@@ -39,13 +45,57 @@ interface PALeadsProps {
   user: User;
 }
 
+function getSourceFilterForBrand(decodedBrandName: string): ((source: string) => boolean) | null {
+  const brand = decodedBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // Job Board (check before generic ApplyWizz so "aw job board" routes correctly)
+  if (brand.includes('jobboard')) {
+    return (source: string) => {
+      const s = source.toLowerCase();
+      return s.includes('jobboard') || s.includes('job board');
+    };
+  }
+
+  // Lead Magnet / RTW
+  if (brand.includes('leadmagnet') || brand.includes('rtw')) {
+    return (source: string) => {
+      const s = source.toLowerCase();
+      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet');
+    };
+  }
+
+  // CareerIdentifier
+  if (brand.includes('careeridentifier') || brand.includes('careridentifier') || brand.includes('cir')) {
+    return (source: string) => {
+      const s = source.toLowerCase();
+      return s.includes('cir') || s.includes('career identifier') || s.includes('careeridentifier');
+    };
+  }
+
+  if (brand.includes('applywizz') || brand === 'aw') {
+    return (source: string) => {
+      const s = source.toLowerCase();
+      return (s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz')) && 
+             !s.includes('job board') && !s.includes('jobboard');
+    };
+  }
+
+  return null;
+}
+
 const PALeads: React.FC<PALeadsProps> = ({ user }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const brandFilter = location.state?.brandFilter as string | undefined;
+  
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('WEEKLY');
+  const [dateFilter, setDateFilter] = useState('OVERALL');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [selectedStage, setSelectedStage] = useState<string | null>(null);
 
   const fetchLeads = async () => {
     setIsLoading(true);
@@ -60,6 +110,14 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
         sun.setDate(today.getDate() - today.getDay());
         start = sun.toISOString().split('T')[0];
         end = today.toISOString().split('T')[0];
+      } else if (dateFilter === 'MONTHLY') {
+        const firstDay = new Date(today.getFullYear(), selectedMonth, 1);
+        const lastDay = new Date(today.getFullYear(), selectedMonth + 1, 0);
+        start = firstDay.toISOString().split('T')[0];
+        end = lastDay.toISOString().split('T')[0];
+      } else if (dateFilter === 'CUSTOM') {
+        start = customRange.start || '2024-01-01';
+        end = customRange.end || today.toISOString().split('T')[0];
       } else {
         start = '2024-01-01';
         end = today.toISOString().split('T')[0];
@@ -75,14 +133,18 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
       if (!response.ok) throw new Error(`API Error: ${response.status}`);
       
       const result = await response.json();
-      const leadData = result.data || (Array.isArray(result) ? result : []);
-      setLeads(leadData);
+      const rawLeads = result.data || (Array.isArray(result) ? result : []);
       
-      // Select first source by default if none selected
-      if (leadData.length > 0 && !selectedSource) {
-        const sources = Array.from(new Set(leadData.map((l: any) => l.source || 'Unknown'))).sort();
-        setSelectedSource(sources[0] as string);
+      // Filter leads if brand context exists
+      let leadData = rawLeads;
+      if (brandFilter) {
+        const sourceFilter = getSourceFilterForBrand(brandFilter);
+        if (sourceFilter) {
+          leadData = rawLeads.filter((l: any) => sourceFilter(l.source || ''));
+        }
       }
+      
+      setLeads(leadData);
     } catch (err) {
       console.error('Error fetching leads:', err);
     } finally {
@@ -92,7 +154,7 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
 
   useEffect(() => {
     fetchLeads();
-  }, [dateFilter]);
+  }, [dateFilter, selectedMonth, customRange.start, customRange.end]);
 
   // Grouping logic
   const sources = Array.from(new Set(leads.map(l => l.source || 'Unknown Source'))).sort();
@@ -101,227 +163,401 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
     s.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const displayLeads = leads.filter(l => 
-    (l.source || 'Unknown Source') === selectedSource &&
+  const getStageColor = (stage: string) => {
+    const s = stage?.toLowerCase() || '';
+    if (s.includes('sale done')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (s.includes('target')) return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (s.includes('conversation done')) return 'bg-amber-100 text-amber-700 border-amber-200';
+    if (s.includes('dnp')) return 'bg-red-100 text-red-700 border-red-200';
+    if (s.includes('out of tg')) return 'bg-slate-100 text-slate-700 border-slate-200';
+    if (s.includes('prospect')) return 'bg-slate-50 text-slate-500 border-slate-200';
+    return 'bg-slate-100 text-slate-600 border-slate-200';
+  };
+
+  const getStatusColor = (status: string) => {
+    const s = status?.toLowerCase() || '';
+    if (s === 'new') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    if (s === 'assigned') return 'bg-purple-50 text-purple-700 border-purple-200';
+    return 'bg-slate-50 text-slate-500 border-slate-200';
+  };
+
+  const sourceLeads = leads.filter(l => 
+    (selectedSource === null || (l.source || 'Unknown Source') === selectedSource)
+  );
+
+  const displayLeads = sourceLeads.filter(l => 
+    (selectedStage === null || l.current_stage?.toLowerCase().includes(selectedStage.toLowerCase())) &&
     (l.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
      l.business_id?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
-    <div className="h-screen bg-[#F8FAFC] flex flex-col overflow-hidden">
-      {/* Top Header */}
-      <div className="bg-white border-b-4 border-black p-4 flex items-center justify-between z-10 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.05)]">
+    <div className="h-screen bg-[#F1F5F9] flex flex-col overflow-hidden font-sans">
+      {/* Top Header - Clean & Professional */}
+      <div className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between z-20 shadow-sm">
         <div className="flex items-center gap-6">
           <button 
             onClick={() => navigate(-1)}
-            className="p-2 hover:bg-slate-50 border-2 border-black rounded shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-none transition-all"
+            className="group p-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-all duration-200"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={20} className="text-slate-600 group-hover:text-black" />
           </button>
-          <div>
-            <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
-              <Globe className="text-[#D946EF]" size={36} />
-              Lead Intelligence
-              <span className="ml-4 bg-black text-white text-sm px-3 py-1 rounded-full border-2 border-[#D946EF] shadow-[2px_2px_0px_0px_rgba(217,70,239,1)]">
-                {leads.length} TOTAL
-              </span>
-            </h1>
-            <p className="text-slate-500 font-bold mt-1 uppercase text-xs tracking-widest">
-              Live Monitoring Sync • Real-time Data Feed
-            </p>
+          
+          <div className="flex flex-col">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-gradient-to-br from-[#D946EF] to-[#8B5CF6] rounded-lg shadow-md">
+                <Globe className="text-white" size={24} />
+              </div>
+              <div className="flex flex-col">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight leading-none">
+                  Lead <span className="text-[#D946EF]">Details</span>
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                  <p className="text-slate-400 font-medium uppercase text-[10px] tracking-wider">
+                    Real-time Data Stream • {brandFilter || 'Global View'} • {leads.length} Records
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex bg-slate-100 border-2 border-black rounded p-1">
-            {['TODAY', 'WEEKLY', 'OVERALL'].map(f => (
+        <div className="flex items-center gap-4">
+          {/* Custom Date Inputs */}
+          {dateFilter === 'CUSTOM' && (
+            <div className="flex items-center gap-2 animate-slide-up">
+              <input 
+                type="date" 
+                value={customRange.start}
+                onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-[#D946EF]/20 outline-none"
+              />
+              <span className="text-slate-400 text-[10px] font-bold">TO</span>
+              <input 
+                type="date" 
+                value={customRange.end}
+                onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold focus:ring-2 focus:ring-[#D946EF]/20 outline-none"
+              />
+            </div>
+          )}
+
+          {/* Month Selector */}
+          {dateFilter === 'MONTHLY' && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider focus:ring-2 focus:ring-[#D946EF]/20 outline-none animate-slide-up"
+            >
+              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((m, i) => (
+                <option key={i} value={i}>{m}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Date Selector Toggles */}
+          <div className="flex bg-slate-100/50 border border-slate-200 rounded-lg p-1">
+            {['TODAY', 'WEEKLY', 'MONTHLY', 'CUSTOM', 'OVERALL'].map(f => (
               <button
                 key={f}
                 onClick={() => setDateFilter(f)}
-                className={`px-3 py-1 font-black uppercase text-[10px] transition-all rounded ${
-                  dateFilter === f ? 'bg-black text-white' : 'text-slate-500 hover:bg-white'
+                className={`px-4 py-1.5 font-bold uppercase text-[10px] transition-all rounded-md ${
+                  dateFilter === f 
+                    ? 'bg-white text-slate-900 shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
                 {f}
               </button>
             ))}
           </div>
+
+          <div className="h-8 w-px bg-slate-200 mx-1"></div>
+
           <button 
             onClick={fetchLeads}
-            className="p-2 bg-[#D946EF] text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 transition-all"
+            disabled={isLoading}
+            className="p-2.5 bg-white text-slate-600 border border-slate-200 rounded-lg shadow-sm hover:bg-slate-50 hover:text-[#D946EF] transition-all duration-200 disabled:opacity-50"
           >
-            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={18} className={`${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Sources */}
-        <div className="w-80 bg-white border-r-4 border-black flex flex-col shadow-[4px_0px_0px_0px_rgba(0,0,0,0.05)]">
-          <div className="p-4 border-b-2 border-slate-100">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+        {/* Left Sidebar - Clean & Minimal */}
+        <div className="w-60 bg-white border-r border-slate-200 flex flex-col z-10 shadow-sm">
+          <div className="p-5 border-b border-slate-100 bg-white">
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors" size={16} />
               <input
                 type="text"
                 placeholder="Search Sources..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border-2 border-black font-bold text-sm focus:outline-none focus:bg-white transition-all"
+                className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D946EF]/20 focus:border-[#D946EF] transition-all"
               />
             </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto scrollbar-hide p-2 space-y-1">
+          <div className="flex-1 overflow-y-auto scrollbar-hide p-3 space-y-1">
             {isLoading && sources.length === 0 ? (
-              <div className="p-10 text-center animate-pulse">
-                <Database className="mx-auto text-slate-200 mb-2" size={32} />
-                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Loading...</span>
+              <div className="py-20 text-center space-y-3">
+                <Database className="mx-auto text-slate-200 animate-pulse" size={40} />
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loading Feed...</p>
               </div>
-            ) : filteredSources.map(source => {
-              const count = leads.filter(l => (l.source || 'Unknown Source') === source).length;
-              return (
+            ) : (
+              <>
                 <button
-                  key={source}
-                  onClick={() => setSelectedSource(source)}
-                  className={`w-full text-left p-3 border-2 transition-all flex items-center justify-between group ${
-                    selectedSource === source 
-                      ? 'bg-black border-black text-white shadow-[4px_4px_0px_0px_rgba(217,70,239,1)]' 
-                      : 'border-transparent hover:border-slate-200 hover:bg-slate-50 text-slate-600'
+                  onClick={() => setSelectedSource(null)}
+                  className={`w-full text-left p-3.5 rounded-lg transition-all flex items-center justify-between group ${
+                    selectedSource === null 
+                      ? 'bg-[#D946EF]/10 text-[#D946EF] shadow-sm border border-[#D946EF]/20' 
+                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
-                  <div className="flex flex-col">
-                    <span className="font-bold text-xs truncate max-w-[180px]">{source}</span>
-                    <span className={`text-[9px] font-black uppercase mt-0.5 ${selectedSource === source ? 'text-[#D946EF]' : 'text-slate-400'}`}>
-                      {count} {count === 1 ? 'Lead' : 'Leads'}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <Users size={16} className={selectedSource === null ? 'text-[#D946EF]' : 'text-slate-400'} />
+                    <span className="font-bold text-sm">All Sources</span>
                   </div>
-                  <ChevronRight size={14} className={selectedSource === source ? 'text-[#D946EF]' : 'opacity-0 group-hover:opacity-100'} />
+                  <span className={`text-[10px] font-bold ${selectedSource === null ? 'text-[#D946EF]/70' : 'text-slate-300'}`}>
+                    {leads.length}
+                  </span>
                 </button>
-              );
-            })}
+                
+                <div className="pt-4 pb-2 px-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Campaigns</span>
+                </div>
+
+                {filteredSources.map((source, idx) => {
+                  const count = leads.filter(l => (l.source || 'Unknown Source') === source).length;
+                  return (
+                    <button
+                      key={source}
+                      onClick={() => setSelectedSource(source)}
+                      className={`w-full text-left p-3 rounded-lg transition-all flex items-center justify-between group animate-slide-up ${
+                        selectedSource === source 
+                          ? 'bg-[#D946EF]/10 text-[#D946EF] shadow-sm border border-[#D946EF]/20' 
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Database size={14} className={selectedSource === source ? 'text-[#D946EF]' : 'text-slate-400'} />
+                        <span className="font-semibold text-sm truncate max-w-[140px]">{source}</span>
+                      </div>
+                      <span className={`text-[10px] font-bold ${selectedSource === source ? 'text-[#D946EF]/70' : 'text-slate-300'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
           
-          <div className="p-4 bg-slate-50 border-t-2 border-black space-y-1">
-            <div className="font-black text-[10px] uppercase text-slate-400 flex justify-between">
-              <span>Total Sources</span>
-              <span className="text-black">{sources.length}</span>
-            </div>
-            <div className="font-black text-[10px] uppercase text-slate-400 flex justify-between">
-              <span>Total Leads</span>
-              <span className="text-[#D946EF]">{leads.length}</span>
+          <div className="p-5 bg-slate-50 border-t border-slate-200">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sources</span>
+                <span className="text-xs font-bold text-slate-900">{sources.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Leads</span>
+                <span className="text-sm font-bold text-[#D946EF]">{leads.length}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Content - Table */}
-        <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
-          {selectedSource ? (
-            <>
-              <div className="p-6 bg-white border-b-2 border-slate-200 flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">
-                    {selectedSource}
+        {/* Right Content - Table & Stats */}
+        <div className="flex-1 flex flex-col bg-slate-50/50 overflow-hidden p-6">
+          {leads.length > 0 || isLoading ? (
+            <div className="flex flex-col h-full space-y-6">
+              <div className="flex items-end justify-between px-2">
+                <div className="animate-slide-up">
+                  <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
+                    {selectedSource || 'All Brand Activity'}
                   </h2>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-                    Showing {displayLeads.length} Leads from this source
+                  <p className="text-sm text-slate-500 mt-1 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-[#D946EF] rounded-full"></span>
+                    Analyzing {displayLeads.length} of {sourceLeads.length} leads in the current feed
                   </p>
-                </div>
-                <div className="bg-slate-100 px-4 py-2 border-2 border-black font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  {dateFilter} REPORT
                 </div>
               </div>
 
-              <div className="flex-1 overflow-auto p-6 scrollbar-hide">
-                <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] rounded-sm overflow-hidden min-w-[1200px]">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-black text-white border-b-2 border-black">
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">ID / Business ID</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Lead Contact</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Location</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Stage & Status</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Assigned To</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Financials</th>
-                        <th className="p-4 uppercase font-black text-[10px] tracking-widest whitespace-nowrap">Created At</th>
+              <div className="grid grid-cols-7 gap-4 animate-slide-up">
+                {[
+                  { label: 'Total Leads', stage: 'ALL', color: 'indigo', icon: Users, iconColor: 'text-indigo-500' },
+                  { label: 'Prospect', stage: 'Prospect', color: 'slate', icon: Search, iconColor: 'text-violet-500' },
+                  { label: 'Target', stage: 'Target', color: 'blue', icon: Target, iconColor: 'text-blue-500' },
+                  { label: 'DNP', stage: 'DNP', color: 'red', icon: PhoneOff, iconColor: 'text-red-500' },
+                  { label: 'Conversation Done', stage: 'Conversation Done', color: 'amber', icon: MessageSquare, iconColor: 'text-amber-500' },
+                  { label: 'Out of TG', stage: 'Out of TG', color: 'zinc', icon: MinusCircle, iconColor: 'text-slate-500' },
+                  { label: 'Sale Done', stage: 'Sale Done', color: 'emerald', icon: CheckCircle2, iconColor: 'text-emerald-500' }
+                ].map((kpi, i) => {
+                  const count = kpi.stage === 'ALL' 
+                    ? leads.filter(l => (selectedSource === null || (l.source || 'Unknown Source') === selectedSource)).length
+                    : leads.filter(l => 
+                        (selectedSource === null || (l.source || 'Unknown Source') === selectedSource) &&
+                        l.current_stage?.toLowerCase().includes(kpi.stage.toLowerCase())
+                      ).length;
+                  
+                  const isActive = kpi.stage === 'ALL' ? selectedStage === null : selectedStage === kpi.stage;
+
+                  return (
+                    <button 
+                      key={i} 
+                      onClick={() => setSelectedStage(kpi.stage === 'ALL' ? null : (isActive ? null : kpi.stage))}
+                      className={`text-left border transition-all flex flex-col gap-1.5 p-3 rounded-xl group relative overflow-hidden ${
+                        isActive 
+                          ? 'bg-[#D946EF]/5 border-[#D946EF] shadow-sm' 
+                          : 'bg-white border-slate-200 hover:border-[#D946EF]/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <kpi.icon size={12} className={isActive ? 'text-[#D946EF]' : kpi.iconColor} />
+                        <span className={`text-[9px] font-bold uppercase tracking-widest ${isActive ? 'text-[#D946EF]' : 'text-slate-400 group-hover:text-slate-600'}`}>
+                          {kpi.label}
+                        </span>
+                      </div>
+                      <div className="flex items-end justify-between">
+                        <span className={`text-xl font-bold ${isActive ? 'text-slate-900' : 'text-slate-900'}`}>{count}</span>
+                      </div>
+                      {isActive && <div className="absolute top-0 left-0 w-full h-1 bg-[#D946EF]"></div>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Enhanced Data Table */}
+              <div className="flex-1 overflow-hidden flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm animate-slide-up">
+                <div className="overflow-auto scrollbar-hide flex-1 border border-slate-200 rounded-xl bg-white shadow-sm">
+                  <table className="w-full text-left border-collapse table-fixed">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[5%] text-center">S.No</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[12%]">AWL-id</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[22%]">Contact Details</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[15%]">Location</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[18%]">Status & Stage</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[15%]">Assignment</th>
+                        <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wider w-[13%] text-right">Date</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y-2 divide-slate-100">
-                      {displayLeads.map((lead) => (
-                        <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="p-4">
-                            <div className="flex flex-col">
-                              <span className="text-[10px] font-black text-[#D946EF]">{lead.business_id || 'NO-ID'}</span>
-                              <span className="text-[9px] font-bold text-slate-300 truncate w-24 uppercase">{lead.id.split('-')[0]}...</span>
-                            </div>
+                    <tbody className="divide-y divide-slate-100">
+                      {isLoading ? 
+                        [...Array(8)].map((_, i) => (
+                          <tr key={i} className="animate-pulse">
+                            <td className="py-4 px-4"><div className="h-3 bg-slate-100 rounded w-4 mx-auto"></div></td>
+                            <td className="py-4 px-4"><div className="h-4 bg-slate-100 rounded w-16"></div></td>
+                            <td className="py-4 px-4">
+                              <div className="space-y-2">
+                                <div className="h-4 bg-slate-100 rounded w-32"></div>
+                                <div className="h-3 bg-slate-100 rounded w-24"></div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4"><div className="h-4 bg-slate-100 rounded w-20"></div></td>
+                            <td className="py-4 px-4">
+                              <div className="space-y-2">
+                                <div className="h-3 bg-slate-100 rounded w-12"></div>
+                                <div className="h-3 bg-slate-100 rounded w-14"></div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4"><div className="h-6 bg-slate-100 rounded-full w-24"></div></td>
+                            <td className="py-4 px-4 text-right"><div className="h-4 bg-slate-100 rounded w-20 ml-auto"></div></td>
+                          </tr>
+                        ))
+                      : 
+                        displayLeads.map((lead, idx) => (
+                        <tr key={lead.id} className="hover:bg-slate-50 transition-colors group cursor-pointer border-b border-slate-50">
+                          <td className="py-3 px-4 text-center text-[11px] font-bold text-slate-400">
+                            {idx + 1}
                           </td>
-                          <td className="p-4">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-black text-slate-900">{lead.name}</span>
-                              <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1"><Mail size={10} /> {lead.email}</span>
-                              <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1"><Phone size={10} /> {lead.phone}</span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2 text-slate-600 font-bold text-xs uppercase">
-                              <MapPin size={14} className="text-red-500" />
-                              {lead.city}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex flex-col gap-1">
-                              <span className="text-[10px] font-black uppercase bg-blue-100 text-blue-700 px-2 py-0.5 rounded w-fit">
-                                {lead.current_stage}
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="text-[11px] font-bold text-[#D946EF] truncate">
+                                {lead.business_id || 'REF-' + idx}
                               </span>
-                              <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded w-fit border border-slate-200">
+                              {!selectedSource && (
+                                <span className="text-[9px] text-slate-400 font-medium truncate">
+                                  {lead.source}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="text-[12px] font-bold text-slate-900 truncate">{lead.name || 'Anonymous'}</span>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-medium overflow-hidden">
+                                <span className="truncate">{lead.email}</span>
+                                <span className="text-slate-200 shrink-0">|</span>
+                                <span className="shrink-0">{lead.phone}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5 text-slate-600 text-[11px] font-medium overflow-hidden">
+                              <MapPin size={11} className="text-red-600 shrink-0" />
+                              <span className="truncate">{lead.city || 'Remote'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex flex-col gap-1.5">
+                              <div className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border w-fit ${getStatusColor(lead.status)}`}>
                                 {lead.status}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 bg-slate-200 rounded flex items-center justify-center font-black text-xs text-slate-500">
-                                {lead.assigned_to?.charAt(0) || '?'}
                               </div>
-                              <div className="flex flex-col">
-                                <span className="text-xs font-black text-slate-800">{lead.assigned_to || 'Unassigned'}</span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase">Partner Lead</span>
+                              <div className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border w-fit ${getStageColor(lead.current_stage)}`}>
+                                {lead.current_stage}
                               </div>
                             </div>
                           </td>
-                          <td className="p-4">
-                            <div className="flex flex-col gap-1">
-                              <div className="flex items-center gap-1 text-[#059669] font-black text-xs">
-                                <DollarSign size={12} />
-                                {lead.incentives || 0} INC
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className="w-7 h-7 bg-slate-100 rounded flex items-center justify-center font-bold text-[10px] text-slate-600 shrink-0">
+                                {lead.assigned_to?.charAt(0) || <Users size={12} />}
                               </div>
-                              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border w-fit ${lead.subscribed === 'yes' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
-                                Sub: {lead.subscribed}
-                              </span>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase">Paid: {lead.influencer_paid_status}</span>
+                              <span className="text-[11px] font-semibold text-slate-700 truncate">{lead.assigned_to || 'Unassigned'}</span>
                             </div>
                           </td>
-                          <td className="p-4">
-                            <div className="flex flex-col text-right">
-                              <span className="text-xs font-black text-slate-700">
-                                {new Date(lead.created_at).toLocaleDateString()}
-                              </span>
-                              <span className="text-[9px] font-bold text-slate-400 uppercase">
-                                {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <span className="text-[11px] font-bold text-slate-600">
+                              {new Date(lead.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              <span className="mx-1 text-slate-300">|</span>
+                              {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </span>
                           </td>
                         </tr>
-                      ))}
+                        ))
+                      }
                     </tbody>
                   </table>
                 </div>
+                
+                <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <div className="flex gap-4">
+                    <button className="hover:text-slate-900 transition-colors">Export CSV</button>
+                    <button className="hover:text-slate-900 transition-colors">Export PDF</button>
+                  </div>
+                  <span>Showing {displayLeads.length} of {sourceLeads.length} records</span>
+                </div>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-300">
-              <Database size={64} className="mb-4 animate-bounce" />
-              <h3 className="text-2xl font-black uppercase">Select a Source</h3>
-              <p className="font-bold text-sm">Choose a campaign from the left sidebar to view leads</p>
+            <div className="flex-1 flex flex-col items-center justify-center space-y-6 animate-slide-up">
+              <div className="bg-white border border-slate-200 p-12 rounded-3xl shadow-sm text-center">
+                <Database size={64} className="text-slate-200 mb-4 mx-auto" />
+                <h3 className="text-xl font-bold text-slate-900 mb-2">No Leads to Display</h3>
+                <p className="text-sm text-slate-400 max-w-[240px] mx-auto">
+                  Adjust your date filter or select a source to start analyzing leads
+                </p>
+              </div>
+              <button 
+                onClick={() => setDateFilter('OVERALL')}
+                className="px-6 py-2.5 bg-[#D946EF] text-white rounded-lg font-bold text-sm shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+              >
+                Show All Leads
+              </button>
             </div>
           )}
         </div>

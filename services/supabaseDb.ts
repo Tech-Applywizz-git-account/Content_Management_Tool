@@ -1730,13 +1730,22 @@ export const workflow = {
         );
 
         // 2. Update project
+        const projectUpdatePayload: any = {
+            current_stage: nextStage,
+            assigned_to_role: nextRole,
+            status: TaskStatus.WAITING_APPROVAL
+        };
+
+        // Explicitly set assignment timestamps
+        if (nextRole === Role.EDITOR) {
+            projectUpdatePayload.editor_assigned_at = new Date().toISOString();
+        } else if (nextRole === Role.SUB_EDITOR) {
+            projectUpdatePayload.sub_editor_assigned_at = new Date().toISOString();
+        }
+
         const { error: updateError } = await supabase
             .from('projects')
-            .update({
-                current_stage: nextStage,
-                assigned_to_role: nextRole,
-                status: TaskStatus.WAITING_APPROVAL
-            })
+            .update(projectUpdatePayload)
             .eq('id', projectId);
 
         if (updateError) {
@@ -2315,6 +2324,13 @@ export const workflow = {
                 finalUserRole,
                 metadata
             );
+
+            // Explicitly set assignment timestamps
+            if (finalNextRole === Role.EDITOR) {
+                projectUpdateData.editor_assigned_at = new Date().toISOString();
+            } else if (finalNextRole === Role.SUB_EDITOR) {
+                projectUpdateData.sub_editor_assigned_at = new Date().toISOString();
+            }
 
             // 2. Update project
             let data: Project;
@@ -2973,7 +2989,9 @@ export const helpers = {
                 [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.PA_VIDEO_UPLOAD, role: Role.PARTNER_ASSOCIATE },
                 [WorkflowStage.PA_VIDEO_UPLOAD]: { stage: WorkflowStage.PA_VIDEO_CMO_REVIEW, role: Role.CMO },
                 [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.VIDEO_EDITING]: projectData?.needs_sub_editor === true
+                    ? { stage: WorkflowStage.SUB_EDITOR_ASSIGNMENT, role: Role.EDITOR }
+                    : { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE },
                 [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE }
             };
             const next = customMap[currentStage];
@@ -3027,19 +3045,19 @@ export const helpers = {
 
             // Final stages for PA brands
             [WorkflowStage.VIDEO_EDITING]: {
-                stage: projectData?.is_pa_brand
-                    ? (projectData.is_influencer ? WorkflowStage.PA_FINAL_REVIEW : WorkflowStage.FINAL_REVIEW_CMO)
-                    : (projectData?.needs_sub_editor === true
-                        ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
+                stage: projectData?.needs_sub_editor === true
+                    ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
+                    : ((projectData?.is_pa_brand || projectData?.is_influencer)
+                        ? WorkflowStage.PA_FINAL_REVIEW
                         : (projectData?.rework_initiator_stage
                             ? projectData.rework_initiator_stage as WorkflowStage
                             : (projectData?.thumbnail_required === true
                                 ? WorkflowStage.THUMBNAIL_DESIGN
                                 : WorkflowStage.POST_WRITER_REVIEW))),
-                role: projectData?.is_pa_brand
-                    ? (projectData.is_influencer ? Role.PARTNER_ASSOCIATE : Role.CMO)
-                    : (projectData?.needs_sub_editor === true
-                        ? Role.EDITOR
+                role: projectData?.needs_sub_editor === true
+                    ? Role.EDITOR
+                    : ((projectData?.is_pa_brand || projectData?.is_influencer)
+                        ? Role.PARTNER_ASSOCIATE
                         : (projectData?.rework_initiator_stage
                             ? projectData.rework_initiator_role as Role
                             : (projectData?.thumbnail_required === true
@@ -3049,12 +3067,16 @@ export const helpers = {
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                stage: projectData?.thumbnail_required === true
-                    ? WorkflowStage.THUMBNAIL_DESIGN
-                    : WorkflowStage.POST_WRITER_REVIEW,
-                role: projectData?.thumbnail_required === true
-                    ? Role.DESIGNER
-                    : Role.CMO
+                stage: (projectData?.is_pa_brand || projectData?.is_influencer)
+                    ? WorkflowStage.PA_FINAL_REVIEW
+                    : (projectData?.thumbnail_required === true
+                        ? WorkflowStage.THUMBNAIL_DESIGN
+                        : WorkflowStage.POST_WRITER_REVIEW),
+                role: (projectData?.is_pa_brand || projectData?.is_influencer)
+                    ? Role.PARTNER_ASSOCIATE
+                    : (projectData?.thumbnail_required === true
+                        ? Role.DESIGNER
+                        : Role.CMO)
             },
 
             // MULTI_WRITER_APPROVAL -> OPS/CMO (Post Review)
@@ -3376,6 +3398,7 @@ export const influencers = {
             vercel_form_link: influencer.vercel_form_link,
             created_by_user_id: influencer.created_by_user_id,
             product_name: influencer.product_name,
+            status: 'NEW'
         };
         const { data, error } = await client
             .from('influencers')
