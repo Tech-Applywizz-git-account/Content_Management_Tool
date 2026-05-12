@@ -492,7 +492,7 @@ const WriterMyWork: React.FC<Props> = ({ user, projects }) => {
                       break;
                     case 'CINEMATOGRAPHY':
                       if (comment.action === 'SUBMITTED') {
-                        description = isInfluencerVideo(selectedProject) ? 'Influencer video uploaded by writer' : 'Shoot video uploaded by cinematographer';
+                        description = isInfluencerVideo(selectedProject) ? 'Raw video uploaded by writer' : 'Shoot video uploaded by cinematographer';
                       }
                       break;
                     case 'VIDEO_EDITING':

@@ -13,7 +13,7 @@ const PACeoApprovedScripts: React.FC<Props> = ({ projects, onBack, onSelectProje
     // Filter projects that are CEO approved AND have is_pa_brand=true
     const ceoApprovedPaBrands = projects.filter(p => 
         p.ceo_approved_at && 
-        p.data?.is_pa_brand === true
+        (p.data?.is_pa_brand === true || p.data?.is_influencer === true)
     ).sort((a, b) => new Date(b.ceo_approved_at!).getTime() - new Date(a.ceo_approved_at!).getTime());
 
     return (

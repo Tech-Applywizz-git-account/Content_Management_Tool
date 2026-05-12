@@ -19,7 +19,9 @@ import {
   ChevronRight,
   Filter,
   Shield,
-  PlayCircle
+  PlayCircle,
+  Video,
+  Link
 } from 'lucide-react';
 import { supabase } from '../../src/integrations/supabase/client';
 import { db } from '../../services/supabaseDb';
@@ -603,14 +605,13 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
             </div>
           </div>
           
-          <h4 className="font-black text-lg text-slate-900 leading-tight mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[3rem] uppercase tracking-tighter">{project.title}</h4>
+          <h4 className="font-black text-lg text-slate-900 leading-tight mb-3 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[3rem] uppercase tracking-tighter">
+            {project.title}
+            {project.brand && (
+              <span className="text-slate-400 text-sm ml-2">({project.brand.replace(/_/g, ' ')})</span>
+            )}
+          </h4>
           
-          {brand && (
-            <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-4">
-              <Tag size={12} className="text-indigo-500" />
-              {brand}
-            </div>
-          )}
           
           <div className={`grid gap-x-6 gap-y-4 mt-6 py-4 border-t border-slate-50 ${finalMilestones.length > 2 ? 'grid-cols-3' : 'grid-cols-2'}`}>
             {finalMilestones.map((m, idx) => {
@@ -642,9 +643,32 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
           </div>
           
           <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[10px] font-black text-indigo-400 shadow-sm border-indigo-100">{(project.writer_name || '?')[0]}</div>
-              <span className="text-[11px] font-black text-slate-800 uppercase tracking-tighter">{project.writer_name || '—'}</span>
+            <div className="flex items-center gap-3">
+              {(project.video_link || (project as any).video_url) && (
+                <a href={project.video_link || (project as any).video_url} target="_blank" rel="noopener noreferrer" className="p-1 bg-emerald-50 text-emerald-600 rounded border border-emerald-100 hover:bg-emerald-100 transition-colors" title="Raw Video" onClick={(e) => e.stopPropagation()}>
+                  <Video size={12} />
+                </a>
+              )}
+              {project.edited_video_link && (
+                <a href={project.edited_video_link} target="_blank" rel="noopener noreferrer" className="p-1 bg-purple-50 text-purple-600 rounded border border-purple-100 hover:bg-purple-100 transition-colors" title="Edited Video" onClick={(e) => e.stopPropagation()}>
+                  <PlayCircle size={12} />
+                </a>
+              )}
+              {project.thumbnail_link && (
+                <a href={project.thumbnail_link} target="_blank" rel="noopener noreferrer" className="p-1 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 transition-colors" title="Thumbnail" onClick={(e) => e.stopPropagation()}>
+                  <Layout size={12} />
+                </a>
+              )}
+              {project.creative_link && (
+                <a href={project.creative_link} target="_blank" rel="noopener noreferrer" className="p-1 bg-pink-50 text-pink-600 rounded border border-pink-100 hover:bg-pink-100 transition-colors" title="Creative Asset" onClick={(e) => e.stopPropagation()}>
+                  <Tag size={12} />
+                </a>
+              )}
+              <div className="w-px h-3 bg-slate-200 mx-1" />
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-indigo-400 shadow-sm border-indigo-100">{(project.writer_name || '?')[0]}</div>
+                <span className="text-[10px] font-black text-slate-800 uppercase tracking-tighter truncate max-w-[60px]">{project.writer_name || '—'}</span>
+              </div>
             </div>
             <div className="w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-all transform translate-x-1 group-hover:translate-x-0 group-hover:border-indigo-200">
               <ChevronRight size={14} className="text-indigo-500" />
@@ -722,8 +746,33 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Created At</h3>
               <p className="font-medium bg-slate-50 p-2">{new Date(project.created_at).toLocaleString()}</p>
             </div>
+            {project.brand && (
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Brand</h3>
+                <p className="font-black text-[#0085FF] uppercase bg-slate-50 p-2">{project.brand.replace(/_/g, ' ')}</p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Influencer Details - If exists */}
+        {(project.data?.influencer_name || (project as any).metadata?.influencer_name) && (
+          <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h2 className="text-xl font-black uppercase mb-4">Influencer Details</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Influencer Name</h3>
+                <p className="font-black text-purple-600 uppercase bg-slate-50 p-2">
+                  {project.data?.influencer_name || (project as any).metadata?.influencer_name}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Collaboration Status</h3>
+                <p className="font-bold text-emerald-600 uppercase bg-slate-50 p-2">Active Collaboration</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Script Content Section */}
         {(project.data?.script_content || project.data?.idea_description) && (
@@ -801,6 +850,100 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
             </div>
           </div>
         </div>
+
+        {/* Production Assets Section */}
+        {(project.video_link || project.video_url || project.edited_video_link || project.thumbnail_link || project.creative_link || project.data?.posting_proof_link) && (
+          <div className="bg-white border-2 border-black p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h3 className="text-lg font-black uppercase mb-4">Production Assets</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {(project.video_link || project.video_url) && (
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Raw Video</h4>
+                  <a 
+                    href={project.video_link || project.video_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-3 p-4 bg-emerald-50 border-2 border-emerald-100 text-emerald-700 rounded-xl font-bold hover:bg-emerald-100 transition-all group"
+                  >
+                    <div className="bg-white p-2 border border-emerald-200 rounded-lg group-hover:scale-110 transition-transform">
+                      <Video className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm">View Raw Video</span>
+                    <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-50" />
+                  </a>
+                </div>
+              )}
+              {project.edited_video_link && (
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Edited Video</h4>
+                  <a 
+                    href={project.edited_video_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-3 p-4 bg-purple-50 border-2 border-purple-100 text-purple-700 rounded-xl font-bold hover:bg-purple-100 transition-all group"
+                  >
+                    <div className="bg-white p-2 border border-purple-200 rounded-lg group-hover:scale-110 transition-transform">
+                      <PlayCircle className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm">View Edited Video</span>
+                    <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-50" />
+                  </a>
+                </div>
+              )}
+              {project.thumbnail_link && (
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Thumbnail</h4>
+                  <a 
+                    href={project.thumbnail_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-3 p-4 bg-blue-50 border-2 border-blue-100 text-blue-700 rounded-xl font-bold hover:bg-blue-100 transition-all group"
+                  >
+                    <div className="bg-white p-2 border border-blue-200 rounded-lg group-hover:scale-110 transition-transform">
+                      <Layout className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm">View Thumbnail</span>
+                    <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-50" />
+                  </a>
+                </div>
+              )}
+              {project.creative_link && (
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Creative Asset</h4>
+                  <a 
+                    href={project.creative_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-3 p-4 bg-pink-50 border-2 border-pink-100 text-pink-700 rounded-xl font-bold hover:bg-pink-100 transition-all group"
+                  >
+                    <div className="bg-white p-2 border border-pink-200 rounded-lg group-hover:scale-110 transition-transform">
+                      <Tag className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm">View Creative</span>
+                    <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-50" />
+                  </a>
+                </div>
+              )}
+              {project.data?.posting_proof_link && (
+                <div>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Proof of Posting</h4>
+                  <a 
+                    href={project.data.posting_proof_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-3 p-4 bg-orange-50 border-2 border-orange-100 text-orange-700 rounded-xl font-bold hover:bg-orange-100 transition-all group"
+                  >
+                    <div className="bg-white p-2 border border-orange-200 rounded-lg group-hover:scale-110 transition-transform">
+                      <Link className="w-4 h-4" />
+                    </div>
+                    <span className="text-sm">View Posting Proof</span>
+                    <ExternalLink className="w-3.5 h-3.5 ml-auto opacity-50" />
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Comments and Feedback Section - Same as CMO Project Details */}
         <div className="border-2 border-black p-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">

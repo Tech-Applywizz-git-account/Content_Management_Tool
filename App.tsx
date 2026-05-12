@@ -430,14 +430,14 @@ function App() {
   const lastFetchedUserIdRef = React.useRef<string | null>(null);
   const fetchPromiseRef = React.useRef<Promise<void> | null>(null);
 
-  const refreshData = async (u: User = user!) => {
+  const refreshData = async (u: User = user!, force = false) => {
     if (!u) {
       console.log('⚠️ App.tsx: No user provided to refreshData');
       return;
     }
 
-    // Return the existing promise if we are already fetching data for this user
-    if (fetchPromiseRef.current && lastFetchedUserIdRef.current === u.id) {
+    // Return the existing promise if we are already fetching data for this user AND not forcing
+    if (!force && fetchPromiseRef.current && lastFetchedUserIdRef.current === u.id) {
       console.debug('App.tsx: Returning existing refreshData promise, already in progress for this user');
       return fetchPromiseRef.current;
     }

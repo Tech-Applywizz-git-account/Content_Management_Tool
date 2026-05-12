@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Project, Role, Channel, TaskStatus } from '../types';
 import { db } from '../services/supabaseDb';
 import { format } from 'date-fns';
-import { FileText, Clock, ExternalLink, Search, Trash2 } from 'lucide-react';
+import { FileText, Clock, ExternalLink, Search, Trash2, Video, PlayCircle, Layout, Tag } from 'lucide-react';
 
 interface Props {
     user: { id: string; role: Role };
@@ -14,7 +14,7 @@ const LeadMagnetScripts: React.FC<Props> = ({ user, projects, onSelectProject })
     const [searchTerm, setSearchTerm] = useState('');
 
     const leadMagnetProjects = projects.filter(p =>
-        p.content_type === 'LEAD_MAGNET' &&
+        p.channel === Channel.LEAD_MAGNET &&
         (searchTerm === '' || p.title.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
@@ -109,13 +109,31 @@ const LeadMagnetScripts: React.FC<Props> = ({ user, projects, onSelectProject })
                             </div>
 
                             <div className="mt-6 pt-4 border-t-2 border-slate-100 flex items-center justify-between">
-                                <div className="flex items-center text-xs font-bold text-slate-400 uppercase">
-                                    <Clock className="w-3 h-3 mr-1" />
-                                    {format(new Date(project.created_at), 'MMM dd, yyyy')}
+                                <div className="flex items-center gap-3">
+                                    {(project.video_link || (project as any).video_url) && (
+                                        <a href={project.video_link || (project as any).video_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-emerald-50 text-emerald-600 rounded border border-emerald-100 hover:bg-emerald-100 transition-colors" title="Raw Video" onClick={(e) => e.stopPropagation()}>
+                                            <Video className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {project.edited_video_link && (
+                                        <a href={project.edited_video_link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-purple-50 text-purple-600 rounded border border-purple-100 hover:bg-purple-100 transition-colors" title="Edited Video" onClick={(e) => e.stopPropagation()}>
+                                            <PlayCircle className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {project.thumbnail_link && (
+                                        <a href={project.thumbnail_link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 rounded border border-blue-100 hover:bg-blue-100 transition-colors" title="Thumbnail" onClick={(e) => e.stopPropagation()}>
+                                            <Layout className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
+                                    {project.creative_link && (
+                                        <a href={project.creative_link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-pink-50 text-pink-600 rounded border border-pink-100 hover:bg-pink-100 transition-colors" title="Creative Asset" onClick={(e) => e.stopPropagation()}>
+                                            <Tag className="w-3.5 h-3.5" />
+                                        </a>
+                                    )}
                                 </div>
-                                <button className="bg-black text-white p-2 border-2 border-black shadow-[2px_2px_0px_0px_rgba(100,100,100,1)] group-hover:bg-[#6366F1] transition-all">
-                                    <ExternalLink className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center text-xs font-bold text-slate-400 uppercase">
+                                    {format(new Date(project.created_at), 'MMM dd')}
+                                </div>
                             </div>
                         </div>
                     ))

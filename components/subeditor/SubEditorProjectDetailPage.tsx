@@ -240,6 +240,17 @@ const SubEditorProjectDetailPage: React.FC<{
                 nextRole
             );
 
+            // Explicitly build sub_editor_video_links_history so the old link is always
+            // preserved before being overwritten — critical for rework resubmissions.
+            const existingSubEditorHistory: string[] = Array.isArray(project.sub_editor_video_links_history)
+                ? (project.sub_editor_video_links_history as string[])
+                : [];
+            const previousEditedLink = project.edited_video_link;
+            const updatedSubEditorHistory =
+                previousEditedLink && previousEditedLink !== editedVideoLink && !existingSubEditorHistory.includes(previousEditedLink)
+                    ? [...existingSubEditorHistory, previousEditedLink]
+                    : existingSubEditorHistory;
+
             await db.projects.update(project.id, {
                 edited_video_link: editedVideoLink,
                 editor_uploaded_at: new Date().toISOString(),
@@ -249,6 +260,8 @@ const SubEditorProjectDetailPage: React.FC<{
                 edited_by_name: publicUser.full_name || publicUser?.email || 'Unknown Sub-Editor',
                 edited_at: new Date().toISOString(),
                 status: TaskStatus.WAITING_APPROVAL,
+                // Explicit history: preserves old link in sub_editor_video_links_history
+                ...(updatedSubEditorHistory.length > 0 ? { sub_editor_video_links_history: updatedSubEditorHistory } : {}),
                 data: {
                     ...project.data,
                     needs_sub_editor: false,

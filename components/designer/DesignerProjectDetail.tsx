@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Project, WorkflowStage, Role, STAGE_LABELS, TaskStatus, UserStatus, User } from '../../types';
-import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette, Send } from 'lucide-react';
+import { ArrowLeft, Calendar as CalendarIcon, Upload, Video, FileText, FileImage, Palette, Send, Building2, User as UserIcon, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
@@ -374,7 +374,12 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-xl md:text-2xl font-black uppercase text-slate-900 truncate">{localProject.title}</h1>
+                        <h1 className="text-xl md:text-2xl font-black uppercase text-slate-900 truncate" title={localProject.title}>
+                            {localProject.title}
+                            {localProject.brand && (
+                                <span className="text-slate-400 ml-2">({localProject.brand.replace(/_/g, ' ')})</span>
+                            )}
+                        </h1>
                         <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1">
                             <span
                                 className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${localProject.channel === 'YOUTUBE'
@@ -423,6 +428,38 @@ const DesignerProjectDetail: React.FC<Props> = ({ project, userRole, onBack, onU
 
             {/* Content */}
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 space-y-6">
+                {/* Project Info Metadata */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Building2 className="w-5 h-5 text-[#0085FF]" />
+                            <h3 className="font-black uppercase text-sm text-slate-500">Brand</h3>
+                        </div>
+                        <p className="text-xl font-black uppercase text-[#0085FF]">
+                            {localProject.brand ? localProject.brand.replace(/_/g, ' ') : 'Unbranded'}
+                        </p>
+                    </div>
+
+                    <div className="bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="flex items-center gap-2 mb-3">
+                            <UserIcon className="w-5 h-5 text-purple-600" />
+                            <h3 className="font-black uppercase text-sm text-slate-500">Writer</h3>
+                        </div>
+                        <p className="text-xl font-black uppercase text-slate-900">
+                            {localProject.writer_name || localProject.data?.writer_name || 'System'}
+                        </p>
+                    </div>
+
+                    <div className="bg-white border-2 border-black p-6 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Clock className="w-5 h-5 text-amber-600" />
+                            <h3 className="font-black uppercase text-sm text-slate-500">Priority</h3>
+                        </div>
+                        <p className={`text-xl font-black uppercase ${localProject.priority === 'HIGH' ? 'text-red-600' : 'text-slate-900'}`}>
+                            {localProject.priority}
+                        </p>
+                    </div>
+                </div>
                 {/* Edited Video (for thumbnail tasks) */}
                 {isVideo && localProject.edited_video_link && (
                     <div className="bg-white border-2 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">

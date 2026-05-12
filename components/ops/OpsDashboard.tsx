@@ -106,8 +106,8 @@ const OpsDashboard: React.FC<Props> = ({ user, inboxProjects = [], historyProjec
         // Strict filter for ready to schedule projects
         p.assigned_to_role === 'OPS' &&
         p.current_stage === WorkflowStage.OPS_SCHEDULING &&
-        p.status !== 'COMPLETED' &&
-        p.status !== 'REJECTED' &&
+        p.status !== TaskStatus.DONE &&
+        p.status !== TaskStatus.REJECTED &&
         !p.post_scheduled_date
     );
 

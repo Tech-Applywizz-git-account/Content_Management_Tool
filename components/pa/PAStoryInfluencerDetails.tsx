@@ -210,14 +210,14 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                     </button>
                     <div>
                         <div className="flex items-center gap-3">
-                            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+                            <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-tighter leading-none">
                                 {influencer?.influencer_name || influencerName}
                             </h1>
-                            <div className="px-3 py-1 bg-pink-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-full flex items-center gap-1.5 shadow-lg shadow-pink-100 border border-black">
+                            <div className="px-2 py-0.5 bg-pink-500 text-white text-[9px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1.5 shadow-md shadow-pink-100 border border-black">
                                 <LinkIcon className="w-3 h-3" /> {stories.filter(s => !!s.story_link).length} STORIES
                             </div>
                             {influencer?.commercials === 'Barter' && (
-                                <div className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full border border-black shadow-sm flex items-center gap-1.5 ${influencer?.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
+                                <div className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full border border-black shadow-sm flex items-center gap-1.5 ${influencer?.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
                                     <Sparkles className="w-3 h-3" /> {influencer?.product_received === 'yes' ? 'Product Received' : 'Product Pending'}
                                 </div>
                             )}
@@ -337,34 +337,34 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 {/* Visual KPI Section */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Stories Count */}
-                    <div className="group p-5 bg-white border-4 border-black rounded-2xl hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50/50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-2">
-                            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                                <LinkIcon className="w-6 h-6 text-blue-600" />
+                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
+                        <div className="relative z-10 space-y-1.5">
+                            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                                <LinkIcon className="w-5 h-5 text-blue-600" />
                             </div>
                             <div>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Live Stories Posted</p>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Live Stories Posted</p>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-2xl font-black text-slate-900 tracking-tighter">
                                         {stories.filter(s => !!s.story_link).length}
                                     </span>
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Stories</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Stories</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Total Budget */}
-                    <div className="group p-5 bg-white border-4 border-black rounded-2xl hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50/50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-2">
-                            <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center">
-                                <DollarSign className="w-6 h-6 text-emerald-600" />
+                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-50/50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
+                        <div className="relative z-10 space-y-1.5">
+                            <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
+                                <DollarSign className="w-5 h-5 text-emerald-600" />
                             </div>
                             <div>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Budget</p>
-                                    <span className="text-3xl font-black text-slate-900 tracking-tighter">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Budget</p>
+                                    <span className="text-2xl font-black text-slate-900 tracking-tighter">
                                         {totalAmount.toLocaleString()}
                                     </span>
                             </div>
@@ -372,27 +372,27 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                     </div>
 
                     {/* Payment Hub */}
-                    <div className="group p-5 bg-white border-4 border-black rounded-2xl hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-2">
-                            <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                                <CreditCard className="w-6 h-6 text-purple-600" />
+                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-purple-50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
+                        <div className="relative z-10 space-y-1.5">
+                            <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+                                <CreditCard className="w-5 h-5 text-purple-600" />
                             </div>
                             <div>
-                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Payout Status</p>
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-3">
-                                        <span className={`text-3xl font-black uppercase tracking-tight ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Payout Status</p>
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-2xl font-black uppercase tracking-tight ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
                                             {influencer?.payment === 'yes' ? 'Cleared' : 'Pending'}
                                         </span>
                                         {influencer?.payment === 'yes' && (
-                                            <div className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold rounded-lg uppercase tracking-widest">
+                                            <div className="px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-200 text-[8px] font-bold rounded-lg uppercase tracking-wider">
                                                 Verified
                                             </div>
                                         )}
                                     </div>
                                     {influencer?.payment === 'yes' && influencer?.platform_type && (
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                                             Via <span className="text-slate-900 font-bold">{influencer.platform_type}</span>
                                         </p>
                                     )}

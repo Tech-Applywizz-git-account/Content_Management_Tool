@@ -61,16 +61,22 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             }
             
             if (data) {
-                // Filter by brand name first
+                // Filter by brand name first and check for PA/Influencer flags
                 const brandProjects = data.filter(p => {
                     const b1 = (p.brand || '').trim().toLowerCase();
                     const b2 = (p.brandSelected || '').trim().toLowerCase();
                     const b3 = (p.data?.brand || '').trim().toLowerCase();
                     
-                    return b1.includes(cleanBrand) || b2.includes(cleanBrand) || b3.includes(cleanBrand);
+                    const isBrandMatch = b1.includes(cleanBrand) || b2.includes(cleanBrand) || b3.includes(cleanBrand);
+                    
+                    // User Request: Only show scripts with is_pa_brand=true OR is_influencer=true
+                    const isPaBrand = p.data?.is_pa_brand === true || p.metadata?.is_pa_brand === true;
+                    const isInfluencer = p.data?.is_influencer === true || p.metadata?.is_influencer === true;
+                    
+                    return isBrandMatch && (isPaBrand || isInfluencer);
                 });
 
-                console.log(`📊 Found ${brandProjects.length} total projects for brand: ${cleanBrand}`);
+                console.log(`📊 Found ${brandProjects.length} filtered projects for brand: ${cleanBrand}`);
                 
                 // Then filter to only include those that are actually scripts and have PASSED CEO review (SCRIPT_REVIEW_L2)
                 const filtered = brandProjects.filter(p => {
@@ -175,8 +181,54 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
 
         setIsSending(true);
         try {
-            const { data: latestProject } = await supabase.from('projects').select('*').eq('id', projId).single();
-            if (!latestProject) throw new Error('Project not found');
+            let latestProject: any = null;
+            let actualProjId = projId;
+
+            // --- 🚀 NEW: Handle Direct Upload for Dummy/Temp Projects ---
+            if (projId.startsWith('temp-')) {
+                console.log('📦 Direct upload detected for dummy project. Creating project first...');
+                const targetProj = sortedProjects.find(p => p.id === projId);
+                
+                // Get brand name from current project or registry entry
+                const brandName = project.brand || project.data?.brand || (targetProj as any)?.brand || '';
+                
+                const newProjectData = {
+                    title: `${influencerName} - Direct Video`,
+                    channel: (project.channel || 'INSTAGRAM').toUpperCase() as any,
+                    content_type: 'VIDEO' as any,
+                    current_stage: WorkflowStage.PARTNER_REVIEW,
+                    task_status: TaskStatus.TODO,
+                    priority: 'HIGH' as any,
+                    assigned_to_role: Role.PARTNER_ASSOCIATE,
+                    assigned_to_user_id: user.id,
+                    created_by_user_id: user.id,
+                    created_by_name: user.full_name,
+                    writer_id: user.id, // PA acting as creator
+                    writer_name: user.full_name,
+                    brand: brandName,
+                    due_date: new Date().toISOString().split('T')[0],
+                    data: {
+                        ...(targetProj?.data || {}),
+                        influencer_name: influencerName,
+                        influencer_email: influencerEmail,
+                        is_pa_brand: true,
+                        is_influencer: true,
+                        influencer_instance: true,
+                        brand: brandName,
+                        sent_by_id: user.id
+                    },
+                    visible_to_roles: [Role.CMO, Role.PARTNER_ASSOCIATE]
+                };
+
+                const createdProj = await db.projects.create(newProjectData);
+                latestProject = createdProj;
+                actualProjId = createdProj.id;
+                console.log('✅ Temporary project materialized with ID:', actualProjId);
+            } else {
+                const { data } = await supabase.from('projects').select('*').eq('id', projId).single();
+                latestProject = data;
+                if (!latestProject) throw new Error('Project not found');
+            }
 
             let updateData: any = {};
             
@@ -188,11 +240,18 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     pa_raw_footage_uploaded_at: new Date().toISOString()
                 };
                 
-                if (latestProject.current_stage === WorkflowStage.SENT_TO_INFLUENCER) {
+                // 🚀 ADVANCE WORKFLOW: If in SENT_TO_INFLUENCER or PARTNER_REVIEW, move to CMO approval
+                const canAdvance = 
+                    latestProject.current_stage === WorkflowStage.SENT_TO_INFLUENCER || 
+                    latestProject.current_stage === WorkflowStage.PARTNER_REVIEW;
+
+                if (canAdvance) {
+                    console.log('⏩ Advancing project to CMO Video Review stage');
                     updateData.current_stage = WorkflowStage.PA_VIDEO_CMO_REVIEW;
                     updateData.assigned_to_role = Role.CMO;
                     updateData.assigned_to_user_id = null;
                     updateData.status = TaskStatus.WAITING_APPROVAL;
+                    updateData.task_status = TaskStatus.WAITING_APPROVAL;
                 }
             } else if (type === 'EDITED') {
                 const currentHistory = latestProject.editor_video_links_history || [];
@@ -200,38 +259,116 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     edited_video_link: newVideoLink,
                     editor_video_links_history: [...currentHistory, newVideoLink]
                 };
+
+                // 🚀 ADVANCE WORKFLOW: If in CMO Review, move to PA Final Review
+                if (latestProject.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+                    console.log('⏩ Advancing project to PA Final Review stage');
+                    updateData.current_stage = WorkflowStage.PA_FINAL_REVIEW;
+                    updateData.assigned_to_role = Role.PARTNER_ASSOCIATE;
+                    updateData.assigned_to_user_id = user.id;
+                    updateData.status = TaskStatus.IN_PROGRESS;
+                    updateData.task_status = TaskStatus.IN_PROGRESS;
+                }
             } else if (type === 'PROOF') {
+                console.log('🏁 Completing project: Proof of posting uploaded');
                 updateData = {
                     data: {
                         ...(latestProject.data || {}),
                         posting_proof_link: newVideoLink
                     },
                     current_stage: WorkflowStage.POSTED,
-                    project_status: WorkflowStage.POSTED
+                    project_status: WorkflowStage.POSTED,
+                    status: TaskStatus.DONE,
+                    task_status: TaskStatus.DONE
                 };
             }
 
-            await db.projects.update(projId, updateData);
+            // Apply updates
+            await db.projects.update(actualProjId, updateData);
             
-            if (type === 'RAW' && latestProject.current_stage === WorkflowStage.SENT_TO_INFLUENCER) {
-                await db.influencers.log({
-                    parent_project_id: latestProject.data?.parent_script_id || latestProject.id,
-                    instance_project_id: projId,
-                    influencer_name: latestProject.data?.influencer_name || 'Influencer',
-                    influencer_email: latestProject.data?.influencer_email || '',
-                    sent_by: user.full_name,
-                    sent_by_id: user.id,
-                    status: 'CMO_VIDEO_REVIEW'
+            // 📝 LOG INFLUENCER ACTIVITY: Sync project updates to the influencer registry
+            // This ensures dashboard KPIs (video count, proof link, etc.) are updated
+            const bName = latestProject.brand || latestProject.data?.brand || project.brand || project.data?.brand || '';
+            const logData: any = {
+                parent_project_id: latestProject.data?.parent_script_id || actualProjId,
+                instance_project_id: actualProjId,
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                sent_by: user.full_name,
+                sent_by_id: user.id,
+                brand_name: bName
+            };
+
+            if (type === 'RAW') {
+                logData.raw_video = newVideoLink;
+                if (updateData.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+                    logData.status = 'CMO_VIDEO_REVIEW';
+                }
+            } else if (type === 'EDITED') {
+                logData.edited_video = newVideoLink;
+            } else if (type === 'PROOF') {
+                logData.proof_link = newVideoLink;
+                logData.is_posted = true;
+                logData.status = 'POSTED';
+            }
+
+            // Perform the log/update to registry
+            await db.influencers.log(logData);
+
+            // Add history entry only for raw video uploads that advance the flow
+            if (type === 'RAW') {
+                 const canAdvance = 
+                    latestProject.current_stage === WorkflowStage.SENT_TO_INFLUENCER || 
+                    latestProject.current_stage === WorkflowStage.PARTNER_REVIEW;
+
+                if (canAdvance) {
+                    await db.workflowHistory.add({
+                        project_id: actualProjId,
+                        stage: latestProject.current_stage,
+                        actor_id: user.id,
+                        actor_name: user.full_name,
+                        actor_role: Role.PARTNER_ASSOCIATE,
+                        action: 'SUBMITTED',
+                        comment: latestProject.current_stage === WorkflowStage.PARTNER_REVIEW 
+                            ? 'Direct video uploaded (Script step bypassed). Moving to CMO Review.'
+                            : 'Influencer video link uploaded. Moving to CMO Review.',
+                        from_role: Role.PARTNER_ASSOCIATE,
+                        to_role: Role.CMO
+                    });
+                }
+            } else if (type === 'EDITED' && latestProject.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+                await db.workflowHistory.add({
+                    project_id: actualProjId,
+                    stage: latestProject.current_stage,
+                    actor_id: user.id,
+                    actor_name: user.full_name,
+                    actor_role: Role.PARTNER_ASSOCIATE,
+                    action: 'SUBMITTED',
+                    comment: 'Edited video uploaded. Moving to PA Final Review.',
+                    from_role: Role.CMO,
+                    to_role: Role.PARTNER_ASSOCIATE
+                });
+            } else if (type === 'PROOF') {
+                await db.workflowHistory.add({
+                    project_id: actualProjId,
+                    stage: latestProject.current_stage,
+                    actor_id: user.id,
+                    actor_name: user.full_name,
+                    actor_role: Role.PARTNER_ASSOCIATE,
+                    action: 'PUBLISHED',
+                    comment: 'Proof of posting uploaded. Project completed.',
+                    from_role: Role.PARTNER_ASSOCIATE,
+                    to_role: Role.PARTNER_ASSOCIATE
                 });
             }
 
             toast.success(`${type === 'PROOF' ? 'Proof' : type === 'EDITED' ? 'Edited Video' : 'Video'} link added successfully`);
             setNewVideoLink('');
             setUploadingId(null);
-            setUploadType(null);
+            setEditingLinkInfo(null);
             onComplete();
         } catch (error: any) {
-            console.error('Error uploading link:', error);
+            console.error('❌ Error uploading link:', error);
             toast.error('Failed to add link');
         } finally {
             setIsSending(false);
@@ -276,6 +413,16 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         subHistory[index - histLen] = editLinkValue;
                         updateData.sub_editor_video_links_history = subHistory;
                     }
+                }
+
+                // 🚀 ADVANCE WORKFLOW: If in CMO Review, move to PA Final Review
+                if (latestProject.current_stage === WorkflowStage.PA_VIDEO_CMO_REVIEW) {
+                    console.log('⏩ Advancing project to PA Final Review stage via update');
+                    updateData.current_stage = WorkflowStage.PA_FINAL_REVIEW;
+                    updateData.assigned_to_role = Role.PARTNER_ASSOCIATE;
+                    updateData.assigned_to_user_id = user.id;
+                    updateData.status = TaskStatus.IN_PROGRESS;
+                    updateData.task_status = TaskStatus.IN_PROGRESS;
                 }
             } else if (type === 'PROOF') {
                 updateData = {
@@ -347,18 +494,20 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
     );
 
     const aggregatedStats = sortedProjects.reduce((acc, p) => {
-        const isScriptSent = p.current_stage !== WorkflowStage.PARTNER_REVIEW;
+        const isDirectUpload = !!p.video_link && !p.data?.script_content && !p.data?.idea_description && !p.data?.selected_script_id;
+        const isScriptSent = (p.current_stage !== WorkflowStage.PARTNER_REVIEW) && !isDirectUpload;
         const hasVideoLink = !!p.video_link || (p.cine_video_links_history || []).length > 0;
         const hasEditedVideo = !!p.edited_video_link || (p.editor_video_links_history || []).length > 0 || (p.sub_editor_video_links_history || []).length > 0;
         const hasProof = !!p.data?.posting_proof_link || p.current_stage === WorkflowStage.POSTED;
 
         if (isScriptSent) acc.scriptSent += 1;
+        if (isDirectUpload) acc.directUploads += 1;
         if (hasVideoLink) acc.videoLink += 1;
         if (hasEditedVideo) acc.editedVideo += 1;
         if (hasProof) acc.proofPosted += 1;
         
         return acc;
-    }, { scriptSent: 0, videoLink: 0, editedVideo: 0, proofPosted: 0 });
+    }, { scriptSent: 0, directUploads: 0, videoLink: 0, editedVideo: 0, proofPosted: 0 });
 
     const handleLaunchOutreach = async () => {
         if (!influencerName.trim()) { toast.error('Enter influencer name'); return; }
@@ -370,11 +519,14 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             let projectId = project.id;
             let latestProject: any = null;
 
-            // DETERMINISTIC LOGIC: Create a new project if the current one is already launched
-            // or if it's a temporary/draft project.
+            // DETERMINISTIC LOGIC: Only create a new project if we don't have a real one yet (temp/new)
+            // or if the current project is already finished (POSTED).
+            // If the project is in any intermediate stage (SENT_TO_INFLUENCER, VIDEO_REVIEW, etc.), 
+            // we update the EXISTING record to keep everything in one row as requested.
             const shouldCreateNew = 
-                projectId?.startsWith('temp-') || 
-                project.current_stage !== WorkflowStage.PARTNER_REVIEW;
+                !projectId || 
+                projectId.startsWith('temp-') || 
+                project.current_stage === WorkflowStage.POSTED;
 
             if (shouldCreateNew) {
                 console.log('🆕 Creating a NEW project record for this script outreach');
@@ -432,26 +584,29 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                 projectId = newProject.id;
                 latestProject = newProject;
                 console.log('✅ Created project with ID:', projectId);
-
-                // Create influencer record linked to the brand so it appears in PA Brand Details page
-                await db.influencers.log({
-                    parent_project_id: selectedScript.id,
-                    instance_project_id: projectId,
-                    influencer_name: influencerName,
-                    influencer_email: influencerEmail,
-                    brand_name: brandName,
-                    script_content: selectedScript.data?.script_content,
-                    content_description: selectedScript.title,
-                    sent_by: user.full_name || 'PA',
-                    sent_by_id: user.id,
-                    status: 'SENT_TO_INFLUENCER'
-                });
-                console.log('✅ Created influencer record for brand:', brandName);
             } else {
-                // Fetch existing project to update (only if it was in PARTNER_REVIEW)
+                // Fetch existing project to update (only if it was in PARTNER_REVIEW or other active stages)
                 const { data: existingProject } = await supabase.from('projects').select('*').eq('id', projectId).single();
                 latestProject = existingProject;
+                console.log('🔄 Updating existing project with ID:', projectId);
             }
+
+            // Sync with dedicated influencers table - now runs for both NEW and UPDATED projects
+            // Our log function now handles UPSERT logic based on instance_project_id
+            const brandName = latestProject?.brand || latestProject?.data?.brand || selectedScript.brand || selectedScript.data?.brand || '';
+            await db.influencers.log({
+                parent_project_id: selectedScript.id,
+                instance_project_id: projectId,
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                brand_name: brandName,
+                script_content: selectedScript.data?.script_content,
+                content_description: selectedScript.title,
+                sent_by: user.full_name || 'PA',
+                sent_by_id: user.id,
+                status: 'SENT_TO_INFLUENCER'
+            });
+            console.log('✅ Synchronized influencer record for project:', projectId);
 
             const scriptContent = selectedScript.data?.script_content || selectedScript.data?.idea_description || 'No script content available';
 
@@ -469,6 +624,10 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             const updatedHistory = [...currentHistory, newHistoryEntry];
 
             await db.projects.update(projectId, {
+                current_stage: WorkflowStage.SENT_TO_INFLUENCER,
+                status: TaskStatus.TODO,
+                assigned_to_user_id: user.id,
+                assigned_to_role: Role.PARTNER_ASSOCIATE,
                 pa_script_sent_at: new Date().toISOString(),
                 data: {
                     ...(latestProject?.data || {}),
@@ -476,7 +635,11 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     influencer_email: influencerEmail,
                     selected_script_id: selectedScript.id,
                     custom_outreach_content: customContent,
-                    influencer_history: updatedHistory
+                    influencer_history: updatedHistory,
+                    is_pa_brand: true,
+                    influencer_instance: true,
+                    sent_by_id: user.id,
+                    sent_by_name: user.full_name
                 }
             });
 
@@ -493,6 +656,20 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         influencer_name: influencerName
                     }
                 }
+            });
+
+            // 📝 LOG INFLUENCER ACTIVITY: Update registry to reflect script sent
+            await db.influencers.log({
+                parent_project_id: latestProject?.data?.parent_script_id || projectId,
+                instance_project_id: projectId,
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                script_content: scriptContent,
+                content_description: selectedScript.title,
+                sent_by: user.full_name,
+                sent_by_id: user.id,
+                status: 'SCRIPT_SENT',
+                brand_name: latestProject?.brand || latestProject?.data?.brand || project.brand || ''
             });
 
             // Don't advance workflow for new projects - they should stay at SENT_TO_INFLUENCER
@@ -542,20 +719,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             )}
 
             {/* Success Modal */}
-            {showSuccessModal && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-                    <div className="bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(34,197,94,1)] max-w-sm w-full p-12 text-center animate-bounce-in">
-                        <div className="w-24 h-24 bg-green-500 border-4 border-black rounded-full flex items-center justify-center mx-auto mb-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-                            <Check className="w-12 h-12 text-white stroke-[4px]" />
-                        </div>
-                        <h3 className="text-3xl font-black text-slate-900 uppercase mb-2">Campaign Live!</h3>
-                        <p className="text-xs font-black text-green-600 uppercase tracking-widest mb-6">Outreach Successful</p>
-                        <div className="flex items-center justify-center gap-2 text-slate-400 font-bold uppercase text-[10px]">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Redirecting to Dashboard
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             <header className="h-16 bg-white/90 backdrop-blur-md border-b-2 border-indigo-50 flex items-center justify-between px-8 sticky top-0 z-50">
                 <div className="flex items-center space-x-6">
@@ -566,8 +730,8 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div>
-                        <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none uppercase">{influencerDisplayName}</h1>
-                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1">Partnership Hub</p>
+                        <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none uppercase">{influencerDisplayName}</h1>
+                        <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider mt-1">Partnership Hub</p>
                     </div>
                 </div>
 
@@ -587,44 +751,51 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             <div className="flex-1 overflow-y-auto">
                 <div className="max-w-6xl mx-auto p-8 space-y-10">
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                        <div className="p-8 bg-white border-2 border-slate-100 rounded-3xl shadow-xl shadow-slate-200/50 flex flex-col items-center text-center justify-center relative overflow-hidden group">
-                           <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center font-black text-3xl text-white shadow-xl mb-4 relative z-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="p-5 bg-white border-2 border-slate-100 rounded-2xl shadow-lg shadow-slate-200/40 flex flex-col items-center text-center justify-center relative overflow-hidden group">
+                           <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center font-bold text-xl text-white shadow-lg mb-3 relative z-10">
                                 {influencerDisplayName.charAt(0)}
                            </div>
-                           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none relative z-10">{influencerDisplayName}</h2>
-                           <p className="text-[10px] font-bold text-slate-400 mt-2 relative z-10 truncate w-full">{project.data?.influencer_email || '—'}</p>
+                           <h2 className="text-lg font-bold text-slate-900 uppercase tracking-tight leading-none relative z-10">{influencerDisplayName}</h2>
+                           <p className="text-[9px] font-medium text-slate-400 mt-1 relative z-10 truncate w-full">{project.data?.influencer_email || '—'}</p>
                         </div>
 
-                        <div className="p-8 bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-100 mb-2 relative z-10">Scripts Sent</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.scriptSent}</p>
-                                <Send className="w-6 h-6 text-indigo-300" />
+                        <div className="p-5 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-200 text-white flex flex-col justify-center relative overflow-hidden">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-100 mb-2 relative z-10">Scripts Sent</span>
+                            <div className="flex flex-col relative z-10">
+                                <div className="flex items-baseline gap-2">
+                                    <p className="text-3xl font-bold">{aggregatedStats.scriptSent}</p>
+                                    <Send className="w-4 h-4 text-indigo-300" />
+                                </div>
+                                {aggregatedStats.directUploads > 0 && (
+                                    <span className="text-[8px] font-black uppercase text-indigo-100 bg-white/20 px-1.5 py-0.5 rounded mt-1 self-start">
+                                        +{aggregatedStats.directUploads} Direct
+                                    </span>
+                                )}
                             </div>
                         </div>
 
-                        <div className="p-8 bg-blue-500 rounded-3xl shadow-xl shadow-blue-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-100 mb-2 relative z-10">Video Link</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.videoLink}</p>
-                                <Video className="w-6 h-6 text-blue-200" />
+                        <div className="p-5 bg-blue-500 rounded-2xl shadow-lg shadow-blue-200 text-white flex flex-col justify-center relative overflow-hidden">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-blue-100 mb-2 relative z-10">Video Link</span>
+                            <div className="flex items-baseline gap-2 relative z-10">
+                                <p className="text-3xl font-bold">{aggregatedStats.videoLink}</p>
+                                <Video className="w-4 h-4 text-blue-200" />
                             </div>
                         </div>
 
-                        <div className="p-8 bg-purple-500 rounded-3xl shadow-xl shadow-purple-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-100 mb-2 relative z-10">Edited Video</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.editedVideo}</p>
-                                <Layers className="w-6 h-6 text-purple-200" />
+                        <div className="p-5 bg-purple-500 rounded-2xl shadow-lg shadow-purple-200 text-white flex flex-col justify-center relative overflow-hidden">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-purple-100 mb-2 relative z-10">Edited Video</span>
+                            <div className="flex items-baseline gap-2 relative z-10">
+                                <p className="text-3xl font-bold">{aggregatedStats.editedVideo}</p>
+                                <Layers className="w-4 h-4 text-purple-200" />
                             </div>
                         </div>
 
-                        <div className="p-8 bg-emerald-500 rounded-3xl shadow-xl shadow-emerald-200 text-white flex flex-col justify-center relative overflow-hidden">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100 mb-2 relative z-10">Post Proof</span>
-                            <div className="flex items-baseline gap-3 relative z-10">
-                                <p className="text-5xl font-black">{aggregatedStats.proofPosted}</p>
-                                <CheckCircle2 className="w-6 h-6 text-emerald-200" />
+                        <div className="p-5 bg-emerald-500 rounded-2xl shadow-lg shadow-emerald-200 text-white flex flex-col justify-center relative overflow-hidden">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-100 mb-2 relative z-10">Post Proof</span>
+                            <div className="flex items-baseline gap-2 relative z-10">
+                                <p className="text-3xl font-bold">{aggregatedStats.proofPosted}</p>
+                                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                             </div>
                         </div>
                     </div>
@@ -632,82 +803,78 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                     {/* Outreach Action Area for unlaunched projects */}
                     {project.current_stage === WorkflowStage.PARTNER_REVIEW && user.role !== Role.CMO && (
                         <div className="relative group animate-slide-up">
-                            {/* Decorative Background Blob - subtle indigo instead of multi-color/pink */}
-                            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-hover:duration-200"></div>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-[1.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000 group-hover:duration-200"></div>
                             
-                            <div className="relative bg-white border-2 border-slate-100 p-10 rounded-[2.5rem] shadow-2xl shadow-indigo-100/50 space-y-10 overflow-hidden">
-                                {/* Top Badge */}
-                                <div className="absolute top-0 right-0 px-6 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.3em] rounded-bl-2xl">
+                            <div className="relative bg-white border-2 border-slate-100 p-6 rounded-[1.5rem] shadow-xl shadow-indigo-100/50 space-y-6 overflow-hidden">
+                                <div className="absolute top-0 right-0 px-4 py-1.5 bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-wider rounded-bl-xl">
                                     Pending Outreach
                                 </div>
 
-                                <div className="flex items-center gap-6">
-                                    <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 transform -rotate-3 group-hover:rotate-0 transition-transform duration-500">
-                                        <Send className="w-8 h-8" />
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-indigo-700 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100 transform -rotate-3 group-hover:rotate-0 transition-transform duration-500">
+                                        <Send className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-4xl font-black text-slate-800 uppercase tracking-tighter leading-none">Launch Campaign</h3>
-                                        <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
-                                            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>
-                                            Action Required to Proceed
+                                        <h3 className="text-2xl font-bold text-slate-800 uppercase tracking-tight leading-none">Send Script</h3>
+                                        <p className="text-[9px] font-medium text-indigo-500 uppercase tracking-wider mt-1.5 flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span>
+                                            Action Required
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="space-y-3 group/field">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 group-focus-within/field:text-indigo-600 transition-colors">Influencer Name</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2 group/field">
+                                        <label className="text-[9px] font-bold uppercase text-slate-400 pl-1 group-focus-within/field:text-indigo-600 transition-colors">Influencer Name</label>
                                         <div className="relative">
                                             <input 
                                                 type="text" 
                                                 value={influencerName}
                                                 onChange={(e) => setInfluencerName(e.target.value)}
                                                 placeholder="Enter full name..."
-                                                className="w-full bg-slate-50 border-2 border-slate-100 p-5 rounded-2xl font-bold text-base focus:bg-white focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-50 transition-all"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 p-3.5 rounded-xl font-bold text-sm focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
                                             />
-                                            <Users className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                            <Users className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                                         </div>
                                     </div>
-                                    <div className="space-y-3 group/field">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 pl-1 group-focus-within/field:text-indigo-600 transition-colors">Influencer Email</label>
+                                    <div className="space-y-2 group/field">
+                                        <label className="text-[9px] font-bold uppercase text-slate-400 pl-1 group-focus-within/field:text-indigo-600 transition-colors">Influencer Email</label>
                                         <div className="relative">
                                             <input 
                                                 type="email" 
                                                 value={influencerEmail}
                                                 onChange={(e) => setInfluencerEmail(e.target.value)}
                                                 placeholder="name@provider.com"
-                                                className="w-full bg-slate-50 border-2 border-slate-100 p-5 rounded-2xl font-bold text-base focus:bg-white focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-50 transition-all"
+                                                className="w-full bg-slate-50 border-2 border-slate-100 p-3.5 rounded-xl font-bold text-sm focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
                                             />
-                                            <Mail className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                                            <Mail className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                                         </div>
                                     </div>
                                 </div>
 
                                 <button 
                                     onClick={() => setLaunchStep(1)}
-                                    className="group/btn w-full py-6 bg-indigo-600 text-white font-black uppercase text-2xl rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:translate-y-[-4px] active:translate-y-[0px] transition-all flex items-center justify-center gap-4"
+                                    className="group/btn w-full py-4 bg-indigo-600 text-white font-bold uppercase text-lg rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:translate-y-[-2px] transition-all flex items-center justify-center gap-3"
                                 >
-                                    <div className="p-2 bg-white/20 rounded-lg group-hover/btn:scale-110 transition-transform">
-                                        <Rocket className="w-6 h-6 text-white" />
-                                    </div>
-                                    Launch Outreach & Select Script
+                                    <Rocket className="w-5 h-5 text-white" />
+                                    Send Script
                                 </button>
                             </div>
                         </div>
                     )}
 
                     <div className="space-y-12">
-                        <div className="flex items-center gap-6">
-                            <h3 className="text-xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
-                                <History className="w-6 h-6 text-indigo-600" /> Partnership History
+                        <div className="flex items-center gap-4">
+                            <h3 className="text-lg font-bold text-slate-900 tracking-tighter uppercase flex items-center gap-2">
+                                <History className="w-5 h-5 text-indigo-600" /> Partnership History
                             </h3>
-                            <div className="h-1 bg-gradient-to-r from-indigo-100 to-transparent flex-1 rounded-full"></div>
+                            <div className="h-0.5 bg-gradient-to-r from-indigo-100 to-transparent flex-1 rounded-full"></div>
                         </div>
 
                         {sortedProjects.map((proj, idx) => {
                             const influencerHistory = proj.data?.influencer_history || [];
-                            const rawLinksHistory = [...(proj.cine_video_links_history || []), proj.video_link].filter(Boolean);
-                            const editedLinksHistory = [...(proj.editor_video_links_history || []), ...(proj.sub_editor_video_links_history || []), proj.edited_video_link].filter(Boolean);
+                            const rawLinksHistory = Array.from(new Set([...(proj.cine_video_links_history || []), proj.video_link])).filter(Boolean);
+                            const editedLinksHistory = Array.from(new Set([...(proj.editor_video_links_history || []), ...(proj.sub_editor_video_links_history || []), proj.edited_video_link])).filter(Boolean);
                             const proofLink = proj.data?.posting_proof_link;
                             const isNew = idx === 0;
                             
@@ -715,17 +882,17 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                 <div key={proj.id} className={`bg-white border-2 rounded-[2rem] shadow-xl overflow-hidden transition-all duration-300 ${
                                     isNew ? 'border-indigo-400 ring-4 ring-indigo-50 shadow-indigo-100' : 'border-slate-100 shadow-slate-100'
                                 }`}>
-                                    <div className={`p-5 px-8 flex flex-wrap items-center justify-between gap-4 ${
+                                    <div className={`p-4 px-6 flex flex-wrap items-center justify-between gap-3 ${
                                         isNew ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' : 'bg-slate-900 text-white'
                                     }`}>
-                                        <div className="flex items-center gap-5 flex-1">
-                                            <div className="w-10 h-10 bg-white/20 backdrop-blur-md text-white rounded-xl flex items-center justify-center font-black text-lg border border-white/30">
+                                        <div className="flex items-center gap-4 flex-1">
+                                            <div className="w-8 h-8 bg-white/20 backdrop-blur-md text-white rounded-lg flex items-center justify-center font-bold text-base border border-white/30">
                                                 {sortedProjects.length - idx}
                                             </div>
                                             <div>
-                                                <h4 className="text-xl font-black tracking-tight uppercase">{proj.title}</h4>
-                                                <div className="flex items-center gap-3 mt-1">
-                                                    <span className="px-2 py-0.5 bg-white/20 text-[8px] font-black uppercase tracking-widest rounded transition-all">{STAGE_LABELS[proj.current_stage]}</span>
+                                                <h4 className="text-lg font-bold tracking-tight uppercase">{proj.title}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="px-2 py-0.5 bg-white/20 text-[8px] font-bold uppercase tracking-wider rounded transition-all">{STAGE_LABELS[proj.current_stage]}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -742,10 +909,10 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                     </div>
 
                                     <div className="grid grid-cols-1 lg:grid-cols-2">
-                                        <div className="p-8 border-b lg:border-b-0 lg:border-r border-slate-100">
-                                            <div className="flex items-center justify-between mb-6">
-                                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                    <FileText className="w-5 h-5" /> Script Content ({influencerHistory.length || 1})
+                                        <div className="p-6 border-b lg:border-b-0 lg:border-r border-slate-100">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <span className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
+                                                    <FileText className="w-4 h-4" /> Script Content ({influencerHistory.length || 1})
                                                 </span>
                                             </div>
                                             <div className="space-y-6 max-h-[450px] overflow-y-auto overflow-x-hidden pr-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -753,24 +920,24 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                     influencerHistory
                                                         .map((entry: any, hIdx: number) => (
                                                             <div key={hIdx} className="p-6 bg-indigo-50/30 rounded-3xl border-2 border-indigo-50">
-                                                                <div className="text-sm font-medium text-slate-700 italic">
-                                                                    <ScriptDisplay content={entry.script_content || proj.data?.script_content || 'No script content found'} showBox={false} />
+                                                                <div className="text-sm font-medium text-slate-400 italic">
+                                                                    History Log Entry #{hIdx + 1}
                                                                 </div>
                                                             </div>
                                                         )).reverse()
                                                 ) : (
                                                     <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                                                        <ScriptDisplay content={proj.data?.script_content || proj.data?.idea_description || 'No content found'} showBox={false} />
+                                                        <div className="text-sm font-medium text-slate-400 italic">No additional history logs found.</div>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="p-8 space-y-8 bg-slate-50/30">
-                                            <div className="space-y-4">
+                                        <div className="p-6 space-y-6 bg-slate-50/30">
+                                            <div className="space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                        <Video className="w-5 h-5" /> Video Link ({rawLinksHistory.length})
+                                                    <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2">
+                                                        <Video className="w-4 h-4" /> Video Link ({rawLinksHistory.length})
                                                     </span>
                                                     {proj.current_stage !== WorkflowStage.POSTED && user.role !== Role.CMO && (
                                                         <button 
@@ -854,10 +1021,10 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                        <CheckCircle2 className="w-5 h-5" /> Edited Video ({editedLinksHistory.length})
+                                                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider flex items-center gap-2">
+                                                        <CheckCircle2 className="w-4 h-4" /> Edited Video ({editedLinksHistory.length})
                                                     </span>
                                                     {proj.current_stage !== WorkflowStage.POSTED && user.role !== Role.CMO && (
                                                         <button 
@@ -942,10 +1109,10 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                                             </div>
 
                                             {/* Proof of Posting */}
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                                                        <Link className="w-5 h-5" /> Proof of Posting
+                                                    <span className="text-[9px] font-bold text-orange-600 uppercase tracking-wider flex items-center gap-2">
+                                                        <Link className="w-4 h-4" /> Proof of Posting
                                                     </span>
                                                     {user.role !== Role.CMO && !proofLink && (
                                                         <button 
@@ -1206,7 +1373,37 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
                         <p className="text-sm font-bold text-slate-400 uppercase tracking-widest leading-relaxed mb-8">
                             The script has been sent to {influencerName}. <br/>Workflow updated successfully.
                         </p>
-                        <div className="flex items-center justify-center gap-3 py-4 px-6 bg-slate-50 rounded-2xl border-2 border-slate-50 inline-flex">
+                        <div className="flex flex-col items-center gap-2 mb-8">
+                            <div className="flex items-center justify-center gap-6 py-5 px-10 bg-slate-50 rounded-[2rem] border-2 border-slate-100 shadow-inner">
+                                {aggregatedStats.scriptSent > 0 ? (
+                                    <>
+                                        <div className="flex flex-col items-center">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-4xl font-black text-slate-900 leading-none">{aggregatedStats.scriptSent}</span>
+                                                <Send className="w-5 h-5 text-purple-600" />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Scripts Sent</span>
+                                        </div>
+                                        {aggregatedStats.directUploads > 0 && <div className="h-12 w-[2px] bg-slate-200 mx-2" />}
+                                    </>
+                                ) : null}
+
+                                {aggregatedStats.directUploads > 0 ? (
+                                    <div className="flex flex-col items-center">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-4xl font-black text-blue-600 leading-none">{aggregatedStats.directUploads}</span>
+                                            <div className="p-1 bg-blue-100 rounded-md">
+                                                <Video className="w-4 h-4 text-blue-600" />
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Direct Uploads</span>
+                                    </div>
+                                ) : aggregatedStats.scriptSent === 0 ? (
+                                    <span className="text-slate-300 font-black uppercase tracking-[0.2em] text-xs">No Outreach Yet</span>
+                                ) : null}
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-center gap-3 py-4 px-6 bg-slate-50 rounded-2xl border-2 border-slate-50 inline-flex mt-4">
                             <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Finalizing Dashboard...</span>
                         </div>

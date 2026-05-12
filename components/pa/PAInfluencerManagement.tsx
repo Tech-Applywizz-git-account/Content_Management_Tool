@@ -13,12 +13,14 @@ interface Props {
     user: User;
     onBack: () => void;
     onComplete: () => void;
+    refreshData?: (user: User, force?: boolean) => Promise<void>;
 }
 
-const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete }) => {
-    const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || '');
-    const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || '');
-    const [contentDescription, setContentDescription] = useState(project.data?.content_description || '');
+const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete, refreshData }) => {
+
+    const [influencerName, setInfluencerName] = useState((project.data as any)?.influencer_name || '');
+    const [influencerEmail, setInfluencerEmail] = useState((project.data as any)?.influencer_email || '');
+    const [contentDescription, setContentDescription] = useState((project.data as any)?.content_description || '');
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
@@ -28,20 +30,20 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [externalHistory, setExternalHistory] = useState<any[]>([]);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-    const isInstance = project.data?.influencer_instance === true;
+    const isInstance = (project.data as any)?.influencer_instance === true;
     const currentStage = project.current_stage;
     const isApproved = currentStage === WorkflowStage.POSTED;
 
     React.useEffect(() => {
         const fetchHistory = async () => {
-            const parentId = project.data?.parent_script_id || project.id;
+            const parentId = (project.data as any)?.parent_script_id || project.id;
             const data = await db.influencers.getByParent(parentId);
             setExternalHistory(data || []);
         };
         fetchHistory();
-    }, [project.id, project.data?.parent_script_id]);
+    }, [project.id, (project.data as any)?.parent_script_id]);
 
-    const influencerDisplayName = project.data?.influencer_name || 'Influencer';
+    const influencerDisplayName = (project.data as any)?.influencer_name || 'Influencer';
 
     const sortedProjects = [...allInfluencerProjects].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -79,90 +81,107 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
 
         setIsSending(true);
         try {
-            setPopupType('success');
             const { data: latestProject } = await supabase.from('projects').select('*').eq('id', project.id).single();
-            const scriptContent = latestProject?.data?.script_content || project.data?.script_content || project.data?.idea_description || 'No script content available';
+            const scriptContent = (latestProject?.data as any)?.script_content || (project.data as any)?.script_content || (project.data as any)?.idea_description || 'No script content available';
 
-            const newProjectData = {
-                title: project.title,
-                channel: project.channel,
-                content_type: project.content_type,
-                current_stage: WorkflowStage.SENT_TO_INFLUENCER,
-                status: TaskStatus.TODO,
-                priority: project.priority,
-                assigned_to_role: Role.PARTNER_ASSOCIATE,
-                assigned_to_user_id: user.id,
-                created_by_user_id: user.id,
-                created_by_name: user.full_name,
-                writer_id: project.writer_id || user.id,
-                writer_name: project.writer_name || user.full_name,
-                due_date: project.due_date,
-                data: {
-                    ...(latestProject?.data || project.data || {}),
-                    influencer_name: influencerName,
-                    influencer_email: influencerEmail,
-                    content_description: contentDescription,
-                    parent_script_id: project.data?.parent_script_id || project.id,
-                    influencer_instance: true,
-                    influencer_history: [{
+            // CONSOLIDATION LOGIC: If we are already in an influencer instance and it's not POSTED,
+            // we update the existing one instead of creating a new one.
+            const isInstance = (project.data as any)?.influencer_instance === true;
+            const isFinished = project.current_stage === WorkflowStage.POSTED;
+            const shouldCreateNew = !isInstance || isFinished;
+
+            let targetProjectId = project.id;
+            let currentBrand = latestProject?.brand || (latestProject?.data as any)?.brand || project.brand || (project.data as any)?.brand || '';
+
+            if (shouldCreateNew) {
+                console.log('🆕 Creating new project instance');
+                const newProjectData = {
+                    title: project.title,
+                    channel: project.channel,
+                    content_type: project.content_type,
+                    current_stage: WorkflowStage.SENT_TO_INFLUENCER,
+                    status: TaskStatus.TODO,
+                    priority: project.priority,
+                    assigned_to_role: Role.PARTNER_ASSOCIATE,
+                    assigned_to_user_id: user.id,
+                    created_by_user_id: user.id,
+                    created_by_name: user.full_name,
+                    writer_id: project.writer_id || user.id,
+                    writer_name: project.writer_name || user.full_name,
+                    due_date: project.due_date,
+                    brand: currentBrand,
+                    data: {
+                        ...(latestProject?.data || project.data || {}),
                         influencer_name: influencerName,
                         influencer_email: influencerEmail,
-                        sent_at: new Date().toISOString(),
-                        sent_by: user.full_name || 'PA',
-                        sent_by_id: user.id,
-                        action: 'INITIAL_OUTREACH'
-                    }]
-                }
-            };
-
-            const createdProject = await db.projects.create(newProjectData as any);
-
-            const parentId = project.data?.parent_script_id || project.id;
-            const { data: parentScript } = await supabase.from('projects').select('*').eq('id', parentId).single();
-            const parentHistory = Array.isArray(parentScript?.data?.influencer_history) ? parentScript.data.influencer_history : [];
-            const isFirstInfluencer = parentHistory.length === 0;
-
-            if (isFirstInfluencer) {
-                await db.projects.updateData(parentId, {
-                    influencer_history: [...parentHistory, {
-                        influencer_name: influencerName,
-                        influencer_email: influencerEmail,
-                        instance_id: createdProject.id,
-                        sent_at: new Date().toISOString(),
-                        sent_by: user.full_name || 'PA',
-                        sent_by_id: user.id
-                    }]
-                });
+                        content_description: contentDescription,
+                        parent_script_id: (project.data as any)?.parent_script_id || project.id,
+                        influencer_instance: true,
+                        influencer_history: [{
+                            influencer_name: influencerName,
+                            influencer_email: influencerEmail,
+                            sent_at: new Date().toISOString(),
+                            sent_by: user.full_name || 'PA',
+                            sent_by_id: user.id,
+                            action: 'INITIAL_OUTREACH'
+                        }]
+                    }
+                };
+                const createdProject = await db.projects.create(newProjectData as any);
+                targetProjectId = createdProject.id;
             } else {
-                await db.influencers.log({
-                    parent_project_id: parentId,
-                    instance_project_id: createdProject.id,
-                    influencer_name: influencerName,
-                    influencer_email: influencerEmail,
-                    script_content: scriptContent,
-                    content_description: contentDescription,
-                    sent_by: user.full_name || 'PA',
-                    sent_by_id: user.id,
-                    status: 'SENT_TO_INFLUENCER'
+                console.log('🔄 Updating existing project instance:', targetProjectId);
+                await db.projects.update(targetProjectId, {
+                    current_stage: WorkflowStage.SENT_TO_INFLUENCER,
+                    status: TaskStatus.TODO,
+                    assigned_to_user_id: user.id,
+                    assigned_to_role: Role.PARTNER_ASSOCIATE,
+                    data: {
+                        ...(latestProject?.data || project.data || {}),
+                        influencer_name: influencerName,
+                        influencer_email: influencerEmail,
+                        content_description: contentDescription,
+                        influencer_instance: true,
+                        is_pa_brand: true,
+                        sent_by_id: user.id,
+                    }
                 });
             }
+
+            // Sync with dedicated influencers table (handles UPSERT based on targetProjectId)
+            await db.influencers.log({
+                parent_project_id: (project.data as any)?.parent_script_id || project.id,
+                instance_project_id: targetProjectId,
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                script_content: scriptContent,
+                content_description: contentDescription,
+                brand_name: currentBrand,
+                sent_by: user.full_name || 'PA',
+                sent_by_id: user.id,
+                status: 'SENT_TO_INFLUENCER'
+            });
 
             await supabase.functions.invoke('send-workflow-email', {
                 body: {
                     event: 'SEND_TO_INFLUENCER',
                     recipient_email: influencerEmail,
                     data: {
-                        project_id: createdProject.id,
+                        project_id: targetProjectId,
                         actor_name: user.full_name || 'PA',
                         comment: 'Campaign launched by PA from Partnership Hub',
-                        content_description: contentDescription || project.data?.brief || 'Script content for review',
+                        content_description: contentDescription || (project.data as any)?.brief || 'Script content for review',
                         script_content: scriptContent,
                         influencer_name: influencerName
                     }
                 }
             });
 
+            if (refreshData) {
+                refreshData(user, true);
+            }
             setShowSuccessModal(true);
+
             setPopupMessage('The script has been sent successfully');
             setStageName('SENT TO INFLUENCER');
 
@@ -170,7 +189,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setInfluencerEmail('');
             setContentDescription('');
 
-            const pId = project.data?.parent_script_id || project.id;
+            const pId = (project.data as any)?.parent_script_id || project.id;
             const freshHistory = await db.influencers.getByParent(pId);
             setExternalHistory(freshHistory || []);
         } catch (error: any) {
@@ -185,7 +204,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
         setIsSending(true);
         try {
             const nextHistoryEntry = {
-                influencer_name: project.data?.influencer_name,
+                influencer_name: (project.data as any)?.influencer_name,
                 sent_at: new Date().toISOString(),
                 sent_by: user.full_name,
                 action: `Updated to ${stage.replace(/_/g, ' ')}`
@@ -196,7 +215,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                 status: status,
                 data: {
                     ...(project.data || {}),
-                    influencer_history: [...(project.data?.influencer_history || []), nextHistoryEntry]
+                    influencer_history: [...((project.data as any)?.influencer_history || []), nextHistoryEntry]
                 }
             });
 
@@ -204,7 +223,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             let sName = '';
             if (stage === WorkflowStage.VIDEO_EDITING) {
                 // If is_pa_brand, move to CMO review first
-                if (project.data?.is_pa_brand) {
+                if ((project.data as any)?.is_pa_brand) {
                     await db.projects.update(project.id, {
                         current_stage: WorkflowStage.PA_VIDEO_CMO_REVIEW,
                         status: TaskStatus.TODO
@@ -229,9 +248,15 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
 
             setPopupMessage(msg);
             setStageName(sName);
+            setPopupType('success');
+            if (refreshData) {
+                refreshData(user, true);
+            }
             setShowPopup(true);
 
-            const pId = project.data?.parent_script_id || project.id;
+
+
+            const pId = (project.data as any)?.parent_script_id || project.id;
             const freshHistory = await db.influencers.getByParent(pId);
             setExternalHistory(freshHistory || []);
 
@@ -284,28 +309,28 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                 <div className="font-bold uppercase text-xs">{project.channel}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Type</label>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 tracking-widest">Type</label>
                                 <div className="font-bold uppercase text-xs">{project.content_type?.replace(/_/g, ' ')}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Brand</label>
-                                <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{project.data?.brand?.replace(/_/g, ' ') || '—'}</div>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 tracking-widest">Brand</label>
+                                <div className="font-bold text-[#0085FF] uppercase text-xs truncate">{(project.data as any)?.brand?.replace(/_/g, ' ') || '—'}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Influencer</label>
-                                <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_name || '—'}</div>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 tracking-widest">Influencer</label>
+                                <div className="font-bold uppercase text-xs truncate">{(project.data as any)?.influencer_name || '—'}</div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 tracking-widest">Email</label>
-                                <div className="font-bold uppercase text-xs truncate">{project.data?.influencer_email || '—'}</div>
+                                <label className="block text-[10px] font-black text-slate-400 mb-1 tracking-widest">Email</label>
+                                <div className="font-bold uppercase text-xs truncate">{(project.data as any)?.influencer_email || '—'}</div>
                             </div>
                         </div>
 
-                        {project.data?.brief && (
+                        {(project.data as any)?.brief && (
                             <section className="space-y-4 pt-8">
                                 <h3 className="text-2xl font-black uppercase">Campaign Brief</h3>
                                 <div className="border-2 border-black bg-white p-8 min-h-[100px] whitespace-pre-wrap shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    {project.data.brief}
+                                    {(project.data as any).brief}
                                 </div>
                             </section>
                         )}
@@ -313,7 +338,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         <section className="space-y-4 pt-8">
                             <h3 className="text-2xl font-black uppercase tracking-tight">Script Content</h3>
                             <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                <ScriptDisplay content={project.data?.script_content || project.data?.idea_description || 'Content empty.'} showBox={false} />
+                                <ScriptDisplay content={(project.data as any)?.script_content || (project.data as any)?.idea_description || 'Content empty.'} showBox={false} />
                             </div>
                         </section>
 
@@ -323,10 +348,10 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             </h3>
                             <div className="space-y-8">
                                 {(() => {
-                                    const parentId = project.data?.parent_script_id || project.id;
+                                    const parentId = (project.data as any)?.parent_script_id || project.id;
                                     const parentProject = allInfluencerProjects.find(p => p.id === parentId);
 
-                                    const internalHistory = (parentProject?.data?.influencer_history || [])
+                                    const internalHistory = ((parentProject?.data as any)?.influencer_history || [])
                                         .map((h: any) => ({ ...h, source: 'Internal' }));
 
                                     const externalLog = (externalHistory || [])
@@ -364,7 +389,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
-                                                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Launch</div>
+                                                                <div className="text-[10px] font-black text-slate-400 tracking-widest leading-none mb-1">Launch</div>
                                                                 <div className="text-sm font-black uppercase">{new Date(entry.sent_at).toLocaleDateString()}</div>
                                                             </div>
                                                         </div>
@@ -410,15 +435,15 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             </div>
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(217,70,239,1)]">
-                                    <div className="text-[8px] font-black uppercase text-slate-400">Sent</div>
+                                    <div className="text-[8px] font-black text-slate-400">Sent</div>
                                     <div className="text-xl font-black">{aggregatedStats.scriptSent}</div>
                                 </div>
                                 <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(0,133,255,1)]">
-                                    <div className="text-[8px] font-black uppercase text-slate-400">Raw</div>
+                                    <div className="text-[8px] font-black text-slate-400">Raw</div>
                                     <div className="text-xl font-black">{aggregatedStats.rawReceived}</div>
                                 </div>
                                 <div className="bg-white border-2 border-black p-3 shadow-[3px_3px_0px_0px_rgba(34,197,94,1)]">
-                                    <div className="text-[8px] font-black uppercase text-slate-400">Live</div>
+                                    <div className="text-[8px] font-black text-slate-400">Live</div>
                                     <div className="text-xl font-black">{aggregatedStats.editedSent}</div>
                                 </div>
                             </div>
@@ -606,14 +631,15 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                             The script has been delivered to <span className="text-[#0085FF]">{influencerName}</span> successfully.
                         </p>
                         <button
-                            onClick={() => {
+                            onClick={async () => {
                                 setShowSuccessModal(false);
-                                onBack();
+                                if (onComplete) await onComplete();
                             }}
                             className="w-full py-5 bg-black text-white font-black uppercase text-xl tracking-widest hover:bg-[#D946EF] transition-all active:translate-y-1 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
                         >
                             GOT IT!
                         </button>
+
                     </div>
                 </div>
             )}

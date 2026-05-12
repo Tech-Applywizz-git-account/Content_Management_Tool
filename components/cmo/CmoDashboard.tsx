@@ -383,7 +383,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
           <CmoOverview user={user} />
         ) : activeView === 'final-review' ? (
           <CmoFinalReview
-            user={user}
+            user={user as any}
             onBack={() => handleViewChange('dashboard')}
             onProjectSelect={(project) => navigateWithScroll(`/cmo/review/${project.id}`, { initialProject: project, from: location.pathname })}
             selectedProject={null}
@@ -751,7 +751,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     {ideasPendingAtCMO.length === 0 && <div className="p-8 text-center text-gray-500">No idea projects pending approval</div>}
                   </div>
                 </div>
-                
+
                 {/* Column 3: PA Video Review (NEW) */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-indigo-600 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -795,10 +795,10 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           </button>
                         </div>
                         <div className="flex flex-col mt-4 border-t-2 border-slate-100 pt-3">
-                           <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase mb-1">
-                             Influencer: {p.data?.influencer_name || '—'}
-                           </div>
-                           <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
+                          <div className="flex items-center text-[10px] font-black text-indigo-600 uppercase mb-1">
+                            Influencer: {p.data?.influencer_name || '—'}
+                          </div>
+                          <div className="flex items-center text-xs font-bold text-slate-500 uppercase">
                             <Clock className="w-3 h-3 mr-1" />
                             By: {p.data?.writer_name || p.created_by_name || '—'}
                           </div>
@@ -944,8 +944,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {(() => {
                                 // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
                                 // This happens when CINE clicks the rework button and sends script back to writer
-                                const cineInitiatedRework = p.history?.some(h => 
-                                  h.action === 'REWORK' && 
+                                const cineInitiatedRework = p.history?.some(h =>
+                                  h.action === 'REWORK' &&
                                   h.actor_role === 'CINE' &&
                                   h.from_role === 'CINE' &&
                                   h.to_role === 'WRITER'
@@ -1028,8 +1028,8 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               {(() => {
                                 // Check if CINE initiated rework by looking for REWORK action where CINE was the actor
                                 // This happens when CINE clicks the rework button and sends script back to writer
-                                const cineInitiatedRework = p.history?.some(h => 
-                                  h.action === 'REWORK' && 
+                                const cineInitiatedRework = p.history?.some(h =>
+                                  h.action === 'REWORK' &&
                                   h.actor_role === 'CINE' &&
                                   h.from_role === 'CINE' &&
                                   h.to_role === 'WRITER'

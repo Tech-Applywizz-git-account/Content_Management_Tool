@@ -8,7 +8,7 @@ interface PAProjectDetailPageProps {
     user: User;
     onLogout: () => void;
     projects?: Project[];
-    refreshData: (user: User) => Promise<void>;
+    refreshData: (user: User, force?: boolean) => Promise<void>;
 }
 
 const PAProjectDetailPage: React.FC<PAProjectDetailPageProps> = ({ user, projects = [], refreshData }) => {

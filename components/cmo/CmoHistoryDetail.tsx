@@ -414,6 +414,9 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
             <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
               {projectData.data?.source === 'DESIGNER_INITIATED' ? 'Creative Details: ' : 'Script Details: '}
               {projectData.title}
+              {projectData.brand && (
+                <span className="text-slate-400 text-sm ml-2">({projectData.brand.replace(/_/g, ' ')})</span>
+              )}
             </h1>
 
             <div className="flex items-center space-x-2 mt-2">
@@ -504,6 +507,14 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
                 {format(new Date(historyData.timestamp), 'MMM dd, yyyy')}
               </div>
             </div>
+            {projectData.brand && (
+              <div>
+                <label className="block text-xs font-black text-slate-400 uppercase mb-1">Brand</label>
+                <div className="font-black text-[#0085FF] uppercase">
+                  {projectData.brand.replace(/_/g, ' ')}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Content */}
@@ -761,6 +772,19 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
                 </div>
               </div>
             </div>
+
+            {projectData.brand && (
+              <div className="p-6 border-2 border-black bg-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-black text-lg uppercase text-slate-900">Brand</div>
+                    <div className="text-xs font-black uppercase text-[#0085FF]">
+                      {projectData.brand.replace(/_/g, ' ')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="p-6 border-2 border-black bg-white">
               <div className="flex items-center justify-between">

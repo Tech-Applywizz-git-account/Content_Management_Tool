@@ -214,7 +214,12 @@ const DesignerMyWork: React.FC<Props> = ({ user, projects, scriptProjects, onSel
                                 </div>
 
                                 {/* Title */}
-                                <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">{project.title}</h3>
+                                <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">
+                                    {project.title}
+                                    {project.brand && (
+                                        <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>
+                                    )}
+                                </h3>
 
                                 {/* Status */}
                                 <div className="space-y-2 text-sm">

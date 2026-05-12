@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { Project, Role } from '../../types';
+import { Project, Role, User } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import CmoReviewScreen from './CmoReviewScreen';
 
 interface CmoReviewPageProps {
-    user: { full_name: string; role: Role };
+    user: User;
     onLogout: () => void;
-    refreshData: (user: any) => Promise<void>;
+    refreshData: (user: any, force?: boolean) => Promise<void>;
 }
 
 const CmoReviewPage: React.FC<CmoReviewPageProps> = ({ user, onLogout, refreshData }) => {
@@ -78,10 +78,10 @@ const CmoReviewPage: React.FC<CmoReviewPageProps> = ({ user, onLogout, refreshDa
     };
 
     const handleComplete = async () => {
-        // Explicitly trigger a data refresh to ensure the dashboard is up-to-date
-        // before navigating back, so the project moves columns immediately
+        // Force a fresh data refresh (force=true bypasses the dedup guard in App.tsx)
+        // so the project is removed from the dashboard immediately without a manual reload
         if (refreshData && user) {
-            await refreshData(user);
+            await refreshData(user, true);
         }
         const from = (location.state as any)?.from || '/cmo';
         navigate(from);

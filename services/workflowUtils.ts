@@ -17,40 +17,63 @@ export function isCareerApplyShyamGroup(project: Project | any): boolean {
   const brandSelection = (project.brand || project.data?.brand || project.brandSelected || '').toLowerCase().trim();
   const normalizedBrand = brandSelection.replace(/_/g, ' ');
   
-  return [
+  // Check if it's in the static list of primary brands
+  const isInStaticList = [
     'applywizz',
     'applywizzusa jobs',
     'applywizz usa jobs',
     'shyam personal branding',
     'shyams personal branding',
-    'shyam\'s personal branding'
+    'shyam\'s personal branding',
+    'job board',
+    'jobboard',
+    'applywizz job board',
+    'lead magnet',
+    'lead magnet rtw',
+    'leadmagnet',
+    'career identifier',
+    'careeridentifier'
   ].includes(normalizedBrand);
+
+  if (isInStaticList) return true;
+
+  // Check for explicit brand_type (REEL or STORY should follow standard workflow)
+  const brandType = (project.brand_type || project.data?.brand_type || '').toUpperCase().trim();
+  if (brandType === 'REEL' || brandType === 'STORY') {
+    return true;
+  }
+
+  return false;
 }
 
 /**
- * Category 2: influencer (jobboard, leadmangent)
+ * Category 2: Other influencer content (not in the primary group)
  */
 export function isGeneralInfluencerVideo(project: Project | any): boolean {
   if (!project) return false;
-  const brandSelection = (project.brand || project.data?.brand || project.brandSelected || '').toLowerCase().trim();
-  const normalizedBrand = brandSelection.replace(/_/g, ' ');
+  const projectData = project.data || project;
   
-  return [
-    'applywizz job board',
-    'applywizz jobboard',
-    'jobboard',
-    'job board',
-    'lead magnet',
-    'lead magnet rtw',
-    'leadmagnet'
-  ].includes(normalizedBrand);
+  // Explicit flag from PA Create Script flow
+  if (projectData?.is_influencer === true) return true;
+
+  // Since we moved the main ones to the other group, this is now for any remaining influencer types
+  return false; 
 }
 
 /**
  * Check if the project is any form of influencer/branded video
+ * Respects the explicit is_influencer flag as the source of truth
  */
 export function isInfluencerVideo(project: Project | any): boolean {
-  return isGeneralInfluencerVideo(project) || isCareerApplyShyamGroup(project);
+  if (!project) return false;
+  const projectData = project.data || project;
+  
+  // Explicit flag is the primary source of truth
+  if (projectData?.is_influencer === true) return true;
+  
+  // If it's a PA-created project (even if not an influencer), it might follow a similar label pattern
+  // but the user specifically asked for is_influencer check
+  return false; 
 }
 
 /**

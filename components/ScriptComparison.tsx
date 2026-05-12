@@ -64,6 +64,7 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
   currentCaption,
 }) => {
   const [highlightedLines, setHighlightedLines] = useState<Array<{ type: string, content: string }>>([]);
+  const [viewMode, setViewMode] = useState<'comparison' | 'final'>('comparison');
 
   useEffect(() => {
     const highlighted = highlightAddedContent(previousScript || '', currentScript || '');
@@ -112,13 +113,27 @@ const ScriptComparison: React.FC<ScriptComparisonProps> = ({
 
         {/* Current Script with Highlights */}
         <div className="bg-white border-2 border-green-100 rounded-lg overflow-hidden flex flex-col shadow-sm">
-          <div className="bg-green-600 text-white p-3 font-bold uppercase text-xs tracking-wider">
-            Current Script (With Highlights)
+          <div className="bg-green-600 text-white p-3 font-bold uppercase text-xs tracking-wider flex items-center justify-between">
+            <span>Current Script {viewMode === 'comparison' ? '(With Highlights)' : '(Final Format)'}</span>
+            <div className="flex bg-green-700 p-0.5 rounded border border-green-400">
+              <button 
+                onClick={() => setViewMode('comparison')}
+                className={`px-2 py-0.5 text-[9px] rounded transition-all ${viewMode === 'comparison' ? 'bg-white text-green-700' : 'text-white hover:bg-green-600'}`}
+              >
+                DIFF
+              </button>
+              <button 
+                onClick={() => setViewMode('final')}
+                className={`px-2 py-0.5 text-[9px] rounded transition-all ${viewMode === 'final' ? 'bg-white text-green-700' : 'text-white hover:bg-green-600'}`}
+              >
+                FINAL
+              </button>
+            </div>
           </div>
           <div className="font-serif text-gray-800 leading-normal max-h-[600px] overflow-y-auto flex-1">
             <div className="p-4 text-xl">
               <div className="space-y-1">
-                {highlightedLines.length > 0 ? (
+                {viewMode === 'comparison' && highlightedLines.length > 0 ? (
                   <>
                     {highlightedLines.map((line, index) => renderHighlightedLine(line, index))}
                     {currentCaption && (

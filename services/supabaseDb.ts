@@ -213,6 +213,19 @@ export const auth = {
         try {
             if (currentUserCache) return currentUserCache;
 
+            // Fallback to local storage for HMR resilience
+            const cachedUser = localStorage.getItem('app_user_cache');
+            if (cachedUser) {
+                try {
+                    const parsed = JSON.parse(cachedUser);
+                    if (parsed && parsed.id) {
+                        currentUserCache = parsed as User;
+                        console.log('🔄 Restored currentUserCache from localStorage in getPublicUser');
+                        return currentUserCache;
+                    }
+                } catch(e) {}
+            }
+
             const authResponse = await withTimeout(
                 supabase.auth.getUser(),
                 8000,
@@ -784,12 +797,24 @@ export const brands = {
         target_audience: string;
         deliverables: string;
         brand_type: 'REEL' | 'STORY';
+        revenue?: number;
         created_by_user_id?: string;
     }) {
         const client = supabaseAdmin || supabase;
         const { data, error } = await client
             .from('brands')
             .insert([brand])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+    async update(id: string, updates: any) {
+        const client = supabaseAdmin || supabase;
+        const { data, error } = await client
+            .from('brands')
+            .update(updates)
+            .eq('id', id)
             .select()
             .single();
         if (error) throw error;
@@ -985,6 +1010,12 @@ export const projects = {
 
                 // If project is in REWORK status, strict filtering applies
                 if (project.status === 'REWORK') {
+                    // Always visible to the role that initiated the rework
+                    const initiatorRole = project.rework_initiator_role || project.data?.rework_initiator_role;
+                    if (initiatorRole === user.role) {
+                        return true;
+                    }
+
                     // 1. If we have a rework_target_role (new column), use it for strict filtering
                     if (project.rework_target_role) {
                         return project.rework_target_role === user.role;
@@ -998,6 +1029,7 @@ export const projects = {
                     // 3. Fallback to assigned_to_role if no rework_target_role is specified
                     return project.assigned_to_role === user.role;
                 }
+
 
                 // If not in REWORK status, project is visible
                 return true;
@@ -1348,10 +1380,25 @@ export const projects = {
                 if (newValue && oldValue && newValue !== oldValue) {
                     console.log(`📦 Preserving old ${mapping.linkField} in history before update`);
 
-                    // Special case: sub-editor vs editor history
+                    // Special case: sub-editor vs editor history.
+                    // Use multiple signals to robustly detect sub-editor context:
+                    // 1. explicit edited_by_role in the incoming update
+                    // 2. sub_editor_name being set (only sub-editors set this field)
+                    // 3. the live user cache role
+                    // 4. the existing project's recorded edited_by_role (for rework resubmissions)
                     let actualHistoryField = mapping.historyField;
-                    if (mapping.linkField === 'edited_video_link' && currentUserCache?.role === Role.SUB_EDITOR) {
-                        actualHistoryField = 'sub_editor_video_links_history' as any;
+                    if (mapping.linkField === 'edited_video_link') {
+                        const isSubEditor =
+                            (updates as any).edited_by_role === 'SUB_EDITOR' ||
+                            !!(updates as any).sub_editor_name ||
+                            currentUserCache?.role === Role.SUB_EDITOR ||
+                            currentProject.edited_by_role === 'SUB_EDITOR';
+                        if (isSubEditor) {
+                            actualHistoryField = 'sub_editor_video_links_history' as any;
+                            console.log('📦 Routing edited_video_link history → sub_editor_video_links_history');
+                        } else {
+                            console.log('📦 Routing edited_video_link history → editor_video_links_history');
+                        }
                     }
 
                     const existingHistory = currentProject[actualHistoryField] || [];
@@ -1421,6 +1468,7 @@ export const projects = {
         }
 
         const result = await this.update(id, topLevelUpdates);
+
         console.log('Project data updated successfully:', result);
         return result;
     },
@@ -2135,12 +2183,9 @@ export const workflow = {
                     updated_at: new Date().toISOString()
                 };
 
-                const { error: updateError } = await supabase
-                    .from('projects')
-                    .update(updateData)
-                    .eq('id', projectId);
-
-                if (updateError) {
+                try {
+                    await projects.update(projectId, updateData);
+                } catch (updateError) {
                     console.error('❌ Failed to update project to next stage:', updateError);
                     throw updateError;
                 }
@@ -2272,33 +2317,13 @@ export const workflow = {
             );
 
             // 2. Update project
-            const { error: updateError } = await supabase
-                .from('projects')
-                .update(projectUpdateData)
-                .eq('id', projectId);
-
-            if (updateError) {
+            let data: Project;
+            try {
+                data = await projects.update(projectId, projectUpdateData);
+            } catch (updateError) {
                 console.error('Failed to update project:', updateError);
                 throw updateError;
             }
-
-            // Fetch the updated project separately to avoid conflicting select parameters
-            const { data: updateData, error: fetchDataError } = await supabase
-                .from('projects')
-                .select('*')
-                .eq('id', projectId)
-                .single();
-
-            if (fetchDataError) {
-                console.error('Failed to fetch updated project:', fetchDataError);
-                throw fetchDataError;
-            }
-
-            if (!updateData) {
-                throw new Error('Project not found or no rows updated');
-            }
-
-            const data = updateData as Project;
 
             // Update the appropriate timestamp based on the action
             const timestampUpdates = getTimestampUpdate('APPROVED', userRole);
@@ -2481,10 +2506,14 @@ export const workflow = {
                 assigned_to_role: actualReturnToRole,
                 status: isRework ? TaskStatus.REWORK : TaskStatus.REJECTED,
                 data: updatedData,
+                rework_target_role: isRework ? actualReturnToRole : null,
+                rework_initiator_role: isRework ? userRole : null,
+                rework_initiator_stage: isRework ? currentProject?.current_stage : null,
                 visible_to_roles: null, // Clear parallel visibility so it leaves the initiator's board
                 // Preserve creator information
                 // Preserve assigned user ID if it exists
                 assigned_to_user_id: currentProject?.assigned_to_user_id || null
+
             })
             .eq('id', projectId);
 
@@ -2856,10 +2885,14 @@ export const helpers = {
         const isCaptionBased = contentType === 'CAPTION_BASED' || projectData?.niche === 'CAPTION_BASED';
 
         if (action === 'REJECTED') {
-            // Return to previous stage based on current stage
+            // ... (existing reject map)
             const rejectMap: Record<WorkflowStage, { stage: WorkflowStage; role: Role }> = {
-                [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
-                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.SCRIPT_REVIEW_L1]: projectData?.is_pa_brand 
+                    ? { stage: WorkflowStage.SCRIPT, role: Role.PARTNER_ASSOCIATE }
+                    : { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: projectData?.is_pa_brand
+                    ? { stage: WorkflowStage.SCRIPT, role: Role.PARTNER_ASSOCIATE }
+                    : { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.FINAL_REVIEW_CMO]: {
                     stage: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? WorkflowStage.VIDEO_EDITING : WorkflowStage.CREATIVE_DESIGN,
                     role: (contentType === 'VIDEO' || isInfluencer || isCaptionBased) ? Role.EDITOR : Role.DESIGNER
@@ -2882,12 +2915,17 @@ export const helpers = {
                 [WorkflowStage.POST_WRITER_REVIEW]: { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, // If post-writer review is rejected, send back to multi-writer approval
                 [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PA_VIDEO_UPLOAD]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
+                [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.PA_VIDEO_UPLOAD, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PA_VIDEO_APPROVAL]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
                 [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.OPS_SCHEDULING]: projectData?.is_pa_brand
-                    ? { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                    ? { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO }
                     : { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
                 [WorkflowStage.POSTED]: { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
-                [WorkflowStage.REWORK]: { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
+                [WorkflowStage.REWORK]: projectData?.is_pa_brand
+                    ? { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO }
+                    : { stage: WorkflowStage.SCRIPT, role: Role.WRITER },
                 [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO }
             };
 
@@ -2907,37 +2945,54 @@ export const helpers = {
             return rejectMap[currentStage];
         }
 
-        // Category 2: Influencer (Job Board, Lead Magnet)
-        const isInfluencerJobLead = isGeneralInfluencerVideo(project);
+        // --- REWORK RESUBMISSION OVERRIDE ---
+        // If this project is in REWORK status, priority is returning to the initiator
+        if (project?.status === TaskStatus.REWORK) {
+            const initiatorStage = project.rework_initiator_stage || projectData?.rework_initiator_stage;
+            const initiatorRole = project.rework_initiator_role || projectData?.rework_initiator_role;
 
-        // Category 1: carreridentifier, applywizz, applywizzusa jobs, shyam personal branding
-        // Workflow: Writer -> CMO Script Approval -> CEO Script Approval -> CINE -> WRITER (approval) -> EDITOR -> CMO & OPS (Parallel) -> CEO -> OPS
-        const isCareerApplyShyam = isCareerApplyShyamGroup(project);
+            if (initiatorStage && initiatorRole) {
+                console.log(`🎯 Resubmission detected. Routing back to initiator: ${initiatorRole} at ${initiatorStage}`);
+                return { stage: initiatorStage as WorkflowStage, role: initiatorRole as Role };
+            }
+        }
 
-        if (isInfluencerJobLead) {
+        // 1. Unified PA & Influencer Workflow
+        // Used when is_influencer is true OR it's a PA-created brand
+        const isInfluencerOrPAWorkflow = (projectData?.is_influencer === true) || (projectData?.is_pa_brand === true);
+
+        // 2. Standard Writer Workflow (Category 1)
+        // Used for primary brands when NOT an influencer campaign and NOT a PA-created brand
+        const isStandardWriterWorkflow = isCareerApplyShyamGroup(project) && !projectData?.is_pa_brand && !projectData?.is_influencer;
+
+        if (isInfluencerOrPAWorkflow) {
             const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-                [WorkflowStage.SCRIPT_REVIEW_L2]: isCaptionBased
-                    ? { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }
-                    : { stage: WorkflowStage.WRITER_REVISION, role: Role.WRITER },
-                [WorkflowStage.WRITER_REVISION]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
-                [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-                [WorkflowStage.VIDEO_EDITING]: isCaptionBased
-                    ? { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }
-                    : { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
-                // Note: The user said it ends at Writer (who submitted the script)
-                [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.POSTED, role: Role.OPS }
+                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.PA_VIDEO_UPLOAD, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PA_VIDEO_UPLOAD]: { stage: WorkflowStage.PA_VIDEO_CMO_REVIEW, role: Role.CMO },
+                [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+                [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.PA_FINAL_REVIEW, role: Role.PARTNER_ASSOCIATE },
+                [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE }
             };
             const next = customMap[currentStage];
             if (next) return next;
         }
 
-        if (isCareerApplyShyam) {
+        if (isStandardWriterWorkflow) {
+            const brandName = (project.brand || project.data?.brand || '').toLowerCase().trim();
+            const isApplyWizz = brandName === 'applywizz';
+            
+            // ApplyWizz + Caption Based Exception: Skip Cine and Writer Raw Approval
+            const shouldSkipCine = isApplyWizz && isCaptionBased;
+
             const customMap: Partial<Record<WorkflowStage, { stage: WorkflowStage; role: Role }>> = {
                 [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
                 [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
-                [WorkflowStage.SCRIPT_REVIEW_L2]: { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
+                [WorkflowStage.SCRIPT_REVIEW_L2]: shouldSkipCine 
+                    ? { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR }
+                    : { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE },
                 [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.WRITER_VIDEO_APPROVAL, role: Role.WRITER },
                 [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
                 [WorkflowStage.VIDEO_EDITING]: { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO }
@@ -2951,46 +3006,49 @@ export const helpers = {
             [WorkflowStage.SCRIPT]: { stage: WorkflowStage.SCRIPT_REVIEW_L1, role: Role.CMO },
             [WorkflowStage.SCRIPT_REVIEW_L1]: { stage: WorkflowStage.SCRIPT_REVIEW_L2, role: Role.CEO },
             [WorkflowStage.SCRIPT_REVIEW_L2]: projectData?.is_pa_brand
-                ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                ? (projectData.is_influencer 
+                    ? { stage: WorkflowStage.PA_VIDEO_UPLOAD, role: Role.PARTNER_ASSOCIATE }
+                    : { stage: WorkflowStage.CINEMATOGRAPHY, role: Role.CINE })
                 : {
                     stage: isCaptionBased ? WorkflowStage.VIDEO_EDITING : ((contentType === 'VIDEO' || isInfluencer) ? WorkflowStage.CINEMATOGRAPHY : WorkflowStage.CREATIVE_DESIGN),
                     role: isCaptionBased ? Role.EDITOR : ((contentType === 'VIDEO' || isInfluencer) ? Role.CINE : Role.DESIGNER)
                 },
 
-            // CINE -> VIDEO_EDITING (Editor)
-            [WorkflowStage.CINEMATOGRAPHY]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            // Case 1: Influencer PA Path
+            [WorkflowStage.PA_VIDEO_UPLOAD]: { stage: WorkflowStage.PA_VIDEO_CMO_REVIEW, role: Role.CMO },
+            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
-            // Note: WRITER_VIDEO_APPROVAL now primarily used for direct video uploads / caption based flows if needed,
-            // but the main approval flow is updated to move Cine -> Editor.
-            [WorkflowStage.WRITER_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            // Case 2: Non-Influencer PA Path
+            [WorkflowStage.CINEMATOGRAPHY]: projectData?.is_pa_brand
+                ? { stage: WorkflowStage.PA_VIDEO_APPROVAL, role: Role.PARTNER_ASSOCIATE }
+                : { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
+            
+            [WorkflowStage.PA_VIDEO_APPROVAL]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
 
-            // VIDEO_EDITING -> DESIGNER (if thumbnail) OR MULTI_WRITER_APPROVAL
+            // Final stages for PA brands
             [WorkflowStage.VIDEO_EDITING]: {
                 stage: projectData?.is_pa_brand
-                    ? WorkflowStage.PA_FINAL_REVIEW
+                    ? (projectData.is_influencer ? WorkflowStage.PA_FINAL_REVIEW : WorkflowStage.FINAL_REVIEW_CMO)
                     : (projectData?.needs_sub_editor === true
                         ? WorkflowStage.SUB_EDITOR_ASSIGNMENT
                         : (projectData?.rework_initiator_stage
                             ? projectData.rework_initiator_stage as WorkflowStage
                             : (projectData?.thumbnail_required === true
                                 ? WorkflowStage.THUMBNAIL_DESIGN
-                                /* SKIP MULTI_WRITER_APPROVAL: : WorkflowStage.MULTI_WRITER_APPROVAL))), */
                                 : WorkflowStage.POST_WRITER_REVIEW))),
                 role: projectData?.is_pa_brand
-                    ? Role.PARTNER_ASSOCIATE
+                    ? (projectData.is_influencer ? Role.PARTNER_ASSOCIATE : Role.CMO)
                     : (projectData?.needs_sub_editor === true
                         ? Role.EDITOR
                         : (projectData?.rework_initiator_stage
                             ? projectData.rework_initiator_role as Role
                             : (projectData?.thumbnail_required === true
                                 ? Role.DESIGNER
-                                /* SKIP MULTI_WRITER_APPROVAL: : Role.WRITER))) */
                                 : Role.CMO)))
             },
 
             [WorkflowStage.SUB_EDITOR_ASSIGNMENT]: { stage: WorkflowStage.SUB_EDITOR_PROCESSING, role: Role.SUB_EDITOR },
             [WorkflowStage.SUB_EDITOR_PROCESSING]: {
-                /* SKIP MULTI_WRITER_APPROVAL: stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER */
                 stage: projectData?.thumbnail_required === true
                     ? WorkflowStage.THUMBNAIL_DESIGN
                     : WorkflowStage.POST_WRITER_REVIEW,
@@ -3012,7 +3070,6 @@ export const helpers = {
             // THUMBNAIL_DESIGN -> MULTI_WRITER_APPROVAL
             [WorkflowStage.THUMBNAIL_DESIGN]: projectData?.rework_initiator_stage
                 ? { stage: projectData.rework_initiator_stage as WorkflowStage, role: projectData.rework_initiator_role as Role }
-                /* SKIP MULTI_WRITER_APPROVAL: : { stage: WorkflowStage.MULTI_WRITER_APPROVAL, role: Role.WRITER }, */
                 : { stage: WorkflowStage.POST_WRITER_REVIEW, role: Role.CMO },
 
             [WorkflowStage.CREATIVE_DESIGN]: { stage: WorkflowStage.FINAL_REVIEW_CMO, role: Role.CMO },
@@ -3022,14 +3079,15 @@ export const helpers = {
 
             [WorkflowStage.FINAL_REVIEW_CMO]: { stage: WorkflowStage.FINAL_REVIEW_CEO, role: Role.CEO },
             [WorkflowStage.FINAL_REVIEW_CEO]: projectData?.is_pa_brand
-                ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                ? (projectData.is_influencer 
+                    ? { stage: WorkflowStage.PARTNER_REVIEW, role: Role.PARTNER_ASSOCIATE }
+                    : { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS })
                 : { stage: WorkflowStage.OPS_SCHEDULING, role: Role.OPS },
 
             [WorkflowStage.PARTNER_REVIEW]: { stage: WorkflowStage.SENT_TO_INFLUENCER, role: Role.PARTNER_ASSOCIATE },
 
             [WorkflowStage.SENT_TO_INFLUENCER]: { stage: WorkflowStage.PA_VIDEO_CMO_REVIEW, role: Role.CMO },
-            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: { stage: WorkflowStage.VIDEO_EDITING, role: Role.EDITOR },
-
+            
             [WorkflowStage.PA_FINAL_REVIEW]: { stage: WorkflowStage.POSTED, role: Role.PARTNER_ASSOCIATE },
 
             [WorkflowStage.OPS_SCHEDULING]: { stage: WorkflowStage.POSTED, role: Role.OPS },
@@ -3263,6 +3321,24 @@ export const influencers = {
         return data || [];
     },
 
+    async getCount() {
+        const client = supabaseAdmin || supabase;
+        try {
+            const { data, error } = await client
+                .from('influencers')
+                .select('id');
+
+            if (error) {
+                console.error('❌ Influencers getCount error:', error);
+                return 0;
+            }
+            return data?.length || 0;
+        } catch (err) {
+            console.error('❌ Influencers getCount exception:', err);
+            return 0;
+        }
+    },
+
     async create(influencer: {
         influencer_name: string;
         instagram_profile: string;
@@ -3279,6 +3355,7 @@ export const influencers = {
         platform_type?: string;
         vercel_form_link?: string;
         created_by_user_id?: string;
+        product_name?: string;
     }) {
         const client = supabaseAdmin || supabase;
         // Only insert columns that exist in the table schema
@@ -3298,6 +3375,7 @@ export const influencers = {
             platform_type: influencer.platform_type,
             vercel_form_link: influencer.vercel_form_link,
             created_by_user_id: influencer.created_by_user_id,
+            product_name: influencer.product_name,
         };
         const { data, error } = await client
             .from('influencers')
@@ -3321,7 +3399,7 @@ export const influencers = {
     },
 
     /**
-     * Log a new influencer outreach to the dedicated influencers table
+     * Log or update influencer activity in the dedicated registry
      */
     async log(data: {
         parent_project_id: string;
@@ -3334,10 +3412,56 @@ export const influencers = {
         sent_by_id?: string;
         status?: string;
         brand_name?: string;
+        raw_video?: string;
+        edited_video?: string;
+        proof_link?: string;
+        is_posted?: boolean;
     }) {
-        console.log('📝 Logging influencer to dedicated table:', data.influencer_name);
+        console.log('📝 Logging influencer activity:', data.influencer_name, 'for brand:', data.brand_name);
         try {
             const client = supabaseAdmin || supabase;
+            
+            // 1. Primary Match: Check if a record already exists for this instance_project_id
+            let { data: existing } = await client
+                .from('influencers')
+                .select('id, influencer_name, influencer_email')
+                .eq('instance_project_id', data.instance_project_id)
+                .maybeSingle();
+
+            // 🚀 2. Secondary Match: If no match by ID, try Name + Brand
+            // This prevents duplicate rows when the same influencer is processed under different project IDs
+            if (!existing && data.influencer_name && data.brand_name) {
+                console.log('🔍 No project ID match, searching registry by Name + Brand...');
+                const { data: registryMatch } = await client
+                    .from('influencers')
+                    .select('id, influencer_name, influencer_email')
+                    .ilike('influencer_name', data.influencer_name.trim())
+                    .eq('brand_name', data.brand_name)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                
+                if (registryMatch) {
+                    console.log('✅ Found existing registry match:', registryMatch.id);
+                    existing = registryMatch;
+                }
+            }
+
+            if (existing) {
+                console.log('🔄 Updating existing influencer record:', existing.id);
+                const { error } = await client
+                    .from('influencers')
+                    .update({
+                        ...data,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existing.id);
+                
+                if (error) throw error;
+                return true;
+            }
+
+            // 3. Otherwise insert new
             const { error } = await client
                 .from('influencers')
                 .insert([{
@@ -3346,7 +3470,7 @@ export const influencers = {
                 }]);
 
             if (error) {
-                console.warn('⚠️ Could not log to influencers table:', error.message);
+                console.warn('⚠️ Could not create influencer record:', error.message);
                 return false;
             }
             return true;
@@ -3379,14 +3503,27 @@ export const influencers = {
      */
     async getByBrand(brandName: string) {
         const client = supabaseAdmin || supabase;
+        // Normalize the brand name to handle all format variations:
+        // - "Lead Magnet (RTW)" -> "LEAD_MAGNET_RTW"
+        // - "Lead Magnet RTW" -> "LEAD_MAGNET_RTW"
+        // - "LEAD_MAGNET_RTW" -> "LEAD_MAGNET_RTW"
+        const normalized = (brandName || '')
+            .trim()
+            .replace(/[()]/g, '')      // Remove parentheses
+            .replace(/\s+/g, '_')       // Replace spaces with underscores
+            .toUpperCase();             // Convert to uppercase
+        
+        // Create variations for matching
+        const withSpaces = normalized.replace(/_/g, ' ');
+        
         const { data, error } = await client
             .from('influencers')
             .select('*')
-            .eq('brand_name', brandName)
+            .or(`brand_name.ilike.${normalized},brand_name.ilike.${withSpaces}`)
             .order('influencer_name', { ascending: true });
 
         if (error) {
-            console.warn(`Error fetching influencers for brand ${brandName}:`, error);
+            console.warn('Error fetching by brand:', error);
             return [];
         }
         return data || [];
@@ -4211,8 +4348,9 @@ export const db = {
         console.log('🔍 Advancing workflow for project:', project.id, 'Stage:', project.current_stage);
 
         // 1️⃣ Determine if this is a rework submission
-        // We use isReworkProject utility to detect based on rework_target_role
-        const isFromRework = isReworkProject(project);
+        // We use isReworkProject utility, but also check for initiator metadata 
+        // because status might have been cleared by a previous field update (like video upload)
+        const isFromRework = isReworkProject(project) || !!(project.rework_initiator_role || project.data?.rework_initiator_role);
 
         // Use rework metadata from project or project.data
         const trackingInitiatorRole = project.rework_initiator_role || project.data?.rework_initiator_role;
@@ -4474,6 +4612,9 @@ export const db = {
             [WorkflowStage.PARTNER_REVIEW]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.SENT_TO_INFLUENCER]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: Role.CMO,
+            [WorkflowStage.PA_VIDEO_UPLOAD]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_APPROVAL]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.OPS_SCHEDULING]: Role.OPS,
             [WorkflowStage.POSTED]: Role.OPS,
             [WorkflowStage.REWORK]: Role.WRITER,
@@ -4503,6 +4644,38 @@ export const db = {
             targetRole = Role.CMO;
         } else {
             targetRole = baseTargetRole;
+        }
+
+        // Special case: If reworking the script, route back to the actual person who submitted it (Writer or PA)
+        if (isRework && (targetStage === WorkflowStage.SCRIPT || targetStage === WorkflowStage.REWORK)) {
+            try {
+                // Fetch the last submission role from history to ensure it goes back to the correct dashboard
+                const { data: lastSubmission } = await supabase
+                    .from('workflow_history')
+                    .select('actor_role')
+                    .eq('project_id', projectId)
+                    .eq('action', 'SUBMITTED')
+                    .order('timestamp', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (lastSubmission?.actor_role) {
+                    targetRole = lastSubmission.actor_role as Role;
+                    console.log(`🎯 Routing rework back to previous submitter: ${targetRole}`);
+                } else {
+                    // Fallback to legacy logic if no history is found
+                    const isPaProject = project.data?.is_pa_brand === true || project.data?.is_influencer === true;
+                    if (isPaProject) {
+                        targetRole = Role.PARTNER_ASSOCIATE;
+                    } else {
+                        targetRole = Role.WRITER;
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to determine last submitter role, falling back to default:', err);
+                const isPaProject = project.data?.is_pa_brand === true || project.data?.is_influencer === true;
+                targetRole = isPaProject ? Role.PARTNER_ASSOCIATE : Role.WRITER;
+            }
         }
 
         // Store rework metadata if this is a rework request
