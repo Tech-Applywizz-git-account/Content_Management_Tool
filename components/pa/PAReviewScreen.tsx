@@ -271,6 +271,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
             const updatePayload = {
                 video_link: rawVideoLink,
                 pa_raw_footage_uploaded_at: new Date().toISOString(),
+                pa_video_cmo_review_at: new Date().toISOString(),
                 data: {
                     ...currentData,
                     sent_by_id: currentData.sent_by_id || user.id,

@@ -546,10 +546,7 @@ export function getLatestReworkRejectComment(project: Project | undefined, userR
 /**
  * Update role-specific timestamps based on the action
  */
-export function getTimestampUpdate(action: string, role: Role): Partial<Record<
-  'writer_submitted_at' | 'cmo_approved_at' | 'cmo_rework_at' | 'ceo_approved_at' | 'ceo_rework_at' | 'cine_uploaded_at' | 'editor_uploaded_at' | 'sub_editor_uploaded_at' | 'designer_uploaded_at',
-  string
->> {
+export function getTimestampUpdate(action: string, role: Role): Partial<Project> {
   const now = new Date().toISOString();
 
   switch (action) {
@@ -563,7 +560,7 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
     case 'SUB_EDITOR_VIDEO_UPLOADED':
     case 'CINE_VIDEO_UPLOADED':
       if (role === Role.EDITOR) {
-        return { editor_uploaded_at: now };
+        return { editor_uploaded_at: now, pa_editor_video_uploaded_at: now };
       }
       if (role === Role.SUB_EDITOR) {
         return { sub_editor_uploaded_at: now };
@@ -574,39 +571,67 @@ export function getTimestampUpdate(action: string, role: Role): Partial<Record<
       if (role === Role.CINE) {
         return { cine_uploaded_at: now };
       }
+      if (role === Role.PARTNER_ASSOCIATE) {
+        // PA submissions could be script sent or raw footage upload
+        // We'll return both and let the DB update ignore if not applicable, 
+        // or refine based on stage if possible.
+        // For now, these are often handled manually in the component, 
+        // but adding them here provides a safety net.
+        return { pa_raw_footage_uploaded_at: now };
+      }
       return { writer_submitted_at: now };
+
     case 'APPROVED':
       if (role === Role.CMO) {
-        return { cmo_approved_at: now };
+        return { cmo_approved_at: now, pa_cmo_video_approved_at: now };
       } else if (role === Role.CEO) {
         return { ceo_approved_at: now };
+      } else if (role === Role.PARTNER_ASSOCIATE) {
+        return { pa_final_approval_at: now };
       }
       break;
+
     case 'REWORK':
     case 'REJECTED':
       if (role === Role.CMO) {
         return { cmo_rework_at: now };
       } else if (role === Role.CEO) {
         return { ceo_rework_at: now };
+      } else if (role === Role.PARTNER_ASSOCIATE) {
+        return { pa_rejection_at: now };
       }
       break;
+
     case 'DIRECT_UPLOAD':
-      // This could be used when cine/editor/sub-editor/designer uploads assets
       if (role === Role.CINE) {
         return { cine_uploaded_at: now };
       } else if (role === Role.EDITOR) {
-        return { editor_uploaded_at: now };
+        return { editor_uploaded_at: now, pa_editor_video_uploaded_at: now };
       } else if (role === Role.SUB_EDITOR) {
         return { sub_editor_uploaded_at: now };
       } else if (role === Role.DESIGNER) {
         return { designer_uploaded_at: now };
+      } else if (role === Role.PARTNER_ASSOCIATE) {
+        return { pa_raw_footage_uploaded_at: now };
       }
       break;
+
     case 'ASSIGNED_TO_SUB_EDITOR':
     case 'SUB_EDITOR_ASSIGNED':
-      // When editor assigns project to sub-editor
       if (role === Role.EDITOR) {
         return { editor_uploaded_at: now };
+      }
+      break;
+    
+    case 'SCRIPT_SENT':
+      if (role === Role.PARTNER_ASSOCIATE) {
+        return { pa_script_sent_at: now };
+      }
+      break;
+      
+    case 'POSTING_PROOF_ADDED':
+      if (role === Role.PARTNER_ASSOCIATE) {
+        return { pa_posting_proof_added_at: now };
       }
       break;
   }

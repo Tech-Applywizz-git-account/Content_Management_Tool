@@ -17,6 +17,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     const [searchParams] = useSearchParams();
     const influencerNameParam = searchParams.get('name');
     const influencerIdParam = searchParams.get('inf_id');
+    const brandParam = searchParams.get('brand');
     const navigate = useNavigate();
     const passedState = location.state as { influencer?: any, brandType?: string } | null;
 
@@ -40,7 +41,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                 data: {
                     influencer_name: inf.influencer_name,
                     influencer_email: inf.influencer_email,
-                    brand: inf.brand_name,
+                    brand: brandParam || inf.brand_name,
                     registry_id: inf.id,
                     is_pa_brand: true
                 },
@@ -103,8 +104,11 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
             // Filter for PA brand projects (check both data and metadata columns)
             const allPaProjects = (allProjects || []).filter(p => {
                 try {
-                    const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
-                    const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+                    let pData = p.data;
+                    let pMetadata = p.metadata;
+                    if (typeof pData === 'string') pData = JSON.parse(pData);
+                    if (typeof pMetadata === 'string') pMetadata = JSON.parse(pMetadata);
+                    
                     const isPaBrand = pData?.is_pa_brand === true || pMetadata?.is_pa_brand === true;
                     const isInfluencer = pData?.is_influencer === true || pMetadata?.is_influencer === true;
                     return isPaBrand || isInfluencer;
@@ -130,18 +134,28 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
 
             // 3. Filter projects strictly by name or email
             let matchingProjects: Project[] = [];
-            if (canonicalName || canonicalEmail) {
+            
+            // Helper to normalize strings for comparison (remove spaces, hyphens, case)
+            const normalize = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+            const normalizedCanonicalName = normalize(canonicalName);
+            const normalizedCanonicalEmail = canonicalEmail.toLowerCase().trim();
+
+            if (normalizedCanonicalName || normalizedCanonicalEmail) {
                 matchingProjects = allPaProjects.filter(p => {
                     try {
-                        const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
-                        const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
+                        let pData = p.data;
+                        let pMetadata = p.metadata;
+                        if (typeof pData === 'string') pData = JSON.parse(pData);
+                        if (typeof pMetadata === 'string') pMetadata = JSON.parse(pMetadata);
                         
-                        const pName = (pData?.influencer_name || pMetadata?.influencer_name || '').toLowerCase().trim();
-                        const pEmail = (pData?.influencer_email || pMetadata?.influencer_email || '').toLowerCase().trim();
+                        const pName = pData?.influencer_name || pMetadata?.influencer_name || (p as any).influencer_name || '';
+                        const pEmail = pData?.influencer_email || pMetadata?.influencer_email || (p as any).influencer_email || '';
                         
-                        // Strict exact matching to avoid "Testing" matching "Harshitha Testing"
-                        const nameMatch = canonicalName && pName === canonicalName;
-                        const emailMatch = canonicalEmail && pEmail === canonicalEmail;
+                        const normalizedPName = normalize(pName);
+                        const normalizedPEmail = pEmail.toLowerCase().trim();
+                        
+                        const nameMatch = normalizedCanonicalName && normalizedPName === normalizedCanonicalName;
+                        const emailMatch = normalizedCanonicalEmail && normalizedPEmail === normalizedCanonicalEmail;
                         
                         return nameMatch || emailMatch;
                     } catch (e) {
@@ -171,7 +185,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                             influencer_name: registryRecord.influencer_name,
                             influencer_email: registryRecord.influencer_email,
                             is_pa_brand: true,
-                            brand: registryRecord.brand_name,
+                            brand: brandParam || registryRecord.brand_name,
                             registry_id: registryRecord.id,
                         },
                         created_at: new Date().toISOString()
