@@ -53,6 +53,9 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
     const [leadsCount, setLeadsCount] = useState<number>(0);
     const [isLeadsLoading, setIsLeadsLoading] = useState(false);
     const [selectedLeadSource, setSelectedLeadSource] = useState<string>('All');
+    const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Source filter function for brand mapping
     const getSourceFilterForBrand = (decodedBrandName: string): ((source: string) => boolean) | null => {
@@ -211,7 +214,30 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             if (projId.startsWith('temp-')) {
                 const targetProj = sortedProjects.find(p => p.id === projId);
                 const brandName = project.brand || project.data?.brand || (targetProj as any)?.brand || '';
-                const createdProj = await db.projects.create({ title: `${influencerName} - Direct Video`, channel: (project.channel || 'INSTAGRAM').toUpperCase() as any, content_type: 'VIDEO', current_stage: WorkflowStage.PARTNER_REVIEW, task_status: TaskStatus.TODO, priority: 'HIGH', assigned_to_role: Role.PARTNER_ASSOCIATE, assigned_to_user_id: user.id, created_by_user_id: user.id, created_by_name: user.full_name, brand: brandName, data: { influencer_name: influencerName, influencer_email: influencerEmail, is_pa_brand: true, is_influencer: true, influencer_instance: true, brand: brandName, sent_by_id: user.id } });
+                const createdProj = await db.projects.create({ 
+                    title: `${influencerName} - Direct Video`, 
+                    channel: (project.channel || 'INSTAGRAM').toUpperCase() as any, 
+                    content_type: 'VIDEO', 
+                    current_stage: WorkflowStage.PARTNER_REVIEW, 
+                    task_status: TaskStatus.TODO, 
+                    priority: 'HIGH', 
+                    assigned_to_role: Role.PARTNER_ASSOCIATE, 
+                    assigned_to_user_id: user.id, 
+                    created_by_user_id: user.id, 
+                    created_by_name: user.full_name, 
+                    brand: brandName, 
+                    due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    writer_id: user.id,
+                    data: { 
+                        influencer_name: influencerName, 
+                        influencer_email: influencerEmail, 
+                        is_pa_brand: true, 
+                        is_influencer: true, 
+                        influencer_instance: true, 
+                        brand: brandName, 
+                        sent_by_id: user.id 
+                    } 
+                });
                 latestProject = createdProj; actualProjId = createdProj.id;
             } else { const { data } = await supabase.from('projects').select('*').eq('id', projId).single(); latestProject = data; if (!latestProject) throw new Error('Project not found'); }
             let updateData: any = {};
@@ -256,7 +282,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             }
             await db.projects.update(projectId, { current_stage: WorkflowStage.SENT_TO_INFLUENCER, pa_script_sent_at: new Date().toISOString() });
             await supabase.functions.invoke('send-workflow-email', { body: { event: 'SEND_TO_INFLUENCER', recipient_email: influencerEmail, data: { project_id: projectId, actor_name: user.full_name, script_content: selectedScript.data?.script_content, influencer_name: influencerName } } });
-            await db.influencers.log({ parent_project_id: selectedScript.id, instance_project_id: projectId, influencer_name: influencerName, influencer_email: influencerEmail, status: 'SCRIPT_SENT', brand_name: project.brand || project.data?.brand || '' });
+            await db.influencers.log({ parent_project_id: selectedScript.id, instance_project_id: projectId, influencer_name: influencerName, influencer_email: influencerEmail, status: 'SCRIPT_SENT', brand_name: project.brand || project.data?.brand || '', sent_by: user.full_name });
             setShowSuccessModal(true); setLaunchStep(0); setTimeout(() => onComplete(), 1500);
         } catch (error) { toast.error('Error'); } finally { setIsSending(false); }
     };
