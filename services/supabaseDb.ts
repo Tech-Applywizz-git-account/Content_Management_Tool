@@ -775,7 +775,34 @@ export const SYSTEM_BRANDS = [
     { id: 'sys-3', brand_name: 'ApplyWizz Job Board', target_audience: 'Employers & Job Seekers', campaign_objective: 'Job Board Engagement', isSystem: true, brand_type: 'REEL' },
     { id: 'sys-4', brand_name: 'Lead Magnet (RTW)', target_audience: 'Lead Generation', campaign_objective: 'Lead Generation', isSystem: true, brand_type: 'REEL' },
     { id: 'sys-5', brand_name: 'ApplyWizz USA Jobs', target_audience: 'US Job Seekers', campaign_objective: 'US Market Reach', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-6', brand_name: 'Career Identifier', target_audience: 'Career Seekers', campaign_objective: 'Career Discovery', isSystem: true, brand_type: 'REEL' },
+    { id: 'sys-7', brand_name: 'ApplyWizz Stories', target_audience: 'Job Seekers', campaign_objective: 'Story Campaigns', isSystem: true, brand_type: 'STORY' },
+    { id: 'sys-8', brand_name: 'Manasa Stories', target_audience: 'Story Viewers', campaign_objective: 'Story Campaigns', isSystem: true, brand_type: 'STORY' },
 ];
+
+export const normalizePABrandName = (value: string | null | undefined = '') => {
+    const raw = (value || '').toString().trim().toUpperCase();
+    const compact = raw.replace(/[^A-Z0-9]/g, '');
+
+    // Priority matters: story brands must never fall into ApplyWizz / Job Board buckets.
+    if (compact.includes('STORY') || compact.includes('STORIES')) {
+        if (compact.includes('MANASA')) return 'MANASA STORIES';
+        if (compact.includes('APPLYWIZZ') || compact.includes('APPLYWIZZSTOR')) return 'APPLYWIZZ STORIES';
+        return raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    if (compact.includes('JOBBOARD')) return 'APPLYWIZZ JOB BOARD';
+    if (compact.includes('LEADMAGNET') || compact.includes('RTW')) return 'LEAD MAGNET';
+    if (compact.includes('CAREERIDENTIFIER') || compact === 'CIR' || compact.includes('CIR')) return 'CAREER IDENTIFIER';
+    if (compact === 'AW') return 'APPLYWIZZ';
+    if (compact.startsWith('APPLYWIZZ')) {
+        if (compact.includes('USAJOBS')) return 'APPLYWIZZ USA JOBS';
+        if (compact.includes('JOBBOARD')) return 'APPLYWIZZ JOB BOARD';
+        if (compact.includes('STORY') || compact.includes('STORIES')) return 'APPLYWIZZ STORIES';
+        return raw.replace(/[()_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    return raw.replace(/[()_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+};
 
 export const brands = {
     async getAll() {
@@ -3363,7 +3390,6 @@ export const influencers = {
 
     async create(influencer: {
         influencer_name: string;
-        instagram_profile: string;
         influencer_email: string;
         campaign_type: string;
         niche: string;
@@ -3383,7 +3409,6 @@ export const influencers = {
         // Only insert columns that exist in the table schema
         const insertPayload = {
             influencer_name: influencer.influencer_name,
-            instagram_profile: influencer.instagram_profile,
             influencer_email: influencer.influencer_email,
             campaign_type: influencer.campaign_type,
             niche: influencer.niche,
@@ -3481,21 +3506,27 @@ export const influencers = {
                     .eq('id', existing.id);
                 
                 if (error) throw error;
+
+                // 🚀 Add link to influencer_links if present
                 return true;
             }
 
             // 3. Otherwise insert new
-            const { error } = await client
+            const { data: inserted, error: insertError } = await client
                 .from('influencers')
                 .insert([{
                     ...data,
                     sent_at: new Date().toISOString()
-                }]);
+                }])
+                .select()
+                .single();
 
-            if (error) {
-                console.warn('⚠️ Could not create influencer record:', error.message);
+            if (insertError) {
+                console.warn('⚠️ Could not create influencer record:', insertError.message);
                 return false;
             }
+
+            // 🚀 Add initial link to influencer_links
             return true;
         } catch (e) {
             console.warn('⚠️ Influencer logging failed:', e);
@@ -3526,30 +3557,17 @@ export const influencers = {
      */
     async getByBrand(brandName: string) {
         const client = supabaseAdmin || supabase;
-        // Normalize the brand name to handle all format variations:
-        // - "Lead Magnet (RTW)" -> "LEAD_MAGNET_RTW"
-        // - "Lead Magnet RTW" -> "LEAD_MAGNET_RTW"
-        // - "LEAD_MAGNET_RTW" -> "LEAD_MAGNET_RTW"
-        const normalized = (brandName || '')
-            .trim()
-            .replace(/[()]/g, '')      // Remove parentheses
-            .replace(/\s+/g, '_')       // Replace spaces with underscores
-            .toUpperCase();             // Convert to uppercase
-        
-        // Create variations for matching
-        const withSpaces = normalized.replace(/_/g, ' ');
-        
         const { data, error } = await client
             .from('influencers')
-            .select('*')
-            .or(`brand_name.ilike.${normalized},brand_name.ilike.${withSpaces}`)
+            .select('*, influencer_links(*)')
             .order('influencer_name', { ascending: true });
 
         if (error) {
             console.warn('Error fetching by brand:', error);
             return [];
         }
-        return data || [];
+        const target = normalizePABrandName(brandName);
+        return (data || []).filter(inf => normalizePABrandName(inf.brand_name) === target);
     },
 
     async update(id: string, updates: Partial<any>) {
@@ -3580,6 +3598,37 @@ export const db = {
     notifications,
     aiTools,
     influencers,
+    influencerLinks: {
+        async getByInfluencer(influencerId: string) {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('influencer_links')
+                .select('*')
+                .eq('influencer_id', influencerId)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+        async add(link: { influencer_id: string; link: string; brand_name?: string; created_by_user_id?: string }) {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('influencer_links')
+                .upsert([link], { onConflict: 'influencer_id,link' })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        },
+        async delete(id: string) {
+            const client = supabaseAdmin || supabase;
+            const { error } = await client
+                .from('influencer_links')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            return true;
+        }
+    },
     influencerStories: {
         async getByInfluencer(influencerId: string) {
             const client = supabaseAdmin || supabase;
@@ -3595,7 +3644,7 @@ export const db = {
             const client = supabaseAdmin || supabase;
             const { data, error } = await client
                 .from('influencer_stories')
-                .insert([story])
+                .upsert([story], { onConflict: 'influencer_id,story_link' })
                 .select()
                 .single();
             if (error) throw error;

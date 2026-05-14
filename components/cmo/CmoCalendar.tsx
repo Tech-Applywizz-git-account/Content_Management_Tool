@@ -285,7 +285,7 @@ const CmoCalendar: React.FC<Props> = ({ projects = [] }) => {
                       )}
                     </div>
                   </div>
-                  <h4 className="font-black uppercase leading-snug text-lg">{entry.title}</h4>
+                  <h4 className="font-black uppercase leading-snug text-lg break-words line-clamp-2" title={entry.title}>{entry.title}</h4>
                   <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-white/20">
                     <div className="text-xs font-bold uppercase">
                       Writer: <span className="opacity-90">{entry.writer_name || entry.created_by_name || 'Unknown'}</span>

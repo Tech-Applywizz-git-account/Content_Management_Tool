@@ -125,7 +125,7 @@ const OpsCeoApproved: React.FC<Props> = ({ projects, onSelectProject }) => {
                             </div>
 
                             {/* Title */}
-                            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight">{project.title}</h3>
+                            <h3 className="text-base font-black text-slate-900 uppercase leading-tight break-words line-clamp-2">{project.title}</h3>
 
                             {/* Info */}
                             <div className="flex flex-col border-t-2 border-slate-100 pt-3">

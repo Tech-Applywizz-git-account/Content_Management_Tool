@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../../types';
-import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
+import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
 import { CheckCircle2, AlertCircle, Building2, Trash2, Plus, ArrowLeft, ArrowRight, Search, UserPlus, Users, Instagram, Mail, X, Shirt, Smartphone, Coffee, Clapperboard, Zap, ShoppingBag, Crown, Palette, Globe, Trophy, Video, MapPin, Tag, DollarSign, ExternalLink, Phone, Calendar, Pencil, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Role } from '../../types';
+import { supabase } from '../../src/integrations/supabase/client';
 
 interface PABrandsProps {
   user: User;
@@ -26,11 +27,33 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
   
 
   // Consistent brand name normalization - same as PABrandDetails
-  const normalizeBrand = (s: string) => (s || '')
-    .trim()
-    .replace(/[()]/g, '')      // Remove parentheses
-    .replace(/\s+/g, '_')       // Replace spaces with underscores
-    .toUpperCase();             // Convert to uppercase
+  const normalizeBrand = normalizePABrandName;
+
+  const groupInfluencersByNameAndBrand = (rows: any[]) => {
+    const grouped = new Map<string, any>();
+    rows.forEach(inf => {
+      const key = `${(inf.influencer_name || '').trim().toLowerCase()}__${normalizeBrand(inf.brand_name)}`;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          ...inf,
+          brand_name: normalizeBrand(inf.brand_name),
+          influencer_links: inf.influencer_links || [],
+          stories: inf.stories || []
+        });
+        return;
+      }
+
+      existing.influencer_links = [...(existing.influencer_links || []), ...(inf.influencer_links || [])]
+        .filter((link, index, arr) => link?.link && arr.findIndex(item => item.link === link.link) === index);
+      existing.stories = [...(existing.stories || []), ...(inf.stories || [])]
+        .filter((story, index, arr) => story?.id ? arr.findIndex(item => item.id === story.id) === index : true);
+      existing.influencer_email = existing.influencer_email || inf.influencer_email;
+      existing.budget = existing.budget || inf.budget;
+      existing.niche = existing.niche || inf.niche;
+    });
+    return Array.from(grouped.values());
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -44,7 +67,19 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
       // 2. Fetch Influencers and calculate unique counts based on the brands we just got
       console.log('📊 Dashboard: Requesting influencers...');
       const influencerData = await db.influencers.getAll();
-      setAllInfluencers(influencerData || []);
+      const influencerIds = (influencerData || []).map((inf: any) => inf.id);
+      const [{ data: links }, { data: stories }] = influencerIds.length > 0
+        ? await Promise.all([
+            supabase.from('influencer_links').select('*').in('influencer_id', influencerIds),
+            supabase.from('influencer_stories').select('*').in('influencer_id', influencerIds)
+          ])
+        : [{ data: [] }, { data: [] }];
+      const enrichedInfluencers = groupInfluencersByNameAndBrand((influencerData || []).map((inf: any) => ({
+        ...inf,
+        influencer_links: (links || []).filter((link: any) => link.influencer_id === inf.id),
+        stories: (stories || []).filter((story: any) => story.influencer_id === inf.id)
+      })));
+      setAllInfluencers(enrichedInfluencers);
       
       const uniqueInfluencers = new Set(
         influencerData?.filter(inf => {
@@ -53,7 +88,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
             const bNameClean = normalizeBrand(b.brand_name);
             return bNameClean === infBrandClean && infBrandClean !== '';
           });
-        }).map(inf => `${inf.influencer_name}-${inf.influencer_email}`)
+        }).map(inf => `${inf.influencer_name}-${normalizeBrand(inf.brand_name)}`)
       );
       setTotalInfluencerCount(uniqueInfluencers.size);
       
@@ -206,7 +241,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                               });
                               return brand && (brand.brand_type || 'REEL') === 'REEL';
                             })
-                            .map(inf => `${inf.influencer_name}-${inf.influencer_email}`)
+                            .map(inf => `${inf.influencer_name}-${normalizeBrand(inf.brand_name)}`)
                         ).size
                       } Influencers</span>
                   </div>
@@ -245,7 +280,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                               });
                               return brand && brand.brand_type === 'STORY';
                             })
-                            .map(inf => `${inf.influencer_name}-${inf.influencer_email}`)
+                            .map(inf => `${inf.influencer_name}-${normalizeBrand(inf.brand_name)}`)
                         ).size
                       } Influencers</span>
                   </div>
@@ -308,17 +343,17 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                                         <span className="text-sm font-black text-slate-900 truncate max-w-[150px]">{inf.influencer_email || '—'}</span>
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] font-black text-slate-400 tracking-widest mb-1 uppercase">Instagram</span>
-                                        {inf.instagram_profile ? (
+                                        <span className="text-[10px] font-black text-slate-400 tracking-widest mb-1 uppercase">Links</span>
+                                        {(inf.influencer_links || [])[0]?.link ? (
                                             <a 
-                                              href={inf.instagram_profile.startsWith('http') ? inf.instagram_profile : `https://instagram.com/${inf.instagram_profile.replace('@', '')}`} 
+                                              href={(inf.influencer_links || [])[0]?.link} 
                                               target="_blank" 
                                               rel="noreferrer"
                                               className="text-sm font-black text-violet-600 hover:underline flex items-center gap-1.5 transition-all"
                                               onClick={(e) => e.stopPropagation()}
                                             >
                                                 <Instagram className="w-3.5 h-3.5" />
-                                                <span className="truncate max-w-[130px]">{inf.instagram_profile}</span>
+                                                <span className="truncate max-w-[130px]">{inf.influencer_links.length} link{inf.influencer_links.length === 1 ? '' : 's'}</span>
                                             </a>
                                         ) : (
                                             <span className="text-sm font-black text-slate-300">—</span>
@@ -499,9 +534,9 @@ const PABrands: React.FC<PABrandsProps> = ({ user }) => {
                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
                         <div className="flex items-center gap-2 text-pink-600 mb-2">
                             <Instagram className="w-4 h-4" />
-                            <span className="text-[10px] font-black tracking-widest text-slate-400">Instagram Profile</span>
+                            <span className="text-[10px] font-black tracking-widest text-slate-400">Reel Links</span>
                         </div>
-                        <p className="font-bold text-slate-800">{selectedInfluencer.instagram_profile || '—'}</p>
+                        <p className="font-bold text-slate-800 break-all">{(selectedInfluencer.influencer_links || []).map((linkObj: any) => linkObj.link).join(' | ') || '—'}</p>
                     </div>
                 </div>
 

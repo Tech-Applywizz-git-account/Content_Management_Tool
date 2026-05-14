@@ -281,3 +281,48 @@ export interface Notification {
   created_at: string;
   read_at?: string;
 }
+
+export interface Influencer {
+  id: string;
+  influencer_name: string;
+  instagram_profile?: string;
+  influencer_email?: string;
+  contact_details?: string;
+  campaign_type?: string;
+  niche?: string;
+  commercials?: string;
+  location?: string;
+  budget?: string;
+  brand_name?: string;
+  parent_project_id?: string;
+  instance_project_id?: string;
+  script_content?: string;
+  content_description?: string;
+  sent_by?: string;
+  sent_by_id?: string;
+  status?: string;
+  sent_at?: string;
+  created_at: string;
+  created_by_user_id?: string;
+  brand_type?: 'REEL' | 'STORY';
+  product_received?: string;
+  product_name?: string;
+  payment?: string;
+  platform_type?: string;
+  vercel_form_link?: string;
+  posting_date?: string;
+  leads?: string;
+  comments?: string;
+  resource?: string;
+  payment_date?: string;
+  influencer_links?: InfluencerLink[];
+}
+
+export interface InfluencerLink {
+  id: string;
+  influencer_id: string;
+  link: string;
+  brand_name?: string;
+  created_at: string;
+  created_by_user_id?: string;
+}

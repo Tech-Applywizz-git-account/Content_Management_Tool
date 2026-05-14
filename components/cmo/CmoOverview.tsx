@@ -698,7 +698,7 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Title</h3>
-              <p className="font-medium bg-slate-50 p-2">{project.title}</p>
+              <p className="font-medium bg-slate-50 p-2 truncate" title={project.title}>{project.title}</p>
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Channel</h3>

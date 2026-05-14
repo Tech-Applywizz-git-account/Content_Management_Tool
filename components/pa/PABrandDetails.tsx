@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { User, WorkflowStage, Role, Project } from '../../types';
-import { db } from '../../services/supabaseDb';
-import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw } from 'lucide-react';
+import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
+import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { supabase } from '../../src/integrations/supabase/client';
@@ -72,7 +72,8 @@ function getSourceFilterForBrand(decodedBrandName: string): ((source: string) =>
   if (brand.includes('leadmagnet') || brand.includes('rtw')) {
     return (source: string) => {
       const s = source.toLowerCase();
-      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet');
+      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
+             s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
     };
   }
 
@@ -84,12 +85,11 @@ function getSourceFilterForBrand(decodedBrandName: string): ((source: string) =>
     };
   }
 
-  // ApplyWizz (generic – must NOT be a job-board source)
+  // ApplyWizz (generic)
   if (brand.includes('applywizz') || brand === 'aw') {
     return (source: string) => {
       const s = source.toLowerCase();
-      return (s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz')) && 
-             !s.includes('job board') && !s.includes('jobboard');
+      return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
     };
   }
 
@@ -104,7 +104,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [brandProjects, setBrandProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'SCRIPT_SENT' | 'FOOTAGE_RECEIVED' | 'EDITED_VIDEO' | 'POST_PENDING' | 'APPROVED' | 'BUDGET'>('ALL');
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'SCRIPT_SENT' | 'FOOTAGE_RECEIVED' | 'EDITED_VIDEO' | 'APPROVE_PENDING' | 'PROOF_POSTED' | 'APPROVED' | 'BUDGET' | 'POSTED_STORIES'>('ALL');
   const [currentBrandData, setCurrentBrandData] = useState<any>(null);
   
   // Edit Modal States
@@ -125,6 +125,45 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [leadsCount, setLeadsCount] = useState<number | null>(null);
   const [isLeadsLoading, setIsLeadsLoading] = useState(false);
   const [brandLeads, setBrandLeads] = useState<any[]>([]);
+
+  const getBrandAliases = (brand: string) => {
+    const aliases = new Set<string>([
+      brand,
+      normalizePABrandName(brand),
+      brand.replace(/[()]/g, '').replace(/\s+/g, '_').toUpperCase(),
+      brand.replace(/[()]/g, '').replace(/\s+/g, ' ').toUpperCase()
+    ]);
+
+    const canonical = normalizePABrandName(brand);
+    if (canonical === 'LEAD MAGNET') {
+      aliases.add('LEAD MAGNET RTW');
+      aliases.add('LEAD_MAGNET_RTW');
+      aliases.add('Lead Magnet (RTW)');
+    }
+    if (canonical === 'APPLYWIZZ JOB BOARD') {
+      aliases.add('JOB BOARD');
+      aliases.add('JOB_BOARD');
+      aliases.add('ApplyWizz Job Board');
+    }
+    if (canonical === 'CAREER IDENTIFIER') {
+      aliases.add('CAREER_IDENTIFIER');
+      aliases.add('CareerIdentifier');
+      aliases.add('CIR');
+    }
+    if (canonical === 'APPLYWIZZ') {
+      aliases.add('AW');
+      aliases.add('Applywizz');
+    }
+
+    return Array.from(aliases).filter(Boolean);
+  };
+
+  const brandMatches = (candidate: string, targetBrand: string) => {
+    if (!candidate) return false;
+    const compactCandidate = candidate.toLowerCase().replace(/[_\s()]+/g, '');
+    return normalizePABrandName(candidate) === normalizePABrandName(targetBrand) ||
+      getBrandAliases(targetBrand).some(alias => compactCandidate === alias.toLowerCase().replace(/[_\s()]+/g, ''));
+  };
 
   const handleUpdateProductStatus = async (infId: string, newStatus: string) => {
       try {
@@ -278,15 +317,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     if (!brandName) return;
     setIsLoading(true);
     try {
-      const decodedBrand = decodeURIComponent(brandName);
+      const rawBrandName = typeof brandName === 'string' ? brandName : String(brandName);
+      const decodedBrand = decodeURIComponent(rawBrandName);
       
-      // Fetch influencers from registry and projects
-      // Normalize brand name to handle format differences between URL and database
-      // URL: "Lead Magnet (RTW)" -> DB: "LEAD_MAGNET_RTW"
-      const normalizedBrand = decodedBrand
-        .replace(/[()]/g, '') // Remove parentheses
-        .replace(/\s+/g, '_')  // Replace spaces with underscores
-        .toUpperCase();        // Convert to uppercase
+      const normalizedBrand = normalizePABrandName(decodedBrand);
       
       console.log('🔍 Fetching data for brand:', {
         original: decodedBrand,
@@ -294,7 +328,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       });
       
       const [infByBrand, allInfLogs, { data: allUsers }, brandData] = await Promise.all([
-        db.influencers.getByBrand(normalizedBrand),
+        db.influencers.getByBrand(decodedBrand),
         db.influencers.getAll(),
         supabase.from('users').select('id, full_name'),
         db.brands.getAll()
@@ -308,26 +342,29 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       // Normalize brand names for comparison - handles all formats:
       // "Lead Magnet (RTW)", "Lead Magnet RTW", "LEAD_MAGNET_RTW" all become "LEAD_MAGNET_RTW"
-      const normalizeBrandForComparison = (s: string) => (s || '')
-        .trim()
-        .replace(/[()]/g, '')      // Remove parentheses
-        .replace(/\s+/g, '_')       // Replace spaces with underscores
-        .toUpperCase();             // Convert to uppercase
-      
-      const target = normalizeBrandForComparison(decodedBrand);
+      const normalizeBrandForComparison = normalizePABrandName;
 
-      const brand = brandData.find(b => normalizeBrandForComparison(b.brand_name) === target);
+      const target = normalizeBrandForComparison(decodedBrand || '');
+
+      // 🚀 Special Rules for brand mapping
+      const brand = [...SYSTEM_BRANDS, ...brandData].find(b => normalizeBrandForComparison(b.brand_name) === target);
+      const resolvedBrandType = brand?.brand_type || 'REEL';
       if (brand) {
         setCurrentBrandData(brand);
+      } else {
+        setCurrentBrandData({ brand_name: decodedBrand, brand_type: 'REEL' });
       }
 
       const allProjects = await db.projects.getAll();
 
       const projData = allProjects.filter(p => {
-        const b1 = normalizeBrandForComparison(p.brand);
-        const b2 = normalizeBrandForComparison(p.data?.brand);
-        const b3 = normalizeBrandForComparison(p.brandSelected);
-        return b1 === target || b2 === target || b3 === target;
+        const b1 = normalizeBrandForComparison(p.brand || '');
+        const b2 = normalizeBrandForComparison(p.data?.brand || '');
+        const b3 = normalizeBrandForComparison(p.brandSelected || '');
+        return b1 === target || b2 === target || b3 === target ||
+          brandMatches(p.brand || '', decodedBrand) ||
+          brandMatches(p.data?.brand || '', decodedBrand) ||
+          brandMatches(p.brandSelected || '', decodedBrand);
       });
 
       setBrandProjects(projData);
@@ -337,11 +374,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       const userMap = new Map(allUsers?.map(u => [u.id, u.full_name]) || []);
 
       // Filter registry entries related to our projects or matching brand name
-      const relevantRegistryEntries = allInfLogs.filter(inf => 
-        (inf.parent_project_id && projectIds.includes(inf.parent_project_id)) ||
-        (inf.instance_project_id && projectIds.includes(inf.instance_project_id)) ||
-        (inf.brand_name && normalizeBrandForComparison(inf.brand_name) === target)
-      );
+      const relevantRegistryEntries = allInfLogs.filter(inf => {
+        const infBrand = normalizeBrandForComparison(inf.brand_name);
+        const matchesProject = (inf.parent_project_id && projectIds.includes(inf.parent_project_id)) ||
+                               (inf.instance_project_id && projectIds.includes(inf.instance_project_id));
+        
+        const matchesBrand = infBrand === target || brandMatches(inf.brand_name || '', decodedBrand);
+        
+        return matchesProject || matchesBrand;
+      });
       
       console.log('📝 Registry entries matching brand:', relevantRegistryEntries.length, 
         relevantRegistryEntries.map((e: any) => ({ name: e.influencer_name, brand: e.brand_name })));
@@ -367,10 +408,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       // 3. Fetch all stories for these influencers
       const influencerIds = combinedInf.map(i => i.id);
-      const { data: allStories } = await supabase
-          .from('influencer_stories')
-          .select('*')
-          .in('influencer_id', influencerIds);
+      const { data: allStories } = influencerIds.length > 0
+        ? await supabase
+            .from('influencer_stories')
+            .select('*')
+            .in('influencer_id', influencerIds)
+        : { data: [] };
 
       // Merge project and story data into influencers
       const mergedData = combinedInf.map(inf => {
@@ -387,10 +430,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
         const infStories = (allStories || []).filter(s => s.influencer_id === inf.id);
         const storyCount = infStories.length;
-        const isActuallyPosted = currentBrandData?.brand_type === 'STORY' ? storyCount > 0 : (project?.current_stage === WorkflowStage.POSTED || !!project?.data?.live_url || !!project?.data?.posting_proof_link);
+        const isActuallyPosted = resolvedBrandType === 'STORY' ? storyCount > 0 : (project?.current_stage === WorkflowStage.POSTED || !!project?.data?.live_url || !!project?.data?.posting_proof_link);
 
-        // Determine if script was sent - check both project data and influencer registry data
-        // A project only counts as "sent" if it has an explicit sent timestamp or has progressed to/past the outreach stage
         const scriptSentFromProject = project && (
           !!project.pa_script_sent_at || 
           [
@@ -402,11 +443,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           ].includes(project.current_stage as WorkflowStage)
         );
         
-        // Registry entries only count as "sent" if they have content or an explicit SENT_TO_INFLUENCER status
-        const scriptSentFromRegistry = !!inf.script_content || inf.status === 'SENT_TO_INFLUENCER';
+        // Only treat the influencer as script-sent when there is actual script content.
+        // The influencers table defaults status to SENT_TO_INFLUENCER on insert, so status alone is not sufficient.
+        const scriptSentFromRegistry = !!inf.script_content;
         const scriptSent = scriptSentFromProject || scriptSentFromRegistry;
 
-        const result = {
+        return {
           ...inf,
           project_status: project?.current_stage,
           script_sent: scriptSent,
@@ -419,32 +461,60 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           sent_by_name: project?.data?.sent_by_name || inf.sent_by || '—',
           stories: infStories,
           story_count: storyCount,
-          project_title: project?.title,
-          // Store reference to project for debugging
-          _debug_project_id: project?.id,
-          _debug_video_link_source: project?.video_link ? 'project.video_link' : project?.video_url ? 'project.video_url' : inf.video_link ? 'inf.video_link' : 'none'
+          project_title: project?.title
         };
-        
-        // Log for debugging video links
-        if (project?.video_link || inf.video_link) {
-          console.log(`📹 Video link for ${inf.influencer_name}:`, {
-            from_project: project?.video_link,
-            from_inf: inf.video_link,
-            final: result.raw_video,
-            project_id: project?.id
-          });
-        }
-        
-        return result;
       });
 
-      console.log(`✅ Setting ${mergedData.length} influencers for brand ${decodedBrand}`, mergedData.map(i => ({ 
-        name: i.influencer_name, 
-        has_video: !!i.raw_video,
-        project_id: i._debug_project_id 
-      })));
+      // 🚀 Grouping logic: Consolidate multiple entries for the same influencer
+      const groupedData = mergedData.reduce((acc: any[], current) => {
+        const name = (current.influencer_name || '').trim().toLowerCase();
+        const brandKey = normalizeBrandForComparison(current.brand_name || decodedBrand);
+        
+        // Find existing group by name or email
+        const existingIndex = acc.findIndex(item => 
+          name &&
+          item.influencer_name?.trim().toLowerCase() === name &&
+          normalizeBrandForComparison(item.brand_name || decodedBrand) === brandKey
+        );
 
-      setInfluencers(mergedData);
+        if (existingIndex > -1) {
+          const existing = acc[existingIndex];
+          
+          // Merge links
+          const existingLinks = existing.influencer_links || [];
+          const currentLinks = current.influencer_links || [];
+          
+          // If the record has a profile link in the main table but not in links table, add it
+          existing.influencer_links = [
+              ...existingLinks,
+              ...currentLinks
+          ].filter((v, i, a) => a.findIndex(t => t.link === v.link) === i);
+
+          // Update other fields if they are missing in the existing record
+          existing.vercel_form_link = existing.vercel_form_link || current.vercel_form_link;
+          existing.leads = existing.leads || current.leads;
+          existing.comments = existing.comments || current.comments;
+          existing.posting_date = existing.posting_date || current.posting_date;
+          existing.resource = existing.resource || current.resource;
+          existing.payment_date = existing.payment_date || current.payment_date;
+          
+          // Merge project-related stats
+          if (current.script_sent) existing.script_sent = true;
+          if (current.raw_video) existing.raw_video = current.raw_video;
+          if (current.edited_video) existing.edited_video = current.edited_video;
+          if (current.is_posted) existing.is_posted = true;
+          if (current.proof_link) existing.proof_link = current.proof_link;
+          
+          return acc;
+        } else {
+          // New group
+          const influencerLinks = current.influencer_links || [];
+          return [...acc, { ...current, influencer_links: influencerLinks }];
+        }
+      }, []);
+
+      console.log(`✅ Setting ${groupedData.length} grouped influencers for brand ${decodedBrand}`);
+      setInfluencers(groupedData);
     } catch (err) {
       console.error("Failed to load data:", err);
       toast.error("Failed to load influence data");
@@ -493,7 +563,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       let isInRange = false;
       
       if (currentBrandData?.brand_type === 'STORY') {
-        if (activeFilter === 'APPROVED') {
+        if (activeFilter === 'POSTED_STORIES') {
+          // For POSTED_STORIES filter, show only those who have stories in range
+          isInRange = hasStoriesInRange(inf);
+        } else if (activeFilter === 'APPROVED') {
           // For APPROVED filter, show only those who are approved
           isInRange = hasStoriesInRange(inf);
         } else {
@@ -520,6 +593,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             if (!isApproved || !!inf.proof_link) return false;
         }
         if (activeFilter === 'PROOF_POSTED' && !inf.proof_link) return false;
+        if (activeFilter === 'POSTED_STORIES' && !hasStoriesInRange(inf)) return false;
         if (activeFilter === 'BUDGET') {
             const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
             if (isNaN(val) || val === 0) return false;
@@ -550,7 +624,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         const lowerSearch = searchTerm.toLowerCase();
         const searchResults = filteredResults.filter(inf => 
           inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
-          inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+          (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
           inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
           inf.location?.toLowerCase().includes(lowerSearch) ||
           inf.project_title?.toLowerCase().includes(lowerSearch) ||
@@ -638,7 +712,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           const lowerSearch = searchTerm.toLowerCase();
           return (
             inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
-            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+            (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
             inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
             inf.location?.toLowerCase().includes(lowerSearch) ||
             (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
@@ -652,7 +726,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           const lowerSearch = searchTerm.toLowerCase();
           return (
             inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
-            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
+            (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
             inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
             inf.location?.toLowerCase().includes(lowerSearch)
           );
@@ -679,21 +753,41 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   };
 
   const handleExport = () => {
-    const headers = ['Name', 'Instagram', 'Email', 'Niche', 'Commercials', 'Location', 'Budget', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
-    const rows = influencers.map(inf => [
-        inf.influencer_name,
-        inf.instagram_profile,
-        inf.influencer_email,
-        inf.niche,
-        inf.commercials,
-        inf.location,
-        inf.budget,
-        inf.script_sent ? 'YES' : 'NO',
-        inf.raw_video || 'N/A',
-        inf.edited_video || 'N/A',
-        inf.is_posted ? 'YES' : 'NO',
-        inf.proof_link || 'N/A'
-    ]);
+    const isStory = currentBrandData?.brand_type === 'STORY';
+    let headers = ['Name', 'Instagram', 'Email', 'Contact Details', 'Niche', 'Commercials', 'Location', 'Total Leads', 'Budget', 'Posting Date', 'Leads', 'Comments', 'Resource', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
+    
+    if (isStory) {
+        headers = headers.filter(h => h !== 'Total Leads' && h !== 'Leads');
+    }
+
+    const rows = influencers.map(inf => {
+        const row = [
+            inf.influencer_name,
+            (inf.influencer_links || []).map((l: any) => l.link).join(' | '),
+            inf.influencer_email,
+            inf.contact_details,
+            inf.niche,
+            inf.commercials,
+            inf.location,
+            brandLeads.filter(lead => (lead.source || '').trim().toLowerCase().includes((inf.influencer_name || '').trim().toLowerCase())).length,
+            inf.budget,
+            inf.posting_date,
+            inf.leads,
+            inf.comments,
+            inf.resource,
+            inf.script_sent ? 'YES' : 'NO',
+            inf.raw_video || 'N/A',
+            inf.edited_video || 'N/A',
+            inf.is_posted ? 'YES' : 'NO',
+            inf.proof_link || 'N/A'
+        ];
+
+        if (isStory) {
+            // Remove 'Total Leads' (index 7) and 'Leads' (index 10)
+            return row.filter((_, i) => i !== 7 && i !== 10);
+        }
+        return row;
+    });
     
     const csvContent = "data:text/csv;charset=utf-8," 
         + headers.join(",") + "\n" 
@@ -722,14 +816,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     e.preventDefault();
     setEditInstagramError(null);
 
-    if (!editingInfluencer.instagram_profile?.trim()) {
-      setEditInstagramError('Instagram profile URL is required.');
-      return;
-    }
-
-    const instagramUrlRegex = /^(https?:\/\/)?(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/;
-    if (!instagramUrlRegex.test(editingInfluencer.instagram_profile)) {
-      setEditInstagramError('Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)');
+    if ((editingInfluencer.influencer_links || []).some((linkObj: any) => linkObj.link && !/^https?:\/\//i.test(linkObj.link))) {
+      setEditInstagramError('Please enter full URLs that start with http:// or https://.');
       return;
     }
     
@@ -740,7 +828,6 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       // Only include valid influencer table columns to avoid "unknown column" errors
       const updates = {
         influencer_name: editingInfluencer.influencer_name,
-        instagram_profile: editingInfluencer.instagram_profile,
         influencer_email: editingInfluencer.influencer_email,
         niche: editingInfluencer.niche,
         commercials: editingInfluencer.commercials,
@@ -750,10 +837,36 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         payment: editingInfluencer.payment,
         platform_type: editingInfluencer.platform_type,
         vercel_form_link: editingInfluencer.vercel_form_link,
-        product_name: editingInfluencer.product_name
+        product_name: editingInfluencer.product_name,
+        posting_date: editingInfluencer.posting_date,
+        leads: editingInfluencer.leads,
+        comments: editingInfluencer.comments,
+        resource: editingInfluencer.resource
       };
 
       await db.influencers.update(id, updates);
+      
+      // 🚀 Sync Instagram Links
+      const currentLinks = editingInfluencer.influencer_links || [];
+      const { data: existingLinks } = await supabase.from('influencer_links').select('*').eq('influencer_id', id);
+      
+      const linksToDelete = (existingLinks || []).filter(el => !currentLinks.some(cl => cl.id === el.id));
+      const linksToAdd = currentLinks.filter(cl => !cl.id && cl.link.trim());
+      const linksToUpdate = currentLinks.filter(cl => {
+          const matching = (existingLinks || []).find(el => el.id === cl.id);
+          return matching && matching.link !== cl.link;
+      });
+
+      await Promise.all([
+          ...linksToDelete.map(l => db.influencerLinks.delete(l.id)),
+          ...linksToAdd.map(l => db.influencerLinks.add({ 
+              influencer_id: id, 
+              link: l.link, 
+              brand_name: editingInfluencer.brand_name,
+              created_by_user_id: user.id 
+          })),
+          ...linksToUpdate.map(l => supabase.from('influencer_links').update({ link: l.link }).eq('id', l.id))
+      ]);
       
       // Also update the associated project if one exists, to keep data in sync
       if (editingInfluencer.project_id) {
@@ -764,8 +877,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                       data: {
                           ...(project.data || {}),
                           influencer_name: updates.influencer_name,
-                          influencer_email: updates.influencer_email,
-                          instagram_profile: updates.instagram_profile
+                          influencer_email: updates.influencer_email
                       }
                   });
               }
@@ -881,12 +993,17 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             </div>
                         </div>
                     </button>
-                    <button onClick={() => setActiveFilter('APPROVED')} className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left ${activeFilter === 'APPROVED' ? 'bg-[#10B981] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}>
+                    <button 
+                        onClick={() => setActiveFilter(activeFilter === 'POSTED_STORIES' ? 'ALL' : 'POSTED_STORIES')} 
+                        className={`p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left group ${activeFilter === 'POSTED_STORIES' ? 'bg-[#D946EF] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' : 'bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'}`}
+                    >
                         <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeFilter === 'APPROVED' ? 'bg-white/20' : 'bg-emerald-50'}`}><CheckCircle2 className={`w-5 h-5 ${activeFilter === 'APPROVED' ? 'text-white' : 'text-emerald-500'}`} /></div>
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activeFilter === 'POSTED_STORIES' ? 'bg-white/20' : 'bg-pink-50 group-hover:bg-pink-100'} transition-colors`}>
+                                <Video className={`w-5 h-5 ${activeFilter === 'POSTED_STORIES' ? 'text-white' : 'text-pink-600'}`} />
+                            </div>
                             <div>
-                                <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${activeFilter === 'APPROVED' ? 'text-emerald-100' : 'text-slate-500'}`}>Approved</p>
-                                <span className="text-2xl font-black leading-none">{stats.filteredApproved}</span>
+                                <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${activeFilter === 'POSTED_STORIES' ? 'text-pink-100' : 'text-slate-500'}`}>Total Stories</p>
+                                <span className={`text-2xl font-black leading-none ${activeFilter === 'POSTED_STORIES' ? 'text-white' : 'text-pink-600'}`}>{stats.filteredPosted}</span>
                             </div>
                         </div>
                     </button>
@@ -913,22 +1030,6 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         </div>
                     )}
 
-                    <button 
-                        onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
-                        className="p-4 rounded-xl border-4 border-black bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-20 text-left group"
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 group-hover:bg-blue-100 transition-colors">
-                                <Users className="w-5 h-5 text-blue-600" />
-                            </div>
-                            <div className="flex flex-col">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total Leads</p>
-                                <span className="text-2xl font-black leading-none text-blue-600">
-                                    {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
-                                </span>
-                            </div>
-                        </div>
-                    </button>
                 </div>
             </div>
         ) : (
@@ -996,7 +1097,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       </div>
 
       {/* Leads by Source Breakdown */}
-      {brandLeads.length > 0 && (() => {
+      {currentBrandData?.brand_type !== 'STORY' && brandLeads.length > 0 && (() => {
         // Group leads by source
         const sourceGroups: Record<string, number> = {};
         brandLeads.forEach(lead => {
@@ -1128,45 +1229,49 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       </div>
 
       <div className="bg-white border-2 border-black shadow-md rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto scrollbar-hide">
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse text-slate-600">
             <thead>
               <tr className="bg-slate-50 text-slate-500 border-b-2 border-black">
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap w-16">S.No</th>
-                {user.role !== Role.CMO && <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Actions</th>}
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Influencer Name</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Instagram</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Email Address</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Niche</th>
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Country</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] whitespace-nowrap">S.No</th>
+                {user.role !== Role.CMO && <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Actions</th>}
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Influencer Name</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Instagram</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Email Address</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Contact</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Niche</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Country</th>
                 {currentBrandData?.brand_type !== 'STORY' && (
-                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-slate-500">Collab Type</th>
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Collab Type</th>
                 )}
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Budget</th>
                 {currentBrandData?.brand_type !== 'STORY' && (
-                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap text-center">Product</th>
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Total Leads</th>
+                )}
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Budget</th>
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Product</th>
                 )}
                 {currentBrandData?.brand_type === 'STORY' && (
-                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Stories</th>
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Stories</th>
                 )}
                 {currentBrandData?.brand_type === 'STORY' && (
                     <>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Payment</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Platform</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Vercel Form Link</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Payment</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Platform</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Vercel Form Link</th>
                     </>
                 )}
-                <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Added By</th>
+                <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Added By</th>
                 {currentBrandData?.brand_type !== 'STORY' && (
-                    <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Sent By</th>
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Sent By</th>
                 )}
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Script Sent</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Raw Video</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Edited Video</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Approve</th>
-                        <th className="px-6 py-5 uppercase font-bold tracking-wider text-[11px] whitespace-nowrap">Proof</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Script</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Raw</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Edited</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Approve</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Proof</th>
                     </>
                 )}
               </tr>
@@ -1174,7 +1279,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={currentBrandData?.brand_type === 'STORY' ? 13 : 20} className="px-6 py-20 text-center">
+                  <td colSpan={20} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-slate-200 border-t-[#D946EF] rounded-full animate-spin" />
                       <p className="font-black uppercase text-slate-400 tracking-widest text-xs">Loading Influence Data...</p>
@@ -1184,44 +1289,45 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
               ) : filteredInfluencers.length > 0 ? (
                 filteredInfluencers.map((inf, index) => (
                   <tr key={inf.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-5 font-bold text-slate-400 text-sm whitespace-nowrap w-16">{(index + 1).toString().padStart(2, '0')}</td>
+                    <td className="px-4 py-1 font-bold text-slate-400 text-xs whitespace-nowrap">{(index + 1).toString().padStart(2, '0')}</td>
                     {user.role !== Role.CMO && (
-                      <td className="px-6 py-5"><button onClick={() => handleEditClick(inf)} className="p-2 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-4 h-4" /></button></td>
+                      <td className="px-4 py-1"><button onClick={() => handleEditClick(inf)} className="p-1.5 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-3.5 h-3.5" /></button></td>
                     )}
-                    <td className="px-6 py-5">
+                    <td className="px-4 py-1">
                         <button 
                           onClick={() => { 
                             const id = inf.project_id || 'new'; 
                             const name = encodeURIComponent(inf.influencer_name); 
                             const infId = encodeURIComponent(inf.id); 
                             const rolePath = user.role.toLowerCase();
-                            navigate(`/${rolePath}/influencer/${id}?name=${name}&inf_id=${infId}&brand=${encodeURIComponent(brandName || '')}`, { 
+                            navigate(`/${rolePath}/influencer/${id}?name=${name}&inf_id=${infId}&brand=${encodeURIComponent(brandName || '')}&brand_type=${currentBrandData?.brand_type || 'REEL'}`, { 
                               state: { 
                                 influencer: inf, 
                                 brandType: currentBrandData?.brand_type 
                               } 
                             }); 
                           }} 
-                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap text-left flex items-center gap-2 group/name"
+                          className="font-black text-slate-700 hover:text-blue-600 hover:underline text-xs whitespace-nowrap text-left flex items-center gap-2 group/name"
                         >
                           {inf.influencer_name}<ExternalLink className="w-3 h-3 opacity-0 group-hover/name:opacity-100 transition-opacity" />
                         </button>
                     </td>
-                    <td className="px-6 py-4">
-                      {inf.instagram_profile ? (
-                        <a 
-                          href={inf.instagram_profile.startsWith('http') ? inf.instagram_profile : `https://instagram.com/${inf.instagram_profile.replace('@', '')}`} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="flex items-center gap-2 text-pink-600 font-bold hover:underline transition-all group/insta"
-                        >
-                          <Instagram className="w-4 h-4 shrink-0" />
-                          <span className="text-xs truncate max-w-[150px]">{inf.instagram_profile}</span>
-                          <ExternalLink className="w-3 h-3 opacity-0 group-hover/insta:opacity-100 transition-opacity shrink-0" />
-                        </a>
-                      ) : <span className="text-slate-300 text-xs font-bold">—</span>}
+                    <td className="px-4 py-1">
+                        {inf.instagram_profile ? (
+                           <a 
+                             href={inf.instagram_profile}
+                             target="_blank"
+                             rel="noreferrer"
+                             className="text-xs font-bold text-pink-600 hover:underline flex items-center gap-1"
+                           >
+                             <Instagram className="w-3 h-3" />
+                             <span className="truncate max-w-[140px]">{inf.instagram_profile}</span>
+                           </a>
+                        ) : (
+                           <span className="text-slate-300 text-xs font-bold">—</span>
+                        )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-1.5">
                       {inf.influencer_email ? (
                         <a 
                           href={`mailto:${inf.influencer_email}`} 
@@ -1235,34 +1341,56 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         <span className="text-slate-300 text-xs font-bold">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-1.5">
+                      <span className="text-xs font-bold text-slate-600 truncate max-w-[150px] block">{inf.contact_details || '—'}</span>
+                    </td>
+                    <td className="px-6 py-1.5">
                       <div className="flex items-center gap-2">
                         <Tag className="w-4 h-4 text-purple-500" />
                         <span className="text-xs font-bold text-slate-600 uppercase">{inf.niche || '—'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-1.5">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-red-500" />
                         <span className="text-xs font-bold text-slate-600 uppercase">{inf.location || '—'}</span>
                       </div>
                     </td>
                     {currentBrandData?.brand_type !== 'STORY' && (
-                        <td className="px-6 py-4">
-                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.commercials?.replace(/\s?\(\)/g, '') || '—'}</span>
+                        <td className="px-6 py-1.5">
+                            <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
                         </td>
                     )}
-                    <td className="px-6 py-5">
-                        <div className={`px-3 py-1 rounded-full border border-black inline-flex items-center gap-1.5 ${(inf.product_name || inf.commercials?.toLowerCase().includes('barter')) ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
-                            {(inf.product_name || inf.commercials?.toLowerCase().includes('barter')) ? <Tag className="w-3 h-3" /> : <DollarSign className="w-3 h-3" />}
-                            <span className="text-[11px] font-bold">
-                                {inf.product_name || (inf.commercials?.toLowerCase().includes('barter') ? (inf.commercials.includes('(') ? inf.commercials.split('(')[1].replace(')', '') : 'Barter') : (inf.budget || '—'))}
-                            </span>
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-4 py-1 text-center">
+                            <div className="inline-flex items-center justify-center bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-lg min-w-[2.5rem] shadow-sm">
+                                {brandLeads.filter(lead => 
+                                    (lead.source || '').trim().toLowerCase().includes((inf.influencer_name || '').trim().toLowerCase())
+                                ).length}
+                            </div>
+                        </td>
+                    )}
+                    <td className="px-6 py-3">
+                        <div className="flex items-center gap-2">
+                            <div className={`px-3 py-1 rounded-full border border-black inline-flex items-center gap-1.5 ${inf.budget && !inf.budget.toLowerCase().includes('barter') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                                {inf.budget && !inf.budget.toLowerCase().includes('barter') ? <DollarSign className="w-3 h-3" /> : <Tag className="w-3 h-3" />}
+                                <span className="text-[11px] font-bold">
+                                    {inf.budget || '—'}
+                                </span>
+                            </div>
+                            {(inf.product_name || (inf.commercials?.toLowerCase().includes('barter') && inf.commercials.includes('('))) && (
+                                <div className="text-[9px] font-black text-slate-400 uppercase tracking-tighter flex items-center gap-1 border-l pl-2 border-slate-200">
+                                    <Tag className="w-2.5 h-2.5 text-amber-500" />
+                                    <span className="truncate max-w-[100px]">
+                                        {inf.product_name || inf.commercials.split('(')[1].replace(')', '')}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </td>
 
                     {currentBrandData?.brand_type !== 'STORY' && (
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-1.5">
                             <div className="flex justify-center">
                                 {inf.commercials?.toLowerCase().includes('barter') ? (
                                     <div className="relative">
@@ -1287,7 +1415,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     )}
 
                     {currentBrandData?.brand_type === 'STORY' && (
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-1.5">
                             <div className={`px-3 py-1 rounded-lg text-center ${(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length > 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-50 text-slate-400'} font-bold`}>
                                 <span className="text-sm">{(inf.stories || []).filter((s: any) => checkRange(s.story_date)).length}</span>
                                 <span className="text-[10px] ml-1 uppercase tracking-tighter">Posted</span>
@@ -1297,7 +1425,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
                     {currentBrandData?.brand_type === 'STORY' && (
                         <>
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-1.5">
                                 <div className="relative">
                                     <select 
                                         value={inf.payment || 'no'}
@@ -1313,12 +1441,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                     </div>
                                 </div>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-1.5">
                             <span className="text-xs font-bold text-slate-700">
                                 {inf.platform_type || '—'}
                             </span>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-1.5">
                             {inf.vercel_form_link ? (
                                 <a href={inf.vercel_form_link} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 transition-colors flex items-center gap-1">
                                     <LinkIcon className="w-4 h-4" />
@@ -1330,11 +1458,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             </td>
                         </>
                     )}
-                    <td className="px-6 py-4 text-xs font-bold text-slate-500 whitespace-nowrap">
+                    <td className="px-6 py-2 text-xs font-bold text-slate-500 whitespace-nowrap">
                       {inf.added_by_name}
                     </td>
                     {currentBrandData?.brand_type !== 'STORY' && (
-                        <td className="px-6 py-5">
+                        <td className="px-6 py-2">
                             <span className="text-[10px] font-black uppercase text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
                                 {inf.sent_by_name}
                             </span>
@@ -1343,7 +1471,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     
                     {currentBrandData?.brand_type !== 'STORY' && (
                         <>
-                                <td className="px-6 py-5">
+                                <td className="px-6 py-2">
                                 {inf.script_sent ? (
                                     <div className="flex flex-col items-center gap-1">
                                         <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -1358,7 +1486,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
-                            <td className="px-6 py-5">
+                            <td className="px-6 py-2">
                                 {inf.raw_video ? (
                                     <a href={inf.raw_video} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 transition-colors">
                                         <Video className="w-5 h-5" />
@@ -1367,7 +1495,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
-                            <td className="px-6 py-5 bg-slate-50/30">
+                            <td className="px-6 py-2 bg-slate-50/30">
                                 {inf.edited_video ? (
                                     <a href={inf.edited_video} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 transition-colors">
                                         <Play className="w-5 h-5" />
@@ -1376,7 +1504,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
-                            <td className="px-6 py-5 bg-slate-50/30">
+                            <td className="px-6 py-2 bg-slate-50/30">
                                 {inf.project_status === WorkflowStage.PA_FINAL_REVIEW || inf.project_status === WorkflowStage.POSTED ? (
                                     <div className="flex flex-col items-center">
                                         <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -1386,7 +1514,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
-                            <td className="px-6 py-5 bg-slate-50/30">
+                            <td className="px-6 py-2 bg-slate-50/30">
                                 {inf.proof_link ? (
                                     <a href={inf.proof_link} target="_blank" rel="noreferrer" className="text-orange-500 hover:text-orange-700 transition-colors">
                                         <LinkIcon className="w-4 h-4" />
@@ -1444,22 +1572,56 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   />
                 </div>
                 
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400">Instagram Profile *</label>
-                  <div className="relative">
-                    <Instagram className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-pink-500" />
-                    <input 
-                      type="text" 
-                      value={editingInfluencer.instagram_profile || ''}
-                      onChange={(e) => {
-                        setEditingInfluencer({...editingInfluencer, instagram_profile: e.target.value});
-                        setEditInstagramError(null);
+                <div className="space-y-4 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase text-slate-400">Instagram Profiles</label>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const links = [...(editingInfluencer.influencer_links || [])];
+                        links.push({ link: '', brand_name: editingInfluencer.brand_name });
+                        setEditingInfluencer({ ...editingInfluencer, influencer_links: links });
                       }}
-                      className={`w-full pl-10 pr-4 py-3 border-2 font-bold focus:outline-none focus:bg-slate-50 ${
-                        editInstagramError ? 'border-red-500 bg-red-50' : 'border-black'
-                      }`}
-                      placeholder="https://www.instagram.com/username"
-                    />
+                      className="text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg hover:bg-indigo-100 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3 h-3" /> Add Link
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    {(editingInfluencer.influencer_links || []).length === 0 && (
+                       <div className="p-4 border-2 border-dashed border-slate-100 rounded-xl text-center">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">No links added yet</p>
+                       </div>
+                    )}
+                    {(editingInfluencer.influencer_links || []).map((linkObj: any, idx: number) => (
+                      <div key={idx} className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Instagram className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-pink-500" />
+                          <input 
+                            type="url" 
+                            value={linkObj.link}
+                            onChange={(e) => {
+                              const links = [...editingInfluencer.influencer_links];
+                              links[idx].link = e.target.value;
+                              setEditingInfluencer({ ...editingInfluencer, influencer_links: links });
+                            }}
+                            className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 text-sm"
+                            placeholder="https://www.instagram.com/username"
+                          />
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const links = editingInfluencer.influencer_links.filter((_: any, i: number) => i !== idx);
+                            setEditingInfluencer({ ...editingInfluencer, influencer_links: links });
+                          }}
+                          className="p-3 bg-red-50 text-red-500 border-2 border-red-100 rounded-xl hover:bg-red-500 hover:text-white hover:border-black transition-all"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                   {editInstagramError && (
                     <p className="text-red-600 text-xs font-bold">⚠️ {editInstagramError}</p>

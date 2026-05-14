@@ -175,7 +175,7 @@ const OpsMyWork: React.FC<Props> = ({ projects, onSelectProject, filterCategory 
                             </div>
 
                             {/* Title */}
-                            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight mb-2">
+                            <h3 className="text-base font-black text-slate-900 uppercase leading-tight mb-2 break-words line-clamp-2">
                                 {project.title}
                                 {project.brand && (
                                     <span className="text-slate-400 ml-2">({project.brand.replace(/_/g, ' ')})</span>

@@ -127,6 +127,18 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
         );
     };
 
+    const isInfluencerInstance = (p: any) => {
+        const data = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {});
+        const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {});
+        return data?.influencer_instance === true || metadata?.influencer_instance === true;
+    };
+
+    const isPaBrand = (p: any) => {
+        const data = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {});
+        const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {});
+        return data?.is_pa_brand === true || metadata?.is_pa_brand === true;
+    };
+
     // Filter data to only show user's owned brands and projects
     const myBrands = useMemo(() => (brands || []).filter(b => b.created_by_user_id === user?.id), [brands, user?.id]);
     const myBrandNames = useMemo(() => myBrands.map(b => b.brand_name.toLowerCase()), [myBrands]);
@@ -150,7 +162,6 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
         return [...new Set(merged)].sort();
     }, [brands, allProjects]);
 
-    // Brand Dashboard Metrics
     const brandDashboardMetrics = useMemo(() => {
         if (brandFilter === 'ALL') return null;
         
@@ -182,13 +193,47 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
             (p.data?.category === 'Story' || p.data?.content_category === 'Story' || p.title.toLowerCase().includes('story'))
         ).length;
 
+        const totalScripts = brandProjects.filter(p => (isPaBrand(p) || isInfluencerProject(p)) && !isInfluencerInstance(p)).length;
+        const totalInfluencerTasks = brandProjects.filter(p => isInfluencerInstance(p)).length;
+
+        // Detailed influencer stats
+        const influencerStats: Record<string, any> = {};
+        brandProjects.forEach(p => {
+            if (isInfluencerInstance(p)) {
+                const name = p.data?.influencer_name || p.metadata?.influencer_name;
+                if (!name) return;
+                
+                if (!influencerStats[name]) {
+                    influencerStats[name] = {
+                        name,
+                        tasks: 0,
+                        completed: 0,
+                        rawUploaded: 0,
+                        latestStatus: p.current_stage
+                    };
+                }
+                
+                influencerStats[name].tasks++;
+                if (p.current_stage === WorkflowStage.POSTED) influencerStats[name].completed++;
+                if (p.video_link || p.pa_raw_footage_uploaded_at) influencerStats[name].rawUploaded++;
+            }
+        });
+
+        const influencerList = Object.values(influencerStats).sort((a: any, b: any) => b.tasks - a.tasks);
+        const scriptList = brandProjects.filter(p => (isPaBrand(p) || isInfluencerProject(p)) && !isInfluencerInstance(p))
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
         return {
             totalInfluencers: uniqueInfluencers.size,
             rawVideosReceived: rawVideos,
             editedVideos: editedVideos,
             totalLeads: brandProjects.reduce((sum, p) => sum + (p.data?.leads_count || 0), 0),
             storiesPosted: storiesPosted,
-            totalProjects: brandProjects.length
+            totalProjects: brandProjects.length,
+            totalScripts,
+            totalInfluencerTasks,
+            influencerList,
+            scriptList
         };
     }, [myProjects, brandFilter]);
 
@@ -549,12 +594,110 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
                         </span>
                     </div>
                     <div className="flex flex-wrap gap-6">
-                        {renderMetricCard("Total Influencers", brandDashboardMetrics.totalInfluencers, <Users className="w-6 h-6" />, "text-violet-600", "bg-violet-50")}
+                        {renderMetricCard("Total Scripts", brandDashboardMetrics.totalScripts, <FileText className="w-6 h-6" />, "text-indigo-600", "bg-indigo-50")}
+                        {renderMetricCard("Influencers", brandDashboardMetrics.totalInfluencers, <Users className="w-6 h-6" />, "text-violet-600", "bg-violet-50")}
+                        {renderMetricCard("Active Tasks", brandDashboardMetrics.totalInfluencerTasks, <Activity className="w-6 h-6" />, "text-rose-600", "bg-rose-50")}
                         {renderMetricCard("Raw Videos", brandDashboardMetrics.rawVideosReceived, <Video className="w-6 h-6" />, "text-amber-600", "bg-amber-50")}
                         {renderMetricCard("Edited Videos", brandDashboardMetrics.editedVideos, <CheckCircle2 className="w-6 h-6" />, "text-blue-600", "bg-blue-50")}
-                        {renderMetricCard("Stories Posted", brandDashboardMetrics.storiesPosted, <Instagram className="w-6 h-6" />, "text-pink-600", "bg-pink-50")}
                         {renderMetricCard("Total Leads", brandDashboardMetrics.totalLeads, <TrendingUp className="w-6 h-6" />, "text-emerald-600", "bg-emerald-50")}
                     </div>
+
+                    {/* Influencer Details Table */}
+                    {brandDashboardMetrics.influencerList.length > 0 && (
+                        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm mt-8">
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <h3 className="text-lg font-black uppercase tracking-tight text-slate-900 flex items-center gap-2">
+                                    <Users className="w-5 h-5 text-violet-600" /> Influencer Engagement
+                                </h3>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total {brandDashboardMetrics.influencerList.length} Influencers</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-100">
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Influencer Name</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Tasks</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Raw Uploads</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Completed</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Latest Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {brandDashboardMetrics.influencerList.map((inf: any) => (
+                                            <tr key={inf.name} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-xs font-black text-violet-600 uppercase">
+                                                            {inf.name[0]}
+                                                        </div>
+                                                        <span className="font-bold text-slate-900">{inf.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 font-bold text-slate-900">{inf.tasks}</td>
+                                                <td className="px-6 py-4 font-bold text-amber-600">{inf.rawUploaded}</td>
+                                                <td className="px-6 py-4 font-bold text-emerald-600">{inf.completed}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className="px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                                                        {STAGE_LABELS[inf.latestStatus] || inf.latestStatus.replace(/_/g, ' ')}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {/* Script Pipeline Table */}
+                    {brandDashboardMetrics.scriptList.length > 0 && (
+                        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm mt-8">
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <h3 className="text-lg font-black uppercase tracking-tight text-slate-900 flex items-center gap-2">
+                                    <FileText className="w-5 h-5 text-indigo-600" /> Active Scripts
+                                </h3>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total {brandDashboardMetrics.scriptList.length} Scripts</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-100">
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Script Title</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Created At</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Stage</th>
+                                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {brandDashboardMetrics.scriptList.map((script: any) => (
+                                            <tr key={script.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <span className="font-bold text-slate-900 line-clamp-1">{script.title}</span>
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                                                    {format(new Date(script.created_at), 'MMM dd, yyyy')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase border-2 border-black ${
+                                                        script.status === TaskStatus.REWORK ? 'bg-red-500 text-white' : 'bg-yellow-400 text-black'
+                                                    }`}>
+                                                        {STAGE_LABELS[script.current_stage] || script.current_stage.replace(/_/g, ' ')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <button 
+                                                        onClick={() => handleProjectClick(script)}
+                                                        className="text-indigo-600 font-black uppercase text-[10px] tracking-widest hover:underline"
+                                                    >
+                                                        View Script
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

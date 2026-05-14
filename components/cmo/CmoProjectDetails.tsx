@@ -421,8 +421,8 @@ action,
                     <button onClick={onBack} className="p-3 border-2 border-transparent hover:border-black hover:bg-slate-100 rounded-full transition-all">
                         <ArrowLeft className="w-6 h-6 text-black" />
                     </button>
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                    <div className="min-w-0 flex-1">
+                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight truncate" title={fullProject.title}>
                             {fullProject.data?.source === 'DESIGNER_INITIATED' ? 'Creative Details: ' :
                                 fullProject.data?.source === 'IDEA_PROJECT' && !fullProject.data?.script_content ? 'Idea Details: ' : 'Project Details: '}
                             {fullProject.title}

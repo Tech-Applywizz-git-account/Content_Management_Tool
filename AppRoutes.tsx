@@ -145,6 +145,7 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                                 <PAInfluencerPortfolioPage user={user!} onLogout={onLogout} refreshData={refreshData} />
                             </Layout>
                         } />
+                        <Route path="leads" element={<PALeads user={user!} />} />
                         <Route path="*" element={<CmoDashboard user={user!} inboxProjects={projects.inbox} historyProjects={projects.history} allProjects={cmoAllProjects} onRefresh={() => refreshData(user!)} onLogout={onLogout} />} />
                     </Routes>
                 </ProtectedRoute>

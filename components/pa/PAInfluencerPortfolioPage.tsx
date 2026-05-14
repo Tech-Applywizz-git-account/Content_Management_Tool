@@ -4,6 +4,7 @@ import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
 import PAInfluencerPortfolio from './PAInfluencerPortfolio';
 import PAStoryInfluencerDetails from './PAStoryInfluencerDetails';
+import { SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
 
 interface PAInfluencerPortfolioPageProps {
     user: User;
@@ -24,7 +25,6 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     const [influencerProjects, setInfluencerProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(!passedState?.influencer);
     const [error, setError] = useState<string | null>(null);
-    const [brandData, setBrandData] = useState<any>(passedState?.brandType ? { brand_type: passedState.brandType } : null);
 
     // If we have passed state, initialize projects with it immediately
     useEffect(() => {
@@ -51,27 +51,25 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         }
     }, []);
 
-    useEffect(() => {
-        const fetchBrandInfo = async () => {
-            const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
-            const pData = typeof currentProject?.data === 'string' ? JSON.parse(currentProject.data) : currentProject?.data;
-            const pMetadata = typeof currentProject?.metadata === 'string' ? JSON.parse(currentProject.metadata) : currentProject?.metadata;
-            
-            const bName = pData?.brand || pMetadata?.brand || currentProject?.brandSelected || currentProject?.brand;
-            
-            if (bName) {
-                const { data } = await supabase.from('brands').select('*').eq('brand_name', bName).maybeSingle();
-                if (data) setBrandData(data);
-            }
-        };
-
-        if (influencerProjects.length > 0) {
-            fetchBrandInfo();
-        }
-    }, [influencerProjects, projectId]);
 
     // Fetch all data function - extracted to useCallback for reuse
     const fetchAllData = useCallback(async () => {
+        const parseProjectData = (proj: any) => {
+            try {
+                const rawData = proj?.data;
+                if (typeof rawData === 'string') return JSON.parse(rawData) || {};
+                return rawData || {};
+            } catch {
+                return {};
+            }
+        };
+
+        const projectIsReel = (proj: any) => {
+            const data = parseProjectData(proj);
+            const brandType = (proj?.brand_type || data?.brand_type || '').toString().toUpperCase();
+            return brandType === 'REEL' || brandType === '';
+        };
+
         try {
             // Loading is handled by initial state; background fetch shouldn't trigger global loading screen
             
@@ -111,7 +109,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                     
                     const isPaBrand = pData?.is_pa_brand === true || pMetadata?.is_pa_brand === true;
                     const isInfluencer = pData?.is_influencer === true || pMetadata?.is_influencer === true;
-                    return isPaBrand || isInfluencer;
+                    return (isPaBrand || isInfluencer) && projectIsReel(p);
                 } catch (e) {
                     return false;
                 }
@@ -168,15 +166,19 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
             if (matchingProjects.length === 0) {
                 // If we didn't have a registryRecord yet (e.g. no inf_id but have name), try to find one
                 if (!registryRecord && canonicalName) {
-                    const { data } = await supabase
+                    let query = supabase
                         .from('influencers')
                         .select('*')
-                        .ilike('influencer_name', canonicalName)
-                        .maybeSingle();
+                        .ilike('influencer_name', canonicalName);
+                    if (brandParam) {
+                        query = query.eq('brand_name', normalizePABrandName(brandParam));
+                    }
+                    const { data } = await query.limit(1).maybeSingle();
                     registryRecord = data;
                 }
                 
-                if (registryRecord) {
+                const registryIsReel = !registryRecord?.brand_type || registryRecord?.brand_type.toUpperCase() === 'REEL';
+                if (registryRecord && registryIsReel) {
                     const dummyProject: any = {
                         id: 'temp-' + Date.now(),
                         title: `DRAFT: ${registryRecord.influencer_name}`,
@@ -243,6 +245,27 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         window.location.reload(); 
     };
 
+    const isStoryBrand = passedState?.brandType === 'STORY' || 
+                        searchParams.get('brand_type') === 'STORY' ||
+                        influencerProjects.some(p => {
+                            const data = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
+                            return p.brand_type === 'STORY' || data?.brand_type === 'STORY';
+                        });
+
+    if (isStoryBrand) {
+        return (
+            <PAStoryInfluencerDetails
+                influencerId={influencerIdParam || ''}
+                brandName={brandParam || ''}
+                influencerName={influencerNameParam || ''}
+                user={user}
+                onBack={handleBack}
+                onComplete={handleComplete}
+                initialInfluencer={passedState?.influencer}
+            />
+        );
+    }
+
     const currentProject = influencerProjects.find(p => p.id === projectId) || influencerProjects[0];
 
     if (!currentProject && loading) {
@@ -253,7 +276,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         );
     }
 
-    if (error || influencerProjects.length === 0) {
+    if (error || (influencerProjects.length === 0 && !isStoryBrand)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
                 <div className="text-center max-w-md w-full p-10 bg-white border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
@@ -270,39 +293,6 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                     </button>
                 </div>
             </div>
-        );
-    }
-
-
-    let pDataFirst = influencerProjects[0]?.data;
-    try {
-        if (typeof pDataFirst === 'string') pDataFirst = JSON.parse(pDataFirst);
-    } catch (e) {
-        console.warn('Error parsing first project data');
-    }
-    const isStoryBrand = passedState?.brandType === 'STORY' || brandData?.brand_type === 'STORY' || pDataFirst?.brand_type === 'STORY';
-
-    if (isStoryBrand) {
-        // Find the actual influencer ID from the project or registry
-        let pDataCurrent = currentProject.data;
-        let pMetadataCurrent = currentProject.metadata;
-        try {
-            if (typeof pDataCurrent === 'string') pDataCurrent = JSON.parse(pDataCurrent);
-            if (typeof pMetadataCurrent === 'string') pMetadataCurrent = JSON.parse(pMetadataCurrent);
-        } catch (e) {
-            console.warn('Error parsing current project JSON');
-        }
-
-        return (
-            <PAStoryInfluencerDetails 
-                influencerId={pDataCurrent?.influencer_id || pMetadataCurrent?.influencer_id || (projectId?.startsWith('temp-') ? null : projectId) || ''}
-                brandName={brandData?.brand_name || pDataCurrent?.brand || pMetadataCurrent?.brand || ''}
-                influencerName={pDataCurrent?.influencer_name || pMetadataCurrent?.influencer_name || ''}
-                user={user}
-                onBack={handleBack}
-                onComplete={handleComplete}
-                initialInfluencer={passedState?.influencer}
-            />
         );
     }
 

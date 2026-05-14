@@ -163,7 +163,7 @@ const OpsFilteredProjects: React.FC<Props> = ({ user, projects, viewMode, onSele
                             </div>
 
                             {/* Title */}
-                            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight mb-3">{project.title}</h3>
+                            <h3 className="text-base font-black text-slate-900 uppercase leading-tight mb-3 break-words line-clamp-2">{project.title}</h3>
 
                             {/* Content Type */}
                             <div className="flex items-center gap-2 mb-4 text-sm">

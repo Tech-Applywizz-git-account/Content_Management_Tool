@@ -147,7 +147,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
                 {/* Project Header */}
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-black text-slate-900 uppercase leading-tight group-hover:text-[#D946EF] transition-colors">
+                    <h3 className="text-lg font-black text-slate-900 uppercase leading-tight group-hover:text-[#D946EF] transition-colors line-clamp-2 overflow-hidden" title={project.title}>
                       {project.title}
                       {project.brand && (
                         <span className="text-slate-400 text-sm ml-2">({project.brand.replace(/_/g, ' ')})</span>

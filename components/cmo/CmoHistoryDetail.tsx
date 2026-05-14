@@ -410,8 +410,8 @@ const CmoHistoryDetail: React.FC<Props> = ({ project, history, onBack, onEdit, c
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </button>
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight truncate" title={projectData.title}>
               {projectData.data?.source === 'DESIGNER_INITIATED' ? 'Creative Details: ' : 'Script Details: '}
               {projectData.title}
               {projectData.brand && (

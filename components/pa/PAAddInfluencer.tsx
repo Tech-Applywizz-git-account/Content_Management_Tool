@@ -62,7 +62,7 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
     influencer_name: '',
     influencer_email: '',
     contact_details: '',
-    instagram_profile: '',
+    link_url: '',
     niche: '',
     niche_other: '',
     commercials: '',
@@ -132,14 +132,13 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         return;
     }
 
-    if (!formData.instagram_profile.trim()) {
-        setInstagramError('Instagram profile URL is required.');
+    if (!formData.link_url.trim()) {
+        setInstagramError('Reel/story link URL is required.');
         return;
     }
 
-    const instagramUrlRegex = /^(https?:\/\/)?(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/;
-    if (!instagramUrlRegex.test(formData.instagram_profile)) {
-        setInstagramError('Please enter a valid Instagram URL (e.g., https://www.instagram.com/username)');
+    if (!/^https?:\/\//i.test(formData.link_url)) {
+        setInstagramError('Please enter a full URL starting with http:// or https://');
         return;
     }
 
@@ -165,7 +164,6 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         influencer_name: formData.influencer_name,
         influencer_email: formData.influencer_email,
         contact_details: formData.contact_details,
-        instagram_profile: formData.instagram_profile,
         niche: isOtherNiche ? formData.niche_other : formData.niche,
         commercials: isBarterCollab ? `${formData.commercials} (${formData.product_name})` : formData.commercials,
         location: isOtherLocation ? formData.location_other : formData.location,
@@ -181,7 +179,22 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
       };
 
       console.log('📤 Submitting influencer payload:', payload);
-      await db.influencers.create(payload);
+      const inserted = await db.influencers.create(payload);
+      if (brand_type === 'STORY') {
+        await db.influencerStories.add({
+          influencer_id: inserted.id,
+          story_date: new Date().toISOString().split('T')[0],
+          story_link: formData.link_url,
+          created_by_user_id: user.id
+        });
+      } else {
+        await db.influencerLinks.add({
+          influencer_id: inserted.id,
+          link: formData.link_url,
+          brand_name: formData.brand_name,
+          created_by_user_id: user.id
+        });
+      }
       
       toast.success('Influencer added successfully!');
       setTimeout(() => {
@@ -255,18 +268,18 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
 
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <Instagram className="w-4 h-4 text-pink-500" /> Instagram Profile *
+                        <Instagram className="w-4 h-4 text-pink-500" /> Reel/Story Link *
                     </label>
                     <input
                         type="text"
-                        name="instagram_profile"
-                        value={formData.instagram_profile}
+                        name="link_url"
+                        value={formData.link_url}
                         onChange={(e) => { handleChange(e); setInstagramError(null); }}
                         required
                         className={`w-full px-4 py-3 border-2 font-bold focus:outline-none ${
                             instagramError ? 'border-red-500 bg-red-50' : 'border-black'
                         }`}
-                        placeholder="https://www.instagram.com/username"
+                        placeholder="https://www.instagram.com/reel/..."
                     />
                     {instagramError && (
                         <p className="text-red-600 text-xs font-bold mt-1">⚠️ {instagramError}</p>

@@ -654,7 +654,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                     )}
                   </div>
 
-                  <h3 className="text-2xl font-black text-slate-900 mb-2 leading-tight uppercase truncate">
+                  <h3 className="text-lg font-black text-slate-900 mb-2 leading-tight uppercase break-words line-clamp-2">
                     {project.title}
                   </h3>
                   {project.brand && (

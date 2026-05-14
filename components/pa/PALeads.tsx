@@ -60,7 +60,8 @@ function getSourceFilterForBrand(decodedBrandName: string): ((source: string) =>
   if (brand.includes('leadmagnet') || brand.includes('rtw')) {
     return (source: string) => {
       const s = source.toLowerCase();
-      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet');
+      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
+             s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
     };
   }
 
@@ -75,8 +76,7 @@ function getSourceFilterForBrand(decodedBrandName: string): ((source: string) =>
   if (brand.includes('applywizz') || brand === 'aw') {
     return (source: string) => {
       const s = source.toLowerCase();
-      return (s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz')) && 
-             !s.includes('job board') && !s.includes('jobboard');
+      return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
     };
   }
 

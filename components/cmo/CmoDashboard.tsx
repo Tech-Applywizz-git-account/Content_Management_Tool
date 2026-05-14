@@ -537,11 +537,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           >
                             {/* Desktop View Row */}
                             <div className="hidden md:grid grid-cols-12 gap-4 items-center p-6">
-                              <div className="col-span-4 font-black uppercase text-lg truncate flex items-center justify-between">
-                                <span className="truncate">{p.title}</span>
+                              <div className="col-span-4 font-black uppercase text-lg flex items-center justify-between min-w-0">
+                                <span className="truncate flex-1" title={p.title}>{p.title}</span>
                                 <button
                                   onClick={(e) => handleDeleteProject(e, p.id)}
-                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2"
+                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2 flex-shrink-0"
                                   title="Delete Script"
                                 >
                                   <Trash2 className="w-4 h-4" />
@@ -575,7 +575,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             {/* Mobile View Card */}
                             <div className="md:hidden p-4 space-y-4">
                               <div className="flex justify-between items-start">
-                                <h4 className="font-black text-base uppercase text-slate-900 leading-tight flex-1 mr-2">{p.title}</h4>
+                                <h4 className="font-black text-sm uppercase text-slate-900 leading-tight flex-1 mr-2 break-words line-clamp-2">{p.title}</h4>
                                 <button
                                   onClick={(e) => handleDeleteProject(e, p.id)}
                                   className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors mr-2"
@@ -651,11 +651,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             {isReworkInitiatedByCMO(p) ? 'REWORK' : STAGE_LABELS[p.current_stage]}
                           </span>
                         </div>
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-black text-xl text-slate-900 uppercase leading-tight">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2 min-w-0">
+                          <h4 className="font-black text-lg text-slate-900 uppercase leading-tight break-words line-clamp-2 flex-1" title={p.title}>{p.title}</h4>
                           <button
                             onClick={(e) => handleDeleteProject(e, p.id)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2 flex-shrink-0"
                             title="Delete Script"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -722,11 +722,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             PENDING AT CMO
                           </span>
                         </div>
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2 min-w-0">
+                          <h4 className="font-black text-base text-slate-900 uppercase break-words line-clamp-2 flex-1" title={p.title}>{p.title}</h4>
                           <button
                             onClick={(e) => handleDeleteProject(e, p.id)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2 flex-shrink-0"
                             title="Delete Script"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -785,11 +785,11 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                             PA BRAND
                           </span>
                         </div>
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                        <div className="flex justify-between items-start mb-2 min-w-0">
+                          <h4 className="font-black text-base text-slate-900 uppercase break-words line-clamp-2 flex-1" title={p.title}>{p.title}</h4>
                           <button
                             onClick={(e) => handleDeleteProject(e, p.id)}
-                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors ml-2 flex-shrink-0"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -855,7 +855,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                           </span>
                         </div>
                         <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                          <h4 className="font-black text-base text-slate-900 uppercase break-words line-clamp-2">{p.title}</h4>
                           <button
                             onClick={(e) => handleDeleteProject(e, p.id)}
                             className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
@@ -962,7 +962,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               </span>
                             </div>
                             <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                              <h4 className="font-black text-base text-slate-900 uppercase break-words line-clamp-2">{p.title}</h4>
                               <button
                                 onClick={(e) => handleDeleteProject(e, p.id)}
                                 className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
@@ -1046,7 +1046,7 @@ const CmoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
                               </span>
                             </div>
                             <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-black text-lg text-slate-900 uppercase">{p.title}</h4>
+                              <h4 className="font-black text-base text-slate-900 uppercase break-words line-clamp-2">{p.title}</h4>
                               <button
                                 onClick={(e) => handleDeleteProject(e, p.id)}
                                 className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"

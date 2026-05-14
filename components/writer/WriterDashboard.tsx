@@ -611,7 +611,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                 <span className="bg-[#FF4F4F] text-white px-2 py-0.5 border-2 border-black text-[10px] font-black uppercase">Rework</span>
                                             )}
                                         </div>
-                                        <h4 className="font-black text-xl text-slate-900 mb-2 uppercase leading-tight">
+                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight break-words line-clamp-2">
                                             {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
                                         </h4>
 
@@ -708,7 +708,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                                         p.assigned_to_role === Role.CMO ? 'With CMO' : 'With CEO'}
                                                     </span>
                                                 </div>
-                                                <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">
+                                                <h4 className="font-black text-base text-slate-900 mb-2 uppercase break-words line-clamp-2">
                                                     {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
                                                 </h4>
 
@@ -769,7 +769,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                                             STAGE_LABELS[p.current_stage]}
                                             </span>
                                         </div>
-                                        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase">
+                                        <h4 className="font-black text-base text-slate-900 mb-2 uppercase break-words line-clamp-2">
                                             {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
                                         </h4>
 
@@ -833,7 +833,7 @@ const WriterDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects
                                             </span>
                                         </div>
 
-                                        <h4 className="font-black text-lg uppercase mb-2">
+                                        <h4 className="font-black text-base uppercase mb-2 break-words line-clamp-2">
                                             {p.title} {p.brand && <span className="text-slate-400 text-sm ml-2">({p.brand.replace(/_/g, ' ')})</span>}
                                         </h4>
 

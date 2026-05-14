@@ -188,7 +188,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
         </div>
 
 
-        <h4 className="font-black text-lg text-slate-900 mb-2 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
+        <h4 className="font-black text-base text-slate-900 mb-2 uppercase leading-tight group-hover:text-[#0085FF] transition-colors break-words line-clamp-2">
           {(() => {
             let displayTitle = p.title;
             if (p.data?.influencer_name) {
@@ -279,7 +279,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
           </span>
         </div>
 
-        <h4 className="font-black text-base text-slate-900 mb-3 uppercase leading-tight group-hover:text-[#0085FF] transition-colors line-clamp-2">
+        <h4 className="font-black text-sm text-slate-900 mb-3 uppercase leading-tight group-hover:text-[#0085FF] transition-colors break-words line-clamp-2">
           {p.title}
           {p.brand && (
             <span className="text-slate-400 ml-2">({p.brand.replace(/_/g, ' ')})</span>

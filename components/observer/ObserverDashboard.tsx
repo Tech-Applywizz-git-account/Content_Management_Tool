@@ -262,7 +262,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                                 {projects.slice(0, 5).map((project) => (
                                     <div key={project.id} className="flex items-center justify-between border-b border-slate-200 pb-4 last:border-0">
                                         <div className="flex-1">
-                                            <h4 className="font-bold text-slate-900">{project.title}</h4>
+                                            <h4 className="font-black text-sm uppercase text-slate-900 break-words line-clamp-2">{project.title}</h4>
                                             <p className="text-sm text-slate-600">
                                                 {project.channel} • {project.current_stage}
                                             </p>
@@ -323,7 +323,7 @@ const ObserverDashboard: React.FC<ObserverDashboardProps> = ({ user, onLogout })
                                         <tbody>
                                             {filteredProjects.map((project, idx) => (
                                                 <tr key={project.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                                                    <td className="px-4 py-3 font-medium">{project.title}</td>
+                                                    <td className="px-4 py-3 font-medium text-xs break-words line-clamp-2">{project.title}</td>
                                                     <td className="px-4 py-3">
                                                         <span className="px-2 py-1 text-xs font-bold bg-purple-100 text-purple-800 rounded">
                                                             {project.channel}

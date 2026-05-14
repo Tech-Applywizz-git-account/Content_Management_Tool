@@ -41,7 +41,10 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 edited_video: influencer.edited_video || '',
                 proof_link: influencer.proof_link || '',
                 commercials: influencer.commercials || 'Paid',
-                product_received: influencer.product_received || 'no'
+                product_received: influencer.product_received || 'no',
+                payment: influencer.payment || 'no',
+                platform_type: influencer.platform_type || '',
+                payment_date: influencer.payment_date || ''
             });
         }
     }, [influencer]);
@@ -55,7 +58,10 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 instagram_profile: editForm.instagram_profile,
                 budget: editForm.budget,
                 commercials: editForm.commercials,
-                product_received: editForm.product_received
+                product_received: editForm.product_received,
+                payment: editForm.payment,
+                platform_type: editForm.platform_type,
+                payment_date: editForm.payment_date
             };
             await db.influencers.update(actualInfluencerId, updates);
             toast.success('Influencer details updated');
@@ -134,9 +140,10 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 console.error('Failed to delete story:', err);
                 toast.error('Failed to remove story');
             }
+        } else {
+            const newStories = stories.filter((_, i) => i !== index);
+            setStories(newStories);
         }
-        const newStories = stories.filter((_, i) => i !== index);
-        setStories(newStories);
     };
 
     const handleStoryChange = (index: number, field: keyof Story, value: string) => {
@@ -178,12 +185,6 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 toast.success('story added');
             }
             
-            // Skip updating influencers table with missing columns for now
-            // await db.influencers.update(actualInfluencerId, {
-            //     is_posted: true,
-            //     last_story_added_at: new Date().toISOString()
-            // });
-
             fetchInfluencerData(); // Refresh to get IDs
         } catch (error: any) {
             console.error('Error saving story:', error);
@@ -197,37 +198,45 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
     const rawBudget = influencer?.budget || '0';
     const totalAmount = parseFloat(rawBudget.toString().replace(/[^0-9.]/g, '')) || 0;
 
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-[#D946EF] animate-spin" />
+            </div>
+        );
+    }
+
     return (
-        <div className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col animate-fade-in pb-32 overflow-x-hidden">
-            {/* Premium Header */}
-            <header className="h-24 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-10 sticky top-0 z-50">
-                <div className="flex items-center gap-8">
+        <div className="min-h-screen bg-[#F8FAFC] font-sans flex flex-col animate-fade-in pb-16 overflow-x-hidden">
+            {/* Premium Header - Reduced Height */}
+            <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-50">
+                <div className="flex items-center gap-6">
                     <button 
                         onClick={onBack} 
-                        className="group relative p-3 bg-white hover:bg-slate-50 border border-black rounded-xl shadow-sm hover:shadow-md transition-all"
+                        className="group relative p-2 bg-white hover:bg-slate-50 border border-black rounded-lg shadow-sm hover:shadow-md transition-all"
                     >
-                        <ArrowLeft className="w-5 h-5 text-slate-600 group-hover:-translate-x-1 transition-transform" />
+                        <ArrowLeft className="w-4 h-4 text-slate-600 group-hover:-translate-x-0.5 transition-transform" />
                     </button>
                     <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-tighter leading-none">
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-lg font-bold text-slate-900 uppercase tracking-tighter leading-none">
                                 {influencer?.influencer_name || influencerName}
                             </h1>
-                            <div className="px-2 py-0.5 bg-pink-500 text-white text-[9px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1.5 shadow-md shadow-pink-100 border border-black">
-                                <LinkIcon className="w-3 h-3" /> {stories.filter(s => !!s.story_link).length} STORIES
+                            <div className="px-1.5 py-0.5 bg-pink-500 text-white text-[8px] font-bold uppercase tracking-wider rounded-full flex items-center gap-1 shadow-md shadow-pink-100 border border-black">
+                                <LinkIcon className="w-2.5 h-2.5" /> {stories.filter(s => !!s.story_link).length} STORIES
                             </div>
                             {influencer?.commercials === 'Barter' && (
-                                <div className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full border border-black shadow-sm flex items-center gap-1.5 ${influencer?.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
-                                    <Sparkles className="w-3 h-3" /> {influencer?.product_received === 'yes' ? 'Product Received' : 'Product Pending'}
+                                <div className={`px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-full border border-black shadow-sm flex items-center gap-1 ${influencer?.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-amber-400 text-black'}`}>
+                                    <Sparkles className="w-2.5 h-2.5" /> {influencer?.product_received === 'yes' ? 'Received' : 'Pending'}
                                 </div>
                             )}
                             {user.role !== Role.CMO && (
                                 <button 
                                     onClick={() => setIsEditingInfluencer(true)}
-                                    className="p-2 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-slate-900"
+                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-all text-slate-400 hover:text-slate-900"
                                     title="Edit Details"
                                 >
-                                    <Save className="w-4 h-4" />
+                                    <Save className="w-3.5 h-3.5" />
                                 </button>
                             )}
                         </div>
@@ -235,84 +244,118 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                 </div>
             </header>
 
+            {/* Modal - Reduced Padding */}
             {isEditingInfluencer && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-fade-in">
-                    <div className="bg-white border-4 border-black w-full max-w-lg rounded-[2.5rem] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-scale-in">
-                        <div className="p-8 border-b-4 border-black bg-slate-50 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white border-2 border-black rounded-xl flex items-center justify-center shadow-sm">
-                                    <UserIcon className="w-6 h-6 text-indigo-600" />
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white border-2 border-black w-full max-w-lg rounded-[1.5rem] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-scale-in">
+                        <div className="p-5 border-b-2 border-black bg-slate-50 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white border border-black rounded-lg flex items-center justify-center shadow-sm">
+                                    <UserIcon className="w-5 h-5 text-indigo-600" />
                                 </div>
-                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Edit Influencer</h3>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Edit Influencer</h3>
                             </div>
-                            <button onClick={() => setIsEditingInfluencer(false)} className="p-2 hover:bg-slate-200 rounded-lg transition-all"><X className="w-6 h-6" /></button>
+                            <button onClick={() => setIsEditingInfluencer(false)} className="p-1.5 hover:bg-slate-200 rounded-lg transition-all"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="p-8 space-y-6">
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Influencer Name</label>
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Influencer Name</label>
                                     <input 
                                         type="text" 
                                         value={editForm.influencer_name}
                                         onChange={(e) => setEditForm({...editForm, influencer_name: e.target.value})}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Instagram Profile</label>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Instagram Profile</label>
                                     <input 
                                         type="text" 
                                         value={editForm.instagram_profile}
                                         onChange={(e) => setEditForm({...editForm, instagram_profile: e.target.value})}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
                                     />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Collab Type</label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Collab Type</label>
                                     <select 
                                         value={editForm.commercials}
                                         onChange={(e) => setEditForm({...editForm, commercials: e.target.value})}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
                                     >
                                         <option value="Paid">Paid</option>
                                         <option value="Barter">Barter</option>
                                     </select>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-2">Budget</label>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Budget</label>
                                     <input 
                                         type="text" 
                                         value={editForm.budget}
                                         onChange={(e) => setEditForm({...editForm, budget: e.target.value})}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-bold text-sm focus:border-indigo-500 outline-none"
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
                                     />
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Payment Status</label>
+                                    <select 
+                                        value={editForm.payment}
+                                        onChange={(e) => setEditForm({...editForm, payment: e.target.value})}
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
+                                    >
+                                        <option value="no">Pending</option>
+                                        <option value="yes">Cleared</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Platform</label>
+                                    <input 
+                                        type="text" 
+                                        value={editForm.platform_type}
+                                        onChange={(e) => setEditForm({...editForm, platform_type: e.target.value})}
+                                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest pl-2">Payment Date</label>
+                                <input 
+                                    type="date" 
+                                    value={editForm.payment_date}
+                                    onChange={(e) => setEditForm({...editForm, payment_date: e.target.value})}
+                                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-xs focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+
                             {editForm.commercials === 'Barter' && (
-                                <div className="p-6 bg-amber-50 border-4 border-black rounded-3xl space-y-4">
+                                <div className="p-4 bg-amber-50 border-2 border-black rounded-2xl space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-white border-2 border-black rounded-xl flex items-center justify-center">
-                                                <Sparkles className="w-5 h-5 text-amber-500" />
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-white border border-black rounded-lg flex items-center justify-center">
+                                                <Sparkles className="w-4 h-4 text-amber-500" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Barter Logistics</p>
-                                                <p className="text-sm font-black text-slate-900 uppercase">Product Received?</p>
+                                                <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest">Logistics</p>
+                                                <p className="text-[10px] font-black text-slate-900 uppercase">Received?</p>
                                             </div>
                                         </div>
-                                        <div className="flex bg-white border-2 border-black rounded-xl p-1">
+                                        <div className="flex bg-white border border-black rounded-lg p-0.5">
                                             <button 
                                                 onClick={() => setEditForm({...editForm, product_received: 'yes'})}
-                                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${editForm.product_received === 'yes' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${editForm.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}
                                             >
                                                 Yes
                                             </button>
                                             <button 
                                                 onClick={() => setEditForm({...editForm, product_received: 'no'})}
-                                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${editForm.product_received === 'no' ? 'bg-red-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                                className={`px-3 py-1.5 rounded-md text-[8px] font-black uppercase transition-all ${editForm.product_received === 'no' ? 'bg-red-500 text-white' : 'text-slate-400'}`}
                                             >
                                                 No
                                             </button>
@@ -324,77 +367,65 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                             <button 
                                 onClick={handleUpdateInfluencer}
                                 disabled={saving}
-                                className="w-full py-5 bg-slate-900 text-white font-black uppercase text-xs rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all flex items-center justify-center gap-3 mt-4"
+                                className="w-full py-4 bg-slate-900 text-white font-black uppercase text-[10px] rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:shadow-none transition-all flex items-center justify-center gap-2 mt-2"
                             >
-                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> Save Influencer Profile</>}
+                                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Save className="w-3.5 h-3.5" /> Save Profile</>}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="max-w-6xl mx-auto w-full p-6 space-y-6">
-                {/* Visual KPI Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="max-w-5xl mx-auto w-full p-4 space-y-4">
+                {/* Visual KPI Section - Tightened */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {/* Stories Count */}
-                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-blue-50/50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-1.5">
-                            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                                <LinkIcon className="w-5 h-5 text-blue-600" />
+                    <div className="group p-3 bg-white border-2 border-black rounded-xl hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-0.5px] transition-all relative overflow-hidden">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <LinkIcon className="w-4 h-4 text-blue-600" />
                             </div>
                             <div>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Live Stories Posted</p>
-                                <div className="flex items-baseline gap-1.5">
-                                    <span className="text-2xl font-black text-slate-900 tracking-tighter">
+                                <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Live Stories</p>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-xl font-black text-slate-900 tracking-tighter">
                                         {stories.filter(s => !!s.story_link).length}
                                     </span>
-                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Stories</span>
+                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wider">Posted</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Total Budget */}
-                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-50/50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-1.5">
-                            <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center">
-                                <DollarSign className="w-5 h-5 text-emerald-600" />
+                    <div className="group p-3 bg-white border-2 border-black rounded-xl hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-0.5px] transition-all relative overflow-hidden">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <DollarSign className="w-4 h-4 text-emerald-600" />
                             </div>
                             <div>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Total Budget</p>
-                                    <span className="text-2xl font-black text-slate-900 tracking-tighter">
-                                        {totalAmount.toLocaleString()}
-                                    </span>
+                                <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Budget</p>
+                                <span className="text-xl font-black text-slate-900 tracking-tighter">
+                                    {totalAmount.toLocaleString()}
+                                </span>
                             </div>
                         </div>
                     </div>
 
                     {/* Payment Hub */}
-                    <div className="group p-4 bg-white border-4 border-black rounded-xl hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px] transition-all relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-20 h-20 bg-purple-50 rounded-full -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 space-y-1.5">
-                            <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
-                                <CreditCard className="w-5 h-5 text-purple-600" />
+                    <div className="group p-3 bg-white border-2 border-black rounded-xl hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-0.5px] transition-all relative overflow-hidden">
+                        <div className="relative z-10 flex items-center gap-3">
+                            <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <CreditCard className="w-4 h-4 text-purple-600" />
                             </div>
-                            <div>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Payout Status</p>
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-2xl font-black uppercase tracking-tight ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                            {influencer?.payment === 'yes' ? 'Cleared' : 'Pending'}
-                                        </span>
-                                        {influencer?.payment === 'yes' && (
-                                            <div className="px-2 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-200 text-[8px] font-bold rounded-lg uppercase tracking-wider">
-                                                Verified
-                                            </div>
-                                        )}
-                                    </div>
-                                    {influencer?.payment === 'yes' && influencer?.platform_type && (
-                                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                            Via <span className="text-slate-900 font-bold">{influencer.platform_type}</span>
-                                        </p>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Status</p>
+                                <div className="flex items-center gap-1.5 overflow-hidden">
+                                    <span className={`text-xl font-black uppercase tracking-tight truncate ${influencer?.payment === 'yes' ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                        {influencer?.payment === 'yes' ? 'Cleared' : 'Pending'}
+                                    </span>
+                                    {influencer?.payment === 'yes' && (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                                     )}
                                 </div>
                             </div>
@@ -402,72 +433,69 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                     </div>
                 </div>
 
-                {/* Management Hub */}
-                <div className="bg-white border-4 border-black rounded-[2.5rem] shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-                    <div className="p-6 border-b-4 border-black bg-slate-50 flex items-center justify-between">
-                        <div className="flex items-center gap-6">
-                            <div className="w-14 h-14 bg-white border border-black shadow-sm rounded-2xl flex items-center justify-center">
-                                <Sparkles className="w-7 h-7 text-[#D946EF]" />
+                {/* Management Hub - Compact Header */}
+                <div className="bg-white border-2 border-black rounded-[1.5rem] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+                    <div className="p-4 border-b-2 border-black bg-slate-50 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-white border border-black shadow-sm rounded-xl flex items-center justify-center">
+                                <Sparkles className="w-5 h-5 text-[#D946EF]" />
                             </div>
                             <div>
-                                <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Content Inventory</h3>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Live Story Link Registry</p>
+                                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-none">Inventory</h3>
+                                <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Story Registry</p>
                             </div>
                         </div>
                         {user.role !== Role.CMO && (
                             <button 
                                 onClick={handleAddStory} 
-                                className="px-8 py-3.5 bg-slate-900 text-white border border-black rounded-2xl font-black uppercase text-xs shadow-lg shadow-slate-200 hover:bg-black hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group/btn"
+                                className="px-5 py-2 bg-slate-900 text-white border border-black rounded-xl font-black uppercase text-[9px] shadow-md hover:bg-black hover:scale-102 active:scale-98 transition-all flex items-center gap-2 group/btn"
                             >
-                                <div className="w-6 h-6 bg-[#D946EF] rounded-lg flex items-center justify-center group-hover/btn:rotate-90 transition-transform">
-                                    <Plus className="w-4 h-4 text-white" />
+                                <div className="w-5 h-5 bg-[#D946EF] rounded-md flex items-center justify-center group-hover/btn:rotate-90 transition-transform">
+                                    <Plus className="w-3 h-3 text-white" />
                                 </div>
-                                Add New Story
+                                Add Story
                             </button>
                         )}
                     </div>
 
-                    <div className="p-6 space-y-4 bg-white">
+                    <div className="p-4 space-y-3 bg-white">
                         {stories.length === 0 ? (
-                            <div className="py-16 text-center space-y-4">
-                                <div className="w-24 h-24 bg-slate-50 border-4 border-dashed border-slate-200 rounded-[2rem] flex items-center justify-center mx-auto animate-pulse">
-                                    <LinkIcon className="w-10 h-10 text-slate-200" />
+                            <div className="py-10 text-center space-y-3">
+                                <div className="w-16 h-16 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center mx-auto animate-pulse">
+                                    <LinkIcon className="w-6 h-6 text-slate-200" />
                                 </div>
-                                <div className="space-y-2">
-                                    <p className="text-2xl font-black uppercase text-slate-300">Inventory Empty</p>
-                                    <p className="text-xs font-bold text-slate-300 uppercase tracking-[0.2em]">Deploy your first story link to start tracking</p>
-                                </div>
+                                <p className="text-[10px] font-black uppercase text-slate-300">Inventory Empty</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 gap-4">
+                            <div className="grid grid-cols-1 gap-3">
                                 {stories.slice().reverse().map((story, reversedIndex) => {
                                     const originalIndex = (stories.length - 1) - reversedIndex;
                                     const chronologicalIndex = originalIndex + 1;
                                     return (
                                         <div 
                                             key={story.id || originalIndex} 
-                                            className="group p-4 bg-white border border-black rounded-2xl relative hover:shadow-lg hover:bg-slate-50 transition-all"
+                                            className="group p-3 bg-white border border-black rounded-xl relative hover:shadow-md transition-all"
                                         >
-                                            <div className="absolute -top-3 left-6 px-4 py-1 bg-[#D946EF] text-white font-bold text-[10px] uppercase tracking-widest rounded-full shadow-lg shadow-pink-200">
+                                            <div className="absolute -top-2 left-4 px-2 py-0.5 bg-[#D946EF] text-white font-bold text-[7px] uppercase tracking-widest rounded-full shadow-md shadow-pink-200">
                                                 Story-{chronologicalIndex}
                                             </div>
                                         
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-1">
-                                            <div className="space-y-2">
-                                                <label className="text-[11px] font-black uppercase text-slate-400 pl-2 flex items-center gap-2">
-                                                    <Calendar className="w-4 h-4 text-[#D946EF]" /> Story Date
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400 pl-1 flex items-center gap-1.5">
+                                                    <Calendar className="w-3 h-3 text-[#D946EF]" /> Date
                                                 </label>
                                                 <input 
                                                     type="date" 
                                                     value={story.story_date}
                                                     onChange={(e) => handleStoryChange(originalIndex, 'story_date', e.target.value)}
                                                     disabled={user.role === Role.CMO}
-                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed"
+                                                    className="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg font-bold text-[11px] focus:bg-white outline-none transition-all disabled:opacity-75"
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[11px] font-black uppercase text-slate-400 pl-2 flex items-center gap-2">
-                                                    <LinkIcon className="w-4 h-4 text-blue-500" /> Story Link
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase text-slate-400 pl-1 flex items-center gap-1.5">
+                                                    <LinkIcon className="w-3 h-3 text-blue-500" /> Link
                                                 </label>
                                                 <div className="relative">
                                                     <input 
@@ -475,51 +503,48 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
                                                         value={story.story_link}
                                                         onChange={(e) => handleStoryChange(originalIndex, 'story_link', e.target.value)}
                                                         disabled={user.role === Role.CMO}
-                                                        placeholder="https://instagram.com/stories/..."
-                                                        className="w-full bg-slate-50 border border-black p-3 pr-16 rounded-xl font-bold text-sm outline-none transition-all disabled:opacity-75 disabled:cursor-not-allowed"
+                                                        placeholder="Paste Instagram link..."
+                                                        className="w-full bg-slate-50 border border-slate-200 p-2 pr-10 rounded-lg font-bold text-[11px] outline-none transition-all disabled:opacity-75"
                                                     />
                                                         {story.story_link && (
                                                             <a 
                                                                 href={story.story_link} 
                                                                 target="_blank" 
                                                                 rel="noreferrer" 
-                                                                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400 hover:text-black transition-all flex items-center justify-center"
-                                                                title="Open Link"
+                                                                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 hover:text-black transition-all flex items-center justify-center"
                                                             >
-                                                                <ExternalLink className="w-4 h-4" />
+                                                                <ExternalLink className="w-3 h-3" />
                                                             </a>
                                                         )}
                                                 </div>
                                             </div>
-                                            <div className="space-y-3 lg:col-span-2">
-                                                <label className="text-[11px] font-black uppercase text-slate-400 pl-2 flex items-center gap-2">
-                                                    <Sparkles className="w-4 h-4 text-yellow-500" /> Story Caption
+                                            <div className="space-y-1 lg:col-span-2">
+                                                <label className="text-[9px] font-black uppercase text-slate-400 pl-1 flex items-center gap-1.5">
+                                                    <Sparkles className="w-3 h-3 text-yellow-500" /> Caption
                                                 </label>
                                                 <textarea 
                                                     value={story.story_caption || ''}
                                                     onChange={(e) => handleStoryChange(originalIndex, 'story_caption', e.target.value)}
                                                     disabled={user.role === Role.CMO}
-                                                    placeholder="Enter story caption here..."
-                                                    className="w-full bg-slate-50 border border-black p-3 rounded-xl font-bold text-sm focus:bg-white outline-none transition-all resize-none h-16 disabled:opacity-75 disabled:cursor-not-allowed"
+                                                    placeholder="Enter story caption..."
+                                                    className="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg font-bold text-[11px] focus:bg-white outline-none transition-all resize-none h-12 disabled:opacity-75"
                                                 />
                                             </div>
                                         </div>
 
                                         {user.role !== Role.CMO && (
-                                            <div className="flex justify-end gap-2 mt-4">
+                                            <div className="flex justify-end gap-1.5 mt-3">
                                                 <button 
                                                     onClick={() => handleRemoveStory(originalIndex)} 
-                                                    className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 border border-black rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                                                    title="Remove Story"
+                                                    className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-600 border border-slate-200 rounded-lg hover:bg-red-600 hover:text-white transition-all"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                                 <button 
                                                     onClick={() => handleSaveSingle(originalIndex)} 
-                                                    className="w-10 h-10 flex items-center justify-center bg-emerald-50 text-emerald-600 border border-black rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                                                    title={story.id ? 'Update Story' : 'Save Story'}
+                                                    className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 border border-slate-200 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
                                                 >
-                                                    <Save className="w-4 h-4" />
+                                                    <Save className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
                                         )}
@@ -536,5 +561,3 @@ const PAStoryInfluencerDetails: React.FC<Props> = ({ influencerId, brandName, in
 };
 
 export default PAStoryInfluencerDetails;
-
-

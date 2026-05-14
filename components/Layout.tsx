@@ -123,19 +123,18 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   <span className="truncate">Overview</span>
                 </button>
               )}
-              {/* Leads - Visible for roles except PARTNER_ASSOCIATE */}
-              {user.role !== Role.PARTNER_ASSOCIATE && !user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) && (
-                <button
-                  onClick={() => handleNavigate('leads')}
-                  className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'leads'
-                    ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                    : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
-                    }`}
-                >
-                  <Users className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">Leads</span>
-                </button>
-              )}
+              {/* Leads - Visible for all roles */}
+              <button
+                onClick={() => handleNavigate('leads')}
+                className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'leads'
+                  ? 'bg-[#D946EF] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                  : 'bg-white text-black border-transparent hover:border-black hover:bg-slate-50'
+                  }`}
+              >
+                <Users className="w-5 h-5 flex-shrink-0" />
+                <span className="truncate">Leads</span>
+              </button>
+
 
               {/* Final Review - Only for CMO */}
               {user.role === Role.CMO && (
@@ -303,16 +302,14 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
 
 
 
-          {/* Mobile Leads - Visible for roles except PARTNER_ASSOCIATE */}
-          {user.role !== Role.PARTNER_ASSOCIATE && !user.secondary_roles?.includes(Role.PARTNER_ASSOCIATE) && (
-            <button
-              onClick={() => { handleNavigate('leads'); setIsMobileMenuOpen(false); }}
-              className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'leads' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
-            >
-              <Users className="w-5 h-5" />
-              <span>Leads</span>
-            </button>
-          )}
+          {/* Mobile Leads */}
+          <button
+            onClick={() => { handleNavigate('leads'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'leads' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
+          >
+            <Users className="w-5 h-5" />
+            <span>Leads</span>
+          </button>
 
           {user.role === Role.CMO && (
             <>
