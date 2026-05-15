@@ -41,7 +41,7 @@ import {
 import { Project, WorkflowStage, TaskStatus, STAGE_LABELS, Channel, Role } from '../../types';
 import { format } from 'date-fns';
 import { supabase } from '../../src/integrations/supabase/client';
-
+import { toast } from 'sonner';
 interface PAOverviewProps {
     user: any;
     allProjects: Project[];
@@ -723,16 +723,6 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
         </div>
     );
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-[#0085FF] border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Syncing Pipeline...</p>
-                </div>
-            </div>
-        );
-    }
 
     if (viewMode === 'DETAILS' && selectedProjectInternal) {
         return renderProjectDetails(selectedProjectInternal);

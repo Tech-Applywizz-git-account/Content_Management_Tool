@@ -10,7 +10,7 @@ interface BrandPopoverProps {
 const BrandPopover: React.FC<BrandPopoverProps> = ({ brands, open, onSelectBrand }) => {
   return (
     <div
-      className={`absolute left-0 top-full z-20 mt-3 w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 transition-all duration-200 ${
+      className={`absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 transition-all duration-200 ${
         open ? 'opacity-100 scale-100' : 'pointer-events-none opacity-0 scale-95'
       }`}
     >
