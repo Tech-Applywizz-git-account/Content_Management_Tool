@@ -131,7 +131,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
       const existing = rows.get(key);
       const brandName = (inf.brand_name || 'Unassigned').trim();
       const brandType = (inf.brand_type || 'UNKNOWN').toUpperCase();
-      const instagram_handle = getInstagramHandle(inf.influencer_links || [], inf.instagram_profile || '');
+      const instagram_handle = inf.instagram_profile || '';
       const budgetValue = parseBudgetValue(inf.budget || inf.commercials || 0);
 
       if (!existing) {
@@ -159,7 +159,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
       if (brandType && !existing.brand_types.includes(brandType)) {
         existing.brand_types.push(brandType);
       }
-      if (!existing.instagram_handle || existing.instagram_handle === '@unknown') {
+      if (!existing.instagram_handle) {
         existing.instagram_handle = instagram_handle;
       }
     });
