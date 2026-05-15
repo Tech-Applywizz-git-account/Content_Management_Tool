@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { User, WorkflowStage, Role, Project } from '../../types';
 import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
-import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw, Plus } from 'lucide-react';
+import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw, Plus, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 import { supabase } from '../../src/integrations/supabase/client';
 
@@ -98,10 +99,47 @@ function getSourceFilterForBrand(decodedBrandName: string): ((source: string) =>
 }
 
 const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
-  const { brandName } = useParams<{ brandName: string }>();
+  const { brandName } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightInfluencer = searchParams.get('highlightInfluencer');
+  const highlightLead = searchParams.get('highlightLead');
+  
+  const decodedBrandName = brandName ? decodeURIComponent(brandName) : '';
+
   const [influencers, setInfluencers] = useState<any[]>([]);
   const [brandProjects, setBrandProjects] = useState<Project[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  
+  // Scroll to highlighted influencer or lead
+  useEffect(() => {
+    if (!isDataLoading) {
+      if (highlightInfluencer) {
+        setTimeout(() => {
+          const element = document.getElementById(`influencer-row-${highlightInfluencer}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('bg-indigo-50', 'ring-2', 'ring-indigo-500', 'ring-inset');
+            setTimeout(() => {
+              element.classList.remove('bg-indigo-50', 'ring-2', 'ring-indigo-500', 'ring-inset');
+            }, 3000);
+          }
+        }, 500);
+      } else if (highlightLead) {
+        setTimeout(() => {
+          const element = document.getElementById(`lead-row-${highlightLead}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            element.classList.add('bg-emerald-50', 'ring-2', 'ring-emerald-500', 'ring-inset');
+            setTimeout(() => {
+              element.classList.remove('bg-emerald-50', 'ring-2', 'ring-emerald-500', 'ring-inset');
+            }, 3000);
+          }
+        }, 500);
+      }
+    }
+  }, [highlightInfluencer, highlightLead, isDataLoading]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'SCRIPT_SENT' | 'FOOTAGE_RECEIVED' | 'EDITED_VIDEO' | 'APPROVE_PENDING' | 'PROOF_POSTED' | 'APPROVED' | 'BUDGET' | 'POSTED_STORIES'>('ALL');
@@ -897,11 +935,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     }
   };
 
+  const location = useLocation();
+  const incomingTab = (location.state as any)?.fromTab;
+  const normalizedTab = incomingTab === 'STORY' ? 'stories' : 'reels';
+
   return (
     <div className="animate-fade-in w-full px-4 md:px-8 py-6 font-sans pb-20">
       {/* Header Area */}
       <div className="mb-6">
-        <button onClick={() => navigate(`/${user.role.toLowerCase()}/brands`)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-black mb-4 transition-colors group">
+        <button onClick={() => navigate(`/partner_associate/brands/${normalizedTab}`)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-black mb-4 transition-colors group">
           <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
           <span>Back to Brands</span>
         </button>
@@ -1288,7 +1330,11 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 </tr>
               ) : filteredInfluencers.length > 0 ? (
                 filteredInfluencers.map((inf, index) => (
-                  <tr key={inf.id} className="hover:bg-slate-50 transition-colors group">
+                  <tr 
+                    key={inf.id} 
+                    id={`influencer-row-${inf.influencer_name}`}
+                    className="hover:bg-slate-50 transition-colors group"
+                  >
                     <td className="px-4 py-1 font-bold text-slate-400 text-xs whitespace-nowrap">{(index + 1).toString().padStart(2, '0')}</td>
                     {user.role !== Role.CMO && (
                       <td className="px-4 py-1"><button onClick={() => handleEditClick(inf)} className="p-1.5 bg-transparent text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Influencer"><Edit2 className="w-3.5 h-3.5" /></button></td>

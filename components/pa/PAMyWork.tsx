@@ -101,7 +101,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
     }, [projects]);
 
     const handleInfluencerClick = (influencerName: string) => {
-        // Navigate to the influencer portfolio view (check both data and metadata)
+        // Navigate to the influencer collab hub view (check both data and metadata)
         const influencerProjects = projects.filter(p => {
             const pData = typeof p.data === 'string' ? JSON.parse(p.data) : p.data;
             const pMetadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : p.metadata;
@@ -113,7 +113,7 @@ const PAMyWork: React.FC<PAMyWorkProps> = ({ user, projects, onReview }) => {
         });
 
         if (influencerProjects.length > 0) {
-            // Navigate to the NEW separate portfolio page using the first project as reference
+            // Navigate to the NEW separate collab hub page using the first project as reference
             navigate(`/partner_associate/influencer/${influencerProjects[0].id}`);
         }
     };

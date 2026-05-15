@@ -36,7 +36,10 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
   const [searchParams] = useSearchParams();
   const isFromCeoApproved = searchParams.get('source') === 'ceo-approved';
   const isFromOverview = searchParams.get('source') === 'overview';
-  const activeView = location.pathname.split('/').pop() || 'dashboard';
+  const segments = location.pathname.split('/').filter(Boolean);
+  const activeView = segments.includes('brands') 
+    ? (segments[segments.indexOf('brands') + 1] || 'brands')
+    : (segments[segments.length - 1] || 'dashboard');
 
   // Delete state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -671,8 +674,8 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
       );
     }
 
-    if (activeView === 'brands') {
-      return <PABrands user={user} />;
+    if (activeView === 'brands' || activeView === 'reels' || activeView === 'stories') {
+      return <PABrands user={user} category={activeView === 'brands' ? null : (activeView === 'reels' ? 'REEL' : 'STORY')} />;
     }
 
     if (activeView === 'create-brand') {

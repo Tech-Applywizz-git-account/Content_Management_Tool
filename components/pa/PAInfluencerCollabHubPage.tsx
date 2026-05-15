@@ -2,17 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Project, User, WorkflowStage } from '../../types';
 import { supabase } from '../../src/integrations/supabase/client';
-import PAInfluencerPortfolio from './PAInfluencerPortfolio';
+import PAInfluencerCollabHub from './PAInfluencerCollabHub';
 import PAStoryInfluencerDetails from './PAStoryInfluencerDetails';
 import { SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
 
-interface PAInfluencerPortfolioPageProps {
+interface PAInfluencerCollabHubPageProps {
     user: User;
     onLogout: () => void;
     refreshData: (user: User, force?: boolean) => Promise<void>;
 }
 
-const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ user, refreshData }) => {
+const PAInfluencerCollabHubPage: React.FC<PAInfluencerCollabHubPageProps> = ({ user, refreshData }) => {
     const { projectId } = useParams<{ projectId: string }>();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -203,7 +203,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
             setInfluencerProjects(matchingProjects as Project[]);
         } catch (err) {
             console.error('Error fetching project data:', err);
-            setError('Failed to load influencer portfolio.');
+            setError('Failed to load brand hub.');
             setLoading(false);
         }
     }, [projectId, influencerNameParam, influencerIdParam]);
@@ -216,7 +216,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                console.log('Window visible, refreshing portfolio data...');
+                console.log('Window visible, refreshing collab hub data...');
                 fetchAllData();
             }
         };
@@ -224,7 +224,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
         document.addEventListener('visibilitychange', handleVisibilityChange);
         
         const handleFocus = () => {
-            console.log('Window focused, refreshing portfolio data...');
+            console.log('Window focused, refreshing collab hub data...');
             fetchAllData();
         };
         
@@ -283,7 +283,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
                     <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <span className="text-3xl">⚠️</span>
                     </div>
-                    <h2 className="text-3xl font-black uppercase text-slate-900 mb-2">Portfolio Error</h2>
+                    <h2 className="text-3xl font-black uppercase text-slate-900 mb-2">Brand Hub Error</h2>
                     <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mb-8">{error || 'Influencer data not found.'}</p>
                     <button
                         onClick={handleBack}
@@ -297,7 +297,7 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     }
 
     return (
-        <PAInfluencerPortfolio
+        <PAInfluencerCollabHub
             project={currentProject}
             allInfluencerProjects={influencerProjects}
             user={user}
@@ -308,4 +308,4 @@ const PAInfluencerPortfolioPage: React.FC<PAInfluencerPortfolioPageProps> = ({ u
     );
 };
 
-export default PAInfluencerPortfolioPage;
+export default PAInfluencerCollabHubPage;

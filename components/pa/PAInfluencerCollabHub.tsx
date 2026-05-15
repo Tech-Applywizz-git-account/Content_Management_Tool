@@ -15,7 +15,7 @@ interface Props {
     initialInfluencer?: any;
 }
 
-const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete, initialInfluencer }) => {
+const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects = [], user, onBack, onComplete, initialInfluencer }) => {
     const [influencerName, setInfluencerName] = useState(initialInfluencer?.influencer_name || project.data?.influencer_name || (project as any).influencer_name || '');
     const [influencerEmail, setInfluencerEmail] = useState(initialInfluencer?.influencer_email || project.data?.influencer_email || (project as any).influencer_email || '');
     const influencerDisplayName = influencerName || 'Influencer';
@@ -294,7 +294,7 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
             <header className="h-16 bg-white/90 backdrop-blur-md border-b-2 border-indigo-50 flex items-center justify-between px-8 sticky top-0 z-50">
                 <div className="flex items-center space-x-6">
                     <button onClick={onBack} className="p-2.5 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-600 rounded-xl transition-all"><ArrowLeft className="w-5 h-5" /></button>
-                    <div><h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">Partnership Hub</h1><p className="text-[10px] font-bold text-indigo-500 uppercase mt-1">Managed by {user.full_name}</p></div>
+                    <div><h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">Brand Hub</h1><p className="text-[10px] font-bold text-indigo-500 uppercase mt-1">Managed by {user.full_name}</p></div>
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="px-4 py-1.5 bg-slate-100 rounded-full border text-[10px] font-bold text-slate-600 uppercase">{project.brand || project.data?.brand}</div>
@@ -491,4 +491,4 @@ const PAInfluencerPortfolio: React.FC<Props> = ({ project, allInfluencerProjects
     );
 };
 
-export default PAInfluencerPortfolio;
+export default PAInfluencerCollabHub;

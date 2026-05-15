@@ -169,7 +169,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                     data: {
                         project_id: targetProjectId,
                         actor_name: user.full_name || 'PA',
-                        comment: 'Campaign launched by PA from Partnership Hub',
+                        comment: 'Campaign launched by PA from Collab Hub',
                         content_description: contentDescription || (project.data as any)?.brief || 'Script content for review',
                         script_content: scriptContent,
                         influencer_name: influencerName
@@ -567,7 +567,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                 </div>
                                             </button>
                                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight text-center mt-6">
-                                                {isSending ? 'PROCESSING...' : 'SENDS CLIENT SCRIPT AUTOMATICALLY'}
+                                                {isSending ? 'PROCESSING...' : 'SENDS INFLUENCER SCRIPT AUTOMATICALLY'}
                                             </p>
                                         </div>
                                     </div>

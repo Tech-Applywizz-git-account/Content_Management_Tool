@@ -75,7 +75,7 @@ const PAProjectDetailPage: React.FC<PAProjectDetailPageProps> = ({ user, project
             <div className="min-h-screen flex items-center justify-center bg-white">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-2 border-slate-100 border-t-[#0085FF] rounded-full animate-spin"></div>
-                    <p className="font-black uppercase text-[10px] tracking-widest text-slate-400">Loading Influencer Hub...</p>
+                    <p className="font-black uppercase text-[10px] tracking-widest text-slate-400">Loading Brand Hub...</p>
                 </div>
             </div>
         );

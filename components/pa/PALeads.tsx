@@ -125,9 +125,9 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
 
       const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
       const urlObj = new URL(rawUrl);
-      urlObj.search = ''; 
       urlObj.searchParams.set('startDate', start);
       urlObj.searchParams.set('endDate', end);
+      urlObj.searchParams.set('limit', '20000');
 
       const response = await fetch(urlObj.toString());
       if (!response.ok) throw new Error(`API Error: ${response.status}`);
@@ -135,9 +135,9 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
       const result = await response.json();
       const rawLeads = result.data || (Array.isArray(result) ? result : []);
       
-      // Filter leads if brand context exists
+      // Filter leads if specific brand context exists
       let leadData = rawLeads;
-      if (brandFilter) {
+      if (brandFilter && brandFilter !== 'ALL') {
         const sourceFilter = getSourceFilterForBrand(brandFilter);
         if (sourceFilter) {
           leadData = rawLeads.filter((l: any) => sourceFilter(l.source || ''));

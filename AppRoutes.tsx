@@ -37,7 +37,7 @@ import Layout from './components/Layout';
 import CeoProjectDetailPage from './components/ceo/CeoProjectDetailPage';
 import CineProjectDetailPage from './components/cine/CineProjectDetailPage';
 import PAProjectDetailPage from './components/pa/PAProjectDetailPage';
-import PAInfluencerPortfolioPage from './components/pa/PAInfluencerPortfolioPage';
+import PAInfluencerCollabHubPage from './components/pa/PAInfluencerCollabHubPage';
 import Auth from './components/Auth';
 import SetPassword from './components/SetPassword';
 import PABrandDetails from './components/pa/PABrandDetails';
@@ -135,6 +135,11 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                                 <PABrands user={user!} />
                             </Layout>
                         } />
+                        <Route path="brands/:category" element={
+                            <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands">
+                                <PABrands user={user!} />
+                            </Layout>
+                        } />
                         <Route path="brand-details/:brandName" element={
                             <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands" hideSidebar={true}>
                                 <PABrandDetails user={user!} />
@@ -142,7 +147,7 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                         } />
                         <Route path="influencer/:projectId" element={
                             <Layout user={user!} onLogout={onLogout} onOpenCreate={() => {}} activeView="brands" hideSidebar={true}>
-                                <PAInfluencerPortfolioPage user={user!} onLogout={onLogout} refreshData={refreshData} />
+                                <PAInfluencerCollabHubPage user={user!} onLogout={onLogout} refreshData={refreshData} />
                             </Layout>
                         } />
                         <Route path="leads" element={<PALeads user={user!} />} />
@@ -229,12 +234,13 @@ const AppRoutes: React.FC<AppRoutesProps> = ({
                 <ProtectedRoute user={user} isRestoringSession={isRestoringSession} allowedRoles={[Role.PARTNER_ASSOCIATE]}>
                     <Routes>
                         <Route path="project/:projectId" element={<PAProjectDetailPage user={user!} onLogout={onLogout} projects={[...projects.inbox, ...projects.history, ...cmoAllProjects]} refreshData={refreshData} />} />
-                        <Route path="influencer/:projectId" element={<PAInfluencerPortfolioPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
+                        <Route path="influencer/:projectId" element={<PAInfluencerCollabHubPage user={user!} onLogout={onLogout} refreshData={refreshData} />} />
                         <Route path="review/:projectId" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
                         <Route path="scripts" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
                         {/* PALeads - Live Monitoring Dashboard */}
                         <Route path="leads" element={<PALeads user={user!} />} />
                         <Route path="brand-details/:brandName" element={<PABrandDetails user={user!} />} />
+                        <Route path="brands/:category" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
                         <Route path="*" element={<PADashboard user={user!} onLogout={onLogout} allProjects={cmoAllProjects} refreshData={refreshData} />} />
                     </Routes>
                 </ProtectedRoute>
