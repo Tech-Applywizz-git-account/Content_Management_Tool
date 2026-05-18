@@ -804,6 +804,43 @@ export const normalizePABrandName = (value: string | null | undefined = '') => {
     return raw.replace(/[()_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
+export const getDynamicSourceFilterForBrand = (brandName: string, allBrands: any[]): ((source: string) => boolean) | null => {
+    const rawBrandName = brandName || '';
+    const compact = rawBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 1. Check if the brand has dynamic leads tracking configured in the database
+    const dbBrand = allBrands.find(b => normalizePABrandName(b.brand_name) === normalizePABrandName(rawBrandName));
+    if (dbBrand?.has_leads && Array.isArray(dbBrand.lead_sources) && dbBrand.lead_sources.length > 0) {
+        // Return a filter that checks if the lead source matches any of the configured lead_sources
+        return (source: string) => {
+            const s = (source || '').toLowerCase();
+            return dbBrand.lead_sources.some((configuredSource: string) => 
+                s.includes(configuredSource.toLowerCase().trim())
+            );
+        };
+    }
+
+    // 2. Fallback to system hardcoded brands
+    if (compact.includes('jobboard')) {
+        return (s: string) => { const l = s.toLowerCase(); return l.includes('jobboard') || l.includes('job board'); };
+    }
+    if (compact.includes('leadmagnet') || compact.includes('rtw')) {
+        return (s: string) => { const l = s.toLowerCase(); return l.includes('rtw') || l.includes('lead magnet') || l.includes('leadmagnet') || l.includes('digital resume') || l.includes('resume'); };
+    }
+    if (compact.includes('careeridentifier') || compact.includes('cir')) {
+        return (s: string) => { const l = s.toLowerCase(); return l.includes('cir') || l.includes('career identifier') || l.includes('careeridentifier'); };
+    }
+    if (compact.includes('skillpassport') || compact.includes('sp')) {
+        return (s: string) => { const l = s.toLowerCase(); return l.includes('skill passport') || l.includes('skillpassport') || l.includes('sp'); };
+    }
+    if (compact.includes('applywizz') || compact === 'aw') {
+        return (s: string) => { const l = s.toLowerCase(); return l.includes('aw') || l.includes('applywizz') || l.includes('apply wizz'); };
+    }
+
+    // 3. For any other brand, return a filter that matches nothing to prevent showing all leads
+    return () => false;
+};
+
 export const brands = {
     async getAll() {
         const client = supabaseAdmin || supabase;
@@ -826,6 +863,8 @@ export const brands = {
         brand_type: 'REEL' | 'STORY';
         revenue?: number;
         created_by_user_id?: string;
+        has_leads?: boolean;
+        lead_sources?: string[];
     }) {
         const client = supabaseAdmin || supabase;
         const { data, error } = await client
@@ -3422,8 +3461,7 @@ export const influencers = {
             platform_type: influencer.platform_type,
             vercel_form_link: influencer.vercel_form_link,
             created_by_user_id: influencer.created_by_user_id,
-            product_name: influencer.product_name,
-            status: 'NEW'
+            product_name: influencer.product_name
         };
         const { data, error } = await client
             .from('influencers')

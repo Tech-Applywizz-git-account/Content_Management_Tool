@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Instagram, DollarSign, ChevronDown, ArrowRight } from 'lucide-react';
+import { Eye, Instagram, DollarSign, ChevronDown, ArrowRight, Users } from 'lucide-react';
 import BrandPopover from './BrandPopover';
 import type { InfluencerSearchRow } from './SearchResultsTable';
 
@@ -7,14 +7,14 @@ interface InfluencerRowProps {
   row: InfluencerSearchRow;
   isOpen: boolean;
   onTogglePopover: () => void;
-  onSelectBrand: (brandName: string) => void;
+  onSelectBrand: (brandName: string, rowId: string) => void;
   onViewDetails: () => void;
 }
 
 const InfluencerRow: React.FC<InfluencerRowProps> = ({ row, isOpen, onTogglePopover, onSelectBrand, onViewDetails }) => {
   return (
     <div className={`group relative overflow-visible bg-white px-5 py-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_45px_-25px_rgba(15,23,42,0.35)] md:px-6 ${isOpen ? 'z-50' : 'z-10'}`}>
-      <div className="grid gap-3 text-slate-800 sm:grid-cols-[2fr_1.5fr_1fr_1fr] sm:items-center">
+      <div className="grid gap-3 text-slate-800 sm:grid-cols-[2fr_1.5fr_1fr_1fr_1fr] sm:items-center">
         <div className="sm:col-span-1">
           <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Name</p>
           <p className="mt-0.5 text-sm font-semibold text-slate-900 truncate">{row.influencer_name}</p>
@@ -45,6 +45,14 @@ const InfluencerRow: React.FC<InfluencerRowProps> = ({ row, isOpen, onTogglePopo
           </p>
         </div>
 
+        <div className="sm:col-span-1">
+          <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Total Leads</p>
+          <p className="mt-0.5 inline-flex items-center gap-1.5 rounded-3xl bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-900/5">
+            <Users className="h-3.5 w-3.5 text-blue-500" />
+            {row.total_leads ?? '—'}
+          </p>
+        </div>
+
         <div className="relative sm:col-span-1">
           <p className="text-[10px] uppercase tracking-[0.35em] text-slate-400">Brands</p>
           <button
@@ -56,7 +64,7 @@ const InfluencerRow: React.FC<InfluencerRowProps> = ({ row, isOpen, onTogglePopo
             <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : 'rotate-0'}`} />
           </button>
 
-          <BrandPopover brands={row.brands} open={isOpen} onSelectBrand={onSelectBrand} />
+          <BrandPopover brands={row.brands} open={isOpen} onSelectBrand={(b) => onSelectBrand(b, row.id)} />
         </div>
 
       </div>

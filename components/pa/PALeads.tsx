@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../../types';
+import { db, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
 import { 
   Search, 
   Globe, 
@@ -45,43 +46,6 @@ interface PALeadsProps {
   user: User;
 }
 
-function getSourceFilterForBrand(decodedBrandName: string): ((source: string) => boolean) | null {
-  const brand = decodedBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  // Job Board (check before generic ApplyWizz so "aw job board" routes correctly)
-  if (brand.includes('jobboard')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('jobboard') || s.includes('job board');
-    };
-  }
-
-  // Lead Magnet / RTW
-  if (brand.includes('leadmagnet') || brand.includes('rtw')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
-             s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
-    };
-  }
-
-  // CareerIdentifier
-  if (brand.includes('careeridentifier') || brand.includes('careridentifier') || brand.includes('cir')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('cir') || s.includes('career identifier') || s.includes('careeridentifier');
-    };
-  }
-
-  if (brand.includes('applywizz') || brand === 'aw') {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
-    };
-  }
-
-  return null;
-}
 
 const PALeads: React.FC<PALeadsProps> = ({ user }) => {
   const navigate = useNavigate();
@@ -138,7 +102,8 @@ const PALeads: React.FC<PALeadsProps> = ({ user }) => {
       // Filter leads if specific brand context exists
       let leadData = rawLeads;
       if (brandFilter && brandFilter !== 'ALL') {
-        const sourceFilter = getSourceFilterForBrand(brandFilter);
+        const brands = await db.brands.getAll();
+        const sourceFilter = getDynamicSourceFilterForBrand(brandFilter, brands);
         if (sourceFilter) {
           leadData = rawLeads.filter((l: any) => sourceFilter(l.source || ''));
         }

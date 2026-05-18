@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Role } from '../../types';
-import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
+import { db, normalizePABrandName, SYSTEM_BRANDS, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
 import { CheckCircle2, AlertCircle, Building2, Trash2, Plus, ArrowLeft, ArrowRight, Search, Users, Instagram, Mail, X, Shirt, Smartphone, Coffee, Clapperboard, Zap, ShoppingBag, Crown, Palette, Globe, Trophy, Video, MapPin, Tag, DollarSign, ExternalLink, Phone, Calendar, Pencil, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../src/integrations/supabase/client';
 import SearchResultsTable, { InfluencerSearchRow } from './SearchResultsTable';
-import BrandDetailsDrawer, { BrandDetails } from './BrandDetailsDrawer';
+
 
 interface PABrandsProps {
   user: User;
@@ -19,15 +19,27 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
   const { category: urlCategory } = useParams();
   const [brands, setBrands] = useState<any[]>([]);
   const [allInfluencers, setAllInfluencers] = useState<any[]>([]);
+  const [allLeads, setAllLeads] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInfluencer, setSelectedInfluencer] = useState<any | null>(null);
   const [selectedInfluencerRow, setSelectedInfluencerRow] = useState<InfluencerSearchRow | null>(null);
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
-  const [selectedBrandDetails, setSelectedBrandDetails] = useState<BrandDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedBrandData, setExpandedBrandData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [brandToDelete, setBrandToDelete] = useState<{ id: string, name: string } | null>(null);
+
+  // Restore cached data instantly on mount to avoid blank screens
+  useEffect(() => {
+    try {
+      const cachedBrands = sessionStorage.getItem('pa_brands_cache');
+      const cachedInfluencers = sessionStorage.getItem('pa_influencers_cache');
+      if (cachedBrands) setBrands(JSON.parse(cachedBrands));
+      if (cachedInfluencers) setAllInfluencers(JSON.parse(cachedInfluencers));
+    } catch {}
+  }, []);
   
   // Resolve active category from prop or URL
   const [activeTab, setActiveTab] = useState<'REEL' | 'STORY' | null>(null);
@@ -125,6 +137,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
 
   const influencerSearchRows = useMemo<InfluencerSearchRow[]>(() => {
     const rows = new Map<string, any>();
+    const leadSources = allLeads.map(lead => (lead.source || '').trim().toLowerCase());
 
     allInfluencers.forEach((inf: any) => {
       const key = `${(inf.influencer_name || '').trim().toLowerCase()}`;
@@ -142,6 +155,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
           instagram_handle,
           influencer_links: inf.influencer_links || [],
           total_budget: budgetValue,
+          total_leads: key ? leadSources.filter(source => source.includes(key)).length : 0,
           brands: brandName ? [brandName] : [],
           brand_types: [brandType],
           primary_brand: brandName,
@@ -168,7 +182,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
       ...item,
       total_budget: `$${Number(item.total_budget || 0).toLocaleString()}`,
     }));
-  }, [allInfluencers]);
+  }, [allInfluencers, allLeads]);
 
   const filteredInfluencerRows = useMemo<InfluencerSearchRow[]>(() => {
     if (!searchQuery) return [];
@@ -183,44 +197,125 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
     });
   }, [influencerSearchRows, searchQuery]);
 
-  const handleSelectBrandDetails = (brandName: string) => {
-    const found = brands.find(b => normalizeBrand(b.brand_name) === normalizeBrand(brandName));
-    const attachments = Array.isArray(found?.attachments)
-      ? found.attachments
-      : found?.attachments
-      ? [String(found.attachments)]
-      : [];
-    const social_links = Array.isArray(found?.social_links)
-      ? found.social_links
-      : found?.social_links
-      ? [String(found.social_links)]
-      : [];
+  const handleSelectBrandDetails = async (brandName: string, rowId: string) => {
+    if (expandedRowId === rowId && expandedBrandData?.brand_name === brandName) {
+      setExpandedRowId(null);
+      setExpandedBrandData(null);
+      return;
+    }
 
-    setSelectedBrandDetails({
-      brand_name: brandName,
-      campaign_name: found?.campaign_name || found?.brand_name || brandName,
-      budget: found?.budget || found?.estimated_budget || 'Not available',
-      deliverables: found?.deliverables || found?.campaign_objective || 'Creative deliverables not specified.',
-      posting_dates: found?.posting_date || found?.posting_dates || 'TBD',
-      status: found?.status || found?.brand_type || 'Active',
-      notes: found?.notes || found?.campaign_notes || 'No notes available.',
-      attachments,
-      social_links,
-    });
+    setExpandedRowId(rowId);
+    setExpandedBrandData({ brand_name: brandName, _loading: true });
     setSelectedInfluencerRow(null);
     setOpenPopoverId(null);
+
+    const row = influencerSearchRows.find(r => r.id === rowId);
+    const influencerName = row?.influencer_name?.trim() || '';
+    const infNameLower = influencerName.toLowerCase();
+
+    const brandSourceFilter = getDynamicSourceFilterForBrand(brandName, brands);
+
+    try {
+      // 1. Fetch directly from influencers table for accurate raw data
+      const { data: infRecords } = await supabase
+        .from('influencers')
+        .select('*, influencer_links(*)')
+        .ilike('influencer_name', influencerName)
+        .order('created_at', { ascending: false });
+
+      const specificInf = (infRecords || []).find((inf: any) =>
+        normalizePABrandName(inf.brand_name) === normalizePABrandName(brandName)
+      );
+
+      // 2. Cross-reference with projects to get the latest workflow state
+      let latestAction = 'No recent action';
+      let proofLink: string | null = null;
+
+      if (specificInf) {
+        const parentId = specificInf.parent_project_id || 'none';
+        const instanceId = specificInf.instance_project_id || 'none';
+
+        const { data: projectData } = await supabase
+          .from('projects')
+          .select('current_stage, data, pa_script_sent_at, video_link, edited_video_link')
+          .or(`id.eq.${parentId},id.eq.${instanceId}`)
+          .limit(1);
+
+        const project = projectData?.[0];
+        proofLink = project?.data?.posting_proof_link || project?.data?.live_url || null;
+
+        const scriptSent = !!specificInf.script_content || !!project?.pa_script_sent_at;
+        const rawVideo = !!(project?.video_link || specificInf.video_link);
+        const editedVideo = !!(project?.edited_video_link || specificInf.edited_video_link);
+        const isPosted = !!(project?.data?.posting_proof_link || project?.data?.live_url);
+
+        if (proofLink || isPosted)       latestAction = 'Proof Uploaded';
+        else if (editedVideo)            latestAction = 'Edited Video Uploaded';
+        else if (rawVideo)               latestAction = 'Raw Video Received';
+        else if (scriptSent)             latestAction = 'Script Sent';
+        else if (specificInf.status === 'SENT_TO_INFLUENCER' || specificInf.pitch_sent === 'yes')
+                                         latestAction = 'Pitch Sent';
+      }
+
+      // 3. Count leads: first filter by brand, THEN by influencer name
+      let leads = allLeads;
+      if (leads.length === 0) {
+        try {
+          const start = '2024-01-01';
+          const end = new Date().toISOString().split('T')[0];
+          const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
+          const urlObj = new URL(rawUrl);
+          urlObj.search = '';
+          urlObj.searchParams.set('startDate', start);
+          urlObj.searchParams.set('endDate', end);
+          const resp = await fetch(urlObj.toString());
+          if (resp.ok) {
+            const d = await resp.json();
+            leads = d.data && Array.isArray(d.data) ? d.data : Array.isArray(d) ? d : [];
+          }
+        } catch (_) {}
+      }
+
+      // Step A: filter leads down to only those belonging to this brand
+      const brandLeads = leads.filter((l: any) => brandSourceFilter ? brandSourceFilter(l.source || '') : false);
+
+      // Step B: within brand leads, count those whose source matches this influencer name
+      const influencerBrandLeads = infNameLower
+        ? brandLeads.filter((l: any) => (l.source || '').toLowerCase().includes(infNameLower)).length
+        : brandLeads.length;
+
+      const found = brands.find(b => normalizePABrandName(b.brand_name) === normalizePABrandName(brandName));
+
+      setExpandedBrandData({
+        brand_name: brandName,
+        campaign_name: found?.campaign_name || found?.brand_name || brandName,
+        niche: specificInf?.niche || 'N/A',
+        collab_type: specificInf?.campaign_type || specificInf?.collab_type || specificInf?.collab || 'N/A',
+        influencer_budget: specificInf?.budget || specificInf?.commercials || 'Not available',
+        influencer_brand_leads: influencerBrandLeads,
+        latest_action: latestAction,
+        proof_link: proofLink,
+      });
+    } catch (err) {
+      console.error('Error fetching brand details:', err);
+      setExpandedBrandData(null);
+      setExpandedRowId(null);
+    }
   };
+
 
   const handleViewDetails = (row: InfluencerSearchRow) => {
     setSelectedInfluencerRow(row);
-    setSelectedBrandDetails(null);
+    setExpandedRowId(null);
+    setExpandedBrandData(null);
     setOpenPopoverId(null);
   };
 
   const handleClearSearch = () => {
     setSearchQuery('');
     setOpenPopoverId(null);
-    setSelectedBrandDetails(null);
+    setExpandedRowId(null);
+    setExpandedBrandData(null);
   };
 
   const fetchData = async () => {
@@ -239,6 +334,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
         }
       });
       setBrands(Array.from(uniqueBrandsMap.values()));
+      try { sessionStorage.setItem('pa_brands_cache', JSON.stringify(Array.from(uniqueBrandsMap.values()))); } catch {}
       
       // 2. Fetch Influencers and calculate unique counts based on the brands we just got
       console.log('📊 Dashboard: Requesting influencers...');
@@ -256,6 +352,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
         stories: (stories || []).filter((story: any) => story.influencer_id === inf.id)
       }));
       setAllInfluencers(enrichedInfluencers);
+      try { sessionStorage.setItem('pa_influencers_cache', JSON.stringify(enrichedInfluencers)); } catch {}
       
       const uniqueInfluencers = new Set(
         influencerData?.filter(inf => {
@@ -264,6 +361,26 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
         }).map(inf => `${inf.influencer_name}-${normalizeBrandForCount(inf.brand_name)}`)
       );
       setTotalInfluencerCount(uniqueInfluencers.size);
+      
+      // 3. Fetch Leads for total counts
+      try {
+        const start = '2024-01-01';
+        const end = new Date().toISOString().split('T')[0];
+        const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
+        const urlObj = new URL(rawUrl);
+        urlObj.search = '';
+        urlObj.searchParams.set('startDate', start);
+        urlObj.searchParams.set('endDate', end);
+        
+        const response = await fetch(urlObj.toString());
+        if (response.ok) {
+            const data = await response.json();
+            const fetchedLeads: any[] = data.data && Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+            setAllLeads(fetchedLeads);
+        }
+      } catch (e) {
+        console.warn('Leads fetch error:', e);
+      }
       
     } catch (err) {
       console.error("❌ Dashboard: Data fetch failed:", err);
@@ -446,6 +563,13 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
             onTogglePopover={(id) => setOpenPopoverId(openPopoverId === id ? null : id)}
             onSelectBrand={handleSelectBrandDetails}
             onViewDetails={handleViewDetails}
+            expandedRowId={expandedRowId}
+            expandedBrandData={expandedBrandData}
+            onCloseExpanded={() => {
+              setExpandedRowId(null);
+              setExpandedBrandData(null);
+            }}
+            userRole={user.role}
           />
         </div>
       )}
@@ -509,7 +633,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
         </div>
       )}
 
-      {isLoading ? (
+      {isLoading && brands.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
               <div className="w-12 h-12 border-4 border-slate-200 border-t-[#7C3AED] rounded-full animate-spin mb-4" />
               <p className="text-slate-400 font-black uppercase tracking-widest">Loading Brands...</p>
@@ -527,7 +651,14 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
                 openPopoverId={openPopoverId}
                 onTogglePopover={(id) => setOpenPopoverId(openPopoverId === id ? null : id)}
                 onSelectBrand={handleSelectBrandDetails}
-                onViewDetails={handleSelectBrandDetails}
+                onViewDetails={handleViewDetails}
+                expandedRowId={expandedRowId}
+                expandedBrandData={expandedBrandData}
+                onCloseExpanded={() => {
+                  setExpandedRowId(null);
+                  setExpandedBrandData(null);
+                }}
+                userRole={user.role}
               />
             </div>
           )}
@@ -600,14 +731,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
         </div>
       )}
 
-      <BrandDetailsDrawer
-        brand={selectedBrandDetails}
-        influencer={selectedInfluencerRow}
-        onClose={() => {
-          setSelectedBrandDetails(null);
-          setSelectedInfluencerRow(null);
-        }}
-      />
+
       </div>
     </div>
 

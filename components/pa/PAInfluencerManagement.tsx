@@ -21,6 +21,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [influencerName, setInfluencerName] = useState((project.data as any)?.influencer_name || '');
     const [influencerEmail, setInfluencerEmail] = useState((project.data as any)?.influencer_email || '');
     const [contentDescription, setContentDescription] = useState((project.data as any)?.content_description || '');
+    const [attachment, setAttachment] = useState<{ filename: string, contentType: string, contentBytes: string } | null>(null);
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
@@ -172,7 +173,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         comment: 'Campaign launched by PA from Collab Hub',
                         content_description: contentDescription || (project.data as any)?.brief || 'Script content for review',
                         script_content: scriptContent,
-                        influencer_name: influencerName
+                        influencer_name: influencerName,
+                        attachment: attachment
                     }
                 }
             });
@@ -188,6 +190,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setInfluencerName('');
             setInfluencerEmail('');
             setContentDescription('');
+            setAttachment(null);
 
             const pId = (project.data as any)?.parent_script_id || project.id;
             const freshHistory = await db.influencers.getByParent(pId);
@@ -549,6 +552,34 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                 className="w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all resize-none"
                                                 placeholder="Add context for this outreach..."
                                             />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">PDF ATTACHMENT (OPTIONAL)</label>
+                                            <input 
+                                                type="file" 
+                                                accept="application/pdf"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    if (file.type !== 'application/pdf') {
+                                                        toast.error('Only PDF files are allowed');
+                                                        return;
+                                                    }
+                                                    if (file.size > 5 * 1024 * 1024) {
+                                                        toast.error('File size must be under 5MB');
+                                                        return;
+                                                    }
+                                                    const reader = new FileReader();
+                                                    reader.onload = () => {
+                                                        const base64Str = (reader.result as string).split(',')[1];
+                                                        setAttachment({ filename: file.name, contentType: file.type, contentBytes: base64Str });
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }}
+                                                className="w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all"
+                                            />
+                                            {attachment && <p className="text-xs font-bold text-emerald-600 mt-2">Attached: {attachment.filename}</p>}
                                         </div>
 
                                         <div className="pt-4 pb-12">

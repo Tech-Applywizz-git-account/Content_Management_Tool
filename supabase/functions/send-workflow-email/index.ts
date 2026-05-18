@@ -41,19 +41,30 @@ async function getGraphToken(tenantId = TENANT_ID, clientId = CLIENT_ID, clientS
 }
 
 // Helper: Send HTML Email via Microsoft Graph
-async function sendEmail(sender: string, to: string[], subject: string, html: string, creds?: { tenant: string, client: string, secret: string }) {
+async function sendEmail(sender: string, to: string[], subject: string, html: string, creds?: { tenant: string, client: string, secret: string }, attachments?: { name: string, contentType: string, contentBytes: string }[]) {
     const token = await getGraphToken(creds?.tenant, creds?.client, creds?.secret);
     const endpoint = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(sender)}/sendMail`;
+
+    const message: any = {
+        subject,
+        body: { contentType: "HTML", content: html },
+        toRecipients: to.map((email: string) => ({ emailAddress: { address: email } })),
+    };
+
+    if (attachments && attachments.length > 0) {
+        message.attachments = attachments.map(att => ({
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            name: att.name,
+            contentType: att.contentType,
+            contentBytes: att.contentBytes
+        }));
+    }
 
     const res = await fetch(endpoint, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-            message: {
-                subject,
-                body: { contentType: "HTML", content: html },
-                toRecipients: to.map((email: string) => ({ emailAddress: { address: email } })),
-            },
+            message,
             saveToSentItems: true,
         }),
     });
@@ -514,7 +525,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
             const sender = isInfluencer ? INFLUENCER_SENDER : DEFAULT_SENDER;
             const creds = isInfluencer ? { tenant: PA_TENANT_ID, client: PA_CLIENT_ID, secret: PA_CLIENT_SECRET } : undefined;
             
-            await sendEmail(sender, recipientEmails, subject, htmlBody, creds);
+            let attachments = undefined;
+            if (metadata.attachment) {
+                attachments = [{
+                    name: metadata.attachment.filename,
+                    contentType: metadata.attachment.contentType || "application/pdf",
+                    contentBytes: metadata.attachment.contentBytes
+                }];
+                console.log(`Adding attachment: ${metadata.attachment.filename}`);
+            }
+
+            await sendEmail(sender, recipientEmails, subject, htmlBody, creds, attachments);
         } catch (emailError: any) {
             console.error("Email sending failed but continuing workflow:", emailError.message);
         }

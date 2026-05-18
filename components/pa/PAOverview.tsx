@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
+import { db, SYSTEM_BRANDS, normalizePABrandName, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
 import { 
     BarChart3, 
     TrendingUp, 
@@ -178,35 +178,7 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
     const myBrandNames = useMemo(() => myBrands.map(b => b.brand_name.toLowerCase()), [myBrands]);
 
     // Logic from PABrandDetails for lead source filtering
-    const getSourceFilterForBrand = (brandName: string) => {
-        const brand = brandName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (brand.includes('jobboard')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('jobboard') || s.includes('job board');
-            };
-        }
-        if (brand.includes('leadmagnet') || brand.includes('rtw')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
-                       s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
-            };
-        }
-        if (brand.includes('careeridentifier') || brand.includes('careridentifier') || brand.includes('cir')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('cir') || s.includes('career identifier') || s.includes('careeridentifier');
-            };
-        }
-        if (brand.includes('applywizz') || brand === 'aw') {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
-            };
-        }
-        return null;
-    };
+
 
     // Fetch brand-specific data when brand filter changes
     useEffect(() => {
@@ -240,7 +212,7 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
 
                 // 2. Filter Leads
                 const rawLeads = allLeadsData;
-                const sourceFilter = getSourceFilterForBrand(brandFilter);
+                const sourceFilter = getDynamicSourceFilterForBrand(brandFilter, brands);
                 const filteredLeads = sourceFilter ? rawLeads.filter(l => sourceFilter(l.source || '')) : rawLeads;
                 setBrandLeads(filteredLeads);
 
@@ -860,12 +832,7 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
                         >
                             {renderMetricCard("Influencers", brandDashboardMetrics.totalInfluencers, <Users className="w-6 h-6" />, "text-violet-600", "bg-violet-50")}
                         </div>
-                        <div 
-                            onClick={() => setActiveKpi(activeKpi === 'TASKS' ? null : 'TASKS')}
-                            className={`cursor-pointer hover:scale-[1.02] transition-all flex-1 min-w-[200px] ${activeKpi === 'TASKS' ? 'ring-4 ring-rose-500/20' : ''}`}
-                        >
-                            {renderMetricCard("Active Tasks", brandDashboardMetrics.totalInfluencerTasks, <Activity className="w-6 h-6" />, "text-rose-600", "bg-rose-50")}
-                        </div>
+
                         <div 
                             onClick={() => setActiveKpi(activeKpi === 'RAW' ? null : 'RAW')}
                             className={`cursor-pointer hover:scale-[1.02] transition-all flex-1 min-w-[200px] ${activeKpi === 'RAW' ? 'ring-4 ring-amber-500/20' : ''}`}
