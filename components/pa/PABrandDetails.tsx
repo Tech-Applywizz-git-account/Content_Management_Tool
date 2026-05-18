@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { User, WorkflowStage, Role, Project } from '../../types';
-import { db, SYSTEM_BRANDS, normalizePABrandName } from '../../services/supabaseDb';
+import { db, SYSTEM_BRANDS, normalizePABrandName, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
 import { ArrowLeft, Users, Instagram, Mail, Target, Tag, Briefcase, MapPin, DollarSign, Download, ExternalLink, Search, CheckCircle2, XCircle, FileText, Video, Play, ExternalLink as LinkIcon, Edit2, X, Save, Building2, Send, Clock, Loader2, ChevronRight, RefreshCw, Plus, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -48,6 +48,17 @@ const COLLAB_OPTIONS = [
   'Barter+Flat'
 ];
 
+const isCompletionMarker = (value: unknown) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['completed', 'complete', 'done', 'yes', 'finished', 'finish'].includes(normalized);
+};
+
+const isExternalUrl = (value: unknown) => /^https?:\/\//i.test(String(value || '').trim());
+
+const isApproveKpiRecord = (inf: any) => {
+  return inf.approved || [WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage);
+};
+
 /**
  * Returns a filter predicate that returns true for lead sources belonging to the given brand.
  * Matching is case-insensitive. Rules are checked in priority order (most-specific first).
@@ -58,45 +69,6 @@ const COLLAB_OPTIONS = [
  *   CIR                 → CareerIdentifier
  *   AW                  → ApplyWizz
  */
-function getSourceFilterForBrand(decodedBrandName: string): ((source: string) => boolean) | null {
-  const brand = decodedBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-  // Job Board (check before generic ApplyWizz so "aw job board" routes correctly)
-  if (brand.includes('jobboard')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('jobboard') || s.includes('job board');
-    };
-  }
-
-  // Lead Magnet / RTW
-  if (brand.includes('leadmagnet') || brand.includes('rtw')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
-             s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
-    };
-  }
-
-  // CareerIdentifier
-  if (brand.includes('careeridentifier') || brand.includes('careridentifier') || brand.includes('cir')) {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('cir') || s.includes('career identifier') || s.includes('careeridentifier');
-    };
-  }
-
-  // ApplyWizz (generic)
-  if (brand.includes('applywizz') || brand === 'aw') {
-    return (source: string) => {
-      const s = source.toLowerCase();
-      return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
-    };
-  }
-
-  // No keyword rule for this brand – don't filter (show all leads)
-  return null;
-}
 
 const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const { brandName } = useParams();
@@ -163,6 +135,69 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   const [leadsCount, setLeadsCount] = useState<number | null>(null);
   const [isLeadsLoading, setIsLeadsLoading] = useState(false);
   const [brandLeads, setBrandLeads] = useState<any[]>([]);
+
+  // Inline Lead Sources State
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+  const [sourceSearchTerm, setSourceSearchTerm] = useState('');
+  const [isEditingSources, setIsEditingSources] = useState(false);
+  const [isFetchingSources, setIsFetchingSources] = useState(false);
+  const [showAllSources, setShowAllSources] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsEditingSources(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const fetchLeadSources = async () => {
+    setIsFetchingSources(true);
+    try {
+      const today = new Date();
+      const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
+      const urlObj = new URL(rawUrl);
+      urlObj.searchParams.set('startDate', '2024-01-01');
+      urlObj.searchParams.set('endDate', today.toISOString().split('T')[0]);
+      urlObj.searchParams.set('limit', '20000');
+
+      const response = await fetch(urlObj.toString());
+      if (response.ok) {
+        const result = await response.json();
+        const rawLeads = result.data || (Array.isArray(result) ? result : []);
+        const sources = Array.from(new Set(rawLeads.map((l: any) => l.source))).filter(Boolean).sort() as string[];
+        setAvailableSources(sources);
+      }
+    } catch (err) {
+      console.error('Failed to fetch lead sources:', err);
+    } finally {
+      setIsFetchingSources(false);
+    }
+  };
+
+  const handleToggleSource = async (source: string) => {
+    if (!currentBrandData?.id) return;
+    const currentSources = currentBrandData.lead_sources || [];
+    const newSources = currentSources.includes(source) 
+        ? currentSources.filter((s: string) => s !== source)
+        : [...currentSources, source];
+        
+    try {
+        await db.brands.update(currentBrandData.id, { 
+            lead_sources: newSources,
+            has_leads: true
+        });
+        setCurrentBrandData((prev: any) => ({ ...prev, lead_sources: newSources, has_leads: true }));
+        // also trigger leads data refresh so count updates immediately
+        fetchLeadsData();
+    } catch (error) {
+        console.error('Error toggling source:', error);
+        toast.error('Failed to update lead sources');
+    }
+  };
 
   const getBrandAliases = (brand: string) => {
     const aliases = new Set<string>([
@@ -336,7 +371,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       // Filter leads to only those whose source maps to this brand
       const decodedBrand = decodeURIComponent(brandName || '');
-      const sourceFilter = getSourceFilterForBrand(decodedBrand);
+      const brands = await db.brands.getAll();
+      const sourceFilter = getDynamicSourceFilterForBrand(decodedBrand, brands);
       const filteredLeads = sourceFilter
         ? allLeads.filter(lead => sourceFilter(lead.source || ''))
         : allLeads;
@@ -351,9 +387,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     }
   };
 
-  const fetchInfluencers = async () => {
+  const fetchInfluencers = async (showLoading = true) => {
     if (!brandName) return;
-    setIsLoading(true);
+    if (showLoading) setIsLoading(true);
     try {
       const rawBrandName = typeof brandName === 'string' ? brandName : String(brandName);
       const decodedBrand = decodeURIComponent(rawBrandName);
@@ -411,7 +447,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       const userMap = new Map(allUsers?.map(u => [u.id, u.full_name]) || []);
 
-      // Filter registry entries related to our projects or matching brand name
+      // Filter registry entries to the current brand. Rows with no brand can still
+      // be recovered through a current-brand project link, but rows from another
+      // brand must not leak proof links or other influencer-table columns here.
       const relevantRegistryEntries = allInfLogs.filter(inf => {
         const infBrand = normalizeBrandForComparison(inf.brand_name);
         const matchesProject = (inf.parent_project_id && projectIds.includes(inf.parent_project_id)) ||
@@ -419,7 +457,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         
         const matchesBrand = infBrand === target || brandMatches(inf.brand_name || '', decodedBrand);
         
-        return matchesProject || matchesBrand;
+        return matchesBrand || (!inf.brand_name && matchesProject);
       });
       
       console.log('📝 Registry entries matching brand:', relevantRegistryEntries.length, 
@@ -457,6 +495,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       const mergedData = combinedInf.map(inf => {
         const infName = (inf.influencer_name || '').trim().toLowerCase();
         const infEmail = (inf.influencer_email || '').trim().toLowerCase();
+        const isCurrentBrandInfluencer = !inf.brand_name || brandMatches(inf.brand_name || '', decodedBrand);
+        const scopedLinks = (inf.influencer_links || []).filter((linkObj: any) => 
+          !linkObj.brand_name || brandMatches(linkObj.brand_name || '', decodedBrand)
+        );
 
         // Try to find a matching project
         const project = projData.find(p => 
@@ -483,17 +525,26 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         
         // Only treat the influencer as script-sent when there is actual script content.
         // The influencers table defaults status to SENT_TO_INFLUENCER on insert, so status alone is not sufficient.
-        const scriptSentFromRegistry = !!inf.script_content;
+        const scriptSentFromRegistry = isCurrentBrandInfluencer && (!!inf.script_content || isCompletionMarker(inf.status));
         const scriptSent = scriptSentFromProject || scriptSentFromRegistry;
+        const rawVideo = project?.video_link || project?.video_url || (isCurrentBrandInfluencer ? inf.video_link : null);
+        const editedVideo = project?.edited_video_link || (isCurrentBrandInfluencer ? inf.edited_video_link : null);
+        const approved = project?.current_stage === WorkflowStage.PA_FINAL_REVIEW ||
+          project?.current_stage === WorkflowStage.POSTED ||
+          (isCurrentBrandInfluencer && inf.is_posted === true) ||
+          (isCurrentBrandInfluencer && isCompletionMarker(inf.proof_link));
 
         return {
           ...inf,
+          influencer_links: scopedLinks,
+          instagram_profile: inf.instagram_profile || '',
           project_status: project?.current_stage,
           script_sent: scriptSent,
-          raw_video: project?.video_link || project?.video_url || inf.video_link,
-          edited_video: project?.edited_video_link || inf.edited_video_link,
+          raw_video: rawVideo,
+          edited_video: editedVideo,
+          approved,
           is_posted: isActuallyPosted,
-          proof_link: project?.data?.posting_proof_link || project?.data?.live_url || project?.data?.referral_link,
+          proof_link: project?.data?.posting_proof_link || project?.data?.live_url || project?.data?.referral_link || (isCurrentBrandInfluencer ? inf.proof_link : null),
           project_id: project?.id,
           added_by_name: inf.created_by_user_id ? userMap.get(inf.created_by_user_id) || 'Unknown' : 'Unknown',
           sent_by_name: project?.data?.sent_by_name || inf.sent_by || '—',
@@ -540,6 +591,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           if (current.script_sent) existing.script_sent = true;
           if (current.raw_video) existing.raw_video = current.raw_video;
           if (current.edited_video) existing.edited_video = current.edited_video;
+          if (current.approved) existing.approved = true;
           if (current.is_posted) existing.is_posted = true;
           if (current.proof_link) existing.proof_link = current.proof_link;
           
@@ -557,13 +609,14 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       console.error("Failed to load data:", err);
       toast.error("Failed to load influence data");
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchInfluencers();
     fetchLeadsData();
+    fetchLeadSources();
 
     // Auto-refresh leads count every 60 s so new leads appear without a manual reload
     const interval = setInterval(fetchLeadsData, 60_000);
@@ -627,10 +680,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         if (activeFilter === 'FOOTAGE_RECEIVED' && !inf.raw_video) return false;
         if (activeFilter === 'EDITED_VIDEO' && !inf.edited_video) return false;
         if (activeFilter === 'APPROVE_PENDING') {
-            const isApproved = [WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage);
-            if (!isApproved || !!inf.proof_link) return false;
+            if (!isApproveKpiRecord(inf)) return false;
         }
-        if (activeFilter === 'PROOF_POSTED' && !inf.proof_link) return false;
+        if (activeFilter === 'PROOF_POSTED' && !isExternalUrl(inf.proof_link)) return false;
         if (activeFilter === 'POSTED_STORIES' && !hasStoriesInRange(inf)) return false;
         if (activeFilter === 'BUDGET') {
             const val = parseFloat((inf.budget || '0').toString().replace(/[^0-9.]/g, ''));
@@ -650,7 +702,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       }
       
       if (collabFilter !== 'ALL') {
-        const actualCollab = (inf.commercials || 'Other/Unknown').split(' (')[0];
+        const actualCollab = inf.campaign_type || 'Other/Unknown';
         if (actualCollab !== collabFilter) return false;
       }
 
@@ -663,9 +715,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         const searchResults = filteredResults.filter(inf => 
           inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
           (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
+          inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
           inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
+          inf.contact_details?.toLowerCase().includes(lowerSearch) ||
+          inf.niche?.toLowerCase().includes(lowerSearch) ||
           inf.location?.toLowerCase().includes(lowerSearch) ||
+          inf.campaign_type?.toLowerCase().includes(lowerSearch) ||
+          inf.commercials?.toLowerCase().includes(lowerSearch) ||
+          inf.budget?.toString().toLowerCase().includes(lowerSearch) ||
+          `$${inf.budget?.toString().toLowerCase()}`.includes(lowerSearch) ||
+          inf.product_name?.toLowerCase().includes(lowerSearch) ||
+          inf.platform_type?.toLowerCase().includes(lowerSearch) ||
+          inf.vercel_form_link?.toLowerCase().includes(lowerSearch) ||
+          inf.added_by_name?.toLowerCase().includes(lowerSearch) ||
+          inf.sent_by_name?.toLowerCase().includes(lowerSearch) ||
           inf.project_title?.toLowerCase().includes(lowerSearch) ||
+          inf.script_content?.toLowerCase().includes(lowerSearch) ||
           (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
         );
         console.log('🔍 After search filter:', searchResults.length, 'entries');
@@ -700,7 +765,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     footageReceived: influencers.filter(i => !!i.raw_video).length,
     editedVideos: influencers.filter(i => !!i.edited_video).length,
     postPending: influencers.filter(i => i.project_status === WorkflowStage.POSTED && !i.proof_link).length,
-    approved: influencers.filter(i => i.project_status === WorkflowStage.PA_FINAL_REVIEW || i.project_status === WorkflowStage.POSTED).length,
+    approved: influencers.filter(i => i.approved || i.project_status === WorkflowStage.PA_FINAL_REVIEW || i.project_status === WorkflowStage.POSTED).length,
     // Filtered counts based on date range and active filter
     filteredTotal: currentBrandData?.brand_type === 'STORY'
         ? influencersActiveInRange.length
@@ -713,7 +778,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             const storiesInRangeCount = (i.stories || []).filter((s: any) => checkRange(s.story_date)).length;
             return acc + storiesInRangeCount;
           }, 0)
-        : filteredInfluencers.filter(i => !!i.proof_link).length,
+        : filteredInfluencers.filter(i => isExternalUrl(i.proof_link)).length,
     // Filtered counts for REEL brands KPI cards (based on date filter only, not status filter)
     filteredScriptsSent: currentBrandData?.brand_type === 'STORY' 
         ? 0 
@@ -726,12 +791,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
         : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.edited_video).length,
     filteredApprovedPending: currentBrandData?.brand_type === 'STORY'
         ? 0
-        : influencers.filter(inf => isInfluencerInRange(inf) && 
-            [WorkflowStage.PA_FINAL_REVIEW, WorkflowStage.POSTED].includes(inf.project_status as WorkflowStage) && 
-            !inf.proof_link).length,
+        : influencers.filter(inf => isInfluencerInRange(inf) && isApproveKpiRecord(inf)).length,
     filteredProofPosted: currentBrandData?.brand_type === 'STORY'
         ? 0
-        : influencers.filter(inf => isInfluencerInRange(inf) && !!inf.proof_link).length,
+        : influencers.filter(inf => isInfluencerInRange(inf) && isExternalUrl(inf.proof_link)).length,
     // For STORY: Budget shows based on active influencers in range
     totalAmount: (currentBrandData?.brand_type === 'STORY' ? influencersActiveInRange : filteredInfluencers)
         .reduce((acc, inf) => {
@@ -751,8 +814,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           return (
             inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
             (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
+            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
             inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
+            inf.contact_details?.toLowerCase().includes(lowerSearch) ||
+            inf.niche?.toLowerCase().includes(lowerSearch) ||
             inf.location?.toLowerCase().includes(lowerSearch) ||
+            inf.campaign_type?.toLowerCase().includes(lowerSearch) ||
+            inf.commercials?.toLowerCase().includes(lowerSearch) ||
+            inf.budget?.toString().toLowerCase().includes(lowerSearch) ||
+            `$${inf.budget?.toString().toLowerCase()}`.includes(lowerSearch) ||
+            inf.product_name?.toLowerCase().includes(lowerSearch) ||
+            inf.platform_type?.toLowerCase().includes(lowerSearch) ||
+            inf.vercel_form_link?.toLowerCase().includes(lowerSearch) ||
+            inf.added_by_name?.toLowerCase().includes(lowerSearch) ||
+            inf.sent_by_name?.toLowerCase().includes(lowerSearch) ||
+            inf.project_title?.toLowerCase().includes(lowerSearch) ||
+            inf.script_content?.toLowerCase().includes(lowerSearch) ||
             (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
           );
         }
@@ -765,8 +842,23 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
           return (
             inf.influencer_name?.toLowerCase().includes(lowerSearch) ||
             (inf.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(lowerSearch)) ||
+            inf.instagram_profile?.toLowerCase().includes(lowerSearch) ||
             inf.influencer_email?.toLowerCase().includes(lowerSearch) ||
-            inf.location?.toLowerCase().includes(lowerSearch)
+            inf.contact_details?.toLowerCase().includes(lowerSearch) ||
+            inf.niche?.toLowerCase().includes(lowerSearch) ||
+            inf.location?.toLowerCase().includes(lowerSearch) ||
+            inf.campaign_type?.toLowerCase().includes(lowerSearch) ||
+            inf.commercials?.toLowerCase().includes(lowerSearch) ||
+            inf.budget?.toString().toLowerCase().includes(lowerSearch) ||
+            `$${inf.budget?.toString().toLowerCase()}`.includes(lowerSearch) ||
+            inf.product_name?.toLowerCase().includes(lowerSearch) ||
+            inf.platform_type?.toLowerCase().includes(lowerSearch) ||
+            inf.vercel_form_link?.toLowerCase().includes(lowerSearch) ||
+            inf.added_by_name?.toLowerCase().includes(lowerSearch) ||
+            inf.sent_by_name?.toLowerCase().includes(lowerSearch) ||
+            inf.project_title?.toLowerCase().includes(lowerSearch) ||
+            inf.script_content?.toLowerCase().includes(lowerSearch) ||
+            (inf.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(lowerSearch))
           );
         }
         return true;
@@ -784,7 +876,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       return acc;
     }, {}),
     collabs: distributionBaseData.reduce((acc: any, inf) => {
-      const key = (inf.commercials || 'Other/Unknown').split(' (')[0];
+      const key = inf.campaign_type || 'Other/Unknown';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {})
@@ -792,9 +884,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
   const handleExport = () => {
     const isStory = currentBrandData?.brand_type === 'STORY';
+    const hideLeads = isStory || decodedBrandName.toLowerCase() === 'yum of india';
     let headers = ['Name', 'Instagram', 'Email', 'Contact Details', 'Niche', 'Commercials', 'Location', 'Total Leads', 'Budget', 'Posting Date', 'Leads', 'Comments', 'Resource', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
     
-    if (isStory) {
+    if (hideLeads) {
         headers = headers.filter(h => h !== 'Total Leads' && h !== 'Leads');
     }
 
@@ -820,7 +913,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
             inf.proof_link || 'N/A'
         ];
 
-        if (isStory) {
+        if (hideLeads) {
             // Remove 'Total Leads' (index 7) and 'Leads' (index 10)
             return row.filter((_, i) => i !== 7 && i !== 10);
         }
@@ -845,7 +938,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     if (!productName && inf.commercials?.toLowerCase().includes('(')) {
         productName = inf.commercials.split('(')[1].replace(')', '');
     }
-    setEditingInfluencer({ ...inf, product_name: productName });
+    const scopedLinks = inf.influencer_links || [];
+    const hasInstagramProfileInLinks = inf.instagram_profile && scopedLinks.some((linkObj: any) => linkObj.link === inf.instagram_profile);
+    const influencerLinks = inf.instagram_profile && !hasInstagramProfileInLinks
+      ? [{ link: inf.instagram_profile, brand_name: inf.brand_name }, ...scopedLinks]
+      : scopedLinks;
+
+    setEditingInfluencer({ ...inf, product_name: productName, influencer_links: influencerLinks });
     setEditInstagramError(null);
     setIsEditModalOpen(true);
   };
@@ -862,11 +961,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     setIsSaving(true);
     try {
       const { id } = editingInfluencer;
+      const currentLinks = editingInfluencer.influencer_links || [];
+      const primaryInstagramProfile = currentLinks.find((linkObj: any) => linkObj.link?.trim())?.link?.trim() || '';
       
       // Only include valid influencer table columns to avoid "unknown column" errors
       const updates = {
         influencer_name: editingInfluencer.influencer_name,
         influencer_email: editingInfluencer.influencer_email,
+        instagram_profile: primaryInstagramProfile,
+        campaign_type: editingInfluencer.campaign_type,
         niche: editingInfluencer.niche,
         commercials: editingInfluencer.commercials,
         location: editingInfluencer.location,
@@ -885,13 +988,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       await db.influencers.update(id, updates);
       
       // 🚀 Sync Instagram Links
-      const currentLinks = editingInfluencer.influencer_links || [];
       const { data: existingLinks } = await supabase.from('influencer_links').select('*').eq('influencer_id', id);
+      const existingBrandLinks = (existingLinks || []).filter((linkObj: any) =>
+        !linkObj.brand_name || brandMatches(linkObj.brand_name || '', editingInfluencer.brand_name || decodedBrandName)
+      );
       
-      const linksToDelete = (existingLinks || []).filter(el => !currentLinks.some(cl => cl.id === el.id));
+      const linksToDelete = existingBrandLinks.filter(el => !currentLinks.some(cl => cl.id === el.id));
       const linksToAdd = currentLinks.filter(cl => !cl.id && cl.link.trim());
       const linksToUpdate = currentLinks.filter(cl => {
-          const matching = (existingLinks || []).find(el => el.id === cl.id);
+          const matching = existingBrandLinks.find(el => el.id === cl.id);
           return matching && matching.link !== cl.link;
       });
 
@@ -903,8 +1008,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
               brand_name: editingInfluencer.brand_name,
               created_by_user_id: user.id 
           })),
-          ...linksToUpdate.map(l => supabase.from('influencer_links').update({ link: l.link }).eq('id', l.id))
+          ...linksToUpdate.map(async l => {
+              const { error } = await supabase.from('influencer_links').update({ link: l.link }).eq('id', l.id);
+              if (error) throw error;
+          })
       ]);
+
+      setInfluencers(prev => prev.map(inf => {
+          if (inf.id !== id) return inf;
+          return {
+              ...inf,
+              ...updates,
+              influencer_links: currentLinks,
+              instagram_profile: primaryInstagramProfile,
+              product_name: editingInfluencer.product_name
+          };
+      }));
       
       // Also update the associated project if one exists, to keep data in sync
       if (editingInfluencer.project_id) {
@@ -926,7 +1045,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
       toast.success('Influencer updated successfully!');
       setIsEditModalOpen(false);
-      fetchInfluencers();
+      fetchInfluencers(false);
     } catch (error) {
       console.error('Error updating influencer:', error);
       toast.error('Failed to update influencer');
@@ -954,27 +1073,153 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <Users className="w-6 h-6 text-black" />
                 </div>
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-2">{decodeURIComponent(brandName || '')}</h1>
-                    <p className="font-bold text-slate-500 uppercase text-xs tracking-widest flex items-center gap-2">
-                        <span>Partner Influence Network</span>
-                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        <span className="text-slate-400">{influencers.length} Total</span>
-                    </p>
+                    <h1 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none mb-2">{decodeURIComponent(brandName || '')}</h1>
+                    <div className="flex flex-col gap-1">
+                        <p className="font-bold text-slate-500 uppercase text-xs tracking-widest flex items-center gap-2">
+                            <span>Partner Influence Network</span>
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                            <span className="text-slate-400">{influencers.length} Total</span>
+                        </p>
+                        <div className="flex items-center gap-2 mt-1.5 relative flex-wrap" ref={dropdownRef}>
+                            <span className="text-[9px] font-black uppercase text-purple-400 flex items-center gap-1 shrink-0"><Target className="w-3 h-3"/> Sources:</span>
+                            
+                            {isLeadsLoading ? (
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Loading...</span>
+                            ) : brandLeads.length === 0 ? (
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">No leads yet</span>
+                            ) : (() => {
+                                const sourceGroups: Record<string, number> = {};
+                                brandLeads.forEach((lead: any) => {
+                                    const src = lead.source || 'Unknown';
+                                    sourceGroups[src] = (sourceGroups[src] || 0) + 1;
+                                });
+                                const sorted = Object.entries(sourceGroups).sort((a, b) => b[1] - a[1]);
+                                const visible = showAllSources ? sorted : sorted.slice(0, 4);
+                                const remaining = sorted.length - 4;
+                                return (
+                                    <div className="flex flex-wrap items-center gap-1">
+                                        {visible.map(([source, count]) => {
+                                            const isTracked = currentBrandData?.lead_sources?.includes(source);
+                                            return (
+                                                <span key={source} className="flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-200 rounded-xl text-[9px] shadow-sm hover:border-blue-200 transition-all">
+                                                    <span className="font-semibold text-slate-600 truncate max-w-[110px]">{source}</span>
+                                                    <span className="bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full border border-blue-100 text-[8px] min-w-[18px] text-center">{count}</span>
+                                                    {isTracked && user.role !== Role.CMO && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleSource(source);
+                                                            }}
+                                                            className="text-slate-400 hover:text-red-500 transition-colors"
+                                                            title={`Remove ${source}`}
+                                                        >
+                                                            <X className="w-2.5 h-2.5" />
+                                                        </button>
+                                                    )}
+                                                </span>
+                                            );
+                                        })}
+                                        {!showAllSources && remaining > 0 && (
+                                            <button
+                                                onClick={() => setShowAllSources(true)}
+                                                className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-bold border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                                            >+{remaining} more</button>
+                                        )}
+                                        {showAllSources && sorted.length > 4 && (
+                                            <button
+                                                onClick={() => setShowAllSources(false)}
+                                                className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-xl text-[9px] font-bold border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+                                            >Show less</button>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                            
+                            <button 
+                                onClick={() => setIsEditingSources(!isEditingSources)} 
+                                className="p-1 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-600 transition-colors border border-purple-200 shrink-0"
+                                title="Configure tracked sources"
+                            >
+                                <Plus className="w-3 h-3" />
+                            </button>
+                            
+                            {isEditingSources && (
+                                <div className="absolute top-full left-0 mt-2 w-64 bg-white border-2 border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-50 overflow-hidden">
+                                    <div className="p-2 border-b border-slate-100 bg-slate-50">
+                                        <p className="text-[9px] font-black uppercase text-slate-500 mb-1.5">Configure Tracked Sources</p>
+                                        <div className="relative">
+                                            <Search className="w-3 h-3 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search sources..."
+                                                value={sourceSearchTerm}
+                                                onChange={(e) => setSourceSearchTerm(e.target.value)}
+                                                className="w-full pl-7 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:border-purple-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    {(currentBrandData?.lead_sources || []).length > 0 && (
+                                        <div className="p-2 border-b border-slate-100">
+                                            <p className="text-[8px] font-black uppercase text-slate-400 mb-1.5">Tracked Sources</p>
+                                            <div className="flex flex-wrap gap-1">
+                                                {currentBrandData.lead_sources.map((source: string) => (
+                                                    <button
+                                                        key={source}
+                                                        type="button"
+                                                        onClick={() => handleToggleSource(source)}
+                                                        disabled={user.role === Role.CMO}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 text-[9px] font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 disabled:opacity-70 disabled:hover:bg-purple-50 disabled:hover:text-purple-700"
+                                                        title={`Remove ${source}`}
+                                                    >
+                                                        <span className="truncate max-w-[150px]">{source}</span>
+                                                        {user.role !== Role.CMO && <X className="w-2.5 h-2.5" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                                        {isFetchingSources ? (
+                                            <div className="text-center py-4 text-[10px] font-bold text-slate-400 uppercase">Loading...</div>
+                                        ) : availableSources
+                                            .filter(s => s.toLowerCase().includes(sourceSearchTerm.toLowerCase()))
+                                            .map(source => {
+                                                const isSelected = currentBrandData?.lead_sources?.includes(source);
+                                                return (
+                                                    <button
+                                                        key={source}
+                                                        onClick={() => handleToggleSource(source)}
+                                                        className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors ${
+                                                            isSelected ? 'bg-purple-50 text-purple-900' : 'hover:bg-slate-50'
+                                                        }`}
+                                                    >
+                                                        <span className="text-[10px] font-bold truncate">{source}</span>
+                                                        {isSelected && <CheckCircle2 className="w-3 h-3 text-purple-600 shrink-0" />}
+                                                    </button>
+                                                );
+                                            })
+                                        }
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div className="flex items-center gap-3">
                 <div className="flex bg-white border-2 border-black rounded-lg overflow-hidden shadow-sm">
                     {(['OVERALL', 'TODAY', 'WEEKLY', 'MONTHLY', 'CUSTOM'] as const).map((filter) => (
-                        <button key={filter} onClick={() => setDateFilter(filter)} className={`px-4 py-2 text-[10px] font-black uppercase transition-all ${dateFilter === filter ? 'bg-black text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border-r border-slate-100 last:border-0'}`}>
+                        <button key={filter} onClick={() => setDateFilter(filter)} className={`px-3 py-1.5 text-[9px] font-black uppercase transition-all ${dateFilter === filter ? 'bg-black text-white' : 'bg-white text-slate-500 hover:bg-slate-50 border-r border-slate-100 last:border-0'}`}>
                             {filter}
                         </button>
                     ))}
                 </div>
                 {dateFilter === 'MONTHLY' && (
-                    <div className="flex items-center gap-2 bg-white border-2 border-black px-3 py-1 rounded-lg shadow-sm">
+                    <div className="flex items-center gap-2 bg-white border-2 border-black px-2.5 py-1 rounded-lg shadow-sm">
                         <select 
-                            className="text-[10px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5"
+                            className="text-[9px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5"
                             value={selectedMonth}
                             onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
                         >
@@ -983,7 +1228,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             ))}
                         </select>
                         <select 
-                            className="text-[10px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5 border-l border-slate-200 pl-2"
+                            className="text-[9px] font-bold focus:outline-none bg-transparent cursor-pointer py-0.5 border-l border-slate-200 pl-2"
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                         >
@@ -994,22 +1239,22 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     </div>
                 )}
                 {dateFilter === 'CUSTOM' && (
-                    <div className="flex items-center gap-2 bg-white border-2 border-black px-3 py-1.5 rounded-lg shadow-sm">
-                        <input type="date" className="text-[10px] font-bold focus:outline-none" value={customRange.start} onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))} />
+                    <div className="flex items-center gap-2 bg-white border-2 border-black px-2.5 py-1 rounded-lg shadow-sm">
+                        <input type="date" className="text-[9px] font-bold focus:outline-none" value={customRange.start} onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))} />
                         <span className="text-slate-300">-</span>
-                        <input type="date" className="text-[10px] font-bold focus:outline-none" value={customRange.end} onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))} />
+                        <input type="date" className="text-[9px] font-bold focus:outline-none" value={customRange.end} onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))} />
                     </div>
                 )}
 
-                <button onClick={handleExport} className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"><Download className="w-4 h-4" /> Export CSV</button>
+                <button onClick={handleExport} className="px-4 py-2 bg-white border-2 border-black font-bold uppercase text-[10px] shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"><Download className="w-3.5 h-3.5" /> Export CSV</button>
                 <button 
                   onClick={() => { fetchInfluencers(); fetchLeadsData(); }} 
-                  className="px-6 py-3 bg-white border-2 border-black font-bold uppercase text-xs shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"
+                  className="px-4 py-2 bg-white border-2 border-black font-bold uppercase text-[10px] shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2 rounded-lg"
                 >
-                  <RefreshCw className="w-4 h-4" /> Refresh
+                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
                 </button>
                 {user.role !== Role.CMO && (
-                  <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-6 py-3 bg-[#D946EF] text-white border-4 border-black font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-4 h-4" /> New Influencer</button>
+                  <button onClick={() => navigate(`/partner_associate/add-influencer?brand=${encodeURIComponent(brandName || '')}`)} className="px-4 py-2 bg-[#D946EF] text-white border-[3px] border-black font-black uppercase text-[10px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2"><Users className="w-3.5 h-3.5" /> New Influencer</button>
                 )}
             </div>
         </div>
@@ -1071,6 +1316,24 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             </div>
                         </div>
                     )}
+                    {decodedBrandName.toLowerCase() !== 'yum of india' && (
+                        <button 
+                            onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
+                            className="p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-blue-50 group-hover:bg-blue-100 transition-colors">
+                                    <Users className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest mb-0.5 text-slate-500">Total Leads</p>
+                                    <span className="text-2xl font-black leading-none text-blue-600">
+                                        {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
+                                    </span>
+                                </div>
+                            </div>
+                        </button>
+                    )}
 
                 </div>
             </div>
@@ -1118,61 +1381,28 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         </div>
                     </div>
                 )}
-                <button 
-                    onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
-                    className="p-2.5 rounded-lg border-2 border-black bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-16 text-left group"
-                >
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 bg-blue-50 group-hover:bg-blue-100 transition-colors">
-                            <Users className="w-4 h-4 text-blue-600" />
+                {decodedBrandName.toLowerCase() !== 'yum of india' && (
+                    <button 
+                        onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
+                        className="p-2.5 rounded-lg border-2 border-black bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-16 text-left group"
+                    >
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 bg-blue-50 group-hover:bg-blue-100 transition-colors">
+                                <Users className="w-4 h-4 text-blue-600" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[8px] font-bold uppercase text-slate-500">Leads</span>
+                                <span className="text-lg font-black leading-none text-blue-600">
+                                    {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
+                                </span>
+                            </div>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-[8px] font-bold uppercase text-slate-500">Leads</span>
-                            <span className="text-lg font-black leading-none text-blue-600">
-                                {isLeadsLoading ? '...' : (leadsCount !== null ? leadsCount.toLocaleString() : '—')}
-                            </span>
-                        </div>
-                    </div>
-                </button>
+                    </button>
+                )}
             </div>
         )}
       </div>
 
-      {/* Leads by Source Breakdown */}
-      {currentBrandData?.brand_type !== 'STORY' && brandLeads.length > 0 && (() => {
-        // Group leads by source
-        const sourceGroups: Record<string, number> = {};
-        brandLeads.forEach(lead => {
-          const src = lead.source || 'Unknown';
-          sourceGroups[src] = (sourceGroups[src] || 0) + 1;
-        });
-        const sortedSources = Object.entries(sourceGroups).sort((a, b) => b[1] - a[1]);
-        return (
-          <div className="mb-8 animate-slide-up">
-            <div className="flex items-center gap-2 mb-3">
-              <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] w-full">
-                Leads by Source
-                <span className="ml-2 bg-blue-600 text-white text-[8px] px-2 py-0.5 rounded-full font-black">
-                  {brandLeads.length} total
-                </span>
-              </h4>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {sortedSources.map(([source, count]) => (
-                <div
-                  key={source}
-                  className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm hover:border-blue-200 hover:shadow-md transition-all group cursor-default"
-                >
-                  <span className="text-[11px] font-semibold text-slate-600 truncate max-w-[140px]">{source}</span>
-                  <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-100 min-w-[24px] text-center">
-                    {count}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Network Distribution Breakdown */}
       {influencers.length > 0 && (
@@ -1286,7 +1516,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Collab Type</th>
                 )}
-                {currentBrandData?.brand_type !== 'STORY' && (
+                {currentBrandData?.brand_type !== 'STORY' && decodedBrandName.toLowerCase() !== 'yum of india' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Total Leads</th>
                 )}
                 <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Budget</th>
@@ -1407,7 +1637,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
                         </td>
                     )}
-                    {currentBrandData?.brand_type !== 'STORY' && (
+                    {currentBrandData?.brand_type !== 'STORY' && decodedBrandName.toLowerCase() !== 'yum of india' && (
                         <td className="px-4 py-1 text-center">
                             <div className="inline-flex items-center justify-center bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-lg min-w-[2.5rem] shadow-sm">
                                 {brandLeads.filter(lead => 
@@ -1441,13 +1671,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                 {inf.commercials?.toLowerCase().includes('barter') ? (
                                     <div className="relative">
                                         <select 
-                                            value={inf.product_received || 'no'}
+                                            value={String(inf.product_received).trim().toLowerCase() === 'yes' ? 'yes' : 'no'}
                                             onChange={(e) => handleUpdateProductStatus(inf.id, e.target.value)}
                                             disabled={updatingId === inf.id || user.role === Role.CMO}
-                                            className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.product_received === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
+                                            className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${String(inf.product_received).trim().toLowerCase() === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
                                         >
-                                            <option value="yes" className="bg-white text-black">Yes</option>
-                                            <option value="no" className="bg-white text-black">No</option>
+                                            <option value="yes" className="bg-white text-emerald-600 font-bold">Yes</option>
+                                            <option value="no" className="bg-white text-red-600 font-bold">No</option>
                                         </select>
                                         <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
                                             {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3 rotate-90" />}
@@ -1474,13 +1704,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <td className="px-6 py-1.5">
                                 <div className="relative">
                                     <select 
-                                        value={inf.payment || 'no'}
+                                        value={String(inf.payment).trim().toLowerCase() === 'yes' ? 'yes' : 'no'}
                                         onChange={(e) => handleUpdatePaymentStatus(inf.id, e.target.value)}
                                         disabled={updatingId === inf.id || user.role === Role.CMO}
-                                        className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${inf.payment === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
+                                        className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${String(inf.payment).trim().toLowerCase() === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
                                     >
-                                        <option value="yes" className="bg-white text-black">Yes</option>
-                                        <option value="no" className="bg-white text-black">No</option>
+                                        <option value="yes" className="bg-white text-emerald-600 font-bold">Yes</option>
+                                        <option value="no" className="bg-white text-red-600 font-bold">No</option>
                                     </select>
                                     <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
                                         {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <ChevronRight className="w-3 h-3 rotate-90 text-white" />}
@@ -1534,34 +1764,42 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             </td>
                             <td className="px-6 py-2">
                                 {inf.raw_video ? (
-                                    <a href={inf.raw_video} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 transition-colors">
-                                        <Video className="w-5 h-5" />
-                                    </a>
+                                    isExternalUrl(inf.raw_video) ? (
+                                        <a href={inf.raw_video} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 transition-colors">
+                                            <Video className="w-5 h-5" />
+                                        </a>
+                                    ) : (
+                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                    )
                                 ) : (
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
                             <td className="px-6 py-2 bg-slate-50/30">
                                 {inf.edited_video ? (
-                                    <a href={inf.edited_video} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 transition-colors">
-                                        <Play className="w-5 h-5" />
-                                    </a>
+                                    isExternalUrl(inf.edited_video) ? (
+                                        <a href={inf.edited_video} target="_blank" rel="noreferrer" className="text-purple-500 hover:text-purple-700 transition-colors">
+                                            <Play className="w-5 h-5" />
+                                        </a>
+                                    ) : (
+                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                    )
                                 ) : (
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
                             <td className="px-6 py-2 bg-slate-50/30">
-                                {inf.project_status === WorkflowStage.PA_FINAL_REVIEW || inf.project_status === WorkflowStage.POSTED ? (
+                                {(inf.approved || inf.project_status === WorkflowStage.PA_FINAL_REVIEW || inf.project_status === WorkflowStage.POSTED) ? (
                                     <div className="flex flex-col items-center">
                                         <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                        <span className="text-[9px] font-bold text-green-600 mt-1">{inf.proof_link ? 'Posted' : 'Pending Proof'}</span>
+                                        <span className="text-[9px] font-bold text-green-600 mt-1">{inf.proof_link ? 'Finished' : 'Completed'}</span>
                                     </div>
                                 ) : (
                                     <XCircle className="w-5 h-5 text-slate-200" />
                                 )}
                             </td>
                             <td className="px-6 py-2 bg-slate-50/30">
-                                {inf.proof_link ? (
+                                {isExternalUrl(inf.proof_link) ? (
                                     <a href={inf.proof_link} target="_blank" rel="noreferrer" className="text-orange-500 hover:text-orange-700 transition-colors">
                                         <LinkIcon className="w-4 h-4" />
                                     </a>
@@ -1737,6 +1975,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                           const val = e.target.value;
                           setEditingInfluencer({
                             ...editingInfluencer, 
+                            campaign_type: val,
                             commercials: val,
                             budget: val.includes('Barter') ? 'Barter' : editingInfluencer.budget
                           });

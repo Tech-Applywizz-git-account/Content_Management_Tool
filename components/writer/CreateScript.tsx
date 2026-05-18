@@ -4,7 +4,7 @@ import { Project, ProjectData, Channel, Role, ContentType, WorkflowStage, STAGE_
 import Popup from '../Popup';
 import { db } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
-import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X, SpellCheck, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Save, Send, Image as ImageIcon, Link as LinkIcon, FileText, X, SpellCheck, MessageSquare, HelpCircle } from 'lucide-react';
 import { getWorkflowState } from '../../services/workflowUtils';
 
 interface Props {
@@ -1770,12 +1770,19 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                     <h3 className="font-black uppercase text-sm text-slate-900 tracking-tight">Influencer Campaign</h3>
                     <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Enable influencer-specific workflow</p>
                   </div>
-                  <button
-                    onClick={() => setFormData(prev => ({ ...prev, is_influencer: !prev.is_influencer }))}
-                    className={`w-14 h-8 border-2 border-black transition-all flex items-center px-1 ${formData.is_influencer ? 'bg-[#D946EF]' : 'bg-slate-200'}`}
-                  >
-                    <div className={`w-5 h-5 bg-white border-2 border-black transition-all ${formData.is_influencer ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
+                  <div className="group relative flex items-center">
+                    <button
+                      onClick={() => setFormData(prev => ({ ...prev, is_influencer: !prev.is_influencer }))}
+                      className={`w-14 h-8 border-2 border-black transition-all flex items-center px-1 ${formData.is_influencer ? 'bg-[#D946EF]' : 'bg-slate-200'}`}
+                    >
+                      <div className={`w-5 h-5 bg-white border-2 border-black transition-all ${formData.is_influencer ? 'translate-x-6' : 'translate-x-0'}`} />
+                    </button>
+                    <div className="absolute bottom-full right-0 mb-2 w-72 p-3 bg-slate-900 text-white text-xs font-medium rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-slate-700">
+                      <span className="block font-black text-pink-400 mb-1 uppercase">Workflow Path</span>
+                      <div className="flex items-center gap-1 text-white font-bold mb-2">Writer → CMO → CEO → Partner Associate</div>
+                      <div className="text-[10px] text-slate-300 leading-relaxed">After the CEO approves this script, it will be automatically routed to the Partner Associate who will handle the influencer outreach — selecting the right influencer, sending the script, and managing the campaign.</div>
+                    </div>
+                  </div>
                 </div>
 
                 {formData.is_influencer && (
@@ -1921,8 +1928,16 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                 {newProjectDetails.contentType === 'VIDEO' && (
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-xs font-bold uppercase text-slate-500 mb-2">
+                      <label className="text-xs font-bold uppercase text-slate-500 mb-2 flex items-center w-max">
                         Brands *
+                        <div className="group relative ml-2 flex items-center cursor-help">
+                          <HelpCircle className="w-4 h-4 text-slate-400 hover:text-slate-700 transition-colors" />
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-slate-900 text-white text-xs font-medium rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-slate-700">
+                            <span className="block font-black text-emerald-400 mb-1">WORKFLOW PATH</span>
+                            Writer → CMO → CEO → Partner Associate
+                            <div className="mt-2 text-[10px] text-slate-300">After CEO approval, these brand scripts are handed over to the Partner Associate for execution instead of the Cinematographer.</div>
+                          </div>
+                        </div>
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {([
@@ -1952,29 +1967,44 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
                               isDynamic: true,
                               brand_type: b.brand_type
                             }))
-                        ]).map(brand => (
-                          <button
-                            key={brand.value}
-                            onClick={() => {
-                              if (!canEdit) return;
-                              setFormData(prev => ({ 
-                                ...prev, 
-                                brand: brand.value, 
-                                brand_type: brand.brand_type as any,
-                                niche: undefined, 
-                                niche_other: undefined 
-                              }));
-                            }}
-                            disabled={!canEdit}
-                            className={`px-4 py-3 text-xs font-black uppercase border-2 border-black transition-all ${
-                              formData.brand === brand.value
-                                ? `${brand.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:opacity-90`
-                                : `bg-white hover:border-[#10B981] hover:text-[#10B981] hover:bg-emerald-50`
-                            } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            {brand.label}
-                          </button>
-                        ))}
+                        ]).map(brand => {
+                          const isSystemBrand = ['SHYAMS_PERSONAL_BRANDING','APPLYWIZZ','APPLYWIZZ_JOB_BOARD','LEAD_MAGNET_RTW','APPLYWIZZ_USA_JOBS','CAREER_IDENTIFIER'].includes(brand.value);
+                          const isPaBrand = !isSystemBrand;
+                          const workflowEnd = isPaBrand ? 'Partner Associate' : 'Cinematographer';
+                          const workflowEndColor = isPaBrand ? 'text-emerald-400' : 'text-blue-400';
+                          const workflowDetail = isPaBrand
+                            ? `After CEO approval, this script is routed to the Partner Associate for execution — the PA will manage production and brand collaboration directly.`
+                            : `After CEO approval, this script goes to the Cinematographer for filming. The editor then polishes it before it is published.`;
+                          return (
+                            <div key={brand.value} className="group relative">
+                              <button
+                                onClick={() => {
+                                  if (!canEdit) return;
+                                  setFormData(prev => ({ 
+                                    ...prev, 
+                                    brand: brand.value, 
+                                    brand_type: brand.brand_type as any,
+                                    niche: undefined, 
+                                    niche_other: undefined 
+                                  }));
+                                }}
+                                disabled={!canEdit}
+                                className={`px-4 py-3 text-xs font-black uppercase border-2 border-black transition-all ${
+                                  formData.brand === brand.value
+                                    ? `${brand.color} text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:opacity-90`
+                                    : `bg-white hover:border-[#10B981] hover:text-[#10B981] hover:bg-emerald-50`
+                                } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                {brand.label}
+                              </button>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-slate-900 text-white text-xs font-medium rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl border border-slate-700">
+                                <span className={`block font-black mb-1 uppercase ${workflowEndColor}`}>Workflow Path</span>
+                                <div className="font-bold mb-2">Writer → CMO → CEO → {workflowEnd}</div>
+                                <div className="text-[10px] text-slate-300 leading-relaxed">{workflowDetail}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
 
 
@@ -2445,34 +2475,91 @@ const CreateScript: React.FC<Props> = ({ project, onClose, onSuccess, creatorRol
           </div>
         </div>
         {/* Confirmation Popup */}
-        {showConfirmation && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-8 border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full mx-4">
-              <h3 className="text-2xl font-black uppercase mb-4">Confirm Submission</h3>
-              <p className="mb-6">Are you sure you want to submit this script?</p>
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setShowConfirmation(false)}
-                  className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
-                >
-                  No
-                </button>
-                <button
-                  onClick={async () => {
-                    setShowConfirmation(false);
-                    // Small delay to ensure confirmation dialog closes before showing success popup
-                    setTimeout(() => {
-                      handleSubmitForReview();
-                    }, 100);
-                  }}
-                  className="flex-1 px-4 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
-                >
-                  Yes
-                </button>
+        {showConfirmation && (() => {
+          const isPaBrand = formData.brand && !['SHYAMS_PERSONAL_BRANDING','APPLYWIZZ','APPLYWIZZ_JOB_BOARD','LEAD_MAGNET_RTW','APPLYWIZZ_USA_JOBS','CAREER_IDENTIFIER'].includes(formData.brand);
+          const isInfluencer = formData.is_influencer;
+          const isCMOSubmit = creatorRole === Role.CMO;
+
+          let workflowSteps: { label: string; desc: string; color: string }[];
+
+          if (isInfluencer) {
+            workflowSteps = [
+              { label: '1. CMO Review', desc: 'Script reviewed for quality and alignment.', color: 'bg-blue-500' },
+              { label: '2. CEO Approval', desc: 'CEO gives final sign-off on the script.', color: 'bg-purple-600' },
+              { label: '3. Partner Associate', desc: 'PA selects the influencer, sends the script, and manages the campaign outreach.', color: 'bg-pink-500' },
+            ];
+          } else if (isPaBrand) {
+            workflowSteps = [
+              { label: '1. CMO Review', desc: 'Script reviewed for brand fit and content quality.', color: 'bg-blue-500' },
+              { label: '2. CEO Approval', desc: 'CEO gives final sign-off on the script.', color: 'bg-purple-600' },
+              { label: '3. Partner Associate', desc: 'PA manages execution with the brand — including production and collaboration.', color: 'bg-emerald-500' },
+            ];
+          } else if (isCMOSubmit) {
+            workflowSteps = [
+              { label: '1. CEO Approval', desc: 'CEO reviews and approves the script.', color: 'bg-purple-600' },
+              { label: '2. Cinematographer', desc: 'Cine team films the content.', color: 'bg-orange-500' },
+              { label: '3. Editor', desc: 'Editor polishes and finalises the video.', color: 'bg-teal-500' },
+            ];
+          } else {
+            workflowSteps = [
+              { label: '1. CMO Review', desc: 'CMO checks quality and content direction.', color: 'bg-blue-500' },
+              { label: '2. CEO Approval', desc: 'CEO gives final approval before production.', color: 'bg-purple-600' },
+              { label: '3. Cinematographer', desc: 'Cine team films the script.', color: 'bg-orange-500' },
+              { label: '4. Editor', desc: 'Video is edited and published.', color: 'bg-teal-500' },
+            ];
+          }
+
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-lg w-full">
+                <div className="p-6 border-b-2 border-black bg-slate-50">
+                  <h3 className="text-2xl font-black uppercase tracking-tight">Confirm Submission</h3>
+                  <p className="text-sm text-slate-500 font-bold mt-1 uppercase">
+                    {isInfluencer ? '🎯 Influencer Campaign' : isPaBrand ? `🏢 Brand: ${formData.brand?.replace(/_/g,' ')}` : '📝 Standard Script'}
+                  </p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-sm font-bold text-slate-700">Once submitted, your script will follow this workflow:</p>
+                  <div className="space-y-3">
+                    {workflowSteps.map((step, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <div className={`${step.color} text-white text-[10px] font-black px-2 py-1 border-2 border-black flex-shrink-0 mt-0.5`}>{step.label}</div>
+                        <p className="text-xs text-slate-600 font-medium leading-relaxed">{step.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {isInfluencer && (
+                    <div className="bg-pink-50 border-2 border-pink-200 p-3 text-xs font-bold text-pink-700">
+                      💡 Influencer campaign flag is ON — the Partner Associate will handle all outreach after CEO approval.
+                    </div>
+                  )}
+                  {isPaBrand && !isInfluencer && (
+                    <div className="bg-emerald-50 border-2 border-emerald-200 p-3 text-xs font-bold text-emerald-700">
+                      💡 This is a PA Brand — after CEO approval, the script goes directly to the Partner Associate, not the Cinematographer.
+                    </div>
+                  )}
+                </div>
+                <div className="p-6 border-t-2 border-black flex gap-3">
+                  <button
+                    onClick={() => setShowConfirmation(false)}
+                    className="flex-1 px-4 py-3 border-2 border-black text-black font-black uppercase hover:bg-slate-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setShowConfirmation(false);
+                      setTimeout(() => { handleSubmitForReview(); }, 100);
+                    }}
+                    className="flex-1 px-4 py-3 bg-[#0085FF] border-2 border-black text-white font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
+                  >
+                    Yes, Submit
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

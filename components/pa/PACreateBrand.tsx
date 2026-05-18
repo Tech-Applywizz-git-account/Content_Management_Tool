@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User } from '../../types';
 import { db, SYSTEM_BRANDS } from '../../services/supabaseDb';
-import { ArrowLeft, Building2, Trash2, Plus, Video, DollarSign } from 'lucide-react';
+import { ArrowLeft, Building2, Trash2, Plus, Video, DollarSign, Search, X, Check } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PACreateBrandProps {
@@ -24,8 +24,14 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
     campaign_objective: editBrand?.campaign_objective || '',
     target_audience: editBrand?.target_audience || '',
     brand_type: editBrand?.brand_type || 'REEL' as 'REEL' | 'STORY',
-    revenue: editBrand?.revenue?.toString() || ''
+    revenue: editBrand?.revenue?.toString() || '',
+    has_leads: editBrand?.has_leads || false,
+    lead_sources: editBrand?.lead_sources || [] as string[]
   });
+
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+  const [sourceSearchTerm, setSourceSearchTerm] = useState('');
+  const [isFetchingSources, setIsFetchingSources] = useState(false);
 
   const fetchBrands = async () => {
     setIsLoading(true);
@@ -40,8 +46,33 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
     }
   };
 
+  const fetchLeadSources = async () => {
+    setIsFetchingSources(true);
+    try {
+      const today = new Date();
+      const rawUrl = import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads';
+      const urlObj = new URL(rawUrl);
+      urlObj.searchParams.set('startDate', '2024-01-01');
+      urlObj.searchParams.set('endDate', today.toISOString().split('T')[0]);
+      urlObj.searchParams.set('limit', '20000');
+
+      const response = await fetch(urlObj.toString());
+      if (response.ok) {
+        const result = await response.json();
+        const rawLeads = result.data || (Array.isArray(result) ? result : []);
+        const sources = Array.from(new Set(rawLeads.map((l: any) => l.source))).filter(Boolean).sort() as string[];
+        setAvailableSources(sources);
+      }
+    } catch (err) {
+      console.error('Failed to fetch lead sources:', err);
+    } finally {
+      setIsFetchingSources(false);
+    }
+  };
+
   useEffect(() => {
     fetchBrands();
+    fetchLeadSources();
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -62,7 +93,9 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
         await db.brands.update(editBrand.id, {
           ...formData,
           brand_name: formData.brand_name.toUpperCase(),
-          revenue: formData.revenue ? parseFloat(formData.revenue) : 0
+          revenue: formData.revenue ? parseFloat(formData.revenue) : 0,
+          has_leads: formData.has_leads,
+          lead_sources: formData.lead_sources
         });
         toast.success('Brand updated successfully!');
       } else {
@@ -70,7 +103,9 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
           ...formData,
           brand_name: formData.brand_name.toUpperCase(),
           revenue: formData.revenue ? parseFloat(formData.revenue) : 0,
-          created_by_user_id: user.id
+          created_by_user_id: user.id,
+          has_leads: formData.has_leads,
+          lead_sources: formData.lead_sources
         });
         toast.success('Brand created successfully!');
       }
@@ -249,6 +284,122 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                         placeholder="What specific content pieces are required?"
                     />
                 </div>
+
+                <div className="space-y-4">
+                    <label className="block text-sm font-black text-slate-900 tracking-wide">
+                        Track Leads?
+                    </label>
+                    <div className="flex items-center gap-4">
+                        <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, has_leads: true }))}
+                            className={`px-6 py-2 border-2 border-black font-black uppercase transition-all ${
+                                formData.has_leads
+                                ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(217,70,239,1)]'
+                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                            }`}
+                        >
+                            Yes
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, has_leads: false, lead_sources: [] }))}
+                            className={`px-6 py-2 border-2 border-black font-black uppercase transition-all ${
+                                !formData.has_leads
+                                ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(217,70,239,1)]'
+                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                            }`}
+                        >
+                            No
+                        </button>
+                    </div>
+                </div>
+
+                {formData.has_leads && (
+                    <div className="space-y-4 p-6 bg-purple-50 border-2 border-purple-200">
+                        <div>
+                            <label className="block text-sm font-black text-slate-900 tracking-wide mb-1">
+                                Configure Lead Sources <span className="text-red-500">*</span>
+                            </label>
+                            <p className="text-xs text-slate-500 font-bold mb-3">
+                                Select the API sources that should be attributed to this brand. You can select multiple.
+                            </p>
+                            
+                            <div className="bg-white border-2 border-black p-4 space-y-4">
+                                <div className="relative">
+                                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search sources..."
+                                        value={sourceSearchTerm}
+                                        onChange={(e) => setSourceSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border-2 border-slate-100 font-bold text-sm focus:border-purple-500 focus:outline-none transition-all rounded-xl"
+                                    />
+                                </div>
+                                
+                                <div className="max-h-64 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                                    {isFetchingSources ? (
+                                        <div className="text-center py-4 text-xs font-bold text-slate-400 uppercase">Loading Sources...</div>
+                                    ) : availableSources.length === 0 ? (
+                                        <div className="text-center py-4 text-xs font-bold text-slate-400 uppercase">No sources found</div>
+                                    ) : (
+                                        availableSources
+                                            .filter(s => s.toLowerCase().includes(sourceSearchTerm.toLowerCase()))
+                                            .map(source => {
+                                                const isSelected = formData.lead_sources.includes(source);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={source}
+                                                        onClick={() => {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                lead_sources: isSelected 
+                                                                    ? prev.lead_sources.filter(s => s !== source)
+                                                                    : [...prev.lead_sources, source]
+                                                            }))
+                                                        }}
+                                                        className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all text-left ${
+                                                            isSelected 
+                                                                ? 'border-purple-600 bg-purple-50 text-purple-900 shadow-sm' 
+                                                                : 'border-slate-100 bg-white hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm font-bold truncate">{source}</span>
+                                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                                                            isSelected ? 'bg-purple-600 border-purple-600' : 'border-slate-300'
+                                                        }`}>
+                                                            {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {formData.lead_sources.length > 0 && (
+                            <div className="pt-4 border-t-2 border-purple-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Selected Sources ({formData.lead_sources.length})</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {formData.lead_sources.map(source => (
+                                        <div key={source} className="flex items-center gap-2 px-3 py-1.5 bg-black text-white rounded-lg shadow-sm border border-black">
+                                            <span className="text-xs font-bold">{source}</span>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, lead_sources: prev.lead_sources.filter(s => s !== source) }))}
+                                                className="hover:text-red-400 transition-colors"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
 
 

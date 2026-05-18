@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Project, User, STAGE_LABELS, WorkflowStage, TaskStatus, Role } from '../../types';
-import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, Loader2, Check, Link, Rocket, X, Play, Edit2, Search, Instagram, Building2, Target, Tag, MapPin, DollarSign, Building, Plus, Save } from 'lucide-react';
+import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Link, Rocket, X, Play, Edit2, Search, Instagram, Building2, Target, Tag, MapPin, DollarSign, Building, Plus, Save } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
 import { toast } from 'sonner';
-import { db } from '../../services/supabaseDb';
+import { db, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
 import { supabase } from '../../src/integrations/supabase/client';
 
 interface Props {
@@ -22,6 +22,9 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
 
     const [influencerRecord, setInfluencerRecord] = useState<any>(null);
     const [isEditingInfluencer, setIsEditingInfluencer] = useState(false);
+    const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+    const [isReelPerformanceExpanded, setIsReelPerformanceExpanded] = useState(false);
+    const [isLeadsExpanded, setIsLeadsExpanded] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -42,6 +45,7 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
     const [availableScripts, setAvailableScripts] = useState<any[]>([]);
     const [selectedScript, setSelectedScript] = useState<any>(null);
     const [customContent, setCustomContent] = useState('');
+    const [attachment, setAttachment] = useState<{ filename: string, contentType: string, contentBytes: string } | null>(null);
 
     const [newVideoLink, setNewVideoLink] = useState('');
     const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -57,36 +61,6 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Source filter function for brand mapping
-    const getSourceFilterForBrand = (decodedBrandName: string): ((source: string) => boolean) | null => {
-        const brand = decodedBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (brand.includes('jobboard')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('jobboard') || s.includes('job board');
-            };
-        }
-        if (brand.includes('leadmagnet') || brand.includes('rtw')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('rtw') || s.includes('lead magnet') || s.includes('leadmagnet') || 
-                       s.includes('digital resume') || s.includes('resume') || s.includes('resunme');
-            };
-        }
-        if (brand.includes('careeridentifier') || brand.includes('careridentifier') || brand.includes('cir')) {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('cir') || s.includes('career identifier') || s.includes('careeridentifier');
-            };
-        }
-        if (brand.includes('applywizz') || brand === 'aw') {
-            return (source: string) => {
-                const s = source.toLowerCase();
-                return s.includes('aw') || s.includes('applywizz') || s.includes('apply wizz');
-            };
-        }
-        return null;
-    };
 
     const fetchLeads = async () => {
         const targetBrand = project.brand || project.data?.brand || '';
@@ -109,7 +83,8 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
             let brandFilteredLeads = allLeads;
             if (targetBrand) {
                 const decodedBrand = decodeURIComponent(targetBrand);
-                const sourceFilter = getSourceFilterForBrand(decodedBrand);
+                const brands = await db.brands.getAll();
+                const sourceFilter = getDynamicSourceFilterForBrand(decodedBrand, brands);
                 if (sourceFilter) brandFilteredLeads = allLeads.filter(lead => sourceFilter(lead.source || ''));
             }
 
@@ -271,19 +246,20 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
     const aggregatedStats = sortedProjects.reduce((acc, p) => { const isDirect = !!p.video_link && !p.data?.script_content; if (p.current_stage !== WorkflowStage.PARTNER_REVIEW && !isDirect) acc.scriptSent += 1; if (!!p.video_link || (p.cine_video_links_history || []).length > 0) acc.videoLink += 1; if (!!p.edited_video_link || (p.editor_video_links_history || []).length > 0) acc.editedVideo += 1; if (!!p.data?.posting_proof_link || p.current_stage === WorkflowStage.POSTED) acc.proofPosted += 1; return acc; }, { scriptSent: 0, videoLink: 0, editedVideo: 0, proofPosted: 0 });
 
     const handleLaunchOutreach = async () => {
-        if (!influencerName.trim() || !influencerEmail.trim() || !selectedScript) { toast.error('Fields missing'); return; }
+        if (!influencerName.trim() || !influencerEmail.trim()) { toast.error('Fields missing'); return; }
         setIsSending(true);
         try {
             let projectId = project.id;
             if (!projectId || projectId.startsWith('temp-') || project.current_stage === WorkflowStage.POSTED) {
-                const brandName = project.brand || project.data?.brand || selectedScript.data?.brand || '';
-                const { data: newProject } = await supabase.from('projects').insert([{ title: `${influencerName} - ${selectedScript.title}`, channel: (project.channel || 'INSTAGRAM').toUpperCase(), content_type: 'VIDEO', current_stage: WorkflowStage.SENT_TO_INFLUENCER, task_status: TaskStatus.TODO, priority: 'HIGH', assigned_to_role: Role.PARTNER_ASSOCIATE, assigned_to_user_id: user.id, created_by_user_id: user.id, created_by_name: user.full_name, brand: brandName, data: { influencer_name: influencerName, influencer_email: influencerEmail, selected_script_id: selectedScript.id, custom_outreach_content: customContent, parent_script_id: selectedScript.id, is_pa_brand: true, influencer_instance: true, influencer_history: [{ influencer_name: influencerName, influencer_email: influencerEmail, sent_at: new Date().toISOString(), sent_by: user.full_name, action: 'INITIAL_OUTREACH' }], brand: brandName } }]).select().single();
+                const brandName = project.brand || project.data?.brand || selectedScript?.data?.brand || '';
+                const title = selectedScript ? `${influencerName} - ${selectedScript.title}` : `${influencerName} - Direct Outreach`;
+                const { data: newProject } = await supabase.from('projects').insert([{ title: title, channel: (project.channel || 'INSTAGRAM').toUpperCase(), content_type: 'VIDEO', current_stage: WorkflowStage.SENT_TO_INFLUENCER, task_status: TaskStatus.TODO, priority: 'HIGH', assigned_to_role: Role.PARTNER_ASSOCIATE, assigned_to_user_id: user.id, created_by_user_id: user.id, created_by_name: user.full_name, brand: brandName, data: { influencer_name: influencerName, influencer_email: influencerEmail, selected_script_id: selectedScript?.id, custom_outreach_content: customContent, parent_script_id: selectedScript?.id || project.id, is_pa_brand: true, influencer_instance: true, influencer_history: [{ influencer_name: influencerName, influencer_email: influencerEmail, sent_at: new Date().toISOString(), sent_by: user.full_name, action: 'INITIAL_OUTREACH' }], brand: brandName } }]).select().single();
                 projectId = newProject.id;
             }
             await db.projects.update(projectId, { current_stage: WorkflowStage.SENT_TO_INFLUENCER, pa_script_sent_at: new Date().toISOString() });
-            await supabase.functions.invoke('send-workflow-email', { body: { event: 'SEND_TO_INFLUENCER', recipient_email: influencerEmail, data: { project_id: projectId, actor_name: user.full_name, script_content: selectedScript.data?.script_content, influencer_name: influencerName } } });
-            await db.influencers.log({ parent_project_id: selectedScript.id, instance_project_id: projectId, influencer_name: influencerName, influencer_email: influencerEmail, status: 'SCRIPT_SENT', brand_name: project.brand || project.data?.brand || '', sent_by: user.full_name });
-            setShowSuccessModal(true); setLaunchStep(0); setTimeout(() => onComplete(), 1500);
+            await supabase.functions.invoke('send-workflow-email', { body: { event: 'SEND_TO_INFLUENCER', recipient_email: influencerEmail, data: { project_id: projectId, actor_name: user.full_name, script_content: selectedScript?.data?.script_content || 'No script attached', content_description: customContent || 'Please find the details and attachments for this campaign.', influencer_name: influencerName, attachment: attachment } } });
+            await db.influencers.log({ parent_project_id: selectedScript?.id || project.id, instance_project_id: projectId, influencer_name: influencerName, influencer_email: influencerEmail, status: 'SCRIPT_SENT', brand_name: project.brand || project.data?.brand || '', sent_by: user.full_name });
+            setShowSuccessModal(true); setLaunchStep(0); setAttachment(null); setTimeout(() => onComplete(), 1500);
         } catch (error) { toast.error('Error'); } finally { setIsSending(false); }
     };
     
@@ -318,35 +294,54 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                         ))}
                     </div>
 
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4"><h2 className="text-xl font-black uppercase text-slate-900">Influencer Details</h2><div className="h-px flex-1 bg-slate-200" /></div>
-                        <div className="grid gap-3 lg:grid-cols-2">
-                            <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
-                                <h3 className="text-sm font-black uppercase text-indigo-600 mb-4">Campaign</h3>
-                                <div className="grid gap-3 grid-cols-2">
-                                    <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Type</p><p className="text-sm font-bold">{influencerRecord?.campaign_type || '—'}</p></div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Comm.</p><p className="text-sm font-bold">{influencerRecord?.commercials || '—'}</p></div>
+                    <section className="space-y-4">
+                        <button 
+                            onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                            className="w-full flex items-center gap-4 group"
+                        >
+                            <h2 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
+                                Influencer Details
+                                {isDetailsExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 group-hover:text-slate-600" /> : <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />}
+                            </h2>
+                            <div className="h-px flex-1 bg-slate-200 group-hover:bg-slate-300 transition-colors" />
+                        </button>
+                        
+                        {isDetailsExpanded && (
+                            <div className="grid gap-3 lg:grid-cols-2 animate-slide-up">
+                                <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-black uppercase text-indigo-600 mb-4">Campaign</h3>
+                                    <div className="grid gap-3 grid-cols-2">
+                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Type</p><p className="text-sm font-bold">{influencerRecord?.campaign_type || '—'}</p></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Comm.</p><p className="text-sm font-bold">{influencerRecord?.commercials || '—'}</p></div>
+                                    </div>
+                                </div>
+                                <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
+                                    <h3 className="text-sm font-black uppercase text-orange-600 mb-4">Payment</h3>
+                                    <div className="grid gap-3 grid-cols-3">
+                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Status</p><p className="text-sm font-bold">{influencerRecord?.payment_status || '—'}</p></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Date</p><p className="text-sm font-bold">{influencerRecord?.payment_date?.split('T')[0] || '—'}</p></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Platform</p><p className="text-sm font-bold">{influencerRecord?.platform_type || '—'}</p></div>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
-                                <h3 className="text-sm font-black uppercase text-orange-600 mb-4">Payment</h3>
-                                <div className="grid gap-3 grid-cols-3">
-                                    <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Status</p><p className="text-sm font-bold">{influencerRecord?.payment_status || '—'}</p></div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Date</p><p className="text-sm font-bold">{influencerRecord?.payment_date?.split('T')[0] || '—'}</p></div>
-                                    <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Platform</p><p className="text-sm font-bold">{influencerRecord?.platform_type || '—'}</p></div>
-                                </div>
-                            </div>
-                        </div>
+                        )}
                     </section>
 
-                    <section className="space-y-6">
-                        <div className="flex items-center gap-4">
-                            <h2 className="text-xl font-black uppercase text-slate-900">Reel Performance</h2>
-                            <div className="h-px flex-1 bg-slate-200" />
-                        </div>
+                    <section className="space-y-4">
+                        <button 
+                            onClick={() => setIsReelPerformanceExpanded(!isReelPerformanceExpanded)}
+                            className="w-full flex items-center gap-4 group"
+                        >
+                            <h2 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
+                                Reel Performance
+                                {isReelPerformanceExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 group-hover:text-slate-600" /> : <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />}
+                            </h2>
+                            <div className="h-px flex-1 bg-slate-200 group-hover:bg-slate-300 transition-colors" />
+                        </button>
                         
-                        <div className="bg-white border-2 border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
-                            <div className="overflow-x-auto">
+                        {isReelPerformanceExpanded && (
+                            <div className="bg-white border-2 border-slate-100 rounded-[2rem] overflow-hidden shadow-sm animate-slide-up">
+                                <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -411,11 +406,23 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                 </table>
                             </div>
                         </div>
+                        )}
                     </section>
 
-                    <section className="space-y-3">
-                        <div className="flex items-center gap-3"><h2 className="text-xl font-black uppercase text-slate-900">Leads Information</h2><div className="h-px flex-1 bg-slate-200" /></div>
-                        <div className="bg-white border-2 border-slate-100 rounded-[2rem] p-4 shadow-sm space-y-4">
+                    <section className="space-y-4">
+                        <button 
+                            onClick={() => setIsLeadsExpanded(!isLeadsExpanded)}
+                            className="w-full flex items-center gap-4 group"
+                        >
+                            <h2 className="text-xl font-black uppercase text-slate-900 flex items-center gap-2">
+                                Leads Information
+                                {isLeadsExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 group-hover:text-slate-600" /> : <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />}
+                            </h2>
+                            <div className="h-px flex-1 bg-slate-200 group-hover:bg-slate-300 transition-colors" />
+                        </button>
+                        
+                        {isLeadsExpanded && (
+                            <div className="bg-white border-2 border-slate-100 rounded-[2rem] p-4 shadow-sm space-y-4 animate-slide-up">
                             <div className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="p-2 bg-slate-900 text-white rounded-xl"><Target className="w-5 h-5"/></div><div><p className="text-[10px] font-black text-slate-400 uppercase">Total Leads</p><p className="text-xl font-bold">{leadsCount}</p></div></div>{isLeadsLoading && <div className="text-indigo-600 animate-pulse text-[10px] font-bold uppercase">Syncing...</div>}</div>
                             {leadsData.length > 0 && (
                                 <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -434,6 +441,7 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                 ))}
                             </div>
                         </div>
+                        )}
                     </section>
 
                     <div className="space-y-12">
@@ -486,6 +494,82 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                     </div>
                 </div>
             </div>
+            {launchStep === 1 && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+                    <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="p-8 border-b-2 border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-[2.5rem]">
+                            <div>
+                                <h3 className="text-2xl font-black uppercase text-slate-900">Send New Script</h3>
+                                <p className="text-sm font-bold text-slate-400 mt-1 uppercase">Select script and add details for {influencerDisplayName}</p>
+                            </div>
+                            <button onClick={() => { setLaunchStep(0); setSelectedScript(null); setAttachment(null); }} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-6 h-6"/></button>
+                        </div>
+                        <div className="p-8 space-y-6 overflow-y-auto">
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase text-slate-400">Select Script</label>
+                                <select 
+                                    className="w-full p-4 rounded-xl border-2 border-slate-200 font-bold bg-white outline-none"
+                                    value={selectedScript?.id || ''}
+                                    onChange={(e) => {
+                                        const script = availableScripts.find(s => s.id === e.target.value);
+                                        setSelectedScript(script || null);
+                                    }}
+                                >
+                                    <option value="">-- Choose a Script --</option>
+                                    {availableScripts.map(s => (
+                                        <option key={s.id} value={s.id}>{s.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase text-slate-400">Custom Notes (Optional)</label>
+                                <textarea 
+                                    className="w-full p-4 rounded-xl border-2 border-slate-200 font-bold bg-white outline-none min-h-[100px]"
+                                    placeholder="Add any additional notes for the influencer..."
+                                    value={customContent}
+                                    onChange={(e) => setCustomContent(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase text-slate-400">PDF Attachment (Optional)</label>
+                                <input 
+                                    type="file" 
+                                    accept="application/pdf"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        if (file.type !== 'application/pdf') {
+                                            toast.error('Only PDF files are allowed');
+                                            return;
+                                        }
+                                        if (file.size > 5 * 1024 * 1024) {
+                                            toast.error('File size must be under 5MB');
+                                            return;
+                                        }
+                                        const reader = new FileReader();
+                                        reader.onload = () => {
+                                            const base64Str = (reader.result as string).split(',')[1];
+                                            setAttachment({ filename: file.name, contentType: file.type, contentBytes: base64Str });
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }}
+                                    className="w-full p-4 rounded-xl border-2 border-slate-200 font-bold bg-slate-50"
+                                />
+                                {attachment && <p className="text-xs font-bold text-emerald-600 mt-2">Attached: {attachment.filename}</p>}
+                            </div>
+                        </div>
+                        <div className="p-8 border-t-2 border-slate-100">
+                            <button 
+                                onClick={handleLaunchOutreach} 
+                                disabled={isSending}
+                                className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase rounded-2xl flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isSending ? <Loader2 className="w-6 h-6 animate-spin"/> : <><Send className="w-5 h-5"/> Send Script</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {isEditingInfluencer && ( <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4"><div className="bg-white rounded-[2.5rem] w-full max-w-xl p-8 shadow-2xl"> <div className="flex justify-between mb-8"><div><h3 className="text-2xl font-black uppercase">Edit Profile</h3></div><button onClick={()=>setIsEditingInfluencer(false)}><X className="w-5 h-5"/></button></div> <div className="space-y-4"> <input value={editForm.influencer_name} onChange={e=>setEditForm({...editForm, influencer_name:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Name"/> <input value={editForm.posting_date} onChange={e=>setEditForm({...editForm, posting_date:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Posting Date"/> <input value={editForm.leads} onChange={e=>setEditForm({...editForm, leads:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Leads"/> </div> <button onClick={handleUpdateInfluencer} className="w-full py-5 bg-indigo-600 text-white font-black uppercase rounded-2xl mt-8">Save Changes</button> </div></div> )}
         </div>
     );
