@@ -375,7 +375,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       const sourceFilter = getDynamicSourceFilterForBrand(decodedBrand, brands);
       const filteredLeads = sourceFilter
         ? allLeads.filter(lead => sourceFilter(lead.source || ''))
-        : allLeads;
+        : [];
 
       setLeadsCount(filteredLeads.length);
       setBrandLeads(filteredLeads);
@@ -744,6 +744,13 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
 
   const filteredInfluencers = getFilteredData(influencers);
+  const shouldShowLeads = currentBrandData?.brand_type !== 'STORY' &&
+    decodedBrandName.toLowerCase() !== 'yum of india' &&
+    (
+      currentBrandData?.has_leads === true ||
+      (Array.isArray(currentBrandData?.lead_sources) && currentBrandData.lead_sources.length > 0) ||
+      currentBrandData?.isSystem === true
+    );
 
   // Calculate stats for STORY brands separately
   const influencersActiveInRange = currentBrandData?.brand_type === 'STORY' 
@@ -884,7 +891,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
 
   const handleExport = () => {
     const isStory = currentBrandData?.brand_type === 'STORY';
-    const hideLeads = isStory || decodedBrandName.toLowerCase() === 'yum of india';
+    const hideLeads = isStory || !shouldShowLeads;
     let headers = ['Name', 'Instagram', 'Email', 'Contact Details', 'Niche', 'Commercials', 'Location', 'Total Leads', 'Budget', 'Posting Date', 'Leads', 'Comments', 'Resource', 'Script Sent', 'Raw Video', 'Edited Video', 'Posted', 'Proof Link'];
     
     if (hideLeads) {
@@ -1316,7 +1323,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             </div>
                         </div>
                     )}
-                    {decodedBrandName.toLowerCase() !== 'yum of india' && (
+                    {shouldShowLeads && (
                         <button 
                             onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
                             className="p-4 rounded-xl border-4 border-black transition-all flex flex-col justify-center h-20 text-left bg-white hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] group"
@@ -1381,7 +1388,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                         </div>
                     </div>
                 )}
-                {decodedBrandName.toLowerCase() !== 'yum of india' && (
+                {shouldShowLeads && (
                     <button 
                         onClick={() => navigate('/partner_associate/leads', { state: { brandFilter: brandName } })}
                         className="p-2.5 rounded-lg border-2 border-black bg-white hover:bg-slate-50 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-all flex flex-col justify-center h-16 text-left group"
@@ -1516,12 +1523,15 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Collab Type</th>
                 )}
-                {currentBrandData?.brand_type !== 'STORY' && decodedBrandName.toLowerCase() !== 'yum of india' && (
+                {currentBrandData?.brand_type !== 'STORY' && shouldShowLeads && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Total Leads</th>
                 )}
                 <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Budget</th>
                 {currentBrandData?.brand_type !== 'STORY' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Product</th>
+                )}
+                {currentBrandData?.brand_type !== 'STORY' && (
+                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Payment</th>
                 )}
                 {currentBrandData?.brand_type === 'STORY' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Stories</th>
@@ -1637,7 +1647,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="text-xs font-bold text-slate-600 uppercase">{inf.campaign_type || '—'}</span>
                         </td>
                     )}
-                    {currentBrandData?.brand_type !== 'STORY' && decodedBrandName.toLowerCase() !== 'yum of india' && (
+                    {currentBrandData?.brand_type !== 'STORY' && shouldShowLeads && (
                         <td className="px-4 py-1 text-center">
                             <div className="inline-flex items-center justify-center bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-lg min-w-[2.5rem] shadow-sm">
                                 {brandLeads.filter(lead => 
@@ -1686,6 +1696,25 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                 ) : (
                                     <span className="text-slate-300 text-[10px] font-bold uppercase tracking-widest italic">N/A</span>
                                 )}
+                            </div>
+                        </td>
+                    )}
+
+                    {currentBrandData?.brand_type !== 'STORY' && (
+                        <td className="px-6 py-1.5">
+                            <div className="relative inline-flex">
+                                <select 
+                                    value={String(inf.payment).trim().toLowerCase() === 'yes' ? 'yes' : 'no'}
+                                    onChange={(e) => handleUpdatePaymentStatus(inf.id, e.target.value)}
+                                    disabled={updatingId === inf.id || user.role === Role.CMO}
+                                    className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${String(inf.payment).trim().toLowerCase() === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
+                                >
+                                    <option value="yes" className="bg-white text-emerald-600 font-bold">Yes</option>
+                                    <option value="no" className="bg-white text-red-600 font-bold">No</option>
+                                </select>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <ChevronRight className="w-3 h-3 rotate-90 text-white" />}
+                                </div>
                             </div>
                         </td>
                     )}
