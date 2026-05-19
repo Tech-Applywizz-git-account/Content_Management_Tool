@@ -11,7 +11,7 @@ const AuditLogs: React.FC<Props> = ({ logs }) => {
 
     const filteredLogs = logs.filter(log =>
         log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.actor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        log.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         log.details.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -58,10 +58,10 @@ const AuditLogs: React.FC<Props> = ({ logs }) => {
                                         {new Date(log.timestamp).toLocaleString()}
                                     </td>
                                     <td className="px-6 py-3 font-medium text-slate-900">
-                                        {log.actor_name}
+                                        {log.user_name}
                                     </td>
                                     <td className="px-6 py-3 text-slate-500">
-                                        {log.actor_role}
+                                        {log.user_role}
                                     </td>
                                     <td className="px-6 py-3">
                                         <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-mono">
@@ -83,8 +83,8 @@ const AuditLogs: React.FC<Props> = ({ logs }) => {
                         <div key={log.id} className="p-4 space-y-2">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <p className="text-sm font-bold text-slate-900">{log.actor_name}</p>
-                                    <p className="text-xs text-slate-500">{log.actor_role}</p>
+                                    <p className="text-sm font-bold text-slate-900">{log.user_name}</p>
+                                    <p className="text-xs text-slate-500">{log.user_role}</p>
                                 </div>
                                 <p className="text-[10px] text-slate-400 font-medium">
                                     {new Date(log.timestamp).toLocaleDateString()}

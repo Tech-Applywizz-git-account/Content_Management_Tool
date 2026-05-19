@@ -147,9 +147,9 @@ const CmoProjectDetails: React.FC<Props> = ({ project, onBack }) => {
             if (editorUser) {
                 setEditorName(editorUser.full_name);
             }
-        } else if (fullProject.editor_user_id && users.length > 0) {
-            // Check if editor_user_id exists directly on the project object
-            const editorUser = users.find(user => user.id === fullProject.editor_user_id);
+        } else if (fullProject.edited_by_user_id && users.length > 0) {
+            // Check if edited_by_user_id exists directly on the project object
+            const editorUser = users.find(user => user.id === fullProject.edited_by_user_id);
             if (editorUser) {
                 setEditorName(editorUser.full_name);
             }
@@ -323,7 +323,10 @@ action,
             [WorkflowStage.WRITER_REVISION]: Role.WRITER,
             [WorkflowStage.PARTNER_REVIEW]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.SENT_TO_INFLUENCER]: Role.OPS,
-            [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE
+            [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: Role.CMO,
+            [WorkflowStage.PA_VIDEO_UPLOAD]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_APPROVAL]: Role.PARTNER_ASSOCIATE
         };
         return stageToRoleMap[stage] || 'UNKNOWN';
     };

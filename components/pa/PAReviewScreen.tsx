@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
 import { Project, User, WorkflowStage, Channel, STAGE_LABELS, Role, TaskStatus } from '../../types';
 import ScriptDisplay from '../ScriptDisplay';
 import Popup from '../Popup';
@@ -36,6 +37,8 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
     const [influencerName, setInfluencerName] = useState(project.data?.influencer_name || '');
     const [influencerEmail, setInfluencerEmail] = useState(project.data?.influencer_email || '');
     const [contentDescription, setContentDescription] = useState(project.data?.content_description || '');
+    const [subject, setSubject] = useState('');
+    const [attachment, setAttachment] = useState<{ filename: string, contentType: string, contentBytes: string } | null>(null);
 
     // Stage 2: SENT_TO_INFLUENCER
     const [rawVideoLink, setRawVideoLink] = useState(project.video_link || '');
@@ -114,6 +117,58 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
             const parentId = project.data?.parent_script_id || project.id;
             const isFinished = project.current_stage === WorkflowStage.POSTED;
             const shouldCreateNew = !isChildInstance || isFinished;
+            const finalSubject = subject.trim() || `${project.brand || 'Campaign'} - Script for Collab`;
+
+            let pdfAttachment = attachment;
+            if (scriptContent && !pdfAttachment) {
+                const doc = new jsPDF();
+                const margin = 20;
+                const pageHeight = doc.internal.pageSize.height;
+                const pageWidth = doc.internal.pageSize.width;
+                const maxLineWidth = pageWidth - (margin * 2);
+                
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.text(`${project.brand || 'Campaign'} - Script`, margin, 25);
+                
+                doc.setDrawColor(200, 200, 200);
+                doc.line(margin, 28, pageWidth - margin, 28);
+                
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(11);
+                
+                const lines = doc.splitTextToSize(scriptContent, maxLineWidth);
+                let cursorY = 38;
+                const lineHeight = 7;
+                
+                lines.forEach((line: string) => {
+                    if (cursorY + lineHeight > pageHeight - margin) {
+                        doc.addPage();
+                        cursorY = 20;
+                    }
+                    doc.text(line, margin, cursorY);
+                    cursorY += lineHeight;
+                });
+                
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                pdfAttachment = {
+                    filename: `${(project.brand || 'Campaign').replace(/\s+/g, '_')}_script.pdf`,
+                    contentType: 'application/pdf',
+                    contentBytes: pdfBase64
+                };
+            }
+
+            const newHistoryElement = {
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                sent_at: new Date().toISOString(),
+                sent_by: user.full_name || 'PA',
+                sent_by_id: user.id,
+                action: 'SEND_SCRIPT',
+                script_content: scriptContent,
+                subject: finalSubject,
+                custom_content: contentDescription
+            };
 
             let targetProjectId = project.id;
 
@@ -145,20 +200,15 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                         is_pa_brand: true,
                         sent_by_id: user.id,
                         sent_by_name: user.full_name,
-                        influencer_history: [{
-                            influencer_name: influencerName,
-                            influencer_email: influencerEmail,
-                            sent_at: new Date().toISOString(),
-                            sent_by: user.full_name || 'PA',
-                            sent_by_id: user.id,
-                            action: 'INITIAL_OUTREACH'
-                        }]
+                        influencer_history: [newHistoryElement]
                     }
                 };
                 const createdProject = await db.projects.create(newChildProjectData as any);
                 targetProjectId = createdProject.id;
             } else {
                 console.log('🔄 Updating existing project instance:', targetProjectId);
+                const existingData = latestProject?.data || project.data || {};
+                const existingHistory = existingData.influencer_history || [];
                 await db.projects.update(targetProjectId, {
                     current_stage: WorkflowStage.SENT_TO_INFLUENCER,
                     status: TaskStatus.TODO,
@@ -166,7 +216,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                     assigned_to_role: Role.PARTNER_ASSOCIATE,
                     pa_script_sent_at: new Date().toISOString(),
                     data: {
-                        ...(latestProject?.data || project.data || {}),
+                        ...existingData,
                         influencer_name: influencerName,
                         influencer_email: influencerEmail,
                         content_description: contentDescription,
@@ -174,6 +224,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                         is_pa_brand: true,
                         sent_by_id: user.id,
                         sent_by_name: user.full_name,
+                        influencer_history: [...existingHistory, newHistoryElement]
                     }
                 });
             }
@@ -203,7 +254,9 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                         comment: 'Campaign launched by PA',
                         content_description: contentDescription || project.data?.brief || project.metadata?.brief || 'Script content for review',
                         script_content: scriptContent,
-                        influencer_name: influencerName
+                        influencer_name: influencerName,
+                        subject: finalSubject,
+                        attachment: pdfAttachment
                     }
                 }
             });
@@ -220,6 +273,7 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
             toast.success('Script sent to ' + influencerName);
             setShowPopup(true);
             setShowConfirmModal(false);
+            setSubject('');
 
 
         } catch (error: any) {
@@ -470,6 +524,12 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
             }
             if (!influencerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(influencerEmail)) {
                 setPopupMessage('Enter a valid influencer email address');
+                setPopupType('error');
+                setShowPopup(true);
+                return;
+            }
+            if (!subject.trim()) {
+                setPopupMessage('Subject is required');
                 setPopupType('error');
                 setShowPopup(true);
                 return;
@@ -1108,6 +1168,17 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                                                 />
                                             </div>
                                             <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Subject <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="text"
+                                                    value={subject}
+                                                    onChange={(e) => setSubject(e.target.value)}
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all"
+                                                    placeholder="Enter Email Subject"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Content Description</label>
                                                 <textarea
                                                     value={contentDescription}
@@ -1115,6 +1186,33 @@ const PAReviewScreen: React.FC<Props> = ({ project, user, onBack, onComplete, re
                                                     className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all min-h-[120px]"
                                                     placeholder="What is this script about?"
                                                 />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">PDF Attachment (Optional)</label>
+                                                <input 
+                                                    type="file" 
+                                                    accept="application/pdf"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+                                                        if (file.type !== 'application/pdf') {
+                                                            toast.error('Only PDF files are allowed');
+                                                            return;
+                                                        }
+                                                        if (file.size > 5 * 1024 * 1024) {
+                                                            toast.error('File size must be under 5MB');
+                                                            return;
+                                                        }
+                                                        const reader = new FileReader();
+                                                        reader.onload = () => {
+                                                            const base64Str = (reader.result as string).split(',')[1];
+                                                            setAttachment({ filename: file.name, contentType: file.type, contentBytes: base64Str });
+                                                        };
+                                                        reader.readAsDataURL(file);
+                                                    }}
+                                                    className="w-full bg-white border-2 border-black p-4 font-black text-sm text-slate-900 focus:outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all file:mr-4 file:py-2 file:px-4 file:border-2 file:border-black file:text-xs file:font-black file:uppercase file:bg-slate-100 hover:file:bg-slate-200 file:cursor-pointer"
+                                                />
+                                                {attachment && <p className="text-xs font-bold text-emerald-600 mt-2">Attached: {attachment.filename}</p>}
                                             </div>
                                         </div>
                                     </div>

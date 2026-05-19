@@ -793,6 +793,7 @@ export const normalizePABrandName = (value: string | null | undefined = '') => {
     if (compact.includes('JOBBOARD')) return 'APPLYWIZZ JOB BOARD';
     if (compact.includes('LEADMAGNET') || compact.includes('RTW')) return 'LEAD MAGNET';
     if (compact.includes('CAREERIDENTIFIER') || compact === 'CIR' || compact.includes('CIR')) return 'CAREER IDENTIFIER';
+    if (compact.includes('SHYAM')) return 'SHYAM PERSONAL BRAND';
     if (compact === 'AW') return 'APPLYWIZZ';
     if (compact.startsWith('APPLYWIZZ')) {
         if (compact.includes('USAJOBS')) return 'APPLYWIZZ USA JOBS';
@@ -807,6 +808,14 @@ export const normalizePABrandName = (value: string | null | undefined = '') => {
 export const getDynamicSourceFilterForBrand = (brandName: string, allBrands: any[]): ((source: string) => boolean) | null => {
     const rawBrandName = brandName || '';
     const compact = rawBrandName.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Force Career Identifier / CIR matching at the top
+    if (compact.includes('careeridentifier') || compact.includes('cir') || compact.includes('carreridentifier')) {
+        return (s: string) => { 
+            const l = (s || '').toLowerCase(); 
+            return l.includes('cir') || l.includes('career identifier') || l.includes('careeridentifier') || l.includes('carrer identifier') || l.includes('carreridentifier'); 
+        };
+    }
 
     // 1. Check if the brand has dynamic leads tracking configured in the database
     const dbBrand = allBrands.find(b => normalizePABrandName(b.brand_name) === normalizePABrandName(rawBrandName));
@@ -826,9 +835,6 @@ export const getDynamicSourceFilterForBrand = (brandName: string, allBrands: any
     }
     if (compact.includes('leadmagnet') || compact.includes('rtw')) {
         return (s: string) => { const l = s.toLowerCase(); return l.includes('rtw') || l.includes('lead magnet') || l.includes('leadmagnet') || l.includes('digital resume') || l.includes('resume'); };
-    }
-    if (compact.includes('careeridentifier') || compact.includes('cir')) {
-        return (s: string) => { const l = s.toLowerCase(); return l.includes('cir') || l.includes('career identifier') || l.includes('careeridentifier'); };
     }
     if (compact.includes('skillpassport') || compact.includes('sp')) {
         return (s: string) => { const l = s.toLowerCase(); return l.includes('skill passport') || l.includes('skillpassport') || l.includes('sp'); };
@@ -2846,6 +2852,10 @@ export const systemLogs = {
         details: string;
         metadata?: any;
     }) {
+        const detailsString = logEntry.metadata && Object.keys(logEntry.metadata).length > 0
+            ? `${logEntry.details} | Metadata: ${JSON.stringify(logEntry.metadata)}`
+            : logEntry.details;
+
         const { error } = await supabase
             .from('system_logs')
             .insert([{
@@ -2853,8 +2863,7 @@ export const systemLogs = {
                 user_name: logEntry.actor_name,
                 user_role: logEntry.actor_role,
                 action: logEntry.action,
-                details: logEntry.details,
-                metadata: logEntry.metadata || {}
+                details: detailsString
             }]);
 
         if (error) throw error;
@@ -2865,7 +2874,7 @@ export const systemLogs = {
             .select('*')
             .eq('user_name', logEntry.actor_name)
             .eq('action', logEntry.action)
-            .eq('details', logEntry.details)
+            .eq('details', detailsString)
             .order('timestamp', { ascending: false })
             .limit(1)
             .single();
@@ -3514,23 +3523,31 @@ export const influencers = {
                 .eq('instance_project_id', data.instance_project_id)
                 .maybeSingle();
 
-            // 🚀 2. Secondary Match: If no match by ID, try Name + Brand
-            // This prevents duplicate rows when the same influencer is processed under different project IDs
-            if (!existing && data.influencer_name && data.brand_name) {
-                console.log('🔍 No project ID match, searching registry by Name + Brand...');
-                const { data: registryMatch } = await client
-                    .from('influencers')
-                    .select('id, influencer_name, influencer_email')
-                    .ilike('influencer_name', data.influencer_name.trim())
-                    .eq('brand_name', data.brand_name)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                
-                if (registryMatch) {
-                    console.log('✅ Found existing registry match:', registryMatch.id);
-                    existing = registryMatch;
+            const allowedKeys = [
+                'parent_project_id', 'instance_project_id', 'influencer_name', 'influencer_email',
+                'script_content', 'content_description', 'sent_by', 'sent_by_id', 'brand_name',
+                'video_link', 'edited_video_link', 'proof_link', 'is_posted', 'instagram_profile',
+                'campaign_type', 'niche', 'commercials', 'location', 'budget', 'created_by_user_id',
+                'contact_details', 'brand_type', 'payment', 'platform_type', 'vercel_form_link',
+                'product_received', 'product_name', 'posting_date', 'leads', 'comments', 'resource',
+                'payment_date'
+            ];
+            const payload: any = {};
+            for (const key of allowedKeys) {
+                if (key in data) {
+                    const value = (data as any)[key];
+                    // Don't insert empty strings for UUID fields to prevent 400 Bad Request
+                    if ((key === 'parent_project_id' || key === 'instance_project_id' || key === 'sent_by_id' || key === 'created_by_user_id') && value === '') {
+                        continue;
+                    }
+                    payload[key] = value;
                 }
+            }
+            if (data.raw_video !== undefined) {
+                payload.video_link = data.raw_video;
+            }
+            if (data.edited_video !== undefined) {
+                payload.edited_video_link = data.edited_video;
             }
 
             if (existing) {
@@ -3538,7 +3555,7 @@ export const influencers = {
                 const { error } = await client
                     .from('influencers')
                     .update({
-                        ...data,
+                        ...payload,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', existing.id);
@@ -3553,7 +3570,7 @@ export const influencers = {
             const { data: inserted, error: insertError } = await client
                 .from('influencers')
                 .insert([{
-                    ...data,
+                    ...payload,
                     sent_at: new Date().toISOString()
                 }])
                 .select()

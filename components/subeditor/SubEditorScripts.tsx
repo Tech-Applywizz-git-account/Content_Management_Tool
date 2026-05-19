@@ -289,7 +289,7 @@ const SubEditorScripts: React.FC<Props> = ({ project: initialProject, userRole, 
       }
 
       // Update the project with cinematography instructions and raw video link
-      const updatedData = {
+      const updatedData: any = {
         ...localProject.data,
         cinematography_instructions: cinematographyInstructions
       };

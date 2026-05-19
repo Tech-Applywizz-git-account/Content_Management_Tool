@@ -14,6 +14,9 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const editBrand = location.state?.editBrand;
+  const defaultType = (location.state?.defaultType === 'REEL' || location.state?.defaultType === 'STORY')
+    ? (location.state.defaultType as 'REEL' | 'STORY')
+    : undefined;
   const [brands, setBrands] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -23,7 +26,8 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
     brand_name: editBrand?.brand_name || '',
     campaign_objective: editBrand?.campaign_objective || '',
     target_audience: editBrand?.target_audience || '',
-    brand_type: editBrand?.brand_type || 'REEL' as 'REEL' | 'STORY',
+    deliverables: editBrand?.deliverables || '',
+    brand_type: editBrand?.brand_type || defaultType || 'REEL' as 'REEL' | 'STORY',
     revenue: editBrand?.revenue?.toString() || '',
     has_leads: editBrand?.has_leads || false,
     lead_sources: editBrand?.lead_sources || [] as string[]
@@ -173,32 +177,42 @@ const PACreateBrand: React.FC<PACreateBrandProps> = ({ user }) => {
                     <label className="block text-sm font-black text-slate-900 tracking-wide">
                         Content Format <span className="text-red-500">*</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-4">
-                        <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, brand_type: 'REEL' }))}
-                            className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
-                                formData.brand_type === 'REEL' 
-                                ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
-                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
-                            }`}
-                        >
-                            <Video className={`w-5 h-5 ${formData.brand_type === 'REEL' ? 'text-white' : 'text-slate-300 group-hover:text-[#8B5CF6]'}`} />
-                            <span className="text-sm tracking-tight">Reel</span>
-                        </button>
+                    <div className={defaultType ? "flex animate-in fade-in duration-300" : "grid grid-cols-2 gap-4"}>
+                        {(!defaultType || defaultType === 'REEL') && (
+                            <button
+                                type="button"
+                                disabled={!!defaultType}
+                                onClick={() => setFormData(prev => ({ ...prev, brand_type: 'REEL' }))}
+                                className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
+                                    defaultType ? "w-full md:w-auto" : ""
+                                } ${
+                                    formData.brand_type === 'REEL' 
+                                    ? 'bg-[#8B5CF6] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                                    : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                                } ${defaultType ? 'cursor-not-allowed opacity-90' : ''}`}
+                            >
+                                <Video className={`w-5 h-5 ${formData.brand_type === 'REEL' ? 'text-white' : 'text-slate-300 group-hover:text-[#8B5CF6]'}`} />
+                                <span className="text-sm tracking-tight">Reel</span>
+                            </button>
+                        )}
                         
-                        <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, brand_type: 'STORY' }))}
-                            className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
-                                formData.brand_type === 'STORY' 
-                                ? 'bg-[#F59E0B] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
-                                : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
-                            }`}
-                        >
-                            <Building2 className={`w-5 h-5 ${formData.brand_type === 'STORY' ? 'text-white' : 'text-slate-300 group-hover:text-[#F59E0B]'}`} />
-                            <span className="text-sm tracking-tight">Story</span>
-                        </button>
+                        {(!defaultType || defaultType === 'STORY') && (
+                            <button
+                                type="button"
+                                disabled={!!defaultType}
+                                onClick={() => setFormData(prev => ({ ...prev, brand_type: 'STORY' }))}
+                                className={`group py-3 px-6 border-2 border-black font-black uppercase transition-all flex items-center justify-center gap-3 ${
+                                    defaultType ? "w-full md:w-auto" : ""
+                                } ${
+                                    formData.brand_type === 'STORY' 
+                                    ? 'bg-[#F59E0B] text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-y-[-2px]' 
+                                    : 'bg-white text-slate-400 hover:bg-slate-50 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px]'
+                                } ${defaultType ? 'cursor-not-allowed opacity-90' : ''}`}
+                            >
+                                <Building2 className={`w-5 h-5 ${formData.brand_type === 'STORY' ? 'text-white' : 'text-slate-300 group-hover:text-[#F59E0B]'}`} />
+                                <span className="text-sm tracking-tight">Story</span>
+                            </button>
+                        )}
                     </div>
                 </div>
 

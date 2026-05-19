@@ -62,7 +62,7 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
     influencer_name: '',
     influencer_email: '',
     contact_details: '',
-    link_url: '',
+    instagram_profile: '',
     niche: '',
     niche_other: '',
     commercials: '',
@@ -132,14 +132,15 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         return;
     }
 
-    if (!formData.link_url.trim()) {
-        setInstagramError('Reel/story link URL is required.');
+    if (!formData.instagram_profile.trim()) {
+        setInstagramError('Instagram profile is required.');
         return;
     }
 
-    if (!/^https?:\/\//i.test(formData.link_url)) {
-        setInstagramError('Please enter a full URL starting with http:// or https://');
-        return;
+    let finalProfile = formData.instagram_profile.trim();
+    if (!finalProfile.startsWith('http://') && !finalProfile.startsWith('https://')) {
+        const username = finalProfile.replace(/^@/, '');
+        finalProfile = `https://www.instagram.com/${username}`;
     }
 
     // Check for duplicate influencer name in the same brand
@@ -175,7 +176,8 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         brand_type,
         campaign_type: brand_type, // Using brand_type as campaign_type
         created_by_user_id: user.id,
-        product_name: formData.product_name
+        product_name: formData.product_name,
+        instagram_profile: finalProfile
       };
 
       console.log('📤 Submitting influencer payload:', payload);
@@ -184,13 +186,13 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
         await db.influencerStories.add({
           influencer_id: inserted.id,
           story_date: new Date().toISOString().split('T')[0],
-          story_link: formData.link_url,
+          story_link: finalProfile,
           created_by_user_id: user.id
         });
       } else {
         await db.influencerLinks.add({
           influencer_id: inserted.id,
-          link: formData.link_url,
+          link: finalProfile,
           brand_name: formData.brand_name,
           created_by_user_id: user.id
         });
@@ -268,18 +270,18 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
 
                 <div className="space-y-3">
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
-                        <Instagram className="w-4 h-4 text-pink-500" /> Reel/Story Link *
+                        <Instagram className="w-4 h-4 text-pink-500" /> Instagram Profile *
                     </label>
                     <input
                         type="text"
-                        name="link_url"
-                        value={formData.link_url}
+                        name="instagram_profile"
+                        value={formData.instagram_profile}
                         onChange={(e) => { handleChange(e); setInstagramError(null); }}
                         required
                         className={`w-full px-4 py-3 border-2 font-bold focus:outline-none ${
                             instagramError ? 'border-red-500 bg-red-50' : 'border-black'
                         }`}
-                        placeholder="https://www.instagram.com/reel/..."
+                        placeholder="https://www.instagram.com/username or username"
                     />
                     {instagramError && (
                         <p className="text-red-600 text-xs font-bold mt-1">⚠️ {instagramError}</p>
@@ -347,9 +349,12 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                                 const val = e.target.value;
                                 handleChange(e);
                                 const includesBarter = val.includes('Barter');
+                                const isStrictBarter = val === 'Barter';
                                 setIsBarterCollab(includesBarter);
-                                if (includesBarter) {
+                                if (isStrictBarter) {
                                     setFormData(prev => ({ ...prev, budget: 'Barter' }));
+                                } else {
+                                    setFormData(prev => ({ ...prev, budget: prev.budget === 'Barter' ? '' : prev.budget }));
                                 }
                             }} 
                             className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
@@ -415,53 +420,56 @@ const PAAddInfluencer: React.FC<PAAddInfluencerProps> = ({ user }) => {
                     <label className="block text-sm font-black text-slate-900 uppercase flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-green-500" /> Budget
                     </label>
-                    <input type="text" name="budget" value={formData.budget} onChange={handleChange} className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" placeholder="e.g., $500" />
+                    <input 
+                        type="text" 
+                        name="budget" 
+                        value={formData.budget} 
+                        onChange={handleChange} 
+                        className={`w-full px-4 py-3 border-2 border-black font-bold focus:outline-none ${formData.commercials === 'Barter' ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`} 
+                        placeholder="e.g., $500" 
+                        readOnly={formData.commercials === 'Barter'}
+                    />
                 </div>
 
 
 
+                <div className="space-y-3">
+                    <label className="block text-sm font-black text-slate-900 uppercase">Payment *</label>
+                    <select 
+                        name="payment" 
+                        value={formData.payment} 
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
+                    >
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                    </select>
+                </div>
+
+                <div className="space-y-3">
+                    <label className="block text-sm font-black text-slate-900 uppercase">Type of Platform</label>
+                    <input 
+                        type="text" 
+                        name="platform_type" 
+                        value={formData.platform_type} 
+                        onChange={handleChange} 
+                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                        placeholder="e.g., PayPal, Razorpay" 
+                    />
+                </div>
+
                 {(brands.find(b => b.brand_name === formData.brand_name)?.brand_type === 'STORY' || initialTab === 'STORY') && (
-                    <>
-                        <div className="space-y-3">
-                            <label className="block text-sm font-black text-slate-900 uppercase">Payment *</label>
-                            <select 
-                                name="payment" 
-                                value={formData.payment} 
-                                onChange={handleChange}
-                                className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none bg-white"
-                            >
-                                <option value="no">No</option>
-                                <option value="yes">Yes</option>
-                            </select>
-                        </div>
-
-                        {formData.payment === 'yes' && (
-                            <div className="space-y-3">
-                                <label className="block text-sm font-black text-slate-900 uppercase">Type of Platform *</label>
-                                <input 
-                                    type="text" 
-                                    name="platform_type" 
-                                    value={formData.platform_type} 
-                                    onChange={handleChange} 
-                                    required={formData.payment === 'yes'}
-                                    className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
-                                    placeholder="e.g., PayPal, Razorpay" 
-                                />
-                            </div>
-                        )}
-
-                        <div className="space-y-3 md:col-span-2">
-                            <label className="block text-sm font-black text-slate-900 uppercase">Vercel Form Link</label>
-                            <input 
-                                type="url" 
-                                name="vercel_form_link" 
-                                value={formData.vercel_form_link} 
-                                onChange={handleChange} 
-                                className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
-                                placeholder="https://forms.vercel.com/..." 
-                            />
-                        </div>
-                    </>
+                    <div className="space-y-3 md:col-span-2">
+                        <label className="block text-sm font-black text-slate-900 uppercase">Vercel Form Link</label>
+                        <input 
+                            type="url" 
+                            name="vercel_form_link" 
+                            value={formData.vercel_form_link} 
+                            onChange={handleChange} 
+                            className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none" 
+                            placeholder="https://forms.vercel.com/..." 
+                        />
+                    </div>
                 )}
 
                 <div className="md:col-span-2 pt-4">

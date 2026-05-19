@@ -324,12 +324,12 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
       setLoadingProject(true);
 
       try {
-        if (!selectedProject.project_id) return;
+        if (!(selectedProject as any).project_id) return;
 
         const { data, error } = await supabase
           .from('projects')
           .select('*')
-          .eq('id', selectedProject.project_id)
+          .eq('id', (selectedProject as any).project_id)
           .single();
 
         if (error) throw error;
@@ -421,7 +421,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
   // Filter pending approvals for rework projects
   const filteredPendingApprovals = pendingApprovals.filter(p =>
     p.status === TaskStatus.REWORK ||
-    p.history?.some(h => h.action === 'REWORK' || h.action === 'REWORK_VIDEO_SUBMITTED' || h.action === 'REWORK_EDIT_SUBMITTED' || h.action === 'REWORK_DESIGN_SUBMITTED')
+    p.history?.some(h => (h.action as string) === 'REWORK' || (h.action as string) === 'REWORK_VIDEO_SUBMITTED' || (h.action as string) === 'REWORK_EDIT_SUBMITTED' || (h.action as string) === 'REWORK_DESIGN_SUBMITTED')
   );
 
 
@@ -592,7 +592,7 @@ const CeoDashboard: React.FC<Props> = ({ user, inboxProjects, historyProjects, o
 
           {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-              {(activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered).map(project => (
+              {((activeTab === 'PENDING' ? pendingApprovals : activeTab === 'REWORK' ? reworkProjects : historyProjectsFiltered) as any[]).map(project => (
                 <div
                   key={project.id}
                   onClick={async () => {

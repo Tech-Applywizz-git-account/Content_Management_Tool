@@ -20,12 +20,27 @@ import {
   Filter,
   Shield,
   PlayCircle,
+  Play,
   Video,
-  Link
+  Link,
+  Users,
+  FileText,
+  FileCheck,
+  DollarSign,
+  MapPin,
+  Instagram,
+  Youtube,
+  TrendingUp,
+  Search,
+  Send,
+  Layers,
+  X
 } from 'lucide-react';
 import { supabase } from '../../src/integrations/supabase/client';
-import { db } from '../../services/supabaseDb';
-import { useSearchParams } from 'react-router-dom';
+import { db, SYSTEM_BRANDS, normalizePABrandName, getDynamicSourceFilterForBrand } from '../../services/supabaseDb';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import SearchResultsTable, { InfluencerSearchRow } from '../pa/SearchResultsTable';
 
 // Helper function to format date to DD-MM-YYYY
 const formatDateDDMMYYYY = (dateString: string | undefined): string => {
@@ -122,7 +137,7 @@ const formatDateWithTime = (dateString: string | undefined): string => {
 
 const getBrand = (p: Project): string => {
   const raw = p.brand || p.data?.brand_other || p.data?.brand || '';
-  return raw.trim();
+  return normalizePABrandName(raw);
 };
 
 const getStageApprovalInfo = (p: Project, stage: string): { label: string; time: string | undefined; color?: string } => {
@@ -173,12 +188,27 @@ const findPreviousApproval = (p: Project, currentStageIdx: number): { label: str
   return { label: 'Submitted', time: p.writer_submitted_at, color: 'text-gray-600' };
 };
 
+const fetchOverallLeads = async () => {
+  const today = new Date();
+  const url = new URL(import.meta.env.VITE_LEADS_API_URL || 'http://localhost:3000/api/leads');
+  url.searchParams.set('startDate', '2024-01-01');
+  url.searchParams.set('endDate', today.toISOString().split('T')[0]);
+  url.searchParams.set('limit', '20000');
+
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error(`Leads API Error: ${response.status}`);
+
+  const result = await response.json();
+  return result.data || (Array.isArray(result) ? result : []);
+};
+
 interface Props {
   user: any;
 }
 
 const CmoOverview: React.FC<Props> = ({ user }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const topRef = React.useRef<HTMLDivElement>(null);
 
   const brandFilter = searchParams.get('brand') || 'ALL';
@@ -190,6 +220,17 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
     setSearchParams(p => { if (f) p.set('overview_filter', f); else p.delete('overview_filter'); return p; }, { replace: true });
 
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [allInfluencers, setAllInfluencers] = useState<any[]>([]);
+  const [brandInfluencers, setBrandInfluencers] = useState<any[]>([]);
+  const [allLeads, setAllLeads] = useState<any[]>([]);
+  const [brandLeads, setBrandLeads] = useState<any[]>([]);
+  const [activeKpi, setActiveKpi] = useState<string | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<'SCRIPTS' | 'INFLUENCERS'>('SCRIPTS');
+  const [influencerSearchTerm, setInfluencerSearchTerm] = useState('');
+  const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [expandedBrandData, setExpandedBrandData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [viewMode, setViewMode] = useState<'OVERVIEW' | 'DETAILS'>('OVERVIEW');
@@ -208,6 +249,61 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
     };
     fetchAllProjects();
   }, []);
+
+  useEffect(() => {
+    const fetchBrandsAndData = async () => {
+      try {
+        const [brandsData, influencersData, leadsData] = await Promise.all([
+          db.brands.getAll(),
+          db.influencers.getAll(),
+          fetchOverallLeads().catch(() => [])
+        ]);
+        setBrands([...brandsData, ...SYSTEM_BRANDS]);
+        setAllInfluencers(influencersData || []);
+        setAllLeads(leadsData || []);
+      } catch (err) {
+        console.error('Error fetching initial data for CMO Overview:', err);
+      }
+    };
+    fetchBrandsAndData();
+  }, []);
+
+  useEffect(() => {
+    if (!brandFilter || brandFilter === 'ALL') {
+      setBrandInfluencers([]);
+      setBrandLeads([]);
+      return;
+    }
+
+    const fetchBrandSpecificData = async () => {
+      try {
+        // 1. Fetch Influencers and Leads
+        const infData = await db.influencers.getByBrand(brandFilter);
+
+        // 2. Fetch stories only for the influencers we found
+        const influencerIds = infData.map(i => i.id);
+        const storiesData = influencerIds.length > 0 
+          ? await supabase.from('influencer_stories').select('*').in('influencer_id', influencerIds)
+          : { data: [] };
+
+        // Enrich influencers with stories
+        const enriched = infData.map(inf => ({
+          ...inf,
+          stories: (storiesData.data || []).filter(s => s.influencer_id === inf.id)
+        }));
+        setBrandInfluencers(enriched);
+
+        // 3. Filter Leads
+        const sourceFilter = getDynamicSourceFilterForBrand(brandFilter, brands);
+        const filteredLeads = sourceFilter ? allLeads.filter(l => sourceFilter(l.source || '')) : allLeads;
+        setBrandLeads(filteredLeads);
+      } catch (err) {
+        console.warn('Failed to fetch brand-specific data:', err);
+      }
+    };
+
+    fetchBrandSpecificData();
+  }, [brandFilter, brands, allLeads]);
 
   // Scroll restoration logic
   useEffect(() => {
@@ -338,12 +434,18 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
 
   const brandStats = useMemo(() => {
     const map: Record<string, number> = {};
+    brands.forEach(b => {
+      if (b.brand_name) {
+        const name = normalizePABrandName(b.brand_name);
+        if (name) map[name] = 0;
+      }
+    });
     allProjects.forEach(p => { 
       const b = getBrand(p); 
       if (b) map[b] = (map[b] || 0) + 1;
     });
     return { counts: map, list: Object.keys(map).sort() };
-  }, [allProjects]);
+  }, [allProjects, brands]);
 
   useEffect(() => {
     if (!searchParams.get('brand') && brandStats.list.length > 0) {
@@ -358,6 +460,279 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
     }
     return allProjects.filter(p => getBrand(p) === brandFilter);
   }, [allProjects, brandFilter, brandStats.list]);
+
+  const brandDashboardMetrics = useMemo(() => {
+    const isAll = brandFilter === 'ALL';
+    const currentBrand = !isAll ? brands.find(b => normalizePABrandName(b.brand_name) === brandFilter) : null;
+    const isStoryBrand = !isAll && (currentBrand?.brand_type === 'STORY' || brandFilter.includes('STORY') || brandFilter.includes('STORIES'));
+
+    const brandProjects = isAll 
+      ? allProjects 
+      : allProjects.filter(p => (getBrand(p) === brandFilter) || (!getBrand(p) && brandFilter === 'UNBRANDED'));
+    
+    const currentLeads = isAll ? allLeads : brandLeads;
+    const totalLeads = currentLeads.length;
+    let displayedLeads = currentLeads;
+    let currentInfluencers = isAll ? allInfluencers : brandInfluencers;
+    let currentProjects = brandProjects;
+
+    const influencersToUse = currentInfluencers;
+    // Heuristic helpers
+    const isInfluencerProject = (p: any) => {
+      const data = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {});
+      const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {});
+      return (
+        data?.influencer_instance === true ||
+        metadata?.influencer_instance === true ||
+        data?.is_influencer === true ||
+        metadata?.is_influencer === true ||
+        !!data?.influencer_name ||
+        !!metadata?.influencer_name ||
+        !!data?.parent_script_id ||
+        !!metadata?.parent_script_id
+      );
+    };
+
+    const isInfluencerInstance = (p: any) => {
+      const data = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {});
+      const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {});
+      return data?.influencer_instance === true || metadata?.influencer_instance === true;
+    };
+
+    const isPaBrand = (p: any) => {
+      const data = typeof p.data === 'string' ? JSON.parse(p.data) : (p.data || {});
+      const metadata = typeof p.metadata === 'string' ? JSON.parse(p.metadata) : (p.metadata || {});
+      return data?.is_pa_brand === true || metadata?.is_pa_brand === true;
+    };
+
+    const totalScripts = currentProjects.filter(p => (isPaBrand(p) || isInfluencerProject(p)) && !isInfluencerInstance(p)).length;
+    const totalInfluencerTasks = currentProjects.filter(p => isInfluencerInstance(p)).length;
+    const totalProof = currentProjects.filter(p => !!p.pa_posting_proof_added_at).length;
+
+    const totalBudget = influencersToUse.reduce((sum, inf) => {
+      const budgetVal = typeof inf.budget === 'string' 
+        ? parseFloat(inf.budget.replace(/[^0-9.]/g, '')) 
+        : (typeof inf.budget === 'number' ? inf.budget : 0);
+      return sum + (isNaN(budgetVal) ? 0 : budgetVal);
+    }, 0);
+
+    const isCompletionMarker = (value: unknown) => ['completed', 'complete', 'done', 'yes', 'finished', 'finish'].includes(String(value || '').trim().toLowerCase());
+    const isExternalUrl = (value: unknown) => /^https?:\/\//i.test(String(value || '').trim());
+
+    const influencerStats: Record<string, any> = {};
+    
+    // Seed with table data
+    influencersToUse.forEach(inf => {
+      const name = inf.influencer_name;
+      if (!name) return;
+      
+      const hasProof = isExternalUrl(inf.proof_link);
+      const isCompleteStatus = isCompletionMarker(inf.status) || isCompletionMarker(inf.proof_link);
+
+      if (!influencerStats[name]) {
+        influencerStats[name] = {
+          name,
+          tasks: 0,
+          completed: 0,
+          script_sent: !!inf.script_content || isCompleteStatus,
+          raw_video: !!inf.video_link,
+          edited_video: !!inf.edited_video_link,
+          proof: hasProof,
+          approved: inf.approved || inf.is_posted === true || isCompleteStatus,
+          latestStatus: 'No active project',
+          budget: inf.budget
+        };
+      } else {
+        if (!!inf.script_content || isCompleteStatus) influencerStats[name].script_sent = true;
+        if (!!inf.video_link) influencerStats[name].raw_video = true;
+        if (!!inf.edited_video_link) influencerStats[name].edited_video = true;
+        if (hasProof) influencerStats[name].proof = true;
+        if (inf.approved || inf.is_posted === true || isCompleteStatus) influencerStats[name].approved = true;
+      }
+    });
+
+    // Add/Update with project data
+    currentProjects.forEach(p => {
+      if (isInfluencerInstance(p)) {
+        const name = p.data?.influencer_name || p.metadata?.influencer_name;
+        if (!name) return;
+        
+        if (!influencerStats[name]) {
+          influencerStats[name] = {
+            name,
+            tasks: 0,
+            completed: 0,
+            script_sent: false,
+            raw_video: false,
+            edited_video: false,
+            proof: false,
+            approved: false,
+            latestStatus: p.current_stage,
+            budget: 0
+          };
+        }
+        
+        influencerStats[name].tasks++;
+        if (p.current_stage === WorkflowStage.POSTED) influencerStats[name].completed++;
+        
+        const scriptSentFromProject = !!p.pa_script_sent_at || [WorkflowStage.SENT_TO_INFLUENCER, WorkflowStage.PA_VIDEO_UPLOAD, WorkflowStage.PA_VIDEO_CMO_REVIEW, WorkflowStage.PA_VIDEO_APPROVAL, WorkflowStage.POSTED].includes(p.current_stage as WorkflowStage);
+        if (scriptSentFromProject) influencerStats[name].script_sent = true;
+        
+        if (p.video_link || p.video_url || p.pa_raw_footage_uploaded_at) influencerStats[name].raw_video = true;
+        if (p.edited_video_link) influencerStats[name].edited_video = true;
+        
+        const hasProjectProof = isExternalUrl(p.data?.posting_proof_link || p.data?.live_url || p.data?.referral_link);
+        if (hasProjectProof || !!p.pa_posting_proof_added_at) influencerStats[name].proof = true;
+        
+        if (p.current_stage === WorkflowStage.PA_FINAL_REVIEW || p.current_stage === WorkflowStage.POSTED) influencerStats[name].approved = true;
+        
+        influencerStats[name].latestStatus = p.current_stage;
+      }
+    });
+
+    let influencerList = Object.values(influencerStats).sort((a: any, b: any) => b.tasks - a.tasks);
+    let scriptList = currentProjects.filter(p => (isPaBrand(p) || isInfluencerProject(p)) && !isInfluencerInstance(p))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const totalInfluencers = influencerList.length;
+    const totalScriptsKPI = influencerList.filter(i => i.script_sent).length;
+    const rawVideos = influencerList.filter(i => i.raw_video).length;
+    const editedVideos = influencerList.filter(i => i.edited_video).length;
+    const totalApprove = influencerList.filter(i => i.approved).length;
+    const totalProofKPI = influencerList.filter(i => i.proof).length;
+
+    if (isStoryBrand) {
+      const totalStories = influencersToUse.reduce((acc, inf) => acc + (inf.stories?.length || 0), 0);
+      return {
+        totalInfluencers,
+        rawVideosReceived: rawVideos,
+        editedVideos: editedVideos,
+        totalLeads,
+        totalScripts: totalStories,
+        totalInfluencerTasks,
+        totalBudget,
+        totalProof: totalProofKPI,
+        totalApprove,
+        influencerList,
+        scriptList,
+        leadList: displayedLeads,
+        isStory: true
+      };
+    }
+
+    return {
+      totalInfluencers,
+      rawVideosReceived: rawVideos,
+      editedVideos: editedVideos,
+      totalLeads,
+      totalProjects: currentProjects.length,
+      totalScripts: totalScriptsKPI,
+      totalInfluencerTasks,
+      totalBudget,
+      totalProof: totalProofKPI,
+      totalApprove,
+      influencerList,
+      scriptList,
+      leadList: displayedLeads,
+      isStory: false
+    };
+  }, [allProjects, brandFilter, brandInfluencers, brandLeads, brands, allInfluencers, allLeads]);
+
+  // ── PA-Brands-style cross-brand influencer search ──────────────────────────
+  const influencerSearchRows = useMemo<InfluencerSearchRow[]>(() => {
+    const parseBudget = (v: unknown) => {
+      if (v == null || v === '') return 0;
+      if (typeof v === 'number') return v;
+      const n = Number(String(v).replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    };
+    // Pre-compute lead sources for fast matching — same as PABrands
+    const leadSources = allLeads.map((lead: any) => (lead.source || '').trim().toLowerCase());
+    const rows = new Map<string, any>();
+    allInfluencers.forEach((inf: any) => {
+      const key = (inf.influencer_name || '').trim().toLowerCase();
+      const brandName = (inf.brand_name || 'Unassigned').trim();
+      const instagram_handle = inf.instagram_profile || inf.instagram_handle || '';
+      const budget = parseBudget(inf.budget || inf.commercials || 0);
+      const existing = rows.get(key);
+      if (!existing) {
+        rows.set(key, {
+          id: inf.id || key,
+          influencer_name: inf.influencer_name || 'Unknown',
+          influencer_email: inf.influencer_email || '',
+          instagram_handle,
+          influencer_links: inf.influencer_links || [],
+          total_budget: budget,
+          // Count leads whose source string contains this influencer's name
+          total_leads: key ? leadSources.filter((src: string) => src.includes(key)).length : 0,
+          brands: brandName ? [brandName] : [],
+          brand_types: [(inf.brand_type || 'REEL').toUpperCase()],
+          primary_brand: brandName,
+          profile_initial: (inf.influencer_name || 'I')[0]?.toUpperCase() || 'I',
+          profile_color: 'bg-slate-900',
+          niche: inf.niche,
+          location: inf.location,
+        });
+      } else {
+        existing.total_budget = (existing.total_budget || 0) + budget;
+        existing.influencer_links = [...new Map([...(existing.influencer_links || []), ...(inf.influencer_links || [])].map((l: any) => [l.link, l])).values()];
+        if (brandName && !existing.brands.includes(brandName)) existing.brands.push(brandName);
+        if (!existing.instagram_handle) existing.instagram_handle = instagram_handle;
+      }
+    });
+    return Array.from(rows.values()).map(item => ({ ...item, total_budget: `$${Number(item.total_budget || 0).toLocaleString()}` }));
+  }, [allInfluencers, allLeads]);
+
+  const filteredInfluencerRows = useMemo<InfluencerSearchRow[]>(() => {
+    if (!influencerSearchTerm) return [];
+    const low = influencerSearchTerm.toLowerCase();
+    return influencerSearchRows.filter(row =>
+      row.influencer_name.toLowerCase().includes(low) ||
+      row.instagram_handle.toLowerCase().includes(low) ||
+      row.brands.some((b: string) => b.toLowerCase().includes(low)) ||
+      row.influencer_links.some((l: any) => (l.link || '').toLowerCase().includes(low))
+    );
+  }, [influencerSearchRows, influencerSearchTerm]);
+
+  const handleSelectBrandDetails = async (brandName: string, rowId: string) => {
+    if (expandedRowId === rowId && expandedBrandData?.brand_name === brandName) {
+      setExpandedRowId(null); setExpandedBrandData(null); return;
+    }
+    setExpandedRowId(rowId);
+    setExpandedBrandData({ brand_name: brandName, _loading: true });
+    setOpenPopoverId(null);
+    const row = influencerSearchRows.find(r => r.id === rowId);
+    const infName = row?.influencer_name?.trim() || '';
+    const infNameLower = infName.toLowerCase();
+    try {
+      const { data: infRecords } = await supabase.from('influencers').select('*, influencer_links(*)').ilike('influencer_name', infName).order('created_at', { ascending: false });
+      const specificInf = (infRecords || []).find((inf: any) => normalizePABrandName(inf.brand_name) === normalizePABrandName(brandName));
+      let latestAction = 'No recent action';
+      let proofLink: string | null = null;
+      if (specificInf) {
+        const { data: projectData } = await supabase.from('projects').select('current_stage, data, pa_script_sent_at, video_link, edited_video_link').or(`id.eq.${specificInf.parent_project_id || 'none'},id.eq.${specificInf.instance_project_id || 'none'}`).limit(1);
+        const project = projectData?.[0];
+        proofLink = project?.data?.posting_proof_link || project?.data?.live_url || null;
+        const scriptSent = !!specificInf.script_content || !!project?.pa_script_sent_at;
+        const rawVideo = !!(project?.video_link || specificInf.video_link);
+        const editedVideo = !!(project?.edited_video_link || specificInf.edited_video_link);
+        if (proofLink) latestAction = 'Proof Uploaded';
+        else if (editedVideo) latestAction = 'Edited Video Uploaded';
+        else if (rawVideo) latestAction = 'Raw Video Received';
+        else if (scriptSent) latestAction = 'Script Sent';
+      }
+      const foundBrand = brands.find((b: any) => normalizePABrandName(b.brand_name) === normalizePABrandName(brandName));
+      const brandSourceFilter = getDynamicSourceFilterForBrand(brandName, brands);
+      const brandLeadsForInf = allLeads.filter((l: any) => brandSourceFilter ? brandSourceFilter(l.source || '') : false);
+      const influencerLeads = infNameLower ? brandLeadsForInf.filter((l: any) => (l.source || '').toLowerCase().includes(infNameLower)).length : brandLeadsForInf.length;
+      setExpandedBrandData({ brand_name: brandName, campaign_name: foundBrand?.brand_name || brandName, niche: specificInf?.niche || 'N/A', collab_type: specificInf?.campaign_type || 'N/A', influencer_budget: specificInf?.budget || 'N/A', influencer_brand_leads: influencerLeads, latest_action: latestAction, proof_link: proofLink });
+    } catch { setExpandedRowId(null); setExpandedBrandData(null); }
+  };
+
+  const handleInfluencerRowViewDetails = (_row: InfluencerSearchRow) => {
+    setExpandedRowId(null); setExpandedBrandData(null); setOpenPopoverId(null);
+  };
+  // ────────────────────────────────────────────────────────────────────────────
 
   const kpiData = useMemo(() => {
     const base = brandFilteredProjects;
@@ -1137,160 +1512,786 @@ const CmoOverview: React.FC<Props> = ({ user }) => {
         )}
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 bg-orange-500 rounded-full anim-pulse"></span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Pending Review</span>
-          </div>
-          <div className="flex items-center gap-2 border-l border-gray-200 pl-6">
-            <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Passed / Approved</span>
-          </div>
-        </div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Click any card to filter projects</p>
+      {/* Sub-tabs: Scripts / Influencers */}
+      <div className="bg-slate-100 p-1.5 rounded-2xl flex gap-1.5 w-fit">
+        <button
+          onClick={() => {
+            setActiveSubTab('SCRIPTS');
+            setActiveKpi(null);
+          }}
+          className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+            activeSubTab === 'SCRIPTS'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          Scripts
+        </button>
+        <button
+          onClick={() => {
+            setActiveSubTab('INFLUENCERS');
+            setActiveKpi(null);
+          }}
+          className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+            activeSubTab === 'INFLUENCERS'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          Influencers
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { 
-            id: '', 
-            label: 'Total Scripts', 
-            value: kpiData.total, 
-            icon: BarChart2, 
-            color: 'text-indigo-600', 
-            bg: 'bg-indigo-50', 
-            subtitle: 'Overview across all brands' 
-          },
-          { 
-            id: 'CMO_REVIEW', 
-            label: 'CMO Review', 
-            pending: kpiData.cmoTotal,
-            approved: kpiData.cmoApproved,
-            icon: AlertTriangle, 
-            color: 'text-amber-600', 
-            bg: 'bg-amber-50', 
-            subtitle: `${kpiData.cmoScript} Script | ${kpiData.cmoFinal} Final` 
-          },
-          { 
-            id: 'CEO_REVIEW', 
-            label: 'CEO Review', 
-            pending: kpiData.ceoTotal,
-            approved: kpiData.ceoApproved,
-            icon: Shield, 
-            color: 'text-rose-600', 
-            bg: 'bg-rose-50', 
-            subtitle: `${kpiData.ceoScript} Script | ${kpiData.ceoFinal} Final` 
-          },
-          { 
-            id: 'IN_PRODUCTION', 
-            label: 'In Production', 
-            pending: kpiData.prodTotal,
-            approved: kpiData.prodApproved,
-            icon: PlayCircle, 
-            color: 'text-teal-600', 
-            bg: 'bg-teal-50', 
-            subtitle: `Cine: ${kpiData.cine} | Edit: ${kpiData.editor} | Design: ${kpiData.designer}` 
-          },
-          { 
-            id: 'REWORK', 
-            label: 'Reworks', 
-            value: kpiData.rework, 
-            icon: RefreshCw, 
-            color: 'text-red-600', 
-            bg: 'bg-red-50', 
-            subtitle: 'Action required' 
-          },
-          { 
-            id: 'COMPLETED', 
-            label: 'Posted', 
-            value: kpiData.completed, 
-            icon: CheckCircle2, 
-            color: 'text-emerald-600', 
-            bg: 'bg-emerald-50', 
-            subtitle: 'Published' 
-          }
-        ].map(card => {
-          const Icon = card.icon;
-          const active = overviewFilter === card.id;
-          return (
-            <button key={card.id} onClick={() => setOverviewFilter(active ? '' : card.id)} className={`text-left p-6 rounded-2xl border transition-all relative overflow-hidden group ${active ? 'bg-white border-blue-500 shadow-lg' : 'bg-white border-gray-200 hover:shadow-md'}`}>
-              <div className="flex items-center gap-3 mb-6">
-                <div className={`inline-flex p-2.5 rounded-xl ${card.bg} ${card.color}`}><Icon size={20} /></div>
-                <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{card.label}</span>
+      {activeSubTab === 'INFLUENCERS' && (
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 animate-in fade-in duration-500">
+          <div className="flex-1 bg-white border-2 border-slate-200 shadow-sm rounded-xl p-3 flex items-center">
+              <div className="relative w-full">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search influencers by name or handle..." 
+                    value={influencerSearchTerm} 
+                    onChange={(e) => setInfluencerSearchTerm(e.target.value)} 
+                    className="w-full pl-12 pr-4 py-3 border border-slate-200 bg-slate-50 rounded-lg font-medium focus:outline-none focus:bg-white focus:border-slate-300 transition-all text-sm" 
+                  />
               </div>
-              <div className="flex flex-col">
-                {card.pending !== undefined ? (
+          </div>
+          {influencerSearchTerm !== '' && (
+            <div className="flex items-center gap-2">
+              <button 
+                  onClick={() => setInfluencerSearchTerm('')} 
+                  className="px-6 py-4 bg-slate-100 hover:bg-slate-200 border-2 border-slate-200 rounded-xl font-bold uppercase text-[10px] transition-all flex items-center gap-2"
+              >
+                  <X className="w-3 h-3" /> Clear Search
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeSubTab === 'SCRIPTS' && (
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 bg-orange-500 rounded-full anim-pulse"></span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Pending Review</span>
+              </div>
+              <div className="flex items-center gap-2 border-l border-gray-200 pl-6">
+                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Passed / Approved</span>
+              </div>
+            </div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Click any card to filter projects</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { 
+                id: '', 
+                label: 'Total Scripts', 
+                value: kpiData.total, 
+                icon: BarChart2, 
+                color: 'text-indigo-600', 
+                bg: 'bg-indigo-50', 
+                subtitle: 'Overview across all brands' 
+              },
+              { 
+                id: 'CMO_REVIEW', 
+                label: 'CMO Review', 
+                pending: kpiData.cmoTotal,
+                approved: kpiData.cmoApproved,
+                icon: AlertTriangle, 
+                color: 'text-amber-600', 
+                bg: 'bg-amber-50', 
+                subtitle: `${kpiData.cmoScript} Script | ${kpiData.cmoFinal} Final` 
+              },
+              { 
+                id: 'CEO_REVIEW', 
+                label: 'CEO Review', 
+                pending: kpiData.ceoTotal,
+                approved: kpiData.ceoApproved,
+                icon: Shield, 
+                color: 'text-rose-600', 
+                bg: 'bg-rose-50', 
+                subtitle: `${kpiData.ceoScript} Script | ${kpiData.ceoFinal} Final` 
+              },
+              { 
+                id: 'IN_PRODUCTION', 
+                label: 'In Production', 
+                pending: kpiData.prodTotal,
+                approved: kpiData.prodApproved,
+                icon: PlayCircle, 
+                color: 'text-teal-600', 
+                bg: 'bg-teal-50', 
+                subtitle: `Cine: ${kpiData.cine} | Edit: ${kpiData.editor} | Design: ${kpiData.designer}` 
+              },
+              { 
+                id: 'REWORK', 
+                label: 'Reworks', 
+                value: kpiData.rework, 
+                icon: RefreshCw, 
+                color: 'text-red-600', 
+                bg: 'bg-red-50', 
+                subtitle: 'Action required' 
+              },
+              { 
+                id: 'COMPLETED', 
+                label: 'Posted', 
+                value: kpiData.completed, 
+                icon: CheckCircle2, 
+                color: 'text-emerald-600', 
+                bg: 'bg-emerald-50', 
+                subtitle: 'Published' 
+              }
+            ].map(card => {
+              const Icon = card.icon;
+              const active = overviewFilter === card.id;
+              return (
+                <button key={card.id} onClick={() => setOverviewFilter(active ? '' : card.id)} className={`text-left p-6 rounded-2xl border transition-all relative overflow-hidden group ${active ? 'bg-white border-blue-500 shadow-lg' : 'bg-white border-gray-200 hover:shadow-md'}`}>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className={`inline-flex p-2.5 rounded-xl ${card.bg} ${card.color}`}><Icon size={20} /></div>
+                    <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{card.label}</span>
+                  </div>
                   <div className="flex flex-col">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-4xl font-black text-slate-900 leading-tight">{card.pending}</span>
-                      <span className="text-xs font-black text-orange-600 uppercase tracking-tighter">Pending Action</span>
-                    </div>
-                    <div className="flex items-baseline gap-2 -mt-1">
-                      <span className="text-2xl font-bold text-slate-400">{card.approved}</span>
-                      <span className="text-[10px] font-black text-green-600 uppercase tracking-tighter">Approved</span>
+                    {card.pending !== undefined ? (
+                      <div className="flex flex-col">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-4xl font-black text-slate-900 leading-tight">{card.pending}</span>
+                          <span className="text-xs font-black text-orange-600 uppercase tracking-tighter">Pending Action</span>
+                        </div>
+                        <div className="flex items-baseline gap-2 -mt-1">
+                          <span className="text-2xl font-bold text-slate-400">{card.approved}</span>
+                          <span className="text-[10px] font-black text-green-600 uppercase tracking-tighter">Approved</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-3xl font-bold text-gray-900">{card.value}</span>
+                    )}
+                    {card.subtitle && <span className="text-[10px] font-extrabold text-slate-400 uppercase mt-2 tracking-tighter">{card.subtitle}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="space-y-6 pt-8 border-t">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4"><h3 className="text-xl font-bold text-gray-900">Scripts</h3>{overviewFilter && (<div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-100">{STAGE_LABELS[overviewFilter as WorkflowStage] || overviewFilter}<button onClick={() => setOverviewFilter('')} className="hover:text-blue-900">✕</button></div>)}</div>
+              <div className="text-right flex flex-col items-end gap-1">
+                <p className="text-xs text-gray-400 font-black uppercase tracking-widest">{projectsToShow.length} items found</p>
+                {isSplitViewActive && (
+                  <div className="flex items-center gap-4 text-xs font-black uppercase tracking-wider">
+                    <span className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">{pendingList.length} Pending</span>
+                    <span className="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg border border-green-100 shadow-sm">{approvedList.length} Approved</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {loading ? (<div className="py-24 text-center text-gray-400">Loading...</div>) : projectsToShow.length === 0 ? (<div className="py-24 text-center bg-gray-50 rounded-3xl border border-dashed text-gray-400">No scripts found</div>) : (
+              <div className="space-y-12">
+                {pendingList.length > 0 && (
+                  <div className="space-y-6">
+                    {isSplitViewActive && <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Pending at Stage</h4>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {pendingList.map(project => {
+                        const filterIdx = WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage);
+                        
+                        // If filter is active, look for approval of previous stage
+                        // If NO filter active, look for approval of project's previous stage
+                        const targetIdx = filterIdx !== -1 
+                          ? filterIdx - 1 
+                          : WORKFLOW_ORDER.indexOf(project.current_stage) - 1;
+                        
+                        const info = findPreviousApproval(project, targetIdx);
+                        return renderProjectCard(project, info || undefined, 'bg-orange-500');
+                      })}
                     </div>
                   </div>
-                ) : (
-                  <span className="text-3xl font-bold text-gray-900">{card.value}</span>
                 )}
-                {card.subtitle && <span className="text-[10px] font-extrabold text-slate-400 uppercase mt-2 tracking-tighter">{card.subtitle}</span>}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-
-      <div className="space-y-6 pt-8 border-t">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4"><h3 className="text-xl font-bold text-gray-900">Scripts</h3>{overviewFilter && (<div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-100">{STAGE_LABELS[overviewFilter as WorkflowStage] || overviewFilter}<button onClick={() => setOverviewFilter('')} className="hover:text-blue-900">✕</button></div>)}</div>
-          <div className="text-right flex flex-col items-end gap-1">
-            <p className="text-xs text-gray-400 font-black uppercase tracking-widest">{projectsToShow.length} items found</p>
-            {isSplitViewActive && (
-              <div className="flex items-center gap-4 text-xs font-black uppercase tracking-wider">
-                <span className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 shadow-sm">{pendingList.length} Pending</span>
-                <span className="bg-green-50 text-green-600 px-3 py-1.5 rounded-lg border border-green-100 shadow-sm">{approvedList.length} Approved</span>
+                {approvedList.length > 0 && (
+                  <div className="space-y-6">
+                    {isSplitViewActive && <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Approved</h4>}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {approvedList.map(project => {
+                        // For approved items, we explicitly want the approval for the stage they just passed (overviewFilter)
+                        const info = getStageApprovalInfo(project, overviewFilter);
+                        return renderProjectCard(project, info.time ? info : undefined, 'bg-emerald-500');
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {activeSubTab === 'INFLUENCERS' && (
+        <div className="space-y-8 animate-in fade-in duration-500">
+
+          {/* PA Brands-style: show SearchResultsTable when searching, KPIs otherwise */}
+          {influencerSearchTerm ? (
+            <SearchResultsTable
+              rows={filteredInfluencerRows}
+              searchQuery={influencerSearchTerm}
+              isLoading={false}
+              resultsLabel="Influencer search results"
+              onClearSearch={() => setInfluencerSearchTerm('')}
+              openPopoverId={openPopoverId}
+              onTogglePopover={(id) => setOpenPopoverId(openPopoverId === id ? null : id)}
+              onSelectBrand={handleSelectBrandDetails}
+              onViewDetails={handleInfluencerRowViewDetails}
+              expandedRowId={expandedRowId}
+              expandedBrandData={expandedBrandData}
+              onCloseExpanded={() => { setExpandedRowId(null); setExpandedBrandData(null); }}
+              userRole={user.role}
+            />
+          ) : (
+          <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {(brandDashboardMetrics.isStory ? [
+              {
+                id: 'INFLUENCERS',
+                label: 'Total Influencers',
+                value: brandDashboardMetrics.totalInfluencers,
+                icon: Users,
+                color: 'text-violet-600',
+                bg: 'bg-violet-50',
+                subtitle: 'Active creators'
+              },
+              {
+                id: 'SCRIPTS',
+                label: 'Total Stories',
+                value: brandDashboardMetrics.totalScripts,
+                icon: PlayCircle,
+                color: 'text-indigo-600',
+                bg: 'bg-indigo-50',
+                subtitle: 'Total stories submitted'
+              },
+              {
+                id: 'APPROVE',
+                label: 'Approve',
+                value: brandDashboardMetrics.totalApprove,
+                icon: CheckCircle2,
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50',
+                subtitle: 'Approved content'
+              },
+              {
+                id: 'BUDGET',
+                label: 'Total Budget',
+                value: `$${brandDashboardMetrics.totalBudget.toLocaleString()}`,
+                icon: DollarSign,
+                color: 'text-purple-600',
+                bg: 'bg-purple-50',
+                subtitle: 'Total brand budget'
+              },
+              {
+                id: 'LEADS',
+                label: 'Total Leads',
+                value: brandDashboardMetrics.totalLeads,
+                icon: TrendingUp,
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50',
+                subtitle: 'Conversions generated'
+              }
+            ] : [
+              {
+                id: 'INFLUENCERS',
+                label: 'Total Influencers',
+                value: brandDashboardMetrics.totalInfluencers,
+                icon: Users,
+                color: 'text-violet-600',
+                bg: 'bg-violet-50',
+                subtitle: 'Active creators'
+              },
+              {
+                id: 'SCRIPTS',
+                label: 'Scripts Sent',
+                value: brandDashboardMetrics.totalScripts,
+                icon: FileText,
+                color: 'text-indigo-600',
+                bg: 'bg-indigo-50',
+                subtitle: 'Sent to creators'
+              },
+              {
+                id: 'RAW',
+                label: 'Raw Videos',
+                value: brandDashboardMetrics.rawVideosReceived,
+                icon: Video,
+                color: 'text-amber-600',
+                bg: 'bg-amber-50',
+                subtitle: 'Raw footage uploaded'
+              },
+              {
+                id: 'EDITED',
+                label: 'Edited Videos',
+                value: brandDashboardMetrics.editedVideos,
+                icon: PlayCircle,
+                color: 'text-blue-600',
+                bg: 'bg-blue-50',
+                subtitle: 'Final edits ready'
+              },
+              {
+                id: 'APPROVE',
+                label: 'Approve',
+                value: brandDashboardMetrics.totalApprove,
+                icon: CheckCircle2,
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50',
+                subtitle: 'Approved content'
+              },
+              {
+                id: 'PROOF',
+                label: 'Proof',
+                value: brandDashboardMetrics.totalProof,
+                icon: FileCheck,
+                color: 'text-sky-600',
+                bg: 'bg-sky-50',
+                subtitle: 'Verification links'
+              },
+              {
+                id: 'BUDGET',
+                label: 'Total Budget',
+                value: `$${brandDashboardMetrics.totalBudget.toLocaleString()}`,
+                icon: DollarSign,
+                color: 'text-purple-600',
+                bg: 'bg-purple-50',
+                subtitle: 'Total brand budget'
+              },
+              {
+                id: 'LEADS',
+                label: 'Total Leads',
+                value: brandDashboardMetrics.totalLeads,
+                icon: TrendingUp,
+                color: 'text-emerald-600',
+                bg: 'bg-emerald-50',
+                subtitle: 'Conversions generated'
+              }
+            ]).map(card => {
+              const Icon = card.icon;
+              const active = activeKpi === card.id;
+              return (
+                <button
+                  key={card.id}
+                  onClick={() => setActiveKpi(active ? null : card.id)}
+                  className={`text-left p-6 rounded-2xl border transition-all relative overflow-hidden group ${
+                    active ? 'bg-white border-blue-500 shadow-lg ring-4 ring-blue-500/10' : 'bg-white border-gray-200 hover:shadow-md'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className={`inline-flex p-2.5 rounded-xl ${card.bg} ${card.color}`}>
+                      <Icon size={20} />
+                    </div>
+                    <span className="text-xs font-black text-slate-900 uppercase tracking-widest">{card.label}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-3xl font-bold text-gray-900">{card.value}</span>
+                    {card.subtitle && (
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase mt-2 tracking-tighter">
+                        {card.subtitle}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* KPI Detail Sections */}
+          <div className="mt-8 transition-all animate-in fade-in slide-in-from-top-4 duration-500">
+            {/* Influencer Details */}
+            {activeKpi === 'INFLUENCERS' && brandDashboardMetrics.influencerList.length > 0 && (
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <h3 className="text-lg font-black uppercase tracking-tight text-slate-900 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-violet-600" /> Influencer Registry
+                  </h3>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Total {brandDashboardMetrics.influencerList.length} Active Influencers
+                    </span>
+                    <button onClick={() => setActiveKpi(null)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Registry Table (no search active) */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Creator Name</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Handle & Contact</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Niche & Location</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Budget</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {brandDashboardMetrics.influencerList.filter((inf: any) => {
+                        if (!influencerSearchTerm) return true;
+                        const dbInf = (brandFilter === 'ALL' ? allInfluencers : brandInfluencers).find(i => i.influencer_name === inf.name);
+                        const term = influencerSearchTerm.toLowerCase();
+                        return (
+                          inf.name?.toLowerCase().includes(term) ||
+                          dbInf?.instagram_profile?.toLowerCase().includes(term) ||
+                          dbInf?.instagram_handle?.toLowerCase().includes(term) ||
+                          dbInf?.influencer_email?.toLowerCase().includes(term) ||
+                          dbInf?.contact_details?.toLowerCase().includes(term) ||
+                          dbInf?.niche?.toLowerCase().includes(term) ||
+                          dbInf?.location?.toLowerCase().includes(term) ||
+                          dbInf?.campaign_type?.toLowerCase().includes(term) ||
+                          dbInf?.budget?.toString().toLowerCase().includes(term) ||
+                          dbInf?.product_name?.toLowerCase().includes(term) ||
+                          dbInf?.platform_type?.toLowerCase().includes(term) ||
+                          dbInf?.vercel_form_link?.toLowerCase().includes(term) ||
+                          dbInf?.script_content?.toLowerCase().includes(term) ||
+                          dbInf?.project_title?.toLowerCase().includes(term) ||
+                          (dbInf?.influencer_links || []).some((linkObj: any) => linkObj.link?.toLowerCase().includes(term)) ||
+                          (dbInf?.stories || []).some((s: any) => s.story_caption?.toLowerCase().includes(term))
+                        );
+                      }).map((inf: any) => {
+                        const dbInf = (brandFilter === 'ALL' ? allInfluencers : brandInfluencers).find(i => i.influencer_name === inf.name);
+                        return (
+                          <tr key={inf.name} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-xs font-black text-violet-600 uppercase">
+                                  {inf.name[0]}
+                                </div>
+                                <span className="font-bold text-slate-900">{inf.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1">
+                                {dbInf?.instagram_handle ? (
+                                  <a href={`https://instagram.com/${dbInf.instagram_handle.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 hover:underline">
+                                    <Instagram className="w-3 h-3" /> {dbInf.instagram_handle}
+                                  </a>
+                                ) : <span className="text-slate-300 text-xs">No Handle</span>}
+                                <span className="text-[10px] text-slate-500">{dbInf?.influencer_email || 'No Email'}</span>
+                                <span className="text-[9px] text-slate-400">{dbInf?.contact_details || ''}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs font-bold text-slate-700">{dbInf?.niche || 'N/A'}</span>
+                                <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                  <MapPin className="w-2.5 h-2.5" /> {dbInf?.location || 'Unknown'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-xs font-bold text-emerald-600">${dbInf?.budget || 0}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button 
+                                onClick={() => {
+                                  const bName = dbInf?.brand_name || brandFilter;
+                                  if (bName && bName !== 'ALL') {
+                                    navigate(`/cmo/brand-details/${encodeURIComponent(bName)}?highlightInfluencer=${encodeURIComponent(inf.name)}`);
+                                  } else {
+                                    toast.error("Select a brand first to view details");
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors shadow-sm"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* CEO Approved Scripts Details */}
+            {activeKpi === 'SCRIPTS' && (
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                      <FileText className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black uppercase tracking-tight text-slate-900">CEO Approved Scripts</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active & Ready for Outreach</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveKpi(null)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Script Title</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Brand</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Approved Date</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Current Stage</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {brandDashboardMetrics.scriptList
+                        .filter((script: any) => 
+                          !!script.ceo_approved_at || 
+                          ![WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2].includes(script.current_stage)
+                        )
+                        .map((script: any) => (
+                          <tr key={script.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <span className="font-bold text-slate-900">{script.title}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-slate-100 rounded text-slate-500 whitespace-nowrap">
+                                {script.brand || 'Unbranded'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                              {script.ceo_approved_at ? format(new Date(script.ceo_approved_at), 'MMM dd, yyyy') : 'Recently Approved'}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="px-3 py-1 bg-emerald-50 rounded-full text-[10px] font-black uppercase text-emerald-600 tracking-wider">
+                                {script.current_stage === WorkflowStage.PARTNER_REVIEW ? 'OUTREACH READY' : (STAGE_LABELS[script.current_stage] || script.current_stage.replace(/_/g, ' '))}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button 
+                                onClick={() => handleViewDetails(script as any)}
+                                className="text-indigo-600 font-black uppercase text-[10px] tracking-widest hover:underline"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Leads Details */}
+            {activeKpi === 'LEADS' && (
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-md">
+                      <TrendingUp className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black uppercase tracking-tight text-slate-900">Leads Intelligence</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Influencer Specific Conversions</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveKpi(null)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Lead Name</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Contact</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Source Intelligence</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Stage & Status</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Assignment</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Captured At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {brandDashboardMetrics.leadList.map((lead: any) => (
+                        <tr key={lead.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <span className="font-bold text-slate-900 block">{lead.full_name || lead.name || 'Anonymous'}</span>
+                            <button 
+                              onClick={() => {
+                                const bName = brandFilter === 'ALL' ? (lead.brand || '') : brandFilter;
+                                navigate('/cmo/leads', { state: { brandFilter: bName } });
+                              }}
+                              className="text-[9px] font-black text-indigo-600 hover:underline uppercase mt-1"
+                            >
+                              View Full Details
+                            </button>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-medium text-slate-600">{lead.email || 'No Email'}</span>
+                              <span className="text-[10px] text-slate-400">{lead.phone || ''}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 bg-slate-100 rounded text-slate-500">
+                              {lead.source || 'Direct'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="px-3 py-1 bg-indigo-50 rounded-full text-[10px] font-black uppercase text-indigo-600 tracking-wider w-fit">
+                                Stage: {lead.current_stage || lead.stage || 'UNTRACKED'}
+                              </span>
+                              <span className="px-3 py-1 bg-emerald-50 rounded-full text-[10px] font-black uppercase text-emerald-600 tracking-wider w-fit">
+                                Status: {lead.status || 'NEW'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className="w-7 h-7 bg-slate-100 rounded flex items-center justify-center font-bold text-[10px] text-slate-600 shrink-0">
+                                {lead.assigned_to?.charAt(0) || <Users size={12} />}
+                              </div>
+                              <span className="text-[11px] font-semibold text-slate-700 truncate">{lead.assigned_to || 'Unassigned'}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                            {lead.created_at ? format(new Date(lead.created_at), 'MMM dd, HH:mm') : 'N/A'}
+                          </td>
+                        </tr>
+                      ))}
+                      {brandDashboardMetrics.leadList.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-20 text-center text-slate-400 font-bold uppercase tracking-widest text-xs">
+                            No leads found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Drill-down for Workflow & Budget KPIs */}
+            {['RAW', 'EDITED', 'PROOF', 'BUDGET'].includes(activeKpi || '') && (
+              <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md ${
+                      activeKpi === 'RAW' ? 'bg-pink-600' :
+                      activeKpi === 'EDITED' ? 'bg-purple-600' :
+                      activeKpi === 'PROOF' ? 'bg-orange-600' :
+                      'bg-emerald-600'
+                    }`}>
+                      {activeKpi === 'RAW' ? <Video className="w-5 h-5 text-white" /> :
+                       activeKpi === 'EDITED' ? <PlayCircle className="w-5 h-5 text-white" /> :
+                       activeKpi === 'PROOF' ? <FileCheck className="w-5 h-5 text-white" /> :
+                       <DollarSign className="w-5 h-5 text-white" />}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black uppercase tracking-tight text-slate-900">
+                        {activeKpi === 'RAW' ? 'Raw Footage Inventory' :
+                         activeKpi === 'EDITED' ? 'Edited Video Pipeline' :
+                         activeKpi === 'PROOF' ? 'Proof Link Verification' :
+                         'Budget Distribution'}
+                      </h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {activeKpi === 'BUDGET' ? 'Financial Overview' : 'Live Management Interface'}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveKpi(null)} className="text-slate-400 hover:text-slate-900 transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Influencer</th>
+                        {activeKpi === 'BUDGET' ? (
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Amount</th>
+                        ) : (
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Asset/Link</th>
+                        )}
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Current Status</th>
+                        <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(brandFilter === 'ALL' ? allInfluencers : brandInfluencers)
+                        .filter(inf => {
+                          if (activeKpi === 'RAW') return !!inf.raw_video;
+                          if (activeKpi === 'EDITED') return !!inf.edited_video;
+                          if (activeKpi === 'PROOF') return !!inf.proof_link;
+                          if (activeKpi === 'BUDGET') return !!inf.budget && inf.budget !== '0' && inf.budget !== 0;
+                          return true;
+                        })
+                        .map((inf: any) => (
+                          <tr key={inf.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <span className="font-bold text-slate-900 block">{inf.influencer_name}</span>
+                              <span className="text-[10px] text-slate-400">{inf.influencer_email || ''}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              {activeKpi === 'BUDGET' ? (
+                                <span className="text-sm font-black text-emerald-600">${inf.budget || 0}</span>
+                              ) : (
+                                <a 
+                                  href={activeKpi === 'RAW' ? inf.raw_video : activeKpi === 'EDITED' ? inf.edited_video : inf.proof_link} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="text-indigo-600 hover:underline flex items-center gap-1.5 text-xs font-bold"
+                                >
+                                  <ExternalLink className="w-3 h-3" /> 
+                                  {activeKpi === 'RAW' ? 'Raw Video' : activeKpi === 'EDITED' ? 'Edited Video' : 'Proof Link'}
+                                </a>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="px-3 py-1 bg-slate-100 rounded-full text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                                {STAGE_LABELS[inf.project_status] || inf.project_status || 'READY'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button 
+                                onClick={() => {
+                                  const bName = inf.brand_name || brandFilter;
+                                  if (bName && bName !== 'ALL') {
+                                    navigate(`/cmo/brand-details/${encodeURIComponent(bName)}?highlightInfluencer=${encodeURIComponent(inf.influencer_name)}`);
+                                  } else {
+                                    toast.error("Pipeline data missing");
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-700 transition-colors shadow-sm"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      {(brandFilter === 'ALL' ? allInfluencers : brandInfluencers)
+                        .filter(inf => {
+                          if (activeKpi === 'RAW') return !!inf.raw_video;
+                          if (activeKpi === 'EDITED') return !!inf.edited_video;
+                          if (activeKpi === 'PROOF') return !!inf.proof_link;
+                          if (activeKpi === 'BUDGET') return !!inf.budget && inf.budget !== '0' && inf.budget !== 0;
+                          return true;
+                        }).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-20 text-center text-slate-300 font-bold uppercase tracking-widest text-xs italic">
+                            No records found for this category
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+          </>
+          )} {/* end: search/KPI ternary */}
         </div>
-        {loading ? (<div className="py-24 text-center text-gray-400">Loading...</div>) : projectsToShow.length === 0 ? (<div className="py-24 text-center bg-gray-50 rounded-3xl border border-dashed text-gray-400">No scripts found</div>) : (
-          <div className="space-y-12">
-            {pendingList.length > 0 && (
-              <div className="space-y-6">
-                {isSplitViewActive && <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Pending at Stage</h4>}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {pendingList.map(project => {
-                    const filterIdx = WORKFLOW_ORDER.indexOf(overviewFilter as WorkflowStage);
-                    
-                    // If filter is active, look for approval of previous stage
-                    // If NO filter active, look for approval of project's previous stage
-                    const targetIdx = filterIdx !== -1 
-                      ? filterIdx - 1 
-                      : WORKFLOW_ORDER.indexOf(project.current_stage) - 1;
-                    
-                    const info = findPreviousApproval(project, targetIdx);
-                    return renderProjectCard(project, info || undefined, 'bg-orange-500');
-                  })}
-                </div>
-              </div>
-            )}
-            {approvedList.length > 0 && (
-              <div className="space-y-6">
-                {isSplitViewActive && <h4 className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Approved</h4>}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {approvedList.map(project => {
-                    // For approved items, we explicitly want the approval for the stage they just passed (overviewFilter)
-                    const info = getStageApprovalInfo(project, overviewFilter);
-                    return renderProjectCard(project, info.time ? info : undefined, 'bg-emerald-500');
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 };

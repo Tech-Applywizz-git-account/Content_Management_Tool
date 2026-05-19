@@ -24,11 +24,15 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     interface WorkflowHistoryEntry {
+        id: string;
         action: string;
         comment: string;
         actor_name: string;
         timestamp: string;
         actor_id?: string;
+        stage: string;
+        project_id: string;
+        actor_role?: string;
     }
 
     const [comments, setComments] = useState<WorkflowHistoryEntry[]>([]);
@@ -61,12 +65,14 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
             const { data: commentsData, error: commentsError } = await supabase
                 .from('workflow_history')
                 .select(`
+                    id,
                     action,
                     comment,
                     actor_name,
                     actor_id,
                     timestamp,
                     stage,
+                    project_id,
                     actor_role
                 `)
                 .eq('project_id', project.id)
@@ -146,10 +152,10 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     };
 
                     setPreviousAssets({
-                        video_link: meta?.reworked_by_role === Role.CINE ? meta.before_link : (lastRework?.video_link || getLastHistoryItem(project.cine_video_links)),
-                        edited_video_link: (meta?.reworked_by_role === Role.EDITOR || meta?.reworked_by_role === Role.SUB_EDITOR) ? meta.before_link : (lastRework?.edited_video_link || getLastHistoryItem(project.editor_video_links) || getLastHistoryItem(project.sub_editor_video_links)),
-                        thumbnail_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.thumbnail_link || getLastHistoryItem(project.designer_video_links)),
-                        creative_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.creative_link || getLastHistoryItem(project.designer_video_links))
+                        video_link: meta?.reworked_by_role === Role.CINE ? meta.before_link : (lastRework?.video_link || getLastHistoryItem(project.cine_video_links_history)),
+                        edited_video_link: (meta?.reworked_by_role === Role.EDITOR || meta?.reworked_by_role === Role.SUB_EDITOR) ? meta.before_link : (lastRework?.edited_video_link || getLastHistoryItem(project.editor_video_links_history) || getLastHistoryItem(project.sub_editor_video_links_history)),
+                        thumbnail_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.thumbnail_link || getLastHistoryItem(project.designer_video_links_history)),
+                        creative_link: meta?.reworked_by_role === Role.DESIGNER ? meta.before_link : (lastRework?.creative_link || getLastHistoryItem(project.designer_video_links_history))
                     });
                 } else if (project.current_stage === 'WRITER_VIDEO_APPROVAL') {
                     // If no explicit rework entry, look through all history for a previous video_link
@@ -686,7 +692,7 @@ const WriterProjectDetail: React.FC<Props> = ({ project, onBack, showWorkflowSta
                     )}
 
                     <div className="bg-white p-8 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <Timeline project={{ ...project, history: comments }} />
+                        <Timeline project={{ ...project, history: comments as any }} />
 
                         {!simplifiedView && (
                             <div className="flex items-start space-x-4 mt-8 pt-6 border-t-2 border-dashed border-slate-300">

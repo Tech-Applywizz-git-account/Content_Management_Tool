@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
 import { Project, User, STAGE_LABELS, WorkflowStage, TaskStatus, Role } from '../../types';
 import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, ExternalLink, Info, Clock, AlertCircle, Users, Mail, History, Send, Layers, Briefcase, ChevronRight, ChevronDown, ChevronUp, Loader2, Check, Link, Rocket, X, Play, Edit2, Search, Instagram, Building2, Target, Tag, MapPin, DollarSign, Building, Plus, Save } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
@@ -21,30 +22,18 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
     const influencerDisplayName = influencerName || 'Influencer';
 
     const [influencerRecord, setInfluencerRecord] = useState<any>(null);
-    const [isEditingInfluencer, setIsEditingInfluencer] = useState(false);
     const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const [isReelPerformanceExpanded, setIsReelPerformanceExpanded] = useState(false);
     const [isLeadsExpanded, setIsLeadsExpanded] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
-    const [editForm, setEditForm] = useState<any>({
-        influencer_name: '',
-        budget: '',
-        raw_video: '',
-        edited_video: '',
-        proof_link: '',
-        influencer_links: [],
-        posting_date: '',
-        leads: '',
-        comments: '',
-        resource: ''
-    });
 
     const [launchStep, setLaunchStep] = useState<number>(0); // 0: closed, 1: select script, 2: preview
     const [availableScripts, setAvailableScripts] = useState<any[]>([]);
     const [selectedScript, setSelectedScript] = useState<any>(null);
     const [customContent, setCustomContent] = useState('');
+    const [subject, setSubject] = useState('');
     const [attachment, setAttachment] = useState<{ filename: string, contentType: string, contentBytes: string } | null>(null);
 
     const [newVideoLink, setNewVideoLink] = useState('');
@@ -52,6 +41,26 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
     const [uploadType, setUploadType] = useState<'RAW' | 'EDITED' | 'PROOF' | null>(null);
     const [editingLinkInfo, setEditingLinkInfo] = useState<{ projId: string, type: 'RAW' | 'EDITED' | 'PROOF', index?: number } | null>(null);
     const [editLinkValue, setEditLinkValue] = useState('');
+
+    const [editingField, setEditingField] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState<string>('');
+
+    const handleInlineSubmit = async (field: string) => {
+        if (!influencerRecord?.id) return;
+        setIsSending(true);
+        try {
+            const { error } = await supabase.from('influencers').update({ [field]: editValue }).eq('id', influencerRecord.id);
+            if (error) throw error;
+            setInfluencerRecord({ ...influencerRecord, [field]: editValue });
+            toast.success('Updated');
+        } catch (error) {
+            console.error('Update error:', error);
+            toast.error('Failed to update');
+        } finally {
+            setIsSending(false);
+            setEditingField(null);
+        }
+    };
 
     const [leadsData, setLeadsData] = useState<any[]>([]);
     const [leadsCount, setLeadsCount] = useState<number>(0);
@@ -160,26 +169,10 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
             if (data) {
                 const { data: links } = await supabase.from('influencer_links').select('*').eq('influencer_id', data.id).order('created_at', { ascending: false });
                 setInfluencerRecord({ ...data, influencer_links: links || [] });
-                setEditForm({ influencer_name: data.influencer_name, budget: data.budget, raw_video: data.raw_video || '', edited_video: data.edited_video || '', proof_link: data.proof_link || '', influencer_links: links || [], posting_date: data.posting_date || '', leads: data.leads || '', comments: data.comments || '', resource: data.resource || '' });
             }
         };
         fetchInfluencer();
     }, [project]);
-
-    const handleUpdateInfluencer = async () => {
-        if (!influencerRecord?.id) { toast.error('Registry record not found'); return; }
-        setIsSending(true);
-        try {
-            await db.influencers.update(influencerRecord.id, { influencer_name: editForm.influencer_name, budget: editForm.budget, posting_date: editForm.posting_date, leads: editForm.leads, comments: editForm.comments, resource: editForm.resource });
-            const currentLinks = editForm.influencer_links || [];
-            const { data: existingLinks } = await supabase.from('influencer_links').select('*').eq('influencer_id', influencerRecord.id);
-            const linksToDelete = (existingLinks || []).filter(el => !currentLinks.some(cl => cl.id === el.id));
-            const linksToAdd = currentLinks.filter(cl => !cl.id && cl.link.trim());
-            const linksToUpdate = currentLinks.filter(cl => { const matching = (existingLinks || []).find(el => el.id === cl.id); return matching && matching.link !== cl.link; });
-            await Promise.all([ ...linksToDelete.map(l => db.influencerLinks.delete(l.id)), ...linksToAdd.map(l => db.influencerLinks.add({ influencer_id: influencerRecord.id, link: l.link, brand_name: influencerRecord.brand_name, created_by_user_id: user.id })), ...linksToUpdate.map(l => supabase.from('influencer_links').update({ link: l.link }).eq('id', l.id)) ]);
-            toast.success('Updated'); setIsEditingInfluencer(false); onComplete();
-        } catch (error) { toast.error('Failed'); } finally { setIsSending(false); }
-    };
 
     const handleUploadLink = async (projId: string, type: 'RAW' | 'EDITED' | 'PROOF') => {
         if (!newVideoLink.trim()) { toast.error('Please enter a link'); return; }
@@ -247,20 +240,128 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
 
     const handleLaunchOutreach = async () => {
         if (!influencerName.trim() || !influencerEmail.trim()) { toast.error('Fields missing'); return; }
+        if (!selectedScript) { toast.error('Please select a script'); return; }
+        if (!subject.trim()) { toast.error('Subject is required'); return; }
         setIsSending(true);
         try {
-            let projectId = project.id;
-            if (!projectId || projectId.startsWith('temp-') || project.current_stage === WorkflowStage.POSTED) {
-                const brandName = project.brand || project.data?.brand || selectedScript?.data?.brand || '';
-                const title = selectedScript ? `${influencerName} - ${selectedScript.title}` : `${influencerName} - Direct Outreach`;
-                const { data: newProject } = await supabase.from('projects').insert([{ title: title, channel: (project.channel || 'INSTAGRAM').toUpperCase(), content_type: 'VIDEO', current_stage: WorkflowStage.SENT_TO_INFLUENCER, task_status: TaskStatus.TODO, priority: 'HIGH', assigned_to_role: Role.PARTNER_ASSOCIATE, assigned_to_user_id: user.id, created_by_user_id: user.id, created_by_name: user.full_name, brand: brandName, data: { influencer_name: influencerName, influencer_email: influencerEmail, selected_script_id: selectedScript?.id, custom_outreach_content: customContent, parent_script_id: selectedScript?.id || project.id, is_pa_brand: true, influencer_instance: true, influencer_history: [{ influencer_name: influencerName, influencer_email: influencerEmail, sent_at: new Date().toISOString(), sent_by: user.full_name, action: 'INITIAL_OUTREACH' }], brand: brandName } }]).select().single();
-                projectId = newProject.id;
+            const brandName = project.brand || project.data?.brand || selectedScript?.data?.brand || '';
+            const finalSubject = subject.trim() || `${brandName || 'Campaign'} - Script for Collab`;
+            const scriptText = selectedScript?.data?.script_content || '';
+            
+            let finalAttachment = attachment;
+            if (scriptText && !finalAttachment) {
+                const doc = new jsPDF();
+                const margin = 20;
+                const pageHeight = doc.internal.pageSize.height;
+                const pageWidth = doc.internal.pageSize.width;
+                const maxLineWidth = pageWidth - (margin * 2);
+                
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.text(`${brandName} - Script`, margin, 25);
+                
+                doc.setDrawColor(200, 200, 200);
+                doc.line(margin, 28, pageWidth - margin, 28);
+                
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(11);
+                
+                const lines = doc.splitTextToSize(scriptText, maxLineWidth);
+                let cursorY = 38;
+                const lineHeight = 7;
+                
+                lines.forEach((line: string) => {
+                    if (cursorY + lineHeight > pageHeight - margin) {
+                        doc.addPage();
+                        cursorY = 20;
+                    }
+                    doc.text(line, margin, cursorY);
+                    cursorY += lineHeight;
+                });
+                
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                finalAttachment = {
+                    filename: `${brandName.replace(/\s+/g, '_')}_script.pdf`,
+                    contentType: 'application/pdf',
+                    contentBytes: pdfBase64
+                };
             }
-            await db.projects.update(projectId, { current_stage: WorkflowStage.SENT_TO_INFLUENCER, pa_script_sent_at: new Date().toISOString() });
-            await supabase.functions.invoke('send-workflow-email', { body: { event: 'SEND_TO_INFLUENCER', recipient_email: influencerEmail, data: { project_id: projectId, actor_name: user.full_name, script_content: selectedScript?.data?.script_content || 'No script attached', content_description: customContent || 'Please find the details and attachments for this campaign.', influencer_name: influencerName, attachment: attachment } } });
-            await db.influencers.log({ parent_project_id: selectedScript?.id || project.id, instance_project_id: projectId, influencer_name: influencerName, influencer_email: influencerEmail, status: 'SCRIPT_SENT', brand_name: project.brand || project.data?.brand || '', sent_by: user.full_name });
-            setShowSuccessModal(true); setLaunchStep(0); setAttachment(null); setTimeout(() => onComplete(), 1500);
-        } catch (error) { toast.error('Error'); } finally { setIsSending(false); }
+
+            const newHistoryElement = {
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                sent_at: new Date().toISOString(),
+                sent_by: user.full_name,
+                action: 'SEND_SCRIPT',
+                script_content: scriptText,
+                subject: finalSubject,
+                custom_content: customContent
+            };
+
+            const title = selectedScript ? `${influencerName} - ${selectedScript.title}` : `${influencerName} - Direct Outreach`;
+            const { data: newProject } = await supabase.from('projects').insert([{
+                title: title,
+                channel: (project.channel || 'INSTAGRAM').toUpperCase(),
+                content_type: 'VIDEO',
+                current_stage: WorkflowStage.SENT_TO_INFLUENCER,
+                task_status: TaskStatus.TODO,
+                priority: 'HIGH',
+                assigned_to_role: Role.PARTNER_ASSOCIATE,
+                assigned_to_user_id: user.id,
+                created_by_user_id: user.id,
+                created_by_name: user.full_name,
+                brand: brandName,
+                data: {
+                    influencer_name: influencerName,
+                    influencer_email: influencerEmail,
+                    selected_script_id: selectedScript?.id,
+                    custom_outreach_content: customContent,
+                    parent_script_id: selectedScript?.id || project.id,
+                    is_pa_brand: true,
+                    influencer_instance: true,
+                    influencer_history: [newHistoryElement],
+                    brand: brandName
+                }
+            }]).select().single();
+            const actualProjId = newProject.id;
+
+            await supabase.functions.invoke('send-workflow-email', {
+                body: {
+                    event: 'SEND_TO_INFLUENCER',
+                    recipient_email: influencerEmail,
+                    data: {
+                        project_id: actualProjId,
+                        actor_name: user.full_name,
+                        script_content: scriptText,
+                        content_description: customContent || 'Please find the details and attachments for this campaign.',
+                        influencer_name: influencerName,
+                        subject: finalSubject,
+                        attachment: finalAttachment
+                    }
+                }
+            });
+
+            await db.influencers.log({
+                parent_project_id: selectedScript?.id || project.id,
+                instance_project_id: actualProjId,
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                status: 'SCRIPT_SENT',
+                brand_name: brandName,
+                sent_by: user.full_name
+            });
+
+            setShowSuccessModal(true);
+            setLaunchStep(0);
+            setAttachment(null);
+            setSubject('');
+            setCustomContent('');
+            setTimeout(() => onComplete(), 1500);
+        } catch (error) {
+            toast.error('Error sending script');
+        } finally {
+            setIsSending(false);
+        }
     };
     
     const reelPerformanceData = (influencerRecord?.influencer_links || []).slice().sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -274,8 +375,9 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="px-4 py-1.5 bg-slate-100 rounded-full border text-[10px] font-bold text-slate-600 uppercase">{project.brand || project.data?.brand}</div>
-                    <button onClick={() => setLaunchStep(1)} className="px-6 py-2.5 bg-indigo-600 text-white font-black uppercase text-[10px] rounded-xl shadow-lg hover:bg-indigo-700">Send New Script</button>
-                    {user.role !== Role.CMO && <button onClick={() => setIsEditingInfluencer(true)} className="p-2.5 bg-white border-2 border-slate-100 rounded-xl"><Edit2 className="w-5 h-5" /></button>}
+                    {user.role !== Role.CMO && (
+                        <button onClick={() => setLaunchStep(1)} className="px-6 py-2.5 bg-indigo-600 text-white font-black uppercase text-[10px] rounded-xl shadow-lg hover:bg-indigo-700">Send New Script</button>
+                    )}
                 </div>
             </header>
 
@@ -284,7 +386,11 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                         <div className="p-5 bg-white border-2 border-slate-100 rounded-2xl shadow-sm flex flex-col items-center justify-center text-center">
                             <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-black text-xl mb-3">{influencerDisplayName.charAt(0)}</div>
-                            <h2 className="text-lg font-bold text-slate-900 uppercase">{influencerDisplayName}</h2>
+                            {editingField === 'influencer_name' ? (
+                                <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('influencer_name')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('influencer_name'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-slate-100 border border-slate-300 rounded px-2 py-1 text-sm font-bold text-center" />
+                            ) : (
+                                <h2 onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('influencer_name'); setEditValue(influencerRecord?.influencer_name || ''); } }} className="text-lg font-bold text-slate-900 uppercase cursor-pointer hover:bg-slate-50 px-2 rounded" title="Double click to edit">{influencerDisplayName}</h2>
+                            )}
                         </div>
                         {[ {l:'Script Sent', v:aggregatedStats.scriptSent, c:'bg-indigo-600', i:<Send className="w-4 h-4"/>}, {l:'Raw Videos', v:aggregatedStats.videoLink, c:'bg-blue-500', i:<Video className="w-4 h-4"/>}, {l:'Edited Videos', v:aggregatedStats.editedVideo, c:'bg-purple-500', i:<Layers className="w-4 h-4"/>}, {l:'Proof', v:aggregatedStats.proofPosted, c:'bg-emerald-500', i:<CheckCircle2 className="w-4 h-4"/>}, {l:'Leads', v:leadsCount, c:'bg-slate-900', i:<Target className="w-4 h-4"/>} ].map((s,i)=>(
                             <div key={i} className={`p-5 ${s.c} rounded-2xl shadow-lg text-white flex flex-col justify-center`}>
@@ -311,16 +417,16 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                 <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
                                     <h3 className="text-sm font-black uppercase text-indigo-600 mb-4">Campaign</h3>
                                     <div className="grid gap-3 grid-cols-2">
-                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Type</p><p className="text-sm font-bold">{influencerRecord?.campaign_type || '—'}</p></div>
-                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Comm.</p><p className="text-sm font-bold">{influencerRecord?.commercials || '—'}</p></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('niche'); setEditValue(influencerRecord?.niche || ''); } }}><p className="text-[10px] font-black text-slate-400 uppercase">Niche</p>{editingField === 'niche' ? <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('niche')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('niche'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" /> : <p className="text-sm font-bold cursor-pointer hover:text-indigo-600">{influencerRecord?.niche || '—'}</p>}</div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('commercials'); setEditValue(influencerRecord?.commercials || ''); } }}><p className="text-[10px] font-black text-slate-400 uppercase">Comm.</p>{editingField === 'commercials' ? <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('commercials')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('commercials'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" /> : <p className="text-sm font-bold cursor-pointer hover:text-indigo-600">{influencerRecord?.commercials || '—'}</p>}</div>
                                     </div>
                                 </div>
                                 <div className="rounded-[2rem] border-2 border-slate-100 bg-white p-4 shadow-sm">
                                     <h3 className="text-sm font-black uppercase text-orange-600 mb-4">Payment</h3>
                                     <div className="grid gap-3 grid-cols-3">
-                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Status</p><p className="text-sm font-bold">{influencerRecord?.payment_status || '—'}</p></div>
-                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Date</p><p className="text-sm font-bold">{influencerRecord?.payment_date?.split('T')[0] || '—'}</p></div>
-                                        <div className="bg-slate-50 p-3 rounded-2xl"><p className="text-[10px] font-black text-slate-400 uppercase">Platform</p><p className="text-sm font-bold">{influencerRecord?.platform_type || '—'}</p></div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('payment'); setEditValue(influencerRecord?.payment || ''); } }}><p className="text-[10px] font-black text-slate-400 uppercase">Status</p>{editingField === 'payment' ? <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('payment')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('payment'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" /> : <p className="text-sm font-bold cursor-pointer hover:text-orange-600">{influencerRecord?.payment || '—'}</p>}</div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('payment_date'); setEditValue(influencerRecord?.payment_date?.split('T')[0] || ''); } }}><p className="text-[10px] font-black text-slate-400 uppercase">Date</p>{editingField === 'payment_date' ? <input type="date" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('payment_date')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('payment_date'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" /> : <p className="text-sm font-bold cursor-pointer hover:text-orange-600">{influencerRecord?.payment_date?.split('T')[0] || '—'}</p>}</div>
+                                        <div className="bg-slate-50 p-3 rounded-2xl" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('platform_type'); setEditValue(influencerRecord?.platform_type || ''); } }}><p className="text-[10px] font-black text-slate-400 uppercase">Platform</p>{editingField === 'platform_type' ? <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('platform_type')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('platform_type'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" /> : <p className="text-sm font-bold cursor-pointer hover:text-orange-600">{influencerRecord?.platform_type || '—'}</p>}</div>
                                     </div>
                                 </div>
                             </div>
@@ -357,11 +463,15 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                         {reelPerformanceData.map((reel, idx) => (
                                             <tr key={reel.id || idx} className="hover:bg-slate-50/30 transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('posting_date'); setEditValue(influencerRecord?.posting_date || ''); } }}>
                                                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                                        <span className="text-xs font-bold text-slate-700">
-                                                            {reel.posting_date ? new Date(reel.posting_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                                                        </span>
+                                                        {editingField === 'posting_date' ? (
+                                                            <input type="date" autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('posting_date')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('posting_date'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" />
+                                                        ) : (
+                                                            <span className="text-xs font-bold text-slate-700 cursor-pointer hover:text-indigo-600">
+                                                                {influencerRecord?.posting_date ? new Date(influencerRecord.posting_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 min-w-[200px] max-w-[300px]">
@@ -376,22 +486,31 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                                         <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                     </a>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-100 inline-block">
-                                                        {reel.resource || '—'}
-                                                    </span>
+                                                <td className="px-6 py-4" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('resource'); setEditValue(influencerRecord?.resource || ''); } }}>
+                                                    {editingField === 'resource' ? (
+                                                        <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('resource')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('resource'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" />
+                                                    ) : (
+                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider border border-emerald-100 inline-block cursor-pointer hover:bg-emerald-100 transition-colors">
+                                                            {influencerRecord?.resource || '—'}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-center" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('comments'); setEditValue(influencerRecord?.comments || ''); } }}>
+                                                    {editingField === 'comments' ? (
+                                                        <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('comments')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('comments'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1" />
+                                                    ) : (
+                                                        <span className="text-sm font-black text-slate-900 cursor-pointer hover:text-indigo-600">{influencerRecord?.comments || '0'}</span>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <span className="text-sm font-black text-slate-900">{reel.comments || '0'}</span>
+                                                    <span className="text-sm font-black text-indigo-600">{influencerRecord?.leads || '0'}</span>
                                                 </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <span className="text-sm font-black text-indigo-600">{reel.leads || '0'}</span>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <DollarSign className="w-3 h-3 text-slate-400" />
-                                                        <span className="text-sm font-black text-slate-900">{reel.price || '—'}</span>
-                                                    </div>
+                                                <td className="px-6 py-4 text-right" onDoubleClick={() => { if (user.role !== Role.CMO) { setEditingField('budget'); setEditValue(influencerRecord?.budget || ''); } }}>
+                                                    {editingField === 'budget' ? (
+                                                        <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={() => handleInlineSubmit('budget')} onKeyDown={e => { if (e.key === 'Enter') handleInlineSubmit('budget'); if (e.key === 'Escape') setEditingField(null); }} className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-sm font-bold mt-1 text-right" />
+                                                    ) : (
+                                                        <span className="text-sm font-black text-emerald-600 cursor-pointer hover:text-emerald-800">{influencerRecord?.budget ? `$${influencerRecord.budget}` : '—'}</span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -432,11 +551,13 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                             )}
                             <div className="space-y-1">
                                 {leadsData.filter(l=>selectedLeadSource==='All'||l.source===selectedLeadSource).map((l,i)=>(
-                                    <div key={i} className="grid md:grid-cols-4 gap-4 items-center p-3 bg-slate-50/50 hover:bg-white border border-transparent hover:border-indigo-100 rounded-xl transition-all">
+                                    <div key={i} className="grid md:grid-cols-6 gap-4 items-center p-3 bg-slate-50/50 hover:bg-white border border-transparent hover:border-indigo-100 rounded-xl transition-all">
                                         <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Name</span><span className="text-xs font-bold">{l.name||'—'}</span></div>
                                         <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Phone</span><span className="text-xs font-bold">{l.phone||'—'}</span></div>
                                         <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Email</span><span className="text-xs font-bold text-slate-600 truncate">{l.email||'—'}</span></div>
                                         <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Source</span><span className="text-[10px] font-bold text-indigo-600 uppercase">{l.source||'—'}</span></div>
+                                        <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Stage & Status</span><span className="text-[9px] font-bold uppercase text-slate-700">{l.current_stage||'UNTRACKED'} • {l.status||'NEW'}</span></div>
+                                        <div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Assignment</span><span className="text-[9px] font-bold uppercase text-slate-700">{l.assigned_to||'UNASSIGNED'}</span></div>
                                     </div>
                                 ))}
                             </div>
@@ -462,8 +583,30 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                     </div>
                                     <div className="grid grid-cols-1 lg:grid-cols-2">
                                         <div className="p-6 border-r border-slate-100 max-h-[450px] overflow-y-auto scrollbar-hide">
-                                            <span className="text-[9px] font-bold text-indigo-600 uppercase flex items-center gap-2 mb-4"><FileText className="w-4 h-4" /> Script</span>
-                                            {influencerHistory.map((e: any, i: number) => ( <div key={i} className="p-4 bg-indigo-50/30 rounded-2xl border border-indigo-50 mb-3"><p className="text-xs">{e.script_content}</p></div> )).reverse()}
+                                            <span className="text-[9px] font-bold text-indigo-600 uppercase flex items-center gap-2 mb-4"><FileText className="w-4 h-4" /> Script History</span>
+                                            {influencerHistory.map((e: any, i: number) => (
+                                                <div key={i} className="p-4 bg-indigo-50/40 rounded-2xl border-2 border-indigo-100 mb-4 hover:border-indigo-300 transition-colors">
+                                                    {e.subject && (
+                                                        <div className="flex items-center gap-2 mb-2 border-b border-indigo-100/50 pb-2">
+                                                            <span className="text-[8px] font-black uppercase bg-indigo-600 text-white px-2 py-0.5 rounded">EMAIL SUBJECT</span>
+                                                            <span className="text-xs font-black text-slate-800 truncate">{e.subject}</span>
+                                                        </div>
+                                                    )}
+                                                    <div className="text-xs font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                                        {e.script_content || 'No script content.'}
+                                                    </div>
+                                                    {e.custom_content && (
+                                                        <div className="mt-3 p-3 bg-white/60 border border-slate-100 rounded-xl">
+                                                            <span className="text-[8px] font-black uppercase text-indigo-500 block mb-1">Custom Notes</span>
+                                                            <p className="text-[11px] font-bold text-slate-600 whitespace-pre-wrap">{e.custom_content}</p>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-tight">
+                                                        <span>By {e.sent_by || 'PA'}</span>
+                                                        <span>{e.sent_at ? new Date(e.sent_at).toLocaleString() : 'N/A'}</span>
+                                                    </div>
+                                                </div>
+                                            )).reverse()}
                                         </div>
                                         <div className="p-6 space-y-6 bg-slate-50/30">
                                             {[ {t:'RAW', label:'Video Link', links:rawLinksHistory, color:'text-blue-600', bg:'bg-blue-50', btnBg:'bg-blue-600'}, {t:'EDITED', label:'Edited Video', links:editedLinksHistory, color:'text-emerald-600', bg:'bg-emerald-50', btnBg:'bg-emerald-600'}, {t:'PROOF', label:'Proof', links:proj.data?.posting_proof_link ? [proj.data.posting_proof_link] : [], color:'text-orange-600', bg:'bg-orange-50', btnBg:'bg-orange-600'} ].map((sec,si)=>(
@@ -521,6 +664,30 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                                     ))}
                                 </select>
                             </div>
+
+                            {selectedScript && (
+                                <div className="space-y-2 border-2 border-slate-200 p-4 rounded-xl bg-slate-50">
+                                    <label className="text-xs font-black uppercase text-slate-900 flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-indigo-600" /> Script Preview (Visible Completely)
+                                    </label>
+                                    <div className="bg-white border border-slate-200 p-4 rounded-lg max-h-[200px] overflow-y-auto font-sans text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                        {selectedScript.data?.script_content}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase text-slate-400">Subject *</label>
+                                <input 
+                                    type="text" 
+                                    className="w-full p-4 rounded-xl border-2 border-slate-200 font-bold bg-white outline-none"
+                                    placeholder="Enter email subject..."
+                                    value={subject}
+                                    onChange={(e) => setSubject(e.target.value)}
+                                    required
+                                />
+                            </div>
+
                             <div className="space-y-2">
                                 <label className="text-xs font-black uppercase text-slate-400">Custom Notes (Optional)</label>
                                 <textarea 
@@ -570,7 +737,6 @@ const PAInfluencerCollabHub: React.FC<Props> = ({ project, allInfluencerProjects
                     </div>
                 </div>
             )}
-            {isEditingInfluencer && ( <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4"><div className="bg-white rounded-[2.5rem] w-full max-w-xl p-8 shadow-2xl"> <div className="flex justify-between mb-8"><div><h3 className="text-2xl font-black uppercase">Edit Profile</h3></div><button onClick={()=>setIsEditingInfluencer(false)}><X className="w-5 h-5"/></button></div> <div className="space-y-4"> <input value={editForm.influencer_name} onChange={e=>setEditForm({...editForm, influencer_name:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Name"/> <input value={editForm.posting_date} onChange={e=>setEditForm({...editForm, posting_date:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Posting Date"/> <input value={editForm.leads} onChange={e=>setEditForm({...editForm, leads:e.target.value})} className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-2" placeholder="Leads"/> </div> <button onClick={handleUpdateInfluencer} className="w-full py-5 bg-indigo-600 text-white font-black uppercase rounded-2xl mt-8">Save Changes</button> </div></div> )}
         </div>
     );
 };

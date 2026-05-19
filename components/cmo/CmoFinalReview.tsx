@@ -101,7 +101,7 @@ const CmoFinalReview: React.FC<Props> = ({ user, onBack, onProjectSelect, select
         project={selectedProject}
         user={user}
         onBack={onBack}
-        onProjectUpdated={() => {
+        onComplete={() => {
           // Refresh the project list after update
           window.location.reload();
         }}

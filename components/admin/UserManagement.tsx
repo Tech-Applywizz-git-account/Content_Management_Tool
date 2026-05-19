@@ -275,7 +275,7 @@ const EditUserModal: React.FC<{ user: User; logs: SystemLog[]; onClose: () => vo
         }
     };
 
-    const userLogs = logs.filter(l => l.details.includes(user.full_name) || l.details.includes(user.id) || l.actor_id === user.id).slice(0, 10);
+    const userLogs = logs.filter(l => l.details.includes(user.full_name) || l.details.includes(user.id) || l.user_id === user.id).slice(0, 10);
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

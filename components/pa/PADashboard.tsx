@@ -369,7 +369,7 @@ const PADashboard: React.FC<PADashboardProps> = ({ user, onLogout, allProjects, 
     );
 
     const initialReviewProjects = visibleProjects.filter(p =>
-      [WorkflowStage.SCRIPT, WorkflowStage.SCRIPT_REVIEW_L1, WorkflowStage.SCRIPT_REVIEW_L2, WorkflowStage.PARTNER_REVIEW].includes(p.current_stage as WorkflowStage) &&
+      p.current_stage === WorkflowStage.PARTNER_REVIEW &&
       (isPaBrand(p) || isInfluencerProject(p)) &&
       !isInfluencerInstance(p) &&
       !myClaimedParentIds.has(p.id) &&
