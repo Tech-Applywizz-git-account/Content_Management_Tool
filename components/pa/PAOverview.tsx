@@ -103,7 +103,7 @@ const PAOverview: React.FC<PAOverviewProps> = ({ user, allProjects, onSelectProj
                     db.influencers.getAll(),
                     fetchOverallLeads().catch(() => [])
                 ]);
-                setBrands([...SYSTEM_BRANDS, ...brandData]);
+                setBrands([...brandData, ...SYSTEM_BRANDS]);
                 setAllInfluencers(infData);
                 setAllLeads(leadsData);
             } catch (err) {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
 import { Project, User, STAGE_LABELS, WorkflowStage, Role, TaskStatus, Channel } from '../../types';
 import { ArrowLeft, Video, CheckCircle2, User as UserIcon, FileText, History, Send, Layers, Loader2, Check, ExternalLink, Download, Play, X, Mail, AlertCircle, BarChart3, Target, Sparkles } from 'lucide-react';
 import ScriptDisplay from '../ScriptDisplay';
@@ -21,6 +22,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
     const [influencerName, setInfluencerName] = useState((project.data as any)?.influencer_name || '');
     const [influencerEmail, setInfluencerEmail] = useState((project.data as any)?.influencer_email || '');
     const [contentDescription, setContentDescription] = useState((project.data as any)?.content_description || '');
+    const [subject, setSubject] = useState('');
     const [attachment, setAttachment] = useState<{ filename: string, contentType: string, contentBytes: string } | null>(null);
     const [isSending, setIsSending] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -79,20 +81,74 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setShowPopup(true);
             return;
         }
+        if (!subject.trim()) {
+            setPopupMessage('Subject is required');
+            setPopupType('error');
+            setShowPopup(true);
+            return;
+        }
 
         setIsSending(true);
         try {
             const { data: latestProject } = await supabase.from('projects').select('*').eq('id', project.id).single();
             const scriptContent = (latestProject?.data as any)?.script_content || (project.data as any)?.script_content || (project.data as any)?.idea_description || 'No script content available';
 
-            // CONSOLIDATION LOGIC: If we are already in an influencer instance and it's not POSTED,
-            // we update the existing one instead of creating a new one.
-            const isInstance = (project.data as any)?.influencer_instance === true;
-            const isFinished = project.current_stage === WorkflowStage.POSTED;
-            const shouldCreateNew = !isInstance || isFinished;
+            const shouldCreateNew = true;
 
             let targetProjectId = project.id;
             let currentBrand = latestProject?.brand || (latestProject?.data as any)?.brand || project.brand || (project.data as any)?.brand || '';
+            const finalSubject = subject.trim() || `${currentBrand || 'Campaign'} - Script for Collab`;
+
+            let finalAttachment = attachment;
+            if (scriptContent && !finalAttachment) {
+                const doc = new jsPDF();
+                const margin = 20;
+                const pageHeight = doc.internal.pageSize.height;
+                const pageWidth = doc.internal.pageSize.width;
+                const maxLineWidth = pageWidth - (margin * 2);
+                
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.text(`${currentBrand} - Script`, margin, 25);
+                
+                doc.setDrawColor(200, 200, 200);
+                doc.line(margin, 28, pageWidth - margin, 28);
+                
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(11);
+                
+                const lines = doc.splitTextToSize(scriptContent, maxLineWidth);
+                let cursorY = 38;
+                const lineHeight = 7;
+                
+                lines.forEach((line: string) => {
+                    if (cursorY + lineHeight > pageHeight - margin) {
+                        doc.addPage();
+                        cursorY = 20;
+                    }
+                    doc.text(line, margin, cursorY);
+                    cursorY += lineHeight;
+                });
+                
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                finalAttachment = {
+                    filename: `${currentBrand.replace(/\s+/g, '_')}_script.pdf`,
+                    contentType: 'application/pdf',
+                    contentBytes: pdfBase64
+                };
+            }
+
+            const newHistoryElement = {
+                influencer_name: influencerName,
+                influencer_email: influencerEmail,
+                sent_at: new Date().toISOString(),
+                sent_by: user.full_name || 'PA',
+                sent_by_id: user.id,
+                action: 'SEND_SCRIPT',
+                script_content: scriptContent,
+                subject: finalSubject,
+                custom_content: contentDescription
+            };
 
             if (shouldCreateNew) {
                 console.log('🆕 Creating new project instance');
@@ -118,33 +174,29 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         content_description: contentDescription,
                         parent_script_id: (project.data as any)?.parent_script_id || project.id,
                         influencer_instance: true,
-                        influencer_history: [{
-                            influencer_name: influencerName,
-                            influencer_email: influencerEmail,
-                            sent_at: new Date().toISOString(),
-                            sent_by: user.full_name || 'PA',
-                            sent_by_id: user.id,
-                            action: 'INITIAL_OUTREACH'
-                        }]
+                        influencer_history: [newHistoryElement]
                     }
                 };
                 const createdProject = await db.projects.create(newProjectData as any);
                 targetProjectId = createdProject.id;
             } else {
                 console.log('🔄 Updating existing project instance:', targetProjectId);
+                const existingData = latestProject?.data || project.data || {};
+                const existingHistory = existingData.influencer_history || [];
                 await db.projects.update(targetProjectId, {
                     current_stage: WorkflowStage.SENT_TO_INFLUENCER,
                     status: TaskStatus.TODO,
                     assigned_to_user_id: user.id,
                     assigned_to_role: Role.PARTNER_ASSOCIATE,
                     data: {
-                        ...(latestProject?.data || project.data || {}),
+                        ...existingData,
                         influencer_name: influencerName,
                         influencer_email: influencerEmail,
                         content_description: contentDescription,
                         influencer_instance: true,
                         is_pa_brand: true,
                         sent_by_id: user.id,
+                        influencer_history: [...existingHistory, newHistoryElement]
                     }
                 });
             }
@@ -174,7 +226,8 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                         content_description: contentDescription || (project.data as any)?.brief || 'Script content for review',
                         script_content: scriptContent,
                         influencer_name: influencerName,
-                        attachment: attachment
+                        subject: finalSubject,
+                        attachment: finalAttachment
                     }
                 }
             });
@@ -190,6 +243,7 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
             setInfluencerName('');
             setInfluencerEmail('');
             setContentDescription('');
+            setSubject('');
             setAttachment(null);
 
             const pId = (project.data as any)?.parent_script_id || project.id;
@@ -540,6 +594,23 @@ const PAInfluencerManagement: React.FC<Props> = ({ project, allInfluencerProject
                                                     placeholder="Enter influencer email"
                                                 />
                                                 {!influencerEmail && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-black uppercase tracking-tight flex items-center gap-1">
+                                                SUBJECT <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={subject}
+                                                    onChange={(e) => setSubject(e.target.value)}
+                                                    className={`w-full bg-white border-2 border-black p-4 font-bold text-slate-700 focus:outline-none transition-all ${!subject && 'border-slate-300'}`}
+                                                    placeholder="Enter email subject"
+                                                    required
+                                                />
+                                                {!subject && <AlertCircle className="absolute right-4 top-4 w-5 h-5 text-slate-300" />}
                                             </div>
                                         </div>
 

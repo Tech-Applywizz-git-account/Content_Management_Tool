@@ -96,10 +96,6 @@ const CmoProjectDetailPage: React.FC<{
             <CmoProjectDetails
                 project={project}
                 onBack={() => navigate(-1)}
-                onUpdate={() => {
-                    // Refresh the current page after update
-                    window.location.reload();
-                }}
             />
         </Layout>
     );

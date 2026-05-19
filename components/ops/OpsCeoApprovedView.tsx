@@ -52,7 +52,10 @@ const OpsCeoApprovedView: React.FC<Props> = ({ project, onBack }) => {
             [WorkflowStage.WRITER_REVISION]: Role.WRITER,
             [WorkflowStage.PARTNER_REVIEW]: Role.PARTNER_ASSOCIATE,
             [WorkflowStage.SENT_TO_INFLUENCER]: Role.OPS,
-            [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE
+            [WorkflowStage.PA_FINAL_REVIEW]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_CMO_REVIEW]: Role.CMO,
+            [WorkflowStage.PA_VIDEO_UPLOAD]: Role.PARTNER_ASSOCIATE,
+            [WorkflowStage.PA_VIDEO_APPROVAL]: Role.PARTNER_ASSOCIATE
         };
         return stageToRoleMap[stage] || 'UNKNOWN';
     };

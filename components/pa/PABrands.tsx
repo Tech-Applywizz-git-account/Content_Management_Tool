@@ -324,7 +324,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
       // 1. Fetch Brands first
       console.log('🔄 Dashboard: Fetching brands...');
       const brandsData = await db.brands.getAll();
-      const allBrands = [...SYSTEM_BRANDS, ...brandsData];
+      const allBrands = [...brandsData, ...SYSTEM_BRANDS];
       const uniqueBrandsMap = new Map<string, any>();
       allBrands.forEach((brand: any) => {
         const normalized = normalizeBrand(brand.brand_name || '');
@@ -666,6 +666,7 @@ const PABrands: React.FC<PABrandsProps> = ({ user, category: propCategory }) => 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 py-3">
             {filteredBrands
               .filter((brand: any) => ((brand.brand_type || 'REEL').toUpperCase() === activeTab))
+              .sort((a: any, b: any) => (a.brand_name || '').localeCompare(b.brand_name || ''))
               .map((brand: any) => (
                 <button
                   key={brand.id}

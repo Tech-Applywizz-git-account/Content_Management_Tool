@@ -32,7 +32,7 @@ const OpsFilteredProjects: React.FC<Props> = ({ user, projects, viewMode, onSele
                 return (
                     project.assigned_to_role === 'OPS' &&
                     project.current_stage === WorkflowStage.OPS_SCHEDULING &&
-                    project.status !== 'COMPLETED' &&
+                    project.status !== TaskStatus.DONE &&
                     project.status !== 'REJECTED' &&
                     !project.post_scheduled_date
                 );

@@ -179,23 +179,110 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
   };
 
   const handleToggleSource = async (source: string) => {
-    if (!currentBrandData?.id) return;
+    if (!currentBrandData) return;
+    
     const currentSources = currentBrandData.lead_sources || [];
     const newSources = currentSources.includes(source) 
         ? currentSources.filter((s: string) => s !== source)
         : [...currentSources, source];
         
-    try {
-        await db.brands.update(currentBrandData.id, { 
-            lead_sources: newSources,
-            has_leads: true
-        });
-        setCurrentBrandData((prev: any) => ({ ...prev, lead_sources: newSources, has_leads: true }));
-        // also trigger leads data refresh so count updates immediately
-        fetchLeadsData();
-    } catch (error) {
-        console.error('Error toggling source:', error);
-        toast.error('Failed to update lead sources');
+    let brandId = currentBrandData.id;
+    
+    if (currentBrandData.isSystem) {
+        try {
+            const newDbBrand = await db.brands.create({
+                brand_name: currentBrandData.brand_name,
+                campaign_objective: currentBrandData.campaign_objective || 'General',
+                target_audience: currentBrandData.target_audience || 'General',
+                deliverables: currentBrandData.deliverables || 'N/A',
+                brand_type: currentBrandData.brand_type || 'REEL',
+                revenue: currentBrandData.revenue || 0,
+                has_leads: newSources.length > 0,
+                lead_sources: newSources,
+                created_by_user_id: user.id
+            });
+            setCurrentBrandData({ ...newDbBrand, isSystem: false });
+            toast.success(`Configured custom sources for ${currentBrandData.brand_name}`);
+            fetchLeadsData();
+        } catch (createErr) {
+            console.error('Error upgrading system brand to DB brand:', createErr);
+            toast.error('Failed to configure system brand sources');
+            return;
+        }
+    } else {
+        try {
+            await db.brands.update(brandId, {
+                lead_sources: newSources,
+                has_leads: newSources.length > 0
+            });
+            setCurrentBrandData((prev: any) => ({
+                ...prev,
+                lead_sources: newSources,
+                has_leads: newSources.length > 0
+            }));
+            toast.success(newSources.includes(source) ? `Added source ${source}` : `Removed source ${source}`);
+            fetchLeadsData();
+        } catch (err) {
+            console.error('Error toggling source:', err);
+            toast.error('Failed to update lead sources');
+        }
+    }
+  };
+
+  const handleRemoveSource = async (source: string) => {
+    if (!currentBrandData) return;
+    
+    const sourceGroups: Record<string, number> = {};
+    brandLeads.forEach((lead: any) => {
+        const src = lead.source || 'Unknown';
+        sourceGroups[src] = (sourceGroups[src] || 0) + 1;
+    });
+    
+    const currentSources = currentBrandData.lead_sources && currentBrandData.lead_sources.length > 0
+        ? currentBrandData.lead_sources
+        : Object.keys(sourceGroups);
+        
+    const newSources = currentSources.filter((s: string) => s !== source);
+    let brandId = currentBrandData.id;
+    
+    if (currentBrandData.isSystem) {
+        try {
+            const newDbBrand = await db.brands.create({
+                brand_name: currentBrandData.brand_name,
+                campaign_objective: currentBrandData.campaign_objective || 'General',
+                target_audience: currentBrandData.target_audience || 'General',
+                deliverables: currentBrandData.deliverables || 'N/A',
+                brand_type: currentBrandData.brand_type || 'REEL',
+                revenue: currentBrandData.revenue || 0,
+                has_leads: newSources.length > 0,
+                lead_sources: newSources,
+                created_by_user_id: user.id
+            });
+            setCurrentBrandData({ ...newDbBrand, isSystem: false });
+            toast.success(`Configured custom sources for ${currentBrandData.brand_name}`);
+            fetchLeadsData();
+        } catch (createErr) {
+            console.error('Error upgrading system brand to DB brand:', createErr);
+            toast.error('Failed to configure system brand sources');
+            return;
+        }
+    } else {
+        try {
+            await db.brands.update(brandId, {
+                lead_sources: newSources,
+                has_leads: newSources.length > 0
+            });
+            setCurrentBrandData((prev: any) => ({
+                ...prev,
+                lead_sources: newSources,
+                has_leads: newSources.length > 0
+            }));
+            toast.success(`Removed source ${source}`);
+            fetchLeadsData();
+        } catch (err) {
+            console.error('Error removing source:', err);
+            toast.error('Failed to update lead sources');
+        }
     }
   };
 
@@ -421,7 +508,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
       const target = normalizeBrandForComparison(decodedBrand || '');
 
       // 🚀 Special Rules for brand mapping
-      const brand = [...SYSTEM_BRANDS, ...brandData].find(b => normalizeBrandForComparison(b.brand_name) === target);
+      const brand = [...brandData, ...SYSTEM_BRANDS].find(b => normalizeBrandForComparison(b.brand_name) === target);
       const resolvedBrandType = brand?.brand_type || 'REEL';
       if (brand) {
         setCurrentBrandData(brand);
@@ -749,7 +836,9 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
     (
       currentBrandData?.has_leads === true ||
       (Array.isArray(currentBrandData?.lead_sources) && currentBrandData.lead_sources.length > 0) ||
-      currentBrandData?.isSystem === true
+      currentBrandData?.isSystem === true ||
+      decodedBrandName.toLowerCase().includes('career identifier') ||
+      decodedBrandName.toLowerCase().includes('carrer identifier')
     );
 
   // Calculate stats for STORY brands separately
@@ -1087,6 +1176,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
                             <span className="text-slate-400">{influencers.length} Total</span>
                         </p>
+                        {shouldShowLeads && (
                         <div className="flex items-center gap-2 mt-1.5 relative flex-wrap" ref={dropdownRef}>
                             <span className="text-[9px] font-black uppercase text-purple-400 flex items-center gap-1 shrink-0"><Target className="w-3 h-3"/> Sources:</span>
                             
@@ -1111,12 +1201,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                                 <span key={source} className="flex items-center gap-1.5 px-2 py-0.5 bg-white border border-slate-200 rounded-xl text-[9px] shadow-sm hover:border-blue-200 transition-all">
                                                     <span className="font-semibold text-slate-600 truncate max-w-[110px]">{source}</span>
                                                     <span className="bg-blue-50 text-blue-600 font-bold px-1.5 py-0.5 rounded-full border border-blue-100 text-[8px] min-w-[18px] text-center">{count}</span>
-                                                    {isTracked && user.role !== Role.CMO && (
+                                                    {user.role !== Role.CMO && (
                                                         <button
                                                             type="button"
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleToggleSource(source);
+                                                                handleRemoveSource(source);
                                                             }}
                                                             className="text-slate-400 hover:text-red-500 transition-colors"
                                                             title={`Remove ${source}`}
@@ -1211,6 +1301,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                                 </div>
                             )}
                         </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1531,7 +1622,10 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Product</th>
                 )}
                 {currentBrandData?.brand_type !== 'STORY' && (
-                    <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Payment</th>
+                    <>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px] text-center">Payment</th>
+                        <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Platform</th>
+                    </>
                 )}
                 {currentBrandData?.brand_type === 'STORY' && (
                     <th className="px-4 py-3 uppercase font-black tracking-widest text-[10px]">Stories</th>
@@ -1658,9 +1752,12 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     )}
                     <td className="px-6 py-3">
                         <div className="flex items-center gap-2">
-                            <div className={`px-3 py-1 rounded-full border border-black inline-flex items-center gap-1.5 ${inf.budget && !inf.budget.toLowerCase().includes('barter') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                                {inf.budget && !inf.budget.toLowerCase().includes('barter') ? <DollarSign className="w-3 h-3" /> : <Tag className="w-3 h-3" />}
-                                <span className="text-[11px] font-bold">
+                            <div 
+                                className={`px-3 py-1 rounded-full border border-black inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap ${inf.budget && !inf.budget.toLowerCase().includes('barter') ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}
+                                style={{ whiteSpace: 'nowrap' }}
+                            >
+                                {inf.budget && !inf.budget.toLowerCase().includes('barter') ? <DollarSign className="w-3 h-3 shrink-0" /> : <Tag className="w-3 h-3 shrink-0" />}
+                                <span className="text-[11px] font-bold whitespace-nowrap" style={{ whiteSpace: 'nowrap' }}>
                                     {inf.budget || '—'}
                                 </span>
                             </div>
@@ -1701,22 +1798,29 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                     )}
 
                     {currentBrandData?.brand_type !== 'STORY' && (
-                        <td className="px-6 py-1.5">
-                            <div className="relative inline-flex">
-                                <select 
-                                    value={String(inf.payment).trim().toLowerCase() === 'yes' ? 'yes' : 'no'}
-                                    onChange={(e) => handleUpdatePaymentStatus(inf.id, e.target.value)}
-                                    disabled={updatingId === inf.id || user.role === Role.CMO}
-                                    className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${String(inf.payment).trim().toLowerCase() === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
-                                >
-                                    <option value="yes" className="bg-white text-emerald-600 font-bold">Yes</option>
-                                    <option value="no" className="bg-white text-red-600 font-bold">No</option>
-                                </select>
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <ChevronRight className="w-3 h-3 rotate-90 text-white" />}
+                        <>
+                            <td className="px-6 py-1.5">
+                                <div className="relative inline-flex">
+                                    <select 
+                                        value={String(inf.payment).trim().toLowerCase() === 'yes' ? 'yes' : 'no'}
+                                        onChange={(e) => handleUpdatePaymentStatus(inf.id, e.target.value)}
+                                        disabled={updatingId === inf.id || user.role === Role.CMO}
+                                        className={`appearance-none px-4 py-1.5 rounded-xl border-2 border-black text-[10px] font-black uppercase tracking-widest transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none cursor-pointer pr-8 ${String(inf.payment).trim().toLowerCase() === 'yes' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'} ${user.role === Role.CMO ? 'cursor-not-allowed opacity-80' : ''}`}
+                                    >
+                                        <option value="yes" className="bg-white text-emerald-600 font-bold">Yes</option>
+                                        <option value="no" className="bg-white text-red-600 font-bold">No</option>
+                                    </select>
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        {updatingId === inf.id ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <ChevronRight className="w-3 h-3 rotate-90 text-white" />}
+                                    </div>
                                 </div>
-                            </div>
-                        </td>
+                            </td>
+                            <td className="px-6 py-1.5">
+                                <span className="text-xs font-bold text-slate-700">
+                                    {inf.platform_type || '—'}
+                                </span>
+                            </td>
+                        </>
                     )}
 
                     {currentBrandData?.brand_type === 'STORY' && (
@@ -2006,7 +2110,7 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                             ...editingInfluencer, 
                             campaign_type: val,
                             commercials: val,
-                            budget: val.includes('Barter') ? 'Barter' : editingInfluencer.budget
+                            budget: val.includes('Barter') ? 'Barter' : (editingInfluencer.budget === 'Barter' ? '' : editingInfluencer.budget)
                           });
                         }}
                         className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
@@ -2079,7 +2183,8 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                       type="text" 
                       value={editingInfluencer.budget || ''}
                       onChange={(e) => setEditingInfluencer({...editingInfluencer, budget: e.target.value})}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                      className={`w-full pl-10 pr-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 ${(COLLAB_OPTIONS.find(opt => editingInfluencer.commercials?.startsWith(opt)) === 'Barter') ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : ''}`}
+                      readOnly={COLLAB_OPTIONS.find(opt => editingInfluencer.commercials?.startsWith(opt)) === 'Barter'}
                     />
                   </div>
                 </div>
@@ -2098,44 +2203,40 @@ const PABrandDetails: React.FC<PABrandDetailsProps> = ({ user }) => {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Payment</label>
+                  <select 
+                    value={editingInfluencer.payment || 'no'}
+                    onChange={(e) => setEditingInfluencer({...editingInfluencer, payment: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
+                  >
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400">Platform Type</label>
+                  <input 
+                    type="text" 
+                    value={editingInfluencer.platform_type || ''}
+                    onChange={(e) => setEditingInfluencer({...editingInfluencer, platform_type: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                    placeholder="e.g. PayPal, Razorpay"
+                  />
+                </div>
+
                 {(editingInfluencer.brand_type === 'STORY' || currentBrandData?.brand_type === 'STORY') && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase text-slate-400">Payment</label>
-                      <select 
-                        value={editingInfluencer.payment || 'no'}
-                        onChange={(e) => setEditingInfluencer({...editingInfluencer, payment: e.target.value})}
-                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50 bg-white"
-                      >
-                        <option value="no">No</option>
-                        <option value="yes">Yes</option>
-                      </select>
-                    </div>
-
-                    {editingInfluencer.payment === 'yes' && (
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase text-slate-400">Platform Type</label>
-                        <input 
-                          type="text" 
-                          value={editingInfluencer.platform_type || ''}
-                          onChange={(e) => setEditingInfluencer({...editingInfluencer, platform_type: e.target.value})}
-                          className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                          placeholder="e.g. Instagram"
-                        />
-                      </div>
-                    )}
-
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-[10px] font-black uppercase text-slate-400">Vercel Form Link</label>
-                      <input 
-                        type="url" 
-                        value={editingInfluencer.vercel_form_link || ''}
-                        onChange={(e) => setEditingInfluencer({...editingInfluencer, vercel_form_link: e.target.value})}
-                        className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
-                        placeholder="https://forms.vercel.com/..."
-                      />
-                    </div>
-                  </>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-slate-400">Vercel Form Link</label>
+                    <input 
+                      type="url" 
+                      value={editingInfluencer.vercel_form_link || ''}
+                      onChange={(e) => setEditingInfluencer({...editingInfluencer, vercel_form_link: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-black font-bold focus:outline-none focus:bg-slate-50"
+                      placeholder="https://forms.vercel.com/..."
+                    />
+                  </div>
                 )}
 
                 <div className="space-y-2 md:col-span-2">

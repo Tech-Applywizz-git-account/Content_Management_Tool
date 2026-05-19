@@ -150,6 +150,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
             // For direct events, we might not have the history stage, but we can infer it if needed
         }
 
+        if (action === "SEND_TO_INFLUENCER") {
+            action = "SENT_TO_INFLUENCER";
+        }
+
         if (!project_id) {
             console.log("Missing project_id, skipping execution");
             return new Response(JSON.stringify({ ok: true, msg: "Skipped - No Project ID" }), { headers: corsHeaders });
@@ -400,8 +404,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
                     }
                     break;
 
-                case "SEND_TO_INFLUENCER":
-                    console.log("SEND_TO_INFLUENCER: Using provided recipient_email");
+                case "SENT_TO_INFLUENCER":
+                    console.log("SENT_TO_INFLUENCER: Using provided recipient_email");
                     break;
 
                 default:
@@ -461,36 +465,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
         else if (action === "REWORK_VIDEO_SUBMITTED") subject = `Rework Resubmitted: ${project.title}`;
         else if (action === "SUB_EDITOR_ASSIGNED") subject = `Project Assigned: ${project.title}`;
         else if (action === "VIDEO_REWORK_ROUTED_TO_SUB_EDITOR") subject = `Rework Required: ${project.title}`;
-        else if (action === "SEND_TO_INFLUENCER") subject = `Script Content: ${project.title}`;
+        else if (action === "SENT_TO_INFLUENCER") subject = metadata.subject || body.subject || "Script & Content Details for Your Collaboration";
         else subject = `Action Required: ${project.title}`;
 
         const highlightColor = action === "REWORK" || action === "REJECTED" ? "#E53E3E" : (action === "SUB_EDITOR_ASSIGNED" ? "#38A169" : "#3182CE");
         const reworkReason = metadata.rework_reason || comment || "No comments provided.";
 
-        const htmlBody = action === "SEND_TO_INFLUENCER" ? `
-          <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: white;">
-            <div style="background-color: #3182CE; padding: 24px; text-align: center; color: white;">
-              <h2 style="margin: 0; text-transform: uppercase; letter-spacing: 1px;">Ready To Work - Script Content</h2>
-            </div>
-            <div style="padding: 32px; color: #2d3748; line-height: 1.6;">
-              <p style="font-size: 18px; font-weight: bold; margin-bottom: 24px;">Project: ${project.title}</p>
-              
-              <div style="margin-bottom: 30px;">
-                <h3 style="color: #4a5568; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #edf2f7; padding-bottom: 8px;">Content Description</h3>
-                <p style="white-space: pre-wrap; color: #4a5568;">${metadata.content_description || "No description provided."}</p>
-              </div>
+        const formattedContent = (metadata.content_description || "")
+            .replace(/\r\n/g, "<br>")
+            .replace(/\n/g, "<br>");
 
-              <div style="margin-bottom: 30px;">
-                <h3 style="color: #4a5568; font-size: 14px; text-transform: uppercase; border-bottom: 2px solid #edf2f7; padding-bottom: 8px;">Script Content</h3>
-                <div style="background-color: #f7fafc; padding: 20px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                  <div style="white-space: pre-wrap; font-family: monospace;">${metadata.script_content || "No script content provided."}</div>
-                </div>
-              </div>
+        const htmlBody = action === "SENT_TO_INFLUENCER"
+            ? `
+<div style="font-family: Arial, sans-serif; color: #111111; line-height: 1.8; font-size: 15px;">
 
-              <p style="font-size: 12px; color: #718096; margin-top: 40px; text-align: center;">Sent from Ready To Work Agency</p>
-            </div>
-          </div>
-        ` : `
+  <div style="line-height: 1.8;">
+${formattedContent}
+  </div>
+
+</div>
+`
+            : `
       <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
         <div style="background-color: ${highlightColor}; padding: 24px; text-align: center; color: white;">
           <h2 style="margin: 0; text-transform: uppercase; letter-spacing: 1px;">Project Notification</h2>
@@ -521,18 +516,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
     `;
 
         try {
-            const isInfluencer = action === "SEND_TO_INFLUENCER";
+            const isInfluencer = action === "SENT_TO_INFLUENCER";
             const sender = isInfluencer ? INFLUENCER_SENDER : DEFAULT_SENDER;
             const creds = isInfluencer ? { tenant: PA_TENANT_ID, client: PA_CLIENT_ID, secret: PA_CLIENT_SECRET } : undefined;
-            
+
             let attachments = undefined;
-            if (metadata.attachment) {
-                attachments = [{
-                    name: metadata.attachment.filename,
-                    contentType: metadata.attachment.contentType || "application/pdf",
-                    contentBytes: metadata.attachment.contentBytes
-                }];
-                console.log(`Adding attachment: ${metadata.attachment.filename}`);
+
+            if (isInfluencer) {
+                if (metadata.attachment) {
+                    attachments = [
+                        {
+                            name: metadata.attachment.name || metadata.attachment.filename || "Collaboration_Script.pdf",
+                            contentType: metadata.attachment.contentType || "application/pdf",
+                            contentBytes: metadata.attachment.contentBytes
+                        }
+                    ];
+                    console.log("Using uploaded/generated attachment from metadata.attachment");
+                } else if (metadata.script_pdf_url) {
+                    try {
+                        console.log("Downloading PDF from:", metadata.script_pdf_url);
+                        const pdfResponse = await fetch(metadata.script_pdf_url);
+                        if (pdfResponse.ok) {
+                            const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+                            const pdfBase64 = btoa(
+                                String.fromCharCode(...new Uint8Array(pdfArrayBuffer))
+                            );
+                            attachments = [
+                                {
+                                    name: "Collaboration_Script.pdf",
+                                    contentType: "application/pdf",
+                                    contentBytes: pdfBase64
+                                }
+                            ];
+                            console.log("PDF attachment prepared successfully from script_pdf_url");
+                        } else {
+                            console.warn("Failed to download PDF from script_pdf_url");
+                        }
+                    } catch (pdfError) {
+                        console.error("PDF Attachment Error:", pdfError);
+                    }
+                }
             }
 
             await sendEmail(sender, recipientEmails, subject, htmlBody, creds, attachments);

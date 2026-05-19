@@ -123,8 +123,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
                   <span className="truncate">Overview</span>
                 </button>
               )}
-              {/* Leads - Visible for all roles except PARTNER_ASSOCIATE */}
-              {user.role !== Role.PARTNER_ASSOCIATE && (
+              {/* Leads - Visible for all roles except PARTNER_ASSOCIATE and CMO */}
+              {user.role !== Role.PARTNER_ASSOCIATE && user.role !== Role.CMO && (
                 <button
                   onClick={() => handleNavigate('leads')}
                   className={`w-full flex items-center space-x-3 px-4 py-4 border-2 font-black uppercase transition-all ${activeView === 'leads'
@@ -304,8 +304,8 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, onOpenCreate,
 
 
 
-          {/* Mobile Leads - Not for PARTNER_ASSOCIATE */}
-          {user.role !== Role.PARTNER_ASSOCIATE && (
+          {/* Mobile Leads - Not for PARTNER_ASSOCIATE and CMO */}
+          {user.role !== Role.PARTNER_ASSOCIATE && user.role !== Role.CMO && (
             <button
               onClick={() => { handleNavigate('leads'); setIsMobileMenuOpen(false); }}
               className={`w-full flex items-center space-x-3 px-4 py-3 border-2 border-black font-black uppercase ${activeView === 'leads' ? 'bg-[#D946EF] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' : 'bg-white'}`}
